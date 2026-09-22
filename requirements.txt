@@ -1,0 +1,9 @@
+pyttsx3
+comtypes
+pystray
+pillow
+edge-tts
+customtkinter
+numpy
+pygame-ce
+psutil
