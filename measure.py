@@ -54,10 +54,16 @@ DURABILITY_S = 180.0         # +70 .. +180 (volitelne)
 REFRACTORY_BEFORE_S = 60.0
 REFRACTORY_AFTER_S = 180.0
 
-# Dlhsia diera medzi vzorkami = vypadok senzora. Rovnaka hodnota ako
-# hr_stats.MAX_SAMPLE_GAP_S; zamerne sa neimportuje, aby `measure` ostal
-# nezavisly a testovatelny samostatne.
-MAX_GAP_S = 5.0
+# Dlhsia diera medzi vzorkami = vypadok senzora. ROVNAKE CISLO ako
+# `trigger.DIERA_S` (= `heart_rate.HeartRateMonitor.STALE_AFTER_S`, 12 s) -
+# test to strazi. Neimportuje sa: `trigger` importuje `measure`.
+#
+# Predtym tu bolo 5 s (ako `hr_stats.MAX_SAMPLE_GAP_S`, co je ale strop
+# KREDITU za jednu medzeru, nie hranica vypadku). Hodinky od 20. 9. posielaju
+# tep po ~2,9 s a jeden strateny paket je medzera ~5,6 s - takze skoro kazde
+# meracie okno dostalo `diera_v_datach`, hoci appka ani spustac to za vypadok
+# nepovazuju a HUD celu dobu ukazoval tep.
+MAX_GAP_S = 12.0
 
 # Pod tolko milisekund od posledneho vstupu povazujeme hraca za aktivneho.
 ACTIVE_IDLE_MS = 1000
@@ -312,6 +318,14 @@ def build_window(cue, samples, all_cue_ts, activity=None,
         "valid": not reasons,
         "reasons": reasons,
     }
+    # ZAZNAM O DORUCENI (0.2, rebrik + brana): stupen rebrika, ci naozaj
+    # nieco zaznelo, zataz pri doruceni a jej vrchol od natiahnutia, pasmo
+    # tepu a za kolko sekund po hlaske prislo "teraz nie". Len ked ich
+    # zaznam hlasky ma - starsie zaznamy ich nemaju a okno sa postavi aj tak.
+    for kluc in ("rung", "audible", "load_at", "load_peak", "zone_at",
+                 "snooze_after_s"):
+        if cue.get(kluc) is not None:
+            window[kluc] = cue[kluc]
     if session_started is not None:
         window["session_started"] = round(float(session_started), 1)
         window["offset_s"] = round(ts - float(session_started), 1)
@@ -438,6 +452,12 @@ def _interval95(hodnoty):
     return priemer, t * odchylka / (n ** 0.5)
 
 
+def _ma_branu(window):
+    """Vzniklo okno uz s branou hlasky (0.2)? Znacku nesu `params`."""
+    params = window.get("params")
+    return isinstance(params, dict) and bool(params.get("brana"))
+
+
 def by_category(windows, only_valid=True, arm="voice"):
     """Ucinnost podla KATEGORIE hlasky, nie podla ramena.
 
@@ -457,20 +477,37 @@ def by_category(windows, only_valid=True, arm="voice"):
     ZAMERNE NEROBI ZAVER. Nevracia "najlepsiu kategoriu" ani poradie -
     to by z prekryvajucich sa intervalov spravilo rebricek, ktory data
     neunesu.
+
+    CO SA RATA (0.2, rebrik + brana): len hlasky dorucene NA PAUZE (tichy
+    obrazok po `max_wait_s` nie je hlasna hlaska), ktore naozaj ZAZNELI
+    (`audible` False = stupen "obraz", styl bez zvuku, slot bez zvuku;
+    chybajuce pole = starsie okno, vtedy hlasne rameno na pauze zaznelo),
+    a nie z PRACE (tam je hlaska len obrazom). A ked uz existuje okno s
+    branou (`params.brana`), rataju sa LEN take - hlaska od 0.2 chodi az
+    ked zataz nestupa, takze starsie okna by merali nieco ine.
     """
+    okna = [w for w in windows or ()
+            # CUDZIE DATA SA DO UCINNOSTI NERATAJU.
+            #
+            # `data_io.clean_window` oznacuje importovane zaznamy `imported:
+            # True` a hlavicka toho modulu to vyslovne slubuje - lenze necital
+            # to tu nikto. Kto si naimportoval zalohu od kamarata, videl vo
+            # svojom grafe ucinnosti jeho telo zmiesane so svojim a nemal ako
+            # to zistit.
+            if isinstance(w, dict) and not w.get("imported")]
+    if any(_ma_branu(w) for w in okna):
+        okna = [w for w in okna if _ma_branu(w)]
     podla = {}
-    for w in windows:
-        # CUDZIE DATA SA DO UCINNOSTI NERATAJU.
-        #
-        # `data_io.clean_window` oznacuje importovane zaznamy `imported: True`
-        # a hlavicka toho modulu to vyslovne slubuje - lenze necital to tu
-        # nikto. Kto si naimportoval zalohu od kamarata, videl vo svojom
-        # grafe ucinnosti jeho telo zmiesane so svojim a nemal ako to zistit.
-        if w.get("imported"):
-            continue
+    for w in okna:
         if only_valid and not w.get("valid"):
             continue
         if arm is not None and w.get("arm") != arm:
+            continue
+        if w.get("delivery") != "pause":
+            continue
+        if w.get("world") == "work":
+            continue
+        if arm == "voice" and w.get("audible") is False:
             continue
         pre, post = w.get("pre_bpm"), w.get("post_bpm")
         if pre is None or post is None:

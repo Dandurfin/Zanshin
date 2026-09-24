@@ -613,6 +613,13 @@ def _heart_path(cx, cy, size):
 
 
 def _zone(stress):
+    """ZALOHA len pre staticke nahlady (prazdna Dnes, nastavenia HUD-u,
+    dialogy), ktore ziadne `HeartStats` nemaju a pasmo si vyrobia z
+    vymysleneho cisla zataze.
+
+    Zivy HUD pasmo NEPOCITA - dostane ho hotove ako `zone=` z
+    `HeartStats.zone` (tep voci pokoju). Keby si ho tu ratal zo zataze, slovo
+    na HUD-e by sa rozislo s Dnes aj s kontrolkou tepu."""
     if stress >= 75:
         return "critical"
     if stress >= 50:
@@ -620,18 +627,6 @@ def _zone(stress):
     if stress >= 25:
         return "raised"
     return "calm"
-
-
-_ZONE_ORDER = ("calm", "raised", "high", "critical")
-
-
-def zone_for(stress):
-    """Verejne meno pre `_zone` - pasmo zataze z hodnoty stresu.
-
-    Pouziva ho bocny panel (kontrolka tepu), aby mal ROVNAKE pasma ako
-    HUD v hre. Jeden zdroj pravdy: rovnaka farba znamena to iste na oboch
-    miestach."""
-    return _zone(stress)
 
 
 def zone_color(style, zone):
@@ -647,20 +642,38 @@ def zone_color(style, zone):
 
 def render_hud(style, bpm=None, stress=0.0, history=(), threshold=None,
                baseline=None, labels=None, pulse=0.0, session=None,
-               connected=True, ss=SS):
+               connected=True, calibrating=False, zone=None, ss=SS):
     """HUD panel: velke BPM, krivka tepu za poslednu ~2 min, pruh zatazenia
     a riadok relacie.
 
     `history` je postupnost BPM hodnot (stara -> nova), `pulse` je 0..1 faza
     tepu (srdce sa nadychne presne v rytme, aky prave chodi z hodiniek -
     periferne vnimanie tak dostane informaciu aj bez citania cisla).
+
+    `zone` je pasmo z `HeartStats.zone` - slovo, farba panelu aj farba
+    plnych dielikov pruhu. Zivy HUD ho posiela vzdy; bez neho (staticke
+    nahlady) sa pouzije zaloha `_zone(stress)`. Dlzka pruhu je dalej
+    zataz (`stress`); slovo a farba su tep voci pokoju.
+
+    `calibrating` (`HeartStats.is_calibrating`): tep a krivka sa ukazu,
+    zataz nie. Pruh ostane prazdny, namiesto pasma je tlmene "kalibrujem…"
+    a panel nema farbu pasma, ale neutralnu - `stress` ani `zone` sa vtedy
+    vobec necitaju, aby sa do obrazka nedostali ani omylom.
     """
     labels = labels or {}
     w, h = HUD_WIDTH, HUD_HEIGHT
     p = Painter(w, h, ss=ss)
 
-    zone = _zone(stress) if connected else "calm"
-    accent = zone_color(style, zone) if connected else style.dim
+    calibrating = bool(calibrating and connected)
+    if calibrating:
+        stress = 0.0
+        zone = None
+    if not connected:
+        zone = "calm"
+    elif zone is None:
+        zone = _zone(stress)
+    accent = (zone_color(style, zone) if connected and not calibrating
+              else style.dim)
     st = style.tinted(accent)
 
     # podklad - tmavy, aby bolo cislo citatelne aj nad snehom aj nad nocou
@@ -751,21 +764,32 @@ def render_hud(style, bpm=None, stress=0.0, history=(), threshold=None,
     p.text(bar_x0, bar_y - 9, labels.get("load", "LOAD"), style.dim, 9,
            anchor="lb", alpha=0.85, tracking=1.8)
     # bez dat sa nesmie zobrazit "Pokoj" - to by tvrdilo nieco, co appka
-    # nevie; pomlcka je jediny poctivy stav
-    zone_text = labels.get(zone, zone).upper() if connected else "—"
-    p.text(bar_x1, bar_y - 9, zone_text, accent, 9,
-           anchor="rb", alpha=0.95, tracking=1.8)
+    # nevie; pomlcka je jediny poctivy stav. Pocas kalibracie to iste:
+    # tep uz chodi, ale zakladna este nie je, tak pasmo nema voci comu.
+    if calibrating:
+        # "…" je jeden znak a prestrkanie ho neroztiahne - v 9-bodovom
+        # Bahnschrift sa tri bodky zlievaju do ciarky ("KALIBRUJEM_").
+        text = labels.get("calibrating", "…").upper().replace("…", "...")
+        p.text(bar_x1, bar_y - 9, text, style.dim, 9,
+               anchor="rb", alpha=0.8, tracking=1.8)
+    else:
+        zone_text = labels.get(zone, zone).upper() if connected else "—"
+        p.text(bar_x1, bar_y - 9, zone_text, accent, 9,
+               anchor="rb", alpha=0.95, tracking=1.8)
 
     segments = 20
     seg_w = (bar_x1 - bar_x0) / segments
     filled = int(round(segments * max(0.0, min(100.0, stress)) / 100.0))
+    # Plne dieliky maju farbu AKTUALNEHO pasma, nie kazdy vlastnu podla
+    # toho, kde v pruhu lezi. Predtym tu boli stvrtiny pruhu a na Dnes
+    # 35/60/80 % - tretia a stvrta definicia tych istych slov. Pri
+    # zatazi 57 tak HUD koncil "vysokou", Dnes "zvysenou" a slovo nad
+    # pruhom mohlo hovorit este nieco ine.
     for i in range(segments):
         x0 = bar_x0 + i * seg_w
         x1 = x0 + seg_w * 0.72
         if i < filled and connected:
-            frac = i / float(segments - 1)
-            col = zone_color(style, _ZONE_ORDER[min(3, int(frac * 4))])
-            p.rect(x0, bar_y, x1, bar_y + 6, color=col, alpha=0.92, radius=1.2)
+            p.rect(x0, bar_y, x1, bar_y + 6, color=accent, alpha=0.92, radius=1.2)
         else:
             p.rect(x0, bar_y, x1, bar_y + 6, color=style.dim, alpha=0.18, radius=1.2)
 
@@ -1046,8 +1070,8 @@ def render_pulse_ring(size, style, phase=0.0, zone=None, connected=False,
         (`phase` z `HeartStats.beat_phase()`) a farbu berie zo `zone`.
 
     PRECO FARBA PODLA PASMA A NIE ZELENA/CERVENA: appka uz pasma ma
-    (`_zone`/`zone_color`) a kresli nimi HUD v hre - rovnaka farba tak
-    znamena to iste v bocnom paneli aj nad hrou, jeden zdroj pravdy.
+    (`HeartStats.zone`/`zone_color`) a kresli nimi HUD v hre - rovnaka farba
+    tak znamena to iste v bocnom paneli aj nad hrou, jeden zdroj pravdy.
     Navyse ~12 % muzov nerozlisi cervenu od zelenej, takze farba nesmie
     byt jediny nosic: hlavnu informaciu tu nesie RYCHLOST tepania
     prstenca, ktora je citatelna bez ohladu na vnimanie farieb.
@@ -1069,7 +1093,10 @@ def render_pulse_ring(size, style, phase=0.0, zone=None, connected=False,
                   outline_alpha=0.30 + 0.25 * dych, width=size * 0.05)
         tep = 0.0
     else:
-        barva = zone_color(style, zone or "calm")
+        # "neutral" = kalibracia (HeartStats.is_calibrating): rovnaka tlmena
+        # farba ako HUD v tom stave, ziadne pasmo.
+        barva = (style.dim if zone == "neutral"
+                 else zone_color(style, zone or "calm"))
         tep = heartbeat_envelope(phase)
         # pokojny prstenec + druhy, ktory sa s kazdym tepom rozsiri a
         # zhasne - "vlna" von, ako ked sa tlak siri cievou

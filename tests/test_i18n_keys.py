@@ -52,7 +52,13 @@ def test_kontrola_naozaj_nieco_najde():
     assert len(_kluce("app.py")) > 100
 
 
-def test_kazdy_kluc_ma_vsetkych_devat_jazykov():
+def test_appka_ma_jedenast_jazykov():
+    """sk, en, 7 jazykov hracov na Steame a od 0.2 cestina a bulharcina."""
+    assert i18n.LANGUAGES == ("sk", "en", "ja", "zh", "ru", "es", "de", "fr",
+                              "pt", "cs", "bg")
+
+
+def test_kazdy_kluc_ma_vsetkych_jedenast_jazykov():
     chybne = [kluc for kluc, preklady in i18n.STRINGS.items()
               if set(preklady) != set(i18n.LANGUAGES)]
     assert not chybne, f"kluce s neuplnou sadou jazykov: {chybne[:10]}"
@@ -74,3 +80,13 @@ def test_kazda_karta_na_dnes_ma_vsetky_tri_texty():
             if kluc not in i18n.STRINGS:
                 chyba.append(kluc)
     assert not chyba, "chybajuce texty kariet: " + ", ".join(chyba)
+
+
+def test_anglicke_uvodzovky_su_v_paroch():
+    """“…“ namiesto “…” (preklep v hr.pair_ip_help a overlay.drag_hint)."""
+    otv, zatv = "“", "”"
+    zle = [k for k, v in i18n.STRINGS.items()
+           if re.search(otv + "[^" + otv + zatv + "]*" + otv, v.get("en", ""))
+           or v.get("en", "").count(otv) != v.get("en", "").count(zatv)]
+    assert not zle, zle
+    assert "“IPv4 Address”" in i18n.STRINGS["hr.pair_ip_help"]["en"]

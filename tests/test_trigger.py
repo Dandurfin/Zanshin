@@ -37,10 +37,13 @@ def spusti(silent_share=0.0, rng_seed=1, **params):
     return t, h
 
 
-def natiahni(t, h, stress=80.0, krok=1.0):
-    """Drž záťaž nad prahom, kým sa nenatiahne. Vráti udalosť natiahnutia."""
+def natiahni(t, h, stress=80.0, krok=1.0, zona="high"):
+    """Drž záťaž nad prahom, kým sa nenatiahne. Vráti udalosť natiahnutia.
+
+    `zona` je pásmo tepu pre bránu (0.2): „high" = známe a nie kritické,
+    záťaž stojí — brána pustí. Bez pásma (None) by hláška nešla vôbec."""
     for _ in range(200):
-        ev = t.note_load(stress, h.t)
+        ev = t.note_load(stress, h.t, zona=zona)
         if ev:
             return ev
         h.posun(krok)
@@ -130,14 +133,46 @@ def test_pauza_dorucí_hlasku():
     assert ev["hlas"] is True
 
 
+def _drz(t, h, sekund, stress=80.0, zona="high", pause_s=0.0, krok=1.0):
+    """Vzorky tepu aj tiky počas čakania, ako v appke. Vráti udalosti."""
+    udalosti = []
+    for _ in range(int(sekund / krok)):
+        h.posun(krok)
+        t.note_load(stress, h.t, zona=zona)
+        ev = t.tick(pause_s=pause_s, now=h.t)
+        if ev:
+            udalosti.append(ev)
+    return udalosti
+
+
 def test_ked_pauza_nepride_ide_tichy_vizual():
+    """0.2: tichý obrázok po max_wait_s ostáva — ale len keď brána pustí
+    (pásmo známe a nie kritické, záťaž nestúpa). Inak sa natiahnutie zruší."""
     t, h = spusti()
     natiahni(t, h)
-    h.posun(91.0)                                    # prešiel max_wait_s
-    ev = t.tick(pause_s=0.0, now=h.t)
+    ev = _drz(t, h, 91.0)[0]                         # prešiel max_wait_s
+    assert ev["typ"] == trigger.E_DELIVER
     assert ev["delivery"] == trigger.D_TIMEOUT
     assert ev["hlas"] is False                       # bez hlasu
     assert ev["arm"] == trigger.ARM_VOICE            # ale rameno je hlasné!
+
+    t, h = spusti()
+    natiahni(t, h, zona="critical")
+    ev = _drz(t, h, 91.0, zona="critical")[0]        # nad hranicou tepu
+    assert ev["typ"] == trigger.E_ABORT, "obrázok nesmie ísť nad hranicou"
+    assert ev["reason"] == trigger.A_BEZ_PAUZY
+
+    t, h = spusti()
+    natiahni(t, h)
+    udalosti = []
+    for i in range(91):                              # záťaž ešte stúpa
+        h.posun(1.0)
+        t.note_load(80.0 + i, h.t, zona="high")
+        ev = t.tick(pause_s=0.0, now=h.t)
+        if ev:
+            udalosti.append(ev)
+    assert [e["typ"] for e in udalosti] == [trigger.E_ABORT]
+    assert udalosti[0]["reason"] == trigger.A_BEZ_PAUZY
 
 
 def test_timeout_nie_je_tiche_rameno():
@@ -147,11 +182,14 @@ def test_timeout_nie_je_tiche_rameno():
     Keby sa oboje zapísalo ako arm="silent", measure.summarize() by
     porovnával dve rôzne veci: jedna skupina mala pauzu, druhá nie, a
     rozdiel medzi ramenami by meral práve toto.
+
+    A bez pauzy nezaznie hlas ani v hlasnom ramene — nikdy.
     """
     t, h = spusti(silent_share=0.0)                  # nikdy nelosuj ticho
     natiahni(t, h)
-    h.posun(91.0)
-    ev = t.tick(pause_s=0.0, now=h.t)
+    udalosti = _drz(t, h, 91.0)
+    assert len(udalosti) == 1
+    ev = udalosti[0]
     assert ev["hlas"] is False                       # nezaznelo
     assert ev["arm"] == trigger.ARM_VOICE            # ale patrí do hlasného
     assert ev["delivery"] == trigger.D_TIMEOUT       # a dôvod je zapísaný
@@ -169,14 +207,24 @@ def test_neznama_pauza_nedoruci_hned_ale_ani_necaka_navzdy():
     """pause_s() vracia None, keď systém idle nehlási.
 
     Nesmie sa to tváriť ani ako „pauza je" (doručilo by sa hneď), ani ako
-    „pauza nie je navždy". Nechá sa dobehnúť max_wait_s a doručí sa ticho.
+    „pauza nie je navždy". Nechá sa dobehnúť max_wait_s a potom platí to
+    isté ako bez pauzy: tichý obrázok cez bránu, hlas nikdy.
     """
     t, h = spusti()
     natiahni(t, h)
     assert t.tick(pause_s=None, now=h.t) is None
-    h.posun(91.0)
-    ev = t.tick(pause_s=None, now=h.t)
+    udalosti = _drz(t, h, 91.0, pause_s=None)
+    assert len(udalosti) == 1
+    ev = udalosti[0]
     assert ev["delivery"] == trigger.D_TIMEOUT
+    assert ev["hlas"] is False
+    assert t.pause_episodes == 0, "neznáma pauza nie je pauza"
+
+    # ... a nad hranicou vysokého tepu ani obrázok
+    t, h = spusti()
+    natiahni(t, h, zona="critical")
+    udalosti = _drz(t, h, 91.0, zona="critical", pause_s=None)
+    assert [e["typ"] for e in udalosti] == [trigger.E_ABORT]
 
 
 def test_ked_sa_nesmie_natiahnutie_sa_nespali():
@@ -410,7 +458,7 @@ def test_pocitadla_sedia():
 def _doruc(t, h):
     """Prejde celý cyklus až po doručenie. Vráti udalosť alebo None."""
     for _ in range(400):
-        ev = t.note_load(80.0, h.t)
+        ev = t.note_load(80.0, h.t, zona="high")
         h.posun(1.0)
         if ev and ev["typ"] == trigger.E_ARMED:
             h.posun(5.0)

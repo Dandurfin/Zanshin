@@ -151,8 +151,8 @@ def test_skratka_prezije_zastavenie_pocuvania():
 
 
 def test_zlyhana_registracia_nezhodi_appku():
-    """Kombináciu môže držať iná appka. Nie je to chyba appky a tlačidlo
-    v doku funguje ďalej."""
+    """Kombináciu môže držať iná appka. Nie je to chyba appky - beží ďalej
+    a riadok v denníku povie, čo zostáva (zastaviť počúvanie)."""
     telo = _telo("app.py", "start_snooze_hotkey")
     assert "log.hotkey_failed" in telo
     assert "except Exception" in telo
@@ -204,3 +204,25 @@ def test_hotkey_neloguje_cez_ui_call():
     assert "log=app_log" in telo, \
         "modul musí logovať do súboru, nie cez ui_call"
     assert "log=self.log_threadsafe" not in telo
+
+
+def test_log_pri_starte_hovori_pravdu_o_skratke():
+    """Riadok pri štarte už nesľubuje „Anti-Cheat Safe Mode“ ani „žiadne
+    blokovanie“: skratku „teraz nie“ si appka rezervuje (`RegisterHotKey`),
+    takže tú kombináciu hra nedostane. Dá sa zmeniť (súbor nastavení), preto
+    veta menuje predvolenú kombináciu ako predvolenú."""
+    import i18n
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+    import app as app_mod
+    predvolena = hotkey.format_combo(app_mod.DEFAULT_SNOOZE_HOTKEY).replace(" ", "")
+    assert predvolena == "Ctrl+Alt+Z"
+    zaznam = i18n.STRINGS["log.safe_mode"]
+    assert set(zaznam) == set(i18n.LANGUAGES)
+    for jazyk, text in zaznam.items():
+        assert predvolena in text, jazyk
+        for stare in ("Anti-Cheat", "anti-cheat", "Safe Mode", "アンチチート", "反作弊",
+                      "читов", "anti-trampas", "anti-triche"):
+            assert stare not in text, (jazyk, stare)
+    assert "blokovan" not in zaznam["sk"] and "blocking" not in zaznam["en"]
+    assert "„teraz nie“" in zaznam["sk"] and "“not now”" in zaznam["en"]
+    assert "rezervuje" in zaznam["sk"] and "reserves" in zaznam["en"]

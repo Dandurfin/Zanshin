@@ -4,8 +4,10 @@
 Doplnok ku gui_harness_auto.py (ten testuje bezne stranky). Tento:
   * zalohuje dandurf_settings.json a ZMAZE ho -> appka ide ako pri prvom
     starte (onboarding + tour); na konci subor obnovi;
-  * onboarding: 4 kroky Dalej/Spat, "Preskocit uvod" -> krok 4, popisy tem
-    na 2 riadky (ziadne doslovne '\\n'), realny klik mysou na Dalej;
+  * onboarding: 5 krokov Dalej/Spat, "Preskocit uvod" -> krok 4 (svet),
+    popisy tem na 2 riadky (ziadne doslovne '\\n'), krok 5 (styl hlasky:
+    styri rovnake odpovede, nic predvybrane, volba sa ulozi), realny klik
+    mysou na Dalej;
   * guided tour: auto-start po onboardingu, pri kazdom z 8 krokov zmeria
     polohu bubliny a zvyraznenia voci cielovemu widgetu (right/below/above/
     center), realny klik na Dalej v bubline, Preskocit, cleanup okien,
@@ -47,6 +49,7 @@ import app as app_mod
 from app import DandurfApp
 from i18n import tr
 import ui_dialogs
+import ui_kit
 
 user32 = ctypes.windll.user32
 user32.GetParent.restype = ctypes.c_void_p
@@ -62,7 +65,22 @@ def rec(name, ok, detail=""):
     print(("PASS " if ok else "FAIL ") + name + (f"  -- {detail}" if detail else ""), flush=True)
 
 
+# Hlavne okno sa pri starte ukaze az cele nakreslene; dovtedy je zahalene
+# (DWM cloak, viz app._odhal_hotove_okno). Zahalene okno ma winfo_viewable()
+# stale True, screenshot by odfotil PLOCHU ZA NIM (sukromie!) a realny klik
+# by trafil cudzie okno. Preto kazdy krok najprv pocka, kym sa okno ukaze.
+ODHALENIE_TIMEOUT_MS = 5000
+
+
+def app_zahalena():
+    return bool(getattr(state.get("app"), "_zahalene", False)) or ui_kit.je_zahalene(root)
+
+
 def shot(name, bbox=None, widget=None, margin=0):
+    if app_zahalena():
+        rec(f"screenshot {name}: app window not cloaked", False,
+            "skipped - a grab now would capture the desktop behind the window")
+        return
     try:
         root.update_idletasks()
         if bbox is None:
@@ -140,7 +158,15 @@ def run_steps(i=0):
         return
     delay, fn = steps[i]
 
-    def go():
+    def go(cakal=0):
+        if app_zahalena():
+            if cakal < ODHALENIE_TIMEOUT_MS:
+                root.after(50, lambda: go(cakal + 50))
+                return
+            rec(f"app window revealed within {ODHALENIE_TIMEOUT_MS // 1000} s (before {fn.__name__})",
+                False, "still DWM-cloaked - stopping, a screenshot or real click would hit the desktop")
+            finish()
+            return
         try:
             fn()
         except Exception as exc:
@@ -158,7 +184,7 @@ def ob_start():
     if wz is None:
         return
     wz.top.attributes("-topmost", True)      # harness bezi spod okna Claude
-    rec("wizard has 4 steps", wz.STEP_COUNT == 4 and wz._step == 0, f"step={wz._step}")
+    rec("wizard has 5 steps", wz.STEP_COUNT == 5 and wz._step == 0, f"step={wz._step}")
     rec("step 1: Back disabled, Skip visible",
         wz.back_btn.cget("state") == "disabled" and wz.skip_btn.winfo_ismapped())
     rec("wizard cannot be closed by X (protocol swallowed)",
@@ -279,23 +305,51 @@ def ob_step4():
     if PAIR_MODE:
         return
     wz = state["wizard"]
-    rec("REAL click on 'Skip intro' -> step 4", wz._step == 3, f"step={wz._step}")
-    rec("step 4: Skip hidden, Next says confirm",
-        not wz.skip_btn.winfo_ismapped() and wz.next_btn.cget("text") == tr("onboarding.confirm"),
+    rec("REAL click on 'Skip intro' -> step 4 (world)", wz._step == 3, f"step={wz._step}")
+    rec("step 4: Skip hidden, Next still says Next (step 5 follows)",
+        not wz.skip_btn.winfo_ismapped() and wz.next_btn.cget("text") == tr("ob.next"),
         wz.next_btn.cget("text"))
-    # popisy tem: 2 riadky, ziadne doslovne '\n'
+    # popisy svetov (B3-worlds: Hra/Sumi, Praca/Aizome): 2 riadky,
+    # ziadne doslovne '\n'
     labels = find_widgets(wz.body, ctk.CTkLabel, [])
     descs = [str(l.cget("text")) for l in labels
-             if str(l.cget("text")) in (tr("onboarding.zen.desc"), tr("onboarding.modern.desc"))]
-    rec("theme descriptions rendered (2 cards)", len(descs) == 2, str(descs))
+             if str(l.cget("text")) in (tr("ob.world.play.desc"), tr("ob.world.work.desc"))]
+    rec("world descriptions rendered (2 cards)", len(descs) == 2, str(descs))
     rec("theme descriptions have a real line break, no literal backslash-n",
         all("\n" in d and "\\n" not in d for d in descs), repr(descs))
     shot("ob_step4", widget=wz.top)
-    # Spat na krok 3 a znova na 4 (Dalej/Spat funguje aj tu)
+    # Spat na krok 3 a znova na 4 a 5 (Dalej/Spat funguje aj tu)
     wz._on_back()
     state["_back3"] = wz._step == 2
     wz._on_next()
     state["_fwd4"] = wz._step == 3
+    wz._on_next()
+    state["_fwd5"] = wz._step == 4
+
+
+@step(600)
+def ob_step5():
+    if PAIR_MODE:
+        return
+    wz = state["wizard"]
+    rec("Back/Next between steps 3, 4 and 5",
+        state.get("_back3") and state.get("_fwd4") and state.get("_fwd5"))
+    rec("step 5: Skip hidden, Next says confirm",
+        not wz.skip_btn.winfo_ismapped() and wz.next_btn.cget("text") == tr("onboarding.confirm"),
+        wz.next_btn.cget("text"))
+    root.update_idletasks()
+    btns = list(getattr(wz, "_cue_buttons", {}).values())
+    rozmery = {(b.winfo_width(), b.winfo_height()) for b in btns}
+    rec("step 5: four cue-style answers of one size, none preselected",
+        len(btns) == 4 and len(rozmery) == 1 and wz.cue_style is None, str(rozmery))
+    labels = find_widgets(wz.body, ctk.CTkLabel, [])
+    lowest = max(l.winfo_rooty() + l.winfo_height() for l in labels if l.winfo_ismapped())
+    rec("step 5: content does not overflow into the footer",
+        lowest <= wz.footer.winfo_rooty(), f"content bottom={lowest}")
+    shot("ob_step5", widget=wz.top)
+    wz._vyber_styl(wz.NEVIEM)
+    state["_neviem_je_hlas"] = wz.cue_style == "voice"
+    wz._vyber_styl("sound")
 
 
 @step(400)
@@ -303,7 +357,7 @@ def ob_confirm():
     if PAIR_MODE:
         return
     wz = state["wizard"]
-    rec("Back/Next between step 3 and 4", state.get("_back3") and state.get("_fwd4"))
+    rec("step 5: 'not sure' is stored as voice", state.get("_neviem_je_hlas"))
     mouse_click_at(*center_of(wz.next_btn))      # realny klik na "Vstupit"
 
 
@@ -311,10 +365,15 @@ def ob_confirm():
 def ob_after():
     wz = state["wizard"]
     rec("wizard closed after confirm", not wz.top.winfo_exists() and wz.confirmed)
-    rec("main window visible after onboarding", root.winfo_viewable() and app_ref()[0] is not None,
-        f"state={root.state()} mapped={root.winfo_ismapped()} viewable={root.winfo_viewable()}")
+    rec("main window visible after onboarding",
+        root.winfo_viewable() and not ui_kit.je_zahalene(root) and app_ref()[0] is not None,
+        f"state={root.state()} mapped={root.winfo_ismapped()} viewable={root.winfo_viewable()} "
+        f"cloaked={ui_kit.je_zahalene(root)}")
     shot("main_after_onboarding", widget=root, margin=20)
     app = state.get("app")
+    if app is not None and not PAIR_MODE:
+        rec("cue style from step 5 stored", getattr(app, "cue_style", None) == "sound",
+            getattr(app, "cue_style", None))
     if app is not None:
         # Tour krok 7 uz neukazuje na QuickDock.stop_btn (redizajn "Sumi noc"
         # ho zrusil) ANI na widget enso: znacka je od 2.1 kresba na strede

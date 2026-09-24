@@ -271,6 +271,113 @@ def test_analysis_flags_late_triggers_in_long_sessions():
     assert "triggers_late" in keys
 
 
+# --------------------------------------------------------------------------
+# Kedy prichadzaju spustenia - hustota, nie podiel (B3a)
+#
+# V 90-min relacii je prva hodina dve tretiny casu, takze aj rovnomerne
+# spustenia davali ~67 % "v prvej hodine" a stary prah 66 % hlasil vzor,
+# ktory tam nebol. To iste "po dvoch hodinach" v 4-5 h relaciach.
+# --------------------------------------------------------------------------
+
+def _timing_keys(duration_s, triggers, n=3):
+    now = 10 * 86400.0
+    sessions = [_session(now - i * 86400, duration_s=duration_s, triggers=triggers)
+                for i in range(n)]
+    return {i["key"]: i for i in hr_insights.analyze(sessions, now=now)}
+
+
+def test_even_triggers_in_90min_sessions_are_not_early():
+    # kazdych 15 min, v strede useku: 4 v prvej hodine, 2 po nej = 67 %,
+    # ale hustota je vsade rovnaka
+    out = _timing_keys(90 * 60, (450, 1350, 2250, 3150, 4050, 4950))
+    assert "triggers_early" not in out and "triggers_late" not in out
+
+
+def test_front_loaded_triggers_are_early():
+    out = _timing_keys(90 * 60, (300, 1200, 2100, 3000))
+    assert out["triggers_early"]["params"]["share"] == 100
+    assert out["triggers_early"]["tone"] == hr_insights.TONE_INFO
+
+
+def test_front_loading_is_seen_even_below_two_thirds_in_long_sessions():
+    # 3 h: prva hodina 3 spustenia, dalsie dve hodiny 2 - podiel len 60 %,
+    # ale prva hodina je 3x hustejsia. Stary podiel to prehliadol.
+    out = _timing_keys(3 * 3600, (600, 1500, 2400, 5000, 9000), n=4)
+    assert out["triggers_early"]["params"]["share"] == 60
+
+
+def test_few_front_loaded_triggers_stay_quiet():
+    # 6 z 6 v prvej hodine 90-min relacii - pri rovnomernom rozlozeni to
+    # vyjde nahodou skoro v kazdom desiatom pripade (2/3)^6 = 8,8 %
+    out = _timing_keys(90 * 60, (900, 2700))
+    assert "triggers_early" not in out
+
+
+def test_even_triggers_in_5h_sessions_are_not_late():
+    # kazdych 30 min: 6 z 10 az po dvoch hodinach (60 % > stary prah 50 %),
+    # ale tie hodiny su aj 60 % casu - nic neskoro nehustne
+    out = _timing_keys(5 * 3600, tuple(900 + 1800 * k for k in range(10)))
+    assert "triggers_late" not in out and "triggers_early" not in out
+
+
+def test_timing_survives_years_of_history_and_broken_duration():
+    # 300 relacii = 1500 spusteni: naivne math.comb(1500, k) * float pretecie
+    now = 400 * 86400.0
+    sessions = [_session(now - i * 86400, duration_s=90 * 60,
+                         triggers=(300, 1200, 2100, 3000, 4000)) for i in range(300)]
+    keys = [i["key"] for i in hr_insights.analyze(sessions, now=now)]
+    assert "triggers_early" in keys
+    # nekonecne trvanie (pokazeny JSON) nesmie zhodit analyzu v pozadi
+    broken = [_session(now - i * 86400, duration_s=90 * 60, triggers=(300, 1200))
+              for i in range(3)]
+    broken.append(dict(broken[0], duration_s=float("inf"), started=now - 5 * 86400))
+    hr_insights.analyze(broken, now=now)
+
+
+def _even(duration_s, n):
+    # n spusteni, kazde v strede rovnakeho useku - dokonale rovnomerne
+    return tuple(duration_s * (i + 0.5) / n for i in range(n))
+
+
+def _mixed_keys(parts):
+    now = 30 * 86400.0
+    sessions, i = [], 0
+    for count, duration_s, triggers in parts:
+        for _ in range(count):
+            sessions.append(_session(now - i * 86400, duration_s=duration_s,
+                                     triggers=triggers))
+            i += 1
+    return {x["key"] for x in hr_insights.analyze(sessions, now=now)}
+
+
+def test_tense_short_evenings_next_to_calm_long_ones_are_not_early():
+    # V KAZDEJ relacii su spustenia rovnomerne. Napate su len kratke vecery,
+    # pokojne su dlhe - scitany cas by z toho urobil "prva hodina je
+    # hustejsia" (Simpson). Ocakavanie po relaciach to nesmie.
+    keys = _mixed_keys([(3, 90 * 60, _even(90 * 60, 7)),
+                        (4, 5 * 3600, _even(5 * 3600, 5))])
+    assert "triggers_early" not in keys
+
+
+def test_tense_long_evenings_next_to_calm_ones_are_not_late():
+    # dve napate 5-h relacie (2/h rovnomerne) + sest pokojnych 150-min bez
+    # spustenia: nic neprislo "az po dvoch hodinach", len dlhe vecery boli
+    # napate od zaciatku
+    keys = _mixed_keys([(2, 5 * 3600, _even(5 * 3600, 10)),
+                        (6, 150 * 60, ())])
+    assert "triggers_late" not in keys
+
+
+def test_one_broken_duration_does_not_silence_timing_forever():
+    now = 10 * 86400.0
+    sessions = [_session(now - i * 86400, duration_s=90 * 60,
+                         triggers=(300, 1200, 2100, 3000)) for i in range(3)]
+    for bad in (float("nan"), float("inf")):
+        broken = sessions + [dict(sessions[0], duration_s=bad, started=now - 5 * 86400)]
+        keys = {x["key"] for x in hr_insights.analyze(broken, now=now)}
+        assert "triggers_early" in keys
+
+
 def test_analysis_reports_steady_when_nothing_stands_out():
     now = 10 * 86400.0
     sessions = [_session(now - i * 86400) for i in range(4)]
@@ -354,6 +461,25 @@ def test_hlboko_pod_radi_hranicu_tepu():
                         above_runs=6, longest_above_s=9.0) for i in range(4)]
     kluce = _kluce(relacie)
     assert "cue_far" in kluce and "cue_almost" not in kluce
+
+
+def test_zadrzane_hlasky_netvrdia_ze_zataz_nevydrzala():
+    """0.2 (stress-gate): spúšťač sa natiahol a appka sama mlčala. Záťaž
+    teda hore vydržala — „len na chvíľu" by klamalo, a „nič som si
+    nevšimla" tiež. Radšej žiadna rada."""
+    relacie = [_relacia(started=1789000000.0 + i * 86400.0,
+                        above_runs=6, longest_above_s=9.0,
+                        cues_withheld={"bez_pauzy": 0, "nevhodna_chvila": 2,
+                                       "nedalo_sa": 0})
+               for i in range(4)]
+    kluce = _kluce(relacie)
+    assert not (kluce & {"cue_almost", "cue_far", "steady"})
+    # pokazená hodnota nezhodí analýzu a nič nepredstiera
+    relacie = [_relacia(started=1789000000.0 + i * 86400.0,
+                        above_runs=6, longest_above_s=9.0,
+                        cues_withheld={"nevhodna_chvila": "x"})
+               for i in range(4)]
+    assert "cue_far" in _kluce(relacie)
 
 
 def test_ked_hlasky_chodia_sa_nerieskuje_nic():
@@ -587,3 +713,203 @@ def test_hr_insights_filtruje_pokazene_relacie():
                 "curve": [235] * 600}
     # analýza s pokazenou aj bez nej dá to isté — pokazená neprispela
     assert hr_insights.analyze(zdrave + [pokazena]) == hr_insights.analyze(zdrave)
+
+
+# --------------------------------------------------------------------------
+# Pokrytie signalu (C4): prah sa uci len z casu, ked tep chodil
+# --------------------------------------------------------------------------
+
+_ZONY_1800 = {"calm": 900.0, "raised": 600.0, "high": 300.0, "critical": 0.0}
+
+
+def _vlna(hore, opakovani=60):
+    """Plynula krivka ako telo - bez skokov, ktore by chytil `je_podozriva`."""
+    vlna = []
+    for _ in range(opakovani):
+        vlna.extend(range(70, hore, 5))
+        vlna.extend(range(hore, 70, -5))
+    return vlna
+
+
+def test_pokrytie_signalu_z_ulozenych_poli():
+    """Sucet pasiem / trvanie - z toho, co kazdy suhrn uz uklada."""
+    p = hr_stats.pokrytie_signalu(
+        {"duration_s": 1000.0,
+         "zone_seconds": {"calm": 600.0, "raised": 200.0, "high": 100.0,
+                          "critical": 0.0}})
+    assert abs(p - 0.9) < 1e-9
+    # zaokruhlenie v suhrne moze dat o chlp viac nez trvanie - strop je 1
+    assert hr_stats.pokrytie_signalu(
+        {"duration_s": 100.0, "zone_seconds": {"calm": 100.4}}) == 1.0
+
+
+def test_pokrytie_signalu_ked_sa_to_nevie_je_none():
+    """Nevedet nie je „0 %": stare relacie, pokazene subory a hodinky, ktore
+    posielali ridsie nez kazdych 12 s (kazda medzera vypadok, sucet nula)."""
+    zony = {"calm": 500.0}
+    for relacia in (
+            {"duration_s": 1000.0},                              # stara
+            {"duration_s": 1000.0, "zone_seconds": {}},
+            {"duration_s": 1000.0, "zone_seconds": None},
+            {"duration_s": 0, "zone_seconds": zony},
+            {"duration_s": -5.0, "zone_seconds": zony},
+            {"zone_seconds": zony},                              # bez trvania
+            {"duration_s": 1000.0, "zone_seconds": {"calm": 0.0}},
+            {"duration_s": 1000.0, "zone_seconds": {"calm": "x"}},
+            {"duration_s": 1000.0, "zone_seconds": {"calm": None}},
+            {"duration_s": 1000.0, "zone_seconds": [1, 2, 3]},
+            {"duration_s": "dlho", "zone_seconds": zony},
+            {"duration_s": float("nan"), "zone_seconds": zony},
+            {"duration_s": 1000.0, "zone_seconds": {"calm": float("nan")}},
+            None, "relacia", 42, []):
+        assert hr_stats.pokrytie_signalu(relacia) is None, relacia
+
+
+def test_prehravanie_prahu_nevazi_vecer_podla_dier():
+    """Krivka je preriedena podla vzoriek, nie casu - diery v nej nie su.
+
+    Ten isty vecer s dvojnasobnym `duration_s` (polovicu casu hodinky
+    mlcali) a tym istym suctom pasiem sa musi prehrat rovnako - rovnaky
+    pocet bodov, rovnaky 80. percentil. Predtym sa natiahol na cely cas a
+    v prahu vazil dvakrat viac.
+    """
+    celistvy = {"curve": _vlna(130), "duration_s": 1800.0,
+                "zone_seconds": dict(_ZONY_1800)}
+    dierava = dict(celistvy, duration_s=3600.0)
+    assert hr_stats.pokrytie_signalu(dierava) == 0.5
+    a = hr_stats.load_z_krivky(celistvy, 70.0, 110)
+    b = hr_stats.load_z_krivky(dierava, 70.0, 110)
+    assert a and abs(len(a) - len(b)) <= 1
+    assert hr_stats._percentile(sorted(a), 0.8) == \
+        hr_stats._percentile(sorted(b), 0.8)
+    # bez pasiem (stara relacia) sa natiahne na cele trvanie ako doteraz
+    stara = {k: v for k, v in dierava.items() if k != "zone_seconds"}
+    assert len(hr_stats.load_z_krivky(stara, 70.0, 110)) > 1.9 * len(a)
+
+
+def test_relacia_bez_pokrytia_sa_prehra_ako_doteraz():
+    """Bez pasiem, s nulovym suctom aj s plnym pokrytim - to iste ako pred C4."""
+    krivka = [70 + (i % 20) for i in range(600)]
+    bez = {"curve": krivka, "duration_s": 600.0}
+    ocakavane = hr_stats.load_z_krivky(bez, 65.0, 110)
+    assert len(ocakavane) == int(600.0 / 1.5) - 29   # ako test kalibracie
+    for zony in ({"calm": 0.0, "raised": 0.0}, {"calm": 400.0, "raised": 200.0},
+                 {"calm": 700.0}):
+        assert hr_stats.load_z_krivky(
+            dict(bez, zone_seconds=zony), 65.0, 110) == ocakavane, zony
+
+
+def test_do_prahu_patri_ta_ista_relacia_aj_s_malym_pokrytim():
+    """Podmienka „aspon 5 minut" ostava na `duration_s` - ktore relacie sa
+    rataju do prahu (a do „vypocitane z n relacii"), sa nemeni."""
+    relacia = {"curve": [70 + (i % 20) for i in range(600)], "duration_s": 600.0,
+               "zone_seconds": {"calm": 180.0}}             # pokrytie 0,3
+    body = hr_stats.load_z_krivky(relacia, 65.0, 110)
+    assert len(body) == int(180.0 / 1.5) - 29
+
+
+def test_dierava_relacia_neposunie_prah_viac_nez_celistva():
+    """Vecer s dierami ma v prahu rovnaku vahu ako ten isty vecer bez nich.
+
+    Pred C4 sa jeho krivka natiahla aj cez diery, takze do 80. percentilu
+    vlozil dvakrat viac bodov nez celistvy dvojca a prah posunul (tu 76 -> 78).
+    """
+    zdrave = [{"curve": _vlna(110), "duration_s": 1800.0, "baseline_bpm": 70,
+               "zone_seconds": dict(_ZONY_1800)} for _ in range(4)]
+    dierava = {"curve": _vlna(140), "duration_s": 3600.0, "baseline_bpm": 70,
+               "zone_seconds": dict(_ZONY_1800)}
+    dvojca = dict(dierava, duration_s=1800.0)
+    assert not hr_stats.je_podozriva(dierava)
+    s_dierami = hr_stats.dynamicky_prah_zataze(
+        zdrave + [dierava], baseline=70, critical=110)
+    assert s_dierami is not None
+    assert s_dierami == hr_stats.dynamicky_prah_zataze(
+        zdrave + [dvojca], baseline=70, critical=110)
+    # kontrola, ze test nieco meria: natiahnuta cez diery by prah posunula
+    natiahnuta = {k: v for k, v in dierava.items() if k != "zone_seconds"}
+    assert hr_stats.dynamicky_prah_zataze(
+        zdrave + [natiahnuta], baseline=70, critical=110) != s_dierami
+
+
+def test_brana_na_pokrytie_zamerne_nie_je():
+    """Vecer s malym pokrytim sa z ucenia NEVYRADUJE (C4, viz komentar pri
+    `pokrytie_signalu`): pomer klesne aj pri uspatom PC alebo hodinkach na
+    nabijacke a tie vecery maju dobre data. Kto branu postavi, zmeni tento
+    test vedome - a s datami zo skutocneho zleho vecera."""
+    slaba = {"curve": [80 + i % 5 for i in range(600)], "duration_s": 3600.0,
+             "max_bpm": 90, "zone_seconds": {"calm": 700.0}}   # pokrytie ~0,19
+    assert hr_stats.pokrytie_signalu(slaba) < 0.5
+    assert hr_stats.ciste_relacie([slaba]) == [slaba]
+
+
+# --------------------------------------------------------------------------
+# Zive pokrytie pre widget kvality signalu
+# --------------------------------------------------------------------------
+
+def test_zive_pokrytie_je_none_kym_nie_je_z_coho():
+    st = hr_stats.HeartStats(critical_bpm=110)
+    assert st.signal_coverage_at(now=5000.0) is None          # ziadna vzorka
+    koniec = _feed(st, [75] * 30, start=1000.0)
+    assert st.signal_coverage_at(now=koniec) is None           # 30 s < minuta
+    assert st.signal_coverage_at(now=1000.0 + 59.9) is None
+    assert st.signal_coverage_at(now=1000.0 + 60.0) is not None
+
+
+def test_zive_pokrytie_nekolise_medzi_vzorkami():
+    """Hodinky posielaju kazde ~3 s. Medzi dvoma vzorkami nesmie cislo klesat
+    a pri dalsej skocit spat - otvoreny interval sa zarata (najviac 5 s)."""
+    st = hr_stats.HeartStats(critical_bpm=110)
+    koniec = _feed(st, [75] * 40, start=1000.0, step=3.0)    # posledna 1117
+    posledna = koniec - 3.0
+    for po in (0.0, 1.0, 2.9, 4.99):
+        assert abs(st.signal_coverage_at(now=posledna + po) - 1.0) < 1e-9, po
+    # po 5 s ticha uz cas so signalom nepribuda (ten isty strop ako `add`)
+    pokr = st.signal_coverage_at(now=posledna + 8.0)
+    assert abs(pokr - (117.0 + 5.0) / 125.0) < 1e-9
+
+
+def test_zive_pokrytie_meria_od_prvej_vzorky_nie_od_zapnutia():
+    """Cakanie, kym sa hodinky pripoja, nie je slaby signal."""
+    st = hr_stats.HeartStats(critical_bpm=110)
+    st.session_start = 0.0                     # relacia otvorena davno predtym
+    koniec = _feed(st, [75] * 120, start=1000.0)
+    assert abs(st.signal_coverage_at(now=koniec - 0.5) - 1.0) < 1e-9
+
+
+def test_zive_pokrytie_sedi_s_vypadkom_a_je_vedla_neho():
+    """Vypadok: pokrytie klesne presne o slepy cas a widget ma vedla neho aj
+    pocet vypadkov (`dropouts`) a slepe sekundy (`blind_seconds`)."""
+    st = hr_stats.HeartStats(critical_bpm=110)
+    _feed(st, [75] * 60, start=1000.0)                       # 1000..1059
+    st.note_dropout(od=1059.0)
+    st.clear_live()
+    # pocas vypadku otvoreny interval nie je - tep nechodi
+    pocas = st.signal_coverage_at(now=1080.0)
+    assert abs(pocas - 59.0 / 80.0) < 1e-9
+    _feed(st, [75] * 60, start=1090.0)                       # 1090..1149
+    teraz = 1149.5
+    pokr = st.signal_coverage_at(now=teraz)
+    assert st.dropouts == 1
+    assert st.blind_seconds(now=teraz) == 31.0
+    assert abs(pokr - (1.0 - 31.0 / (teraz - 1000.0))) < 1e-9
+
+
+def test_zive_pokrytie_zarata_aj_sekundy_z_kalibracie():
+    """Prvy vecer bez zakladne: sekundy cakaju v `_zony_cakaju`, kym zakladna
+    nepride - aj tie su cas so signalom."""
+    st = hr_stats.HeartStats(critical_bpm=110)
+    koniec = _feed(st, [75] * 25, start=1000.0, step=3.0)    # 1000..1072
+    assert st.is_calibrating and st._zony_cakaju
+    assert abs(st.signal_coverage_at(now=koniec - 2.0) - 1.0) < 1e-9
+
+
+def test_zive_pokrytie_je_vlastnost_pre_widget_a_nuluje_sa_s_relaciou():
+    st = hr_stats.HeartStats(critical_bpm=110)
+    t0 = time.time() - 120.0
+    _feed(st, [75] * 120, start=t0)
+    pokr = st.signal_coverage
+    assert pokr is not None and pokr > 0.95
+    st.note_dropout()
+    st.reset_session()
+    assert st.signal_coverage is None
+    assert st.dropouts == 0 and st.blind_seconds() == 0.0

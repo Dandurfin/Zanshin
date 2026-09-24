@@ -100,7 +100,8 @@ class TitleBar(ctk.CTkFrame):
 
     def __init__(self, master, root_window=None, app_name="Zanshin", on_close=None,
                  version="", pal=None, on_about=None, about_tip="",
-                 licence=""):
+                 licence="", world_values=None, world_value=None, on_world=None,
+                 world_tip=""):
         # POZN: lista brala farby z moduloveho PAL a jedine znak 残 z temy.
         # Vysledok bol pruh, ktory pri teme Sumi/Aizome nesedel so zvyskom
         # okna (ina cierna, iny odtien textu) a po odstraneni fotopasu nad
@@ -179,6 +180,30 @@ class TitleBar(ctk.CTkFrame):
 
         controls = ctk.CTkFrame(self, fg_color="transparent")
         controls.pack(side="right")
+        # SVET (0.2, B3-worlds): male "Hra | Praca" vlavo od ⓘ.
+        #
+        # V liste, nie na stranke: je to jedina vec, ktora meni CELU appku
+        # naraz (vzhlad, historiu, postrehy), takze patri tam, kde je vidno
+        # na kazdej stranke - a s prepinacom HUD-u ani ⚙ na Dnes sa tu
+        # nezrazi. Maly a tlmeny: znamenie v rohu oka, nie vykricnik.
+        #
+        # Bublina ide na KAZDY segment zvlast - CTkSegmentedButton.bind()
+        # vyhodi NotImplementedError, a segmenty su jeho deti.
+        self.world_switch = None
+        if on_world is not None and world_values:
+            self.world_switch = ctk.CTkSegmentedButton(
+                controls, values=list(world_values), height=22,
+                font=("Segoe UI", 10), fg_color=c("surface", "bg"),
+                selected_color=c("accent2", "bg_hover"),
+                selected_hover_color=c("accent2_hover", "bg_hover"),
+                unselected_color=c("surface", "bg"),
+                unselected_hover_color=c("surface_alt", "bg_hover"),
+                text_color=c("text", "text"), command=on_world)
+            if world_value:
+                self.world_switch.set(world_value)
+            self.world_switch.pack(side="left", padx=(0, 8), pady=5)
+            for segment in getattr(self.world_switch, "_buttons_dict", {}).values():
+                _HoverTip(segment, lambda: world_tip, below=True)
         # About VLAVO od minimalizacie a zatvorenia.
         #
         # Kto appku prvykrat otvori, hlada "kto to spravil" v titulkovej
@@ -231,6 +256,16 @@ class TitleBar(ctk.CTkFrame):
         try:
             self.configure(fg_color=self._c("surface", "bg"))
             self.divider.configure(fg_color=self._c("line_soft", "border"))
+        except Exception:
+            pass
+
+    def set_world(self, label):
+        """Oznaci segment sveta bez toho, aby sa zavolal `on_world` - svet
+        mohlo prepnut aj nieco ine (Nastavenia, sprievodca)."""
+        if self.world_switch is None:
+            return
+        try:
+            self.world_switch.set(label)
         except Exception:
             pass
 
@@ -1536,8 +1571,12 @@ class CommandPalette:
     HEIGHT = 340
     _CATEGORY_COL_PX = 130
 
-    def __init__(self, root, commands, pal=None):
+    def __init__(self, root, commands, pal=None, placeholder=""):
         """commands: list of (label:str, tag:str, action:callable)
+
+        `placeholder` je veta v prazdnom poli hladania. Prichadza z app.py
+        uz prelozena (tento modul i18n nepozna) - predtym tu bola natvrdo
+        po slovensky aj v anglickom okne.
 
         `pal` je paleta aktivnej temy appky. POZN: predtym ju paleta
         prikazov vobec nedostavala a farbila sa CELA z moduloveho PAL -
@@ -1549,6 +1588,7 @@ class CommandPalette:
         """
         self.root = root
         self.commands = commands
+        self.placeholder = placeholder
         self.pal = pal or {}
         self.top = None
         self.listbox = None
@@ -1606,7 +1646,7 @@ class CommandPalette:
 
         self.entry_var = tk.StringVar()
         self.entry = ctk.CTkEntry(
-            search, textvariable=self.entry_var, placeholder_text="Napíš meno slotu, profilu, nastavenia…",
+            search, textvariable=self.entry_var, placeholder_text=self.placeholder,
             fg_color="transparent", border_width=0, text_color=c("text", "text"),
             placeholder_text_color=c("text_faint", "text_3"), height=40,
             font=("Segoe UI", 13),
@@ -1755,9 +1795,13 @@ class _HoverTip:
 
     WATCHDOG_MS = 250
 
-    def __init__(self, widget, text_fn):
+    def __init__(self, widget, text_fn, below=False):
         self.widget = widget
         self.text_fn = text_fn
+        # `below=True`: bublina POD widgetom. Pre prvky v titulkovej liste -
+        # nad nimi uz je okraj okna, a viacriadkova bublina nad malym
+        # prvkom by prekryla kurzor a blikala (Leave -> skry -> Enter).
+        self.below = below
         self.tip = None
         self._watchdog = None
         widget.bind("<Enter>", self._show)
@@ -1773,7 +1817,10 @@ class _HoverTip:
         if self.tip is not None:
             return
         x = self.widget.winfo_rootx()
-        y = self.widget.winfo_rooty() - 30
+        if self.below:
+            y = self.widget.winfo_rooty() + self.widget.winfo_height() + 4
+        else:
+            y = self.widget.winfo_rooty() - 30
         self.tip = ui_kit.priprav_popup(tk.Toplevel(self.widget))
         self.tip.overrideredirect(True)
         self.tip.attributes("-topmost", True)

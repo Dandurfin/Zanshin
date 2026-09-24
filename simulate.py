@@ -50,8 +50,16 @@ import hr_stats
 import measure
 import trigger
 
-# Cadencia je rovnaka ako v appke: `_tick_activity` bezi 4x za sekundu
-# (activity.POLL_S), hodinky posielaju tep raz za sekundu.
+# Aktivita ma rovnaku kadenciu ako v appke: `_tick_activity` bezi 4x za
+# sekundu (activity.POLL_S).
+#
+# Tep NIE. Simulacia posiela vzorku presne raz za sekundu, bez straty -
+# idealne husta kadencia. Skutocne hodinky posielaju podla dat ~0,9 az
+# ~2,9 s na vzorku (od 20. 9. ~2,9 s, tep sa v OBS strieda s krokmi) a so
+# chvostom medzier tesne nad 5 s (strateny paket). Ten chvost tu nie je -
+# preto tato simulacia nikdy neukazala, ze spustac pri kazdej medzere nad
+# 5 s zmazal nazbierany cas (opravene cez `trigger.DIERA_S`). Cisla z nej
+# platia pre huste hodinky.
 TEP_S = 1.0
 
 # Vecer nezacina v case 0. `HeartStats.add` ma `now = float(ts) if ts else
@@ -203,7 +211,9 @@ def odsimuluj(tep, vstupy, params=None, silent_share=0.10, seed=1):
             ts, bpm = tep[i_tep]
             hodiny.t = ts
             stats.add(bpm, ts=ts)
-            ev = aut.note_load(stats.stress, ts)
+            ev = aut.note_load(stats.stress, ts,
+                               calibrating=stats.is_calibrating,
+                               zona=stats.known_zone)   # brana, ako appka
             if ev:
                 udalosti.append(ev)
             # diagnostika syntetickeho tela, nie appky

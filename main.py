@@ -1,4 +1,4 @@
-"""Zanshin DojoSync (predtym Dandurf) - mindfulness/biofeedback asistent
+"""Zanshin (predtym Zanshin DojoSync a Dandurf) - mindfulness/biofeedback asistent
 pre hranie hier.
 
 Toto je len vstupny bod - overi zavislosti a spusti hlavnu appku
@@ -6,7 +6,7 @@ Toto je len vstupny bod - overi zavislosti a spusti hlavnu appku
 
   paths.py           - cesty k datam (%APPDATA%), migracia zo starsich verzii
   theme.py           - farebne tokeny pre Zen / Modern rezim
-  i18n.py            - preklady rozhrania (9 jazykov)
+  i18n.py            - preklady rozhrania (11 jazykov; cs/bg v i18n_cs_bg.py)
   settings_model.py  - datovy model slotov/nastaveni (predvolene hodnoty,
                         normalizacia, popisky)
   sfx_assets.py       - zabudovana SFX kniznica (syntéza aj stiahnutie)
@@ -22,7 +22,7 @@ Toto je len vstupny bod - overi zavislosti a spusti hlavnu appku
   data_io.py          - export/import/mazanie dat (prisny parser, bez pickle)
   overlay.py          - in-game somaticke vizualy (click-through okna)
   guide_content.py,
-  guide_panel.py       - panel "Sprievodca / Veda za aplikáciou"
+  guide_panel.py       - panel "Sprievodca / Čo je za tým"
   ui_dialogs.py        - dialogy a karty hlavneho okna (vratane Onboardingu)
   app.py              - DandurfApp: hlavne okno, prepojenie vsetkeho
 

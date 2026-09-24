@@ -442,3 +442,20 @@ def test_steps_per_min_je_none_ked_kroky_prestali_chodit():
     assert s.steps_per_min(now=1001.0) == 0.0            # chodí → nula
     # o dve minúty ticha → nevieme, nie nula
     assert s.steps_per_min(now=1001.0 + 120.0) is None
+
+
+# ---------------------------------------------------------------------------
+# navod v kazdom jazyku menuje zdroj tak, ako ho telefon naozaj uvidi
+# ---------------------------------------------------------------------------
+
+def test_navod_menuje_zdroj_doslova_vo_vsetkych_jazykoch():
+    """Telefon uvidi scenu „Zanshin“ a zdroj „Tep“ (SCENE_NAME, INPUT_NAME).
+    Anglicky navod a jeho preklady ja..pt radili vybrat zdroj „Heart rate“,
+    ktory neexistuje. Mena v OBS sa neprekladaju."""
+    import i18n
+    for kluc in ("hr.step4_body", "hr.trouble_body", "log.hr_client_connected"):
+        for jazyk in i18n.LANGUAGES:
+            text = i18n.STRINGS[kluc][jazyk]
+            assert obs_websocket.SCENE_NAME in text, (kluc, jazyk)
+            assert obs_websocket.INPUT_NAME in text, (kluc, jazyk)
+            assert "Heart rate" not in text, (kluc, jazyk)

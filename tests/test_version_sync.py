@@ -1,21 +1,21 @@
 # -*- coding: utf-8 -*-
 """Jedna verzia zije na STYROCH miestach - musia sedet.
 
-POZOR: tento subor sa NEPODARILO obnovit zo zaloh - je napisany nanovo
-podla popisu v docs/PROJECT.md §12 a podla realnych hodnot v zbuildovanom
-depote 2.0. Povodny test mohol kontrolovat viac veci; toto je minimum,
-ktore pokryva chybu, kvoli ktorej vznikol.
+POZOR: tento subor sa NEPODARILO obnovit zo zaloh - je napisany nanovo.
+Povodny test mohol kontrolovat viac veci; toto je minimum, ktore pokryva
+chybu, kvoli ktorej vznikol.
 
 Kazde z tych styroch miest vidi iny clovek:
 
   app.version_short v i18n.py     hrac, v titulnej liste
   MyAppVersion v Dandurf.iss      samostatny instalator
   version_info.txt                Windows -> Vlastnosti -> Podrobnosti
-  "Desc" v steam\\app_build.vdf    zoznam buildov v Steamworks
+  "*Alpha X.Y" v README.md        kazdy na GitHube, este pred appkou
 
-Raz sa uz rozisli: vdf hlasil "0.5 - alpha", kym titulna lista aj
+Raz sa uz rozisli: popis buildu hlasil "0.5 - alpha", kym titulna lista aj
 instalator hovorili 1.0. Nikto si toho nevsimol, lebo kazde z tych miest
-vidi niekto iny a nikdy nie naraz.
+vidi niekto iny a nikdy nie naraz. (Piate miesto, popis Steam buildu,
+zaniklo s celym Steam buildom - Zanshin nema ziadnu integraciu so Steamom.)
 
 Test je staticky (cita zdrojak), aby bezal bez Tk aj bez buildu.
 """
@@ -80,9 +80,11 @@ def test_metadata_exe_sedia_s_titulnou_listou():
             f"version_info.txt {pole}={m.group(1)}, cakalo sa {verzia}.0.0")
 
 
-def test_steam_build_sedi_s_titulnou_listou():
-    m = re.search(r'"Desc"\s+"([^"]+)"', _read("steam", "app_build.vdf"))
-    assert m, "app_build.vdf neobsahuje \"Desc\""
-    assert _verzia_z_i18n() in m.group(1), (
-        f'app_build.vdf Desc = {m.group(1)!r}, cakala sa verzia '
-        f'{_verzia_z_i18n()}')
+def test_readme_sedi_s_titulnou_listou():
+    """README vidi kazdy na GitHube este skor nez appku. Test ho doteraz
+    nestrazil, a tak po zdvihnuti na 0.2 ostalo v hlavicke "Alpha 0.1", kym
+    lista, instalator aj exe hlasili 0.2."""
+    m = re.search(r"^\*Alpha (\d+\.\d+) ·", _read("README.md"), re.M)
+    assert m, "README.md nema v hlavicke riadok '*Alpha X.Y · ...'"
+    assert m.group(1) == _verzia_z_i18n(), (
+        f"README.md hlasi {m.group(1)}, i18n {_verzia_z_i18n()}")

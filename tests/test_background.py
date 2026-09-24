@@ -59,15 +59,17 @@ def test_ked_fotka_nie_je_appka_kresli_dalej(monkeypatch, tmp_path):
     assert len(spravy) == 1
 
 
-def test_zaloha_ked_nova_fotka_chyba(monkeypatch, tmp_path):
-    """Kým nová fotka nie je na disku, použije sa starý pás z verzie 2.0 —
-    je to tá istá miestnosť, len užší výrez."""
+def test_stary_pas_uz_nie_je_zaloha(monkeypatch, tmp_path):
+    """Starý pás `dojo_band.jpg` z verzie 2.0 je v _archiv (0.2) - za behu sa
+    nikdy nenačítal. Keby na disku ostal, appka ho nehľadá a bez fotky
+    kreslí ďalej."""
     from PIL import Image
     monkeypatch.setattr(background.paths, "images_dir", lambda: str(tmp_path))
-    Image.new("RGB", (1100, 190), "#203040").save(
-        tmp_path / background.FALLBACK_NAME)
-    assert os.path.basename(background.image_path()) == background.FALLBACK_NAME
-    # a keď pribudne nová, má prednosť
+    assert not hasattr(background, "FALLBACK_NAME")
+    Image.new("RGB", (1100, 190), "#203040").save(tmp_path / "dojo_band.jpg")
+    assert background.image_path() is None
+    assert background.load(800, 600, 0.1) is None
+    # a keď je nová fotka na mieste, nájde sa
     Image.new("RGB", (1024, 574), "#203040").save(
         tmp_path / (background.IMAGE_NAME + ".jpg"))
     assert os.path.basename(background.image_path()) == background.IMAGE_NAME + ".jpg"
@@ -179,12 +181,3 @@ def test_pripona_nerozhoduje(monkeypatch, tmp_path, pripona):
         tmp_path / (background.IMAGE_NAME + pripona))
     assert os.path.basename(background.image_path()) == background.IMAGE_NAME + pripona
     assert background.load(400, 300, 0.2) is not None
-
-
-def test_nova_fotka_ma_prednost_pred_zalohou(monkeypatch, tmp_path):
-    from PIL import Image
-    monkeypatch.setattr(background.paths, "images_dir", lambda: str(tmp_path))
-    Image.new("RGB", (1100, 190), "#203040").save(tmp_path / background.FALLBACK_NAME)
-    Image.new("RGB", (1024, 572), "#203040").save(
-        tmp_path / (background.IMAGE_NAME + ".webp"))
-    assert os.path.basename(background.image_path()).startswith(background.IMAGE_NAME)

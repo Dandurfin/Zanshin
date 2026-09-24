@@ -94,6 +94,40 @@ def default_slots():
     ]
 
 
+# Styri pevne kategorie hlasky (Tazisko, Celust, Uvolnenie, Dych). Kategoriu
+# urcuje POZICIA slotu v profile (`measure.category_for_slot`, obrazok v hre,
+# karta v Sprievodcovi), preto sa sloty 0-3 nedaju odstranit - vypina sa ich
+# prepinacom. Sloty od indexu 4 su pozostatky "+ Pridat spustac" z 0.1:
+# nemaju kategoriu ani obrazok a appka ich sama nespusta.
+CUE_CATEGORY_COUNT = 4
+
+
+def je_kategoria(index):
+    """True pre slot, ktory nesie jednu zo styroch pevnych kategorii."""
+    try:
+        return 0 <= int(index) < CUE_CATEGORY_COUNT
+    except (TypeError, ValueError):
+        return False
+
+
+def doplnit_kategorie(slots):
+    """Profil kratsi nez styri kategorie doplni o chybajuce na koniec.
+
+    Nic sa nemaze ani neprepisuje - co v profile je, ostava na svojom mieste.
+    Prazdny profil dostane styri zapnute kategorie (ako novy profil). Profilu,
+    ktory uz nieco ma (napr. rucne zalozeny v 0.1 s jednym slotom), sa
+    chybajuce kategorie pridaju VYPNUTE: appka sa v nom nezacne ozyvat inak,
+    nez bol hrac zvyknuty, a kategoriu si zapne prepinacom, ked ju chce.
+    """
+    slots = [normalize_slot(s) for s in (slots or []) if isinstance(s, dict)]
+    if not slots:
+        return [normalize_slot(s) for s in default_slots()]
+    zaklad = default_slots()
+    for index in range(len(slots), CUE_CATEGORY_COUNT):
+        slots.append(normalize_slot(dict(zaklad[index], enabled=False)))
+    return slots
+
+
 # Predvolene pozicie (stred vizualu, % sirky/vysky obrazovky) pre 4 in-game
 # overlay vizualy - jediny zdroj pravdy pre SomaticOverlayManager aj pre
 # default_overlay_configs() nizsie.
@@ -207,7 +241,13 @@ def normalize_breath_seconds(inhale_raw, exhale_raw):
 # Vybratelne statistiky na stranke Dnes (2x2 mriezka nad spustacmi)
 # --------------------------------------------------------------------------
 
-DASHBOARD_STAT_IDS = ("baseline", "hrr", "over", "breath", "avg", "max", "peak", "week")
+# Poradie = poradie vo vybere "✎ upravit". Poslednych pat pribudlo v 0.2
+# (widgets-history): dlzka relacie, minuty od poslednej hlasky, cas v pokoji,
+# kvalita signalu a citene vs. merane z poslednej ukoncenej relacie. Predvolene
+# karty ostavaju tie iste styri - nove si hrac zapne sam.
+DASHBOARD_STAT_IDS = ("baseline", "hrr", "over", "breath", "avg", "max", "peak", "week",
+                      "session_len", "last_cue", "calm_time", "signal",
+                      "felt_vs_measured")
 DEFAULT_DASHBOARD_STATS = ["baseline", "hrr", "over", "breath"]
 
 
@@ -222,6 +262,53 @@ def normalize_dashboard_stats(raw):
         if item in DASHBOARD_STAT_IDS and item not in out:
             out.append(item)
     return out or list(DEFAULT_DASHBOARD_STATS)
+
+
+# Na Dnes sa zmestia najviac 4 karty - mriezka 2x2. Nie je to kozmetika:
+# stlpec kariet urcuje vysku celeho riadku Dnes, takze 5. a 6. karta
+# natiahli stred (dojo) zhruba o sestinu a panel "Tep a zataz" spadol pod
+# okraj okna. Odmerane pri 150 % (revizia B2): 3-4 karty 782 px, 5-6 kariet
+# 911 px, 7-8 kariet 1040 px.
+#
+# Strop je JEDNO cislo a nic nizsie nepredpoklada, kolko metrik je v
+# katalogu (DASHBOARD_STAT_IDS moze rast).
+DASHBOARD_MAX_CARDS = 4
+
+
+def toggle_dashboard_stat(stats, stat_id, max_cards=DASHBOARD_MAX_CARDS):
+    """Novy vyber po kliknuti na metriku (riadok vo vybere alebo ✕ na karte).
+
+    - Zvolena metrika odide - okrem POSLEDNEJ. Jedna karta ostava vzdy:
+      mriezka (Tk grid) sa po poslednej karte nezmrsti a pod nadpisom by
+      ostala prazdna diera.
+    - Nezvolena pribudne na koniec - ale len kym je kariet menej nez
+      `max_cards`.
+    Ked sa nic nezmeni, vrati nezmenenu kopiu (vstup nikdy nemeni)."""
+    out = list(stats)
+    if stat_id in out:
+        if len(out) <= 1:
+            return out
+        return [s for s in out if s != stat_id]
+    if len(out) >= max_cards:
+        return out
+    return out + [stat_id]
+
+
+def dashboard_stat_clickable(stats, stat_id, max_cards=DASHBOARD_MAX_CARDS):
+    """Zmeni klik na tuto metriku nieco? Vyber podla toho kresli riadok:
+    co nic neurobi, je bledsie a bez ruky na kurzore."""
+    return toggle_dashboard_stat(stats, stat_id, max_cards) != list(stats)
+
+
+def swap_dashboard_stats(stats, a, b):
+    """Karta `a` potiahnuta na kartu `b`: vymenia si miesto, ostatne stoja.
+    Ked jedna chyba alebo su to tie iste, vrati nezmenenu kopiu."""
+    out = list(stats)
+    if a == b or a not in out or b not in out:
+        return out
+    i, j = out.index(a), out.index(b)
+    out[i], out[j] = out[j], out[i]
+    return out
 
 
 DEFAULT_COOLDOWN = 5.0
@@ -246,54 +333,79 @@ DEFAULT_AUDIO = {
 # rovnaka disciplina ako predtym, len sirsie pokrytie jazykov, nie viac
 # hlasov na jazyk.
 #
-# Toto je JEDINY zdroj pravdy pre hlasy: sluzi zaroven ako
-#   1) zaloha, ked sa nepodari stiahnut zoznam (bez internetu),
-#   2) filter na ziveho stiahnuty katalog (inak by tam bolo pre kazdy
-#      jazyk 20-30 hlasov - presne to, co appka nepotrebuje),
-#   3) poradie zobrazenia (Sonia prva, je to predvoleny/"hlavny" hlas).
+# Toto je JEDINY zdroj pravdy pre hlasy - a od 0.2 aj jediny zoznam: appka
+# ho uz nestahuje z Microsoftu (predtym pri kazdom starte s Edge, len aby
+# zivy katalog orezala presne na tento vyber). Meno "FALLBACK" ostalo z tych
+# cias. Kazda polozka je (ShortName, meno na zobrazenie, rod "f"/"m");
+# popis v comboboxe sklada `audio_engine.EdgeTTSCache.list_voices` cez tr(),
+# takze slovo zena/muz je v jazyku rozhrania. Poradie = poradie zobrazenia
+# (Sonia prva, je to predvoleny/"hlavny" hlas).
 #
 # en-GB-SoniaNeural je PREDVOLENY/HLAVNY hlas appky (DEFAULT_EDGE_VOICE
 # nizsie) - vsetky ostatne su alternativy.
 EDGE_FALLBACK_VOICES = [
     # --- jazyky rozhrania appky ---
-    ("en-GB-SoniaNeural", "en-GB · Sonia (žena, hlavný hlas appky)"),
-    ("en-GB-RyanNeural", "en-GB · Ryan (muž)"),
-    ("en-US-AvaMultilingualNeural", "en-US · Ava (žena, najprirodzenejšia)"),
-    ("en-US-GuyNeural", "en-US · Guy (muž)"),
-    ("sk-SK-ViktoriaNeural", "sk-SK · Viktória (žena)"),
-    ("sk-SK-LukasNeural", "sk-SK · Lukáš (muž)"),
-    ("cs-CZ-VlastaNeural", "cs-CZ · Vlasta (žena)"),
-    ("cs-CZ-AntoninNeural", "cs-CZ · Antonín (muž)"),
-    ("ja-JP-NanamiNeural", "ja-JP · Nanami (žena, prirodzená)"),
-    ("ja-JP-KeitaNeural", "ja-JP · Keita (muž)"),
+    ("en-GB-SoniaNeural", "Sonia", "f"),
+    ("en-GB-RyanNeural", "Ryan", "m"),
+    ("en-US-AvaMultilingualNeural", "Ava", "f"),
+    ("en-US-GuyNeural", "Guy", "m"),
+    ("sk-SK-ViktoriaNeural", "Viktória", "f"),
+    ("sk-SK-LukasNeural", "Lukáš", "m"),
+    ("cs-CZ-VlastaNeural", "Vlasta", "f"),
+    ("cs-CZ-AntoninNeural", "Antonín", "m"),
+    ("bg-BG-KalinaNeural", "Kalina", "f"),
+    ("bg-BG-BorislavNeural", "Borislav", "m"),
+    ("ja-JP-NanamiNeural", "Nanami", "f"),
+    ("ja-JP-KeitaNeural", "Keita", "m"),
     # --- najpopulárnejšie jazyky hráčov na Steame (2026) ---
-    ("zh-CN-XiaoxiaoNeural", "zh-CN · Xiaoxiao (žena)"),
-    ("zh-CN-YunxiNeural", "zh-CN · Yunxi (muž)"),
-    ("ru-RU-SvetlanaNeural", "ru-RU · Svetlana (žena)"),
-    ("ru-RU-DmitryNeural", "ru-RU · Dmitry (muž)"),
-    ("es-ES-ElviraNeural", "es-ES · Elvira (žena)"),
-    ("es-ES-AlvaroNeural", "es-ES · Álvaro (muž)"),
-    ("pt-BR-FranciscaNeural", "pt-BR · Francisca (žena)"),
-    ("pt-BR-AntonioNeural", "pt-BR · Antônio (muž)"),
-    ("de-DE-KatjaNeural", "de-DE · Katja (žena)"),
-    ("de-DE-ConradNeural", "de-DE · Conrad (muž)"),
-    ("fr-FR-DeniseNeural", "fr-FR · Denise (žena)"),
-    ("fr-FR-HenriNeural", "fr-FR · Henri (muž)"),
-    ("ko-KR-SunHiNeural", "ko-KR · SunHi (žena)"),
-    ("ko-KR-InJoonNeural", "ko-KR · InJoon (muž)"),
-    ("pl-PL-ZofiaNeural", "pl-PL · Zofia (žena)"),
-    ("pl-PL-MarekNeural", "pl-PL · Marek (muž)"),
+    ("zh-CN-XiaoxiaoNeural", "Xiaoxiao", "f"),
+    ("zh-CN-YunxiNeural", "Yunxi", "m"),
+    ("ru-RU-SvetlanaNeural", "Svetlana", "f"),
+    ("ru-RU-DmitryNeural", "Dmitry", "m"),
+    ("es-ES-ElviraNeural", "Elvira", "f"),
+    ("es-ES-AlvaroNeural", "Álvaro", "m"),
+    ("pt-BR-FranciscaNeural", "Francisca", "f"),
+    ("pt-BR-AntonioNeural", "Antônio", "m"),
+    ("de-DE-KatjaNeural", "Katja", "f"),
+    ("de-DE-ConradNeural", "Conrad", "m"),
+    ("fr-FR-DeniseNeural", "Denise", "f"),
+    ("fr-FR-HenriNeural", "Henri", "m"),
+    ("ko-KR-SunHiNeural", "SunHi", "f"),
+    ("ko-KR-InJoonNeural", "InJoon", "m"),
+    ("pl-PL-ZofiaNeural", "Zofia", "f"),
+    ("pl-PL-MarekNeural", "Marek", "m"),
 ]
 DEFAULT_EDGE_VOICE = "en-GB-SoniaNeural"
 
-# Ked je rozhranie prepnute na japoncinu, hodi sa aj prirodzeny japonsky
-# hlas ako navrhovana volba (Nanami je jeden z najprirodzenejsich Edge
-# hlasov pre ja-JP).
-JAPANESE_VOICE_HINT = "ja-JP-NanamiNeural"
+# Hlas, ktory appka navrhne k jazyku rozhrania - pri prvom starte (jazyk
+# Windowsu) aj pri prepnuti jazyka, ale len kym ma hrac predvoleny hlas.
+#
+# Len jazyky s inym pismom nez latinka: ich predvolene hlasky slotov
+# (`slot.default.*`) su v tom pisme a anglicky hlas Sonia by ich
+# pravdepodobne nevyslovil - hlaska by bola skomolena alebo ticha. Cestina
+# ma predvolene hlasky anglicke a latinkove jazyky (es/de/fr/pt) Sonia
+# aspon precita, tam ostava hlavny hlas appky. Vsetky styri su zenske -
+# appka o sebe hovori v zenskom rode.
+VOICE_HINTS = {
+    "ja": "ja-JP-NanamiNeural",
+    "zh": "zh-CN-XiaoxiaoNeural",
+    "ru": "ru-RU-SvetlanaNeural",
+    "bg": "bg-BG-KalinaNeural",
+}
 
-# Hlasy, ktore znejú vyrazne prirodzenejsie - vytiahneme ich navrch a
-# v popisku im odstranime "Multilingual" z nazvu (napr. "Ava" mesto
-# "AvaMultilingual").
+
+def suggested_voice(lang, current=DEFAULT_EDGE_VOICE):
+    """Navrhovany Edge hlas pre jazyk `lang`.
+
+    Meni len predvoleny hlas (`DEFAULT_EDGE_VOICE`) - hlas, ktory si hrac
+    vybral sam, ostava, ako je. Jazyk bez navrhu necha hlas tak.
+    """
+    if current == DEFAULT_EDGE_VOICE and lang in VOICE_HINTS:
+        return VOICE_HINTS[lang]
+    return current
+
+# Hlasy, ktore znejú vyrazne prirodzenejsie - v popisku dostanu
+# "najprirodzenejsi" (voice.most_natural).
 EDGE_PREMIUM_HINT = ("Multilingual",)
 
 
@@ -325,6 +437,42 @@ def optional_cooldown(value):
     return clamp_float(value, 0.0, 600.0, None)
 
 
+# Stare PREDVOLENE hlasove slova, ktore sa v 0.2 zmenili (kluc = text
+# porovnany bez ohladu na velkost pismen a okrajove medzery). Meni sa len
+# PRESNA zhoda - vlastne slovo hraca (aj "my teeth") ostava, ako ho napisal.
+#   "Teeth" -> "Jaw": mimo hry znelo cudne (rozhodnutie zadavatela).
+#   ja 脱力 a zh 放松 znamenaju "uvolni sa" - hlaska nikdy nehovori
+#   "uvolni sa / upokoj sa" (tests/test_cue_words.py), ani zo stareho profilu.
+#   Tieto dve sa menia LEN v slote, kde boli predvolene (1 = celust,
+#   2 = uvolnenie ruky): 脱力 je v ja aj nazov kategorie "Release" v
+#   Historii, takze ho hrac mohol do slotu 2 napisat sam - tam by 顎
+#   ("celust") bolo zle slovo.
+# Vola sa pri NACITANI nastaveni (`app.load_settings`), nie v `normalize_slot`:
+# ta bezi aj pri kazdej prestavbe karty slotu a slovo by sa hracovi menilo
+# pod rukami uprostred upravy.
+_STARE_PREDVOLENE_SLOVA = {
+    # text: (slot, v ktorom bol predvoleny - None = hociktory; nove slovo)
+    "teeth": (None, "Jaw"),
+    "脱力": (1, "顎"),
+    "放松": (2, "松开"),
+}
+
+
+def migrate_slot_text(text, index=None):
+    """Stare predvolene slovo -> nove; cokolvek ine vrati nezmenene.
+    `index` = poradie slotu v profile (0 grounding, 1 jaw, 2 release,
+    3 breath)."""
+    if not isinstance(text, str):
+        return text
+    zaznam = _STARE_PREDVOLENE_SLOVA.get(text.strip().casefold())
+    if zaznam is None:
+        return text
+    slot, nove = zaznam
+    if slot is not None and slot != index:
+        return text
+    return nove
+
+
 def normalize_slot(raw):
     """Doplni chybajuce kluce a osetri rozsahy - aj pre stare nastavenia."""
     slot = dict(DEFAULT_SLOT)
@@ -354,6 +502,49 @@ def normalize_slot(raw):
     slot["repeat_gap"] = clamp_float(slot.get("repeat_gap"), 0.05, 30.0, 0.5)
     slot["jitter"] = clamp_float(slot.get("jitter"), 0.0, 0.9, 0.0)
     return slot
+
+
+# Co z hlasky ide do kodu profilu (Spustace -> Exportovat profil). Kod sa
+# zdiela s inymi ludmi, takze v nom je len to, co ma pre druheho zmysel, a
+# nic, co by prezradilo tento pocitac:
+#   * `audio_path` a `voice_path` su ABSOLUTNE cesty k nahravkam
+#     (C:\Users\<meno>\AppData\...) - kod by prezradil meno uctu vo Windows
+#     a nahravka sa kodom aj tak neprenesie,
+#   * `uid` je lokalny identifikator suborov nahravok (import dostane novy),
+#   * `key_type`, `key_repr`, `cooldown`, `delay`, `every_n`, `repeat`,
+#     `repeat_gap`, `jitter` su mrtve polia z cias klavesovych spustacov -
+#     nic ich necita.
+ZDIELANE_POLIA_SLOTU = ("text", "mode", "sfx_key", "enabled", "voice_edge",
+                        "voice_sapi")
+
+
+def slot_na_zdielanie(slot):
+    """Hlaska pre kod profilu - len `ZDIELANE_POLIA_SLOTU`. Vlastny zvuk
+    (`sfx_key` "__custom__") je subor na tomto PC, takze v kode padne na
+    automaticky vyber."""
+    if not isinstance(slot, dict):
+        return {}
+    out = {k: slot[k] for k in ZDIELANE_POLIA_SLOTU if k in slot}
+    if out.get("sfx_key") == "__custom__":
+        out["sfx_key"] = ""
+    return out
+
+
+def slot_zo_zdielania(raw):
+    """Hlaska z cudzieho kodu profilu, alebo None.
+
+    Berie sa len `ZDIELANE_POLIA_SLOTU` - aj zo starsich kodov, ktore este
+    niesli cesty a uid. Cesty k suborom su preto VZDY prazdne (cudzia cesta
+    by sa prehrala, keby na tomto PC nahodou existovala) a `normalize_slot`
+    doplni cerstve uid, aby importovany profil nezdielal subory nahravok s
+    inym (rec_<uid>.wav - strata dat B1)."""
+    if not isinstance(raw, dict):
+        return None
+    slot = slot_na_zdielanie(raw)
+    slot["audio_path"] = ""
+    slot["voice_path"] = ""
+    slot["uid"] = ""
+    return normalize_slot(slot)
 
 
 def normalize_overlay_config(raw, index):

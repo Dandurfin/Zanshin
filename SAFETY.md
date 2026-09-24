@@ -5,9 +5,12 @@ prečo má hráč počas hrania na obrazovke cudzie okno.
 
 ## Krátka odpoveď
 
-Zanshin DojoSync je bežná desktopová aplikácia, ktorá kreslí vlastné
+Zanshin je bežná desktopová aplikácia, ktorá kreslí vlastné
 priehľadné okno a prehráva zvuky. **Nedotýka sa procesu hry žiadnym
 spôsobom a neinštaluje žiadne systémové hooky.**
+
+Tento dokument presne opisuje, čo appka robí a čo nie. Záruku, že ťa
+konkrétny anti-cheat nezablokuje, však môže dať len jeho výrobca.
 
 ## Čo appka nerobí — a nebude robiť
 
@@ -15,36 +18,46 @@ spôsobom a neinštaluje žiadne systémové hooky.**
 |---|---|---|
 | Injekcia DLL do procesu hry | **nikdy** | Prvá vec, ktorú EAC/BattlEye/Ricochet hľadajú |
 | Hook `Present` / `SwapChain` (D3D, OpenGL, Vulkan) | **nikdy** | Vykresľovanie ide cez samostatné okno, nie cez hru |
-| `ReadProcessMemory` / čítanie pamäte hry | **nikdy** | Appka o hre nevie nič okrem názvu procesu |
-| `SetWindowsHookEx` — akýkoľvek, vrátane `WH_KEYBOARD_LL` | **nikdy** | Od verzie 2.1 žiadny. Viď nižšie |
+| `ReadProcessMemory` / čítanie pamäte hry | **nikdy** | Appka o hre nevie nič okrem názvu procesu a polohy/veľkosti okna v popredí |
+| `SetWindowsHookEx` — akýkoľvek, vrátane `WH_KEYBOARD_LL` | **nikdy** | V žiadnej verejnej verzii. Viď nižšie |
 | `WDA_EXCLUDEFROMCAPTURE` (skrytie pred screenshotmi) | **zámerne nie** | Viď nižšie — je to dôležité |
-| Čítanie alebo zachytávanie obsahu obrazovky | **nikdy** | Appka nevie, čo je na obrazovke |
+| Čítanie alebo zachytávanie obsahu obrazovky | **nikdy** | Appka nevie, čo je na obrazovke. Preto ani výber farby nemá pipetku — tá by musela odfotiť plochu aj s hrou |
 | Simulovanie vstupu do hry | **nikdy** | Žiadne `SendInput`, `keybd_event` ani `mouse_event` |
 | Elevácia (administrátorské práva) | **nikdy** | `uac_admin=False`, `PrivilegesRequired=lowest` |
 
+Repozitár obsahuje aj vývojárske testovacie skripty na ručné testovanie okna
+(`gui_harness_auto.py`, `gui_harness_onboarding.py`, `gui_screenshots.py`).
+Prvé dva ovládajú skutočnú myš (pohyb, klik, ťahanie, koliesko) a stláčajú
+Escape; všetky tri fotia okná a obrázky appky s malým okrajom okolo. Nie sú súčasťou appky ani
+inštalátora: build balí `main.py`, moduly, ktoré importuje, a priečinok
+`assets`, a tieto skripty neimportuje nič.
+
 ## Klávesnicu appka nepočúva
 
-Do verzie 2.0 appka inštalovala globálny klávesový hook (`WH_KEYBOARD_LL`
+Skoršie, neverejné verzie appky inštalovali globálny klávesový hook (`WH_KEYBOARD_LL`
 cez knižnicu `pynput`), pretože hlášku spúšťalo stlačenie klávesu. Hook bol
 čisto pasívny — nikdy nič nepohltil ani neoneskoril — ale navonok to bola
 jediná časť appky, ktorá vyzerala ako keylogger.
 
-**Vo verzii 2.1 je preč.** Hlášku už nespúšťa klávesa, ale telo: záťaž
+**Pred prvou verejnou alfou bol zrušený.** Hlášku už nespúšťa klávesa, ale telo: záťaž
 odvodená z tepu z hodiniek. Knižnica `pynput` nie je v závislostiach ani
 v builde.
 
 Appka potrebuje vedieť jedinú vec o vstupe — či je hráč práve aktívny, aby
-hlášku doručila v prestávke a nie uprostred prestrelky. Zisťuje to cez
+hlášku doručila v krátkej pauze vo vstupe, nie kým stláčaš klávesy. Zisťuje to cez
 `GetLastInputInfo`, čo je funkcia Win32 API, ktorá vracia **jedno číslo:
 koľko milisekúnd uplynulo od posledného vstupu.** Neprezradí, ktorý kláves
 to bol, ani či to kláves vôbec bol. Neinštaluje sa pri tom nič.
 
-Voliteľne appka číta aj stav gamepadu cez štandardnú SDL2 vrstvu (`pygame`)
-— tiež len na to, aby vedela, že hráč je aktívny. Ktoré tlačidlo sa stlačilo,
-sa nikam nezapisuje.
+Keď appka počúva, sleduje aj ovládač cez štandardnú SDL2 vrstvu (`pygame`)
+— tiež len na to, aby vedela, že hráč je aktívny. Samostatný vypínač na to
+nie je. Ktoré tlačidlo sa stlačilo, sa nikam nezapisuje; do lokálneho denníka
+ide len názov ovládača, keď sa pripojí.
 
-Overiť sa to dá: `pynput` nie je v `requirements.txt`, v `.spec` súboroch ani
-nikde v kóde, a `check_before_run.py` build zastaví, keby sa vrátil.
+Overiť sa to dá: `pynput` nie je v `requirements.txt` ani v `.spec` súboroch
+a appka ho nikde neimportuje. Keby sa import vrátil do `app.py`, spadnú
+testy (`tests/test_hotkey.py`, `tests/test_slot_selection.py`) aj
+`check_before_run.py`.
 
 ## Prečo nie `WDA_EXCLUDEFROMCAPTURE`
 
@@ -60,7 +73,10 @@ najlepšia obhajoba: čokoľvek, čo appka kreslí, vie hráč komukoľvek ukáz
 
 Jedno alebo viac okien typu `WS_EX_LAYERED` s týmito štýlmi:
 
-- `WS_EX_TRANSPARENT` — klik prejde naskrz do hry. Okno nikdy neukradne vstup.
+- `WS_EX_TRANSPARENT` — klik prejde naskrz do hry. Počas hry okno vstup
+  neukradne. Jediná výnimka je **Test vizuálu**: vtedy vizuál kliky berie, aby
+  si ho mohol potiahnuť myšou. Test sa skončí zatvorením dialógu alebo
+  spustením počúvania.
 - `WS_EX_NOACTIVATE` — okno sa nikdy nestane aktívnym. Hra nestratí focus.
 - `WS_EX_TOOLWINDOW` — nie je v Alt+Tab ani na paneli úloh.
 
@@ -70,26 +86,45 @@ mechanizmus, aký používajú systémové tooltipy a Windows Ink.
 ### Úplný zoznam toho, čo sa appka dozvedá zvonku
 
 1. **Obdĺžnik aktívneho okna** (`GetForegroundWindow` + `GetWindowRect`) —
-   len aby vedela, na ktorom monitore kresliť.
-2. **Názov bežiaceho procesu** (`psutil`) — voliteľne, na automatické
-   prepínanie profilov. Nič sa z procesu nečíta.
+   aby vedela, na ktorom monitore kresliť, a na odhad exkluzívneho
+   fullscreenu (viď nižšie).
+2. **Názvy bežiacich procesov** (`psutil`) — len pri zapnutom automatickom
+   prepínaní profilov (predvolene zapnuté, vypínač je na stránke Spúšťače).
+   Každých pár sekúnd ich porovná so zoznamom hier v `game_profiles.py`
+   (dnes CS2, Valorant, Apex Legends a Call of Duty). Pri zhode prepne na
+   profil tej hry (chýbajúci založí) a sama spustí počúvanie; keď hra
+   skončí, počúvanie zastaví, ak ho spustila ona. Vypnutý prepínač = zoznam
+   procesov sa nečíta vôbec. Z procesu samotného sa nič nečíta.
 3. **Milisekundy od posledného vstupu** (`GetLastInputInfo`) — bez toho,
    aby vedela, aký vstup to bol.
-4. **Stav gamepadu** (SDL2) — voliteľne, tiež len ako známka aktivity.
-   Názov stlačeného tlačidla sa nikam nezapisuje.
-5. **Tep zo siete** — appka *počúva* na lokálnom porte, sama nikam
-   nepripája. Z hodiniek chodí jedno číslo za sekundu.
+4. **Stav gamepadu** (SDL2) — keď appka počúva, tiež len ako známka
+   aktivity. Názov stlačeného tlačidla sa nikam nezapisuje; do lokálneho
+   denníka ide len názov ovládača pri pripojení.
+5. **Tep zo siete** — appka *počúva* na porte 4455 (TCP aj UDP), predvolene
+   na všetkých sieťových rozhraniach a bez hesla; sama nikam nepripája. Pred
+   cudzími sieťami ju chráni firewall (viď `PRIVACY.md`). Z hodiniek chodí
+   približne jedno číslo za sekundu.
 5b. **Kroky a rýchlosť z hodiniek** — ak ich appka na hodinkách posiela
-   (prémiová verzia), Zanshin ich prečíta z tej istej správy ako tep.
-   Slúžia na jedinú vec: **keď sa hýbeš, appka mlčí a meranie sa nezapočíta**.
-   Chôdza dvihne tep rovnako ako stres a z tepu sa to rozlíšiť nedá — ani
-   plné EKG s 55 príznakmi to pri strednej aktivite nezvládne. Nikam sa
-   neposielajú a do histórie sa ukladá len to, či si bol v pohybe, nie kde
-   si bol. Kód: `heart_rate.parse_metrics`, `hr_stats.note_metrics`.
-6. **Jedna klávesová kombinácia** (`RegisterHotKey`) — „teraz nie".
+   (prémiová verzia), Zanshin ich prečíta z toho istého spojenia ako tep.
+   Slúžia na jedinú vec: **keď sa hýbeš, appka mlčí**. Chôdza dvihne tep
+   rovnako ako stres a z tepu sa to rozlíšiť nedá — aj model s 55 príznakmi
+   z EKG pri strednej aktivite označil väčšinu chôdze ako stres (Uendes
+   a kol., 2026, JMIR: špecificita 0,42). Nikam sa neposielajú a do histórie
+   sa neukladajú; prvých pár hodnôt za reláciu ide len do lokálneho denníka
+   (`logs/app.log`) na ladenie prahu. Kód: `heart_rate.parse_metrics`,
+   `hr_stats.note_metrics`.
+6. **Jedna klávesová kombinácia** (`RegisterHotKey`) — „teraz nie": na pol
+   hodiny stíši hlášky, tep sa meria ďalej; druhé stlačenie to zruší.
 7. **Poloha kurzora myši** (`GetCursorPos`) — len súradnice bodu, a len na
    to, aby sa zistilo, na ktorom monitore je hráč. Nečíta sa, čo je pod ním,
    ani sa nikam nezapisuje trasa. Kód: `display.monitor_at_cursor`.
+8. **Mikrofón** — len kým nahrávaš vlastný hlas pre hlášku (tlačidlo
+   **Nahrať** v karte hlášky). Nahrávka ostáva lokálne v priečinku `audio/`.
+   Inokedy sa mikrofón nepoužíva.
+9. **IP adresy tohto PC a zoznam monitorov** — adresy len na zobrazenie pri
+   párovaní hodiniek (čo zadať v telefóne; na obrazovke sú skryté, kým
+   neklikneš „Ukázať IP“), monitory s rozlíšením a DPI len
+   na umiestnenie vizuálov. Kód: `netinfo.py`, `display.monitors`.
 
 To je celé. Nič z toho neopúšťa počítač.
 
@@ -103,40 +138,26 @@ až vtedy, keď ju niekto stlačí. Žiadny prúd vstupu cez ňu netečie — o
 
 | | čo vidí | dá sa ním odpočúvať? |
 |---|---|---|
-| `WH_KEYBOARD_LL` (zrušené vo fáze 3) | **každý** stlačený kláves | áno |
+| `WH_KEYBOARD_LL` (zrušené pred prvou verejnou alfou) | **každý** stlačený kláves | áno |
 | `RegisterHotKey` | len ohlásenú kombináciu | nie |
 
 Keď je kombinácia obsadená inou aplikáciou, registrácia jednoducho zlyhá a
 appka beží ďalej bez nej. Admin práva to nepotrebuje. Vypnúť sa dá — prázdny
-`snooze_hotkey` v nastaveniach.
+`"snooze_hotkey"` v súbore `dandurf_settings.json` (v appke na to prepínač
+zatiaľ nie je).
 
 Kód je v `hotkey.py` a `tests/test_hotkey.py` stráži aj to, že sa v ňom
 neobjaví `SetWindowsHookEx`, `WH_KEYBOARD`, `GetAsyncKeyState` ani
 `GetKeyboardState`.
 
-### Jediná vec, ktorú appka z týchto zdrojov odvodzuje
-
-Z prieniku bodov 3 a 4 vie povedať **triedu zariadenia**: `GetLastInputInfo`
-vidí všetko vrátane ovládača, ale nepovie čo to bolo; SDL2 vidí len ovládač.
-Keď teda hlási ovládač, hrá sa na ovládači; keď mlčí a systém hlási vstup,
-je to klávesnica alebo myš.
-
-Slúži to na jediné — aby appka vedela napísať, z čoho číta aktivitu.
-**Nie je to odtlačok zariadenia.** Výsledok má presne tri hodnoty: ovládač,
-klávesnica/myš, alebo *nevieme*. Keď gamepad listener nebeží, je to vždy
-*nevieme* — ticho ovládača sa zámerne **neháda** ako klávesnica, lebo by to
-bola nepravda napísaná na obrazovke.
-
-Kód je v `activity.py` (`ActivityTracker.source`) a testy v
-`tests/test_activity.py` strážia aj to, že sa v objekte nikdy neuloží nič
-iné než tie tri hodnoty.
-
 ## Exkluzívny fullscreen
 
 V ňom Windows cudzie vrstvené okná nevykreslí vôbec. Nie je to obrana
-anti-cheatu, je to vlastnosť systému. Appka to rozpozná
-(`display.is_fullscreen_foreground`) a raz za reláciu poradí prepnúť hru na
-„Bez okrajov / Borderless".
+anti-cheatu, je to vlastnosť systému. Appka sa ho pokúsi rozpoznať
+(`display.is_fullscreen_foreground`): keď okno v popredí zaberá presne celý
+monitor, raz za spustenie appky zapíše do denníka radu prepnúť hru na
+„Bez okrajov / Borderless", ak vizuály nevidíš. Je to len odhad — rovnako
+veľké je aj okno bez okrajov, takže istotu to nedáva.
 
 ## Pravidlo pri ďalšom vývoji
 

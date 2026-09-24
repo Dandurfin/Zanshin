@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Automaticky GUI harness (Windows) - doplnok k rucnemu test_gui_checklist.py.
+"""Automaticky GUI harness (Windows) - overenie appky v skutocnom okne.
 
 Co robi
 -------
@@ -16,6 +16,9 @@ a potom cez Tk `after()` retazec:
     listu a zavrie realnym Escape,
   * ulozi farbu piktogramu a overi na screenshote, ze vizual je cerveny,
   * hromadne oznaci sloty (odmietnutie "vsetky" + zmazanie dvoch),
+  * karty statistik na Dnes: vyber ma vsetky riadky cele (SK aj DE) a je
+    na obrazovke, strop 4 karty, posledna ostava, ✕ <-> ✓, a vymena kariet
+    potiahnutim REALNOU mysou (klik, medzera ani ⓘ poradie nemenia),
   * prepne jazyk na EN a spat, temu Sumi/Aizome a spat.
 
 Co treba vediet
@@ -72,6 +75,7 @@ import customtkinter as ctk
 from PIL import ImageGrab
 
 from app import DandurfApp
+import ui_kit
 
 user32 = ctypes.windll.user32
 user32.WindowFromPoint.restype = ctypes.c_void_p
@@ -102,6 +106,28 @@ def rec(name, ok, detail=""):
     print(("PASS " if ok else "FAIL ") + name + (f"  -- {detail}" if detail else ""), flush=True)
 
 
+# Hlavne okno sa pri starte ukaze az cele nakreslene; dovtedy je zahalene
+# (DWM cloak, viz app._odhal_hotove_okno). Zahalene okno ma winfo_viewable()
+# stale True, screenshot by odfotil PLOCHU ZA NIM (sukromie!) a realny klik
+# by trafil cudzie okno. Preto kazdy krok najprv pocka, kym sa okno ukaze,
+# a `grab` odmietne fotit, kym je zahalene.
+ODHALENIE_TIMEOUT_MS = 5000
+
+
+def app_zahalena():
+    return bool(getattr(globals().get("app"), "_zahalene", False)) or ui_kit.je_zahalene(root)
+
+
+def grab(name, bbox):
+    if app_zahalena():
+        rec(f"screenshot {name}: app window not cloaked", False,
+            "skipped - a grab now would capture the desktop behind the window")
+        return None
+    img = ImageGrab.grab(bbox=bbox, include_layered_windows=True, all_screens=True)
+    img.save(os.path.join(OUT, name + ".png"))
+    return img
+
+
 def shot(name, bbox=None, widget=None):
     root.update_idletasks()
     if bbox is None:
@@ -109,8 +135,7 @@ def shot(name, bbox=None, widget=None):
         x, y = w.winfo_rootx(), w.winfo_rooty()
         bbox = (x, y, x + w.winfo_width(), y + w.winfo_height())
     try:
-        img = ImageGrab.grab(bbox=bbox, include_layered_windows=True, all_screens=True)
-        img.save(os.path.join(OUT, name + ".png"))
+        grab(name, bbox)
     except Exception as exc:
         print("shot failed", name, exc)
 
@@ -192,7 +217,15 @@ def run_steps(i=0):
         return
     delay, fn = steps[i]
 
-    def go():
+    def go(cakal=0):
+        if app_zahalena():
+            if cakal < ODHALENIE_TIMEOUT_MS:
+                root.after(50, lambda: go(cakal + 50))
+                return
+            rec(f"app window revealed within {ODHALENIE_TIMEOUT_MS // 1000} s (before {fn.__name__})",
+                False, "still DWM-cloaked - stopping, a screenshot or real click would hit the desktop")
+            finish()
+            return
         try:
             fn()
         except Exception as exc:
@@ -216,8 +249,10 @@ def kamae_geom():
 # ---------------- 1. štart ----------------
 @step(1800, )
 def s_start():
-    rec("app window opened", root.winfo_exists() and root.winfo_viewable(),
-        f"geometry={root.geometry()} override={root.overrideredirect()}")
+    rec("app window opened",
+        root.winfo_exists() and root.winfo_viewable() and not ui_kit.je_zahalene(root),
+        f"geometry={root.geometry()} override={root.overrideredirect()} "
+        f"cloaked={ui_kit.je_zahalene(root)}")
     rec("sidebar has 4 main pages + enso (rest are tabs in Settings)",
         len(app.sidebar.buttons) == 4, list(app.sidebar.buttons))
     rec("settings group has 4 tabs", list(app.settings_nav.buttons) == list(app.SETTINGS_TABS), list(app.settings_nav.buttons))
@@ -911,8 +946,14 @@ def s_dialog_open():
     rec("pairing: _local_ip() returns a real LAN IP (not 127.x, not empty)",
         bool(ip) and not str(ip).startswith("127.") and not str(ip).startswith("169.254."), str(ip))
     rec("pairing: candidates list has the preferred IP first", ips and ips[0] == ip, str(ips))
-    rec("pairing: dialog shows the IP and port", ip and str(ip) in d.ip_label.cget("text")
+    # Skryta IP (0.2): adresa je skryta, kym hrac neklikne "Ukazat IP".
+    rec("pairing: IP hidden until 'Show IP', port visible",
+        ip and str(ip) not in d.ip_label.cget("text")
         and str(app.hr_port) in d.ip_label.cget("text"), d.ip_label.cget("text"))
+    d._toggle_ip()
+    rec("pairing: 'Show IP' reveals the IP and port", ip and str(ip) in d.ip_label.cget("text")
+        and str(app.hr_port) in d.ip_label.cget("text"), d.ip_label.cget("text"))
+    d._toggle_ip()          # spat na skrytu, nech harness nenecha IP odkrytu
 
 
 @step(800, )
@@ -1099,12 +1140,12 @@ def s_history_filled_check():
     rec("history: Dnes page has info rows for BPM (visible) and load (in live frame)",
         app.dnes_info_bpm.winfo_ismapped() and app.dnes_info_load.winfo_exists()
         and app.dnes_info_load.master is app.dnes_live)
-    # panel Preco to funguje
+    # panel Ako to vzniklo (text autora + tri priklady)
     rec("history: science panel collapsed by default", not app.history_science_body.winfo_ismapped())
     app._toggle_history_science()
     root.update()
     rec("history: science panel expands with intro + links",
-        app.history_science_body.winfo_ismapped() and len(app.history_source_links) == 5,
+        app.history_science_body.winfo_ismapped() and len(app.history_source_links) == 3,
         f"links={len(app.history_source_links)}")
     shot("22_history_filled")
 
@@ -1200,8 +1241,9 @@ def s_color_check():
         return
     hwnd = top_hwnd(slot.surface.top)
     l, t, r, b = win_rect(hwnd)
-    img = ImageGrab.grab(bbox=(l, t, r, b), include_layered_windows=True, all_screens=True)
-    img.save(os.path.join(OUT, "16_overlay_red.png"))
+    img = grab("16_overlay_red", (l, t, r, b))
+    if img is None:
+        return
     px = img.load()
     red = sum(1 for y in range(0, img.height, 2) for x in range(0, img.width, 2)
               if px[x, y][0] > 150 and px[x, y][1] < 110 and px[x, y][2] < 110)
@@ -1212,14 +1254,20 @@ def s_color_check():
 
 
 # ---------------- 6c. hromadny vyber slotov ----------------
+# 0.2: styri kategorie (sloty 0-3) su pevne - nemaju zaskrtavatko ani ✕,
+# vypinaju sa prepinacom. Hromadne odstranit sa daju len sloty navyse z 0.1
+# (index 4+), preto si ich tu dva docasne pridame. Nastavenia obnovi finish().
 @step(300, )
 def s_bulk_select_all():
     import app as app_mod
+    from settings_model import normalize_slot
     app.sidebar._select("spustace")
-    state["n_slots"] = len(app.slots)
     state["msgs"] = []
     app_mod.messagebox.showinfo = lambda *a, **k: state["msgs"].append(("info",) + a)
     app_mod.messagebox.askyesno = lambda *a, **k: (state["msgs"].append(("yesno",) + a) or True)
+    app.rebuild_slots(app.slot_dicts() + [normalize_slot({"text": "extra A"}),
+                                          normalize_slot({"text": "extra B"})])
+    state["n_slots"] = len(app.slots)
     for slot in app.slots:
         slot.set_selected(True)
     app._on_slot_selection_change()
@@ -1229,33 +1277,342 @@ def s_bulk_select_all():
 def s_bulk_all_check():
     from i18n import tr
     bar = app.bulk_bar
-    rec("bulk bar visible when slots selected", bool(bar.winfo_ismapped()),
+    kategorie = app.slots[:4]
+    rec("category slots have no checkbox and cannot be selected",
+        all(s.select_check is None and not s.selected for s in kategorie),
+        str([(s.select_check is None, s.selected) for s in kategorie]))
+    rec("bulk bar visible when extra slots selected", bool(bar.winfo_ismapped()),
         f"label={app.bulk_label.cget('text')}")
-    rec("bulk label shows count", app.bulk_label.cget("text") == tr("slots.selected_count", n=state["n_slots"]),
+    rec("bulk label counts only the extra slots",
+        app.bulk_label.cget("text") == tr("slots.selected_count", n=state["n_slots"] - 4),
         app.bulk_label.cget("text"))
     shot("17_bulk_bar")
-    app.remove_selected_slots()
-    rec("removing ALL slots is refused with a message",
-        len(app.slots) == state["n_slots"] and any(m[0] == "info" for m in state["msgs"]),
-        f"slots={len(app.slots)} msgs={[m[0] for m in state['msgs']]}")
-    # teraz len dva
-    app.clear_slot_selection()
-    for slot in app.slots[:2]:
-        slot.set_selected(True)
-    app._on_slot_selection_change()
-    state["msgs"] = []
     app.remove_selected_slots()
 
 
 @step(500, )
 def s_bulk_two_check():
-    rec("removing 2 selected slots asks once and removes both",
-        len(app.slots) == state["n_slots"] - 2 and [m[0] for m in state["msgs"]] == ["yesno"],
+    rec("removing the extra slots asks once and keeps all four categories",
+        len(app.slots) == 4 and [m[0] for m in state["msgs"]] == ["yesno"],
         f"slots={len(app.slots)} msgs={[m[0] for m in state['msgs']]}")
+    app.remove_slot(0)
+    rec("a category slot cannot be removed", len(app.slots) == 4, f"slots={len(app.slots)}")
     rec("bulk bar hidden after rebuild", not app.bulk_bar.winfo_ismapped())
     rec("nav badge updated (triggers tab)", app.settings_nav._badges.get("spustace") == str(len(app.slots)),
         str(app.settings_nav._badges.get("spustace")))
     shot("18_after_bulk_remove")
+
+
+# ---------------- 6c2. Dnes: karty statistik (vyber, strop, tahanie) ----------------
+# Najviac 4 karty (mriezka 2x2), posledna ostava, poradie sa meni potiahnutim
+# karty na inu (vymena miest). Tahanie ide REALNOU mysou: Tk po stlaceni
+# posiela pohyb aj pustenie widgetu, ktory stlacenie dostal (implicitny
+# grab) - to event_generate neoveri, lebo posiela rovno do widgetu.
+# Vyber sa na konci bloku vrati; cele nastavenia obnovi aj finish().
+DASH_PLNE = ["baseline", "hrr", "over", "breath"]
+DASH_SWAP = ["breath", "hrr", "over", "baseline"]       # baseline <-> breath
+DASH_N = 8
+
+
+def _saved_dashboard():
+    try:
+        with open(SETTINGS, encoding="utf-8") as fh:
+            return json.load(fh).get("dashboard_stats")
+    except Exception as exc:
+        return f"unreadable: {exc}"
+
+
+def _dash_set(stats):
+    app.dashboard_stats = list(stats)
+    app.save_settings()
+    app._rebuild_dashboard_stats_grid()
+    root.update_idletasks()
+
+
+def _dash_lit():
+    """Karty, ktorych okraj nie je bezny (zvysok zvyraznenia po tahu)."""
+    soft = app.pal["line_soft"]
+    return {k: c.cget("border_color") for k, c in app.dashboard_cards.items()
+            if c.cget("border_color") != soft}
+
+
+def _dash_order():
+    def pos(k):
+        info = app.dashboard_cards[k].grid_info()
+        return int(info["row"]), int(info["column"])
+    return sorted(app.dashboard_cards, key=pos)
+
+
+def _center(widget):
+    return (widget.winfo_rootx() + widget.winfo_width() // 2,
+            widget.winfo_rooty() + widget.winfo_height() // 2)
+
+
+def _hits(widget, x, y):
+    w = root.winfo_containing(x, y)
+    while w is not None:
+        if w is widget:
+            return True
+        w = getattr(w, "master", None)
+    return False
+
+
+def _picker_rows():
+    """[(stat_id, title_label, check_label)] v poradi katalogu."""
+    out = []
+    rows = app._dashboard_picker_rows.winfo_children()
+    for (sid, _t, _c), row in zip(app._dashboard_stat_catalog(), rows):
+        inner = row.winfo_children()[0]
+        labels = [w for w in inner.winfo_children() if isinstance(w, ctk.CTkLabel)]
+        out.append((sid, labels[0], labels[1]))
+    return out
+
+
+def _dash_picker_check(tag):
+    from i18n import tr
+    top = app._dashboard_picker
+    root.update_idletasks()
+    rows = app._dashboard_picker_rows.winfo_children()
+    n = len(app._dashboard_stat_catalog())
+    cut = [i for i, r in enumerate(rows) if r.winfo_height() < r.winfo_reqheight()]
+    rec(f"stats picker: all {n} rows get their full height ({tag})",
+        len(rows) == n and not cut, f"rows={len(rows)} cut={cut}")
+    frame = top.winfo_children()[0]
+    rec(f"stats picker: frame as tall as its content ({tag})",
+        frame.winfo_height() >= frame.winfo_reqheight(),
+        f"{frame.winfo_height()} vs req {frame.winfo_reqheight()}")
+    x0, y0, x1, y1 = ui_kit.work_area(app.dashboard_edit_btn)
+    px, py = top.winfo_rootx(), top.winfo_rooty()
+    rec(f"stats picker: whole popup on screen ({tag})",
+        x0 <= px and px + top.winfo_width() <= x1 and y0 <= py and py + top.winfo_height() <= y1,
+        f"popup {px},{py} {top.winfo_width()}x{top.winfo_height()} area={(x0, y0, x1, y1)}")
+    hint = [w for w in frame.winfo_children()
+            if isinstance(w, ctk.CTkLabel) and w.cget("text") == tr("dashboard.picker_hint")]
+    rec(f"stats picker: one quiet hint line ({tag})", len(hint) == 1)
+    # plna mriezka: nezvolene riadky blede, klik na ne nic neurobi
+    faint = app.pal["text_faint"]
+    off = [(sid, t) for sid, t, _c in _picker_rows() if sid not in app.dashboard_stats]
+    rec(f"stats picker: with 4 cards the other rows are faint ({tag})",
+        off and all(t.cget("text_color") == faint for _s, t in off),
+        str([(s, t.cget("text_color")) for s, t in off]))
+    before = list(app.dashboard_stats)
+    off[0][1]._label.event_generate("<Button-1>", x=3, y=3)
+    root.update_idletasks()
+    rec(f"stats picker: clicking a faint row adds nothing ({tag})",
+        app.dashboard_stats == before, str(app.dashboard_stats))
+
+
+@step(300, )
+def s_dash_setup():
+    app.sidebar._select("dnes")
+    state["dash0"] = list(app.dashboard_stats)
+    _dash_set(DASH_PLNE)
+    app._open_dashboard_picker()
+
+
+@step(400, )
+def s_dash_picker_check():
+    from app import LANG_NATIVE_LABELS
+    _dash_picker_check(app.lang)
+    app._close_dashboard_picker()
+    state["dash_lang0"] = app.lang
+    app.on_lang_switch(LANG_NATIVE_LABELS["de"])
+
+
+@step(900, )
+def s_dash_picker_de():
+    app.sidebar._select("dnes")
+    root.update_idletasks()
+    app._open_dashboard_picker()
+
+
+@step(400, )
+def s_dash_picker_de_check():
+    from app import LANG_NATIVE_LABELS
+    _dash_picker_check("de")
+    app._close_dashboard_picker()
+    app.on_lang_switch(LANG_NATIVE_LABELS[state["dash_lang0"]])
+
+
+@step(900, )
+def s_dash_drag_prep():
+    app.sidebar._select("dnes")
+    _dash_set(DASH_PLNE)
+    root.update()                   # winfo_containing potrebuje zobrazene okna
+    cards = app.dashboard_cards
+    a = _center(cards["baseline"].value_label)
+    b = _center(cards["breath"])
+    ok = _hits(cards["baseline"], *a) and _hits(cards["breath"], *b)
+    rec("stats drag: held number and target card visible", ok, f"{a} -> {b}")
+    state["dash_drag"] = (a, b) if ok else None
+    if ok:
+        mouse_to(*a)
+
+
+@step(150, )
+def s_dash_down():
+    if state.get("dash_drag"):
+        user32.mouse_event(LEFTDOWN, 0, 0, 0, 0)
+
+
+for _i in range(1, DASH_N + 1):
+    def _dm(i=_i):
+        if state.get("dash_drag"):
+            (x0, y0), (x1, y1) = state["dash_drag"]
+            mouse_to(x0 + (x1 - x0) * i // DASH_N, y0 + (y1 - y0) * i // DASH_N)
+    _dm.__name__ = f"dash_drag_move_{_i}"
+    step(200 if _i == 1 else 40)(_dm)
+
+
+@step(150, )
+def s_dash_mid_check():
+    if not state.get("dash_drag"):
+        return
+    cards = app.dashboard_cards
+    rec("stats drag: held card has the accent border",
+        cards["baseline"].cget("border_color") == app.pal["accent"],
+        cards["baseline"].cget("border_color"))
+    rec("stats drag: card under the pointer has the accent_hover border",
+        cards["breath"].cget("border_color") == app.pal["accent_hover"],
+        cards["breath"].cget("border_color"))
+    rec("stats drag: cursor is fleur while dragging",
+        cursor_handle() == user32.LoadCursorW(None, IDC_SIZEALL))
+    rec("stats drag: nothing changes before the release", app.dashboard_stats == DASH_PLNE)
+
+
+@step(60, )
+def s_dash_up():
+    if state.get("dash_drag"):
+        user32.mouse_event(LEFTUP, 0, 0, 0, 0)
+
+
+@step(400, )
+def s_dash_drag_check():
+    rec("stats drag: dropping on another card swaps the two (real mouse)",
+        app.dashboard_stats == DASH_SWAP, str(app.dashboard_stats))
+    rec("stats drag: the new order is saved", _saved_dashboard() == DASH_SWAP, str(_saved_dashboard()))
+    rec("stats drag: cards rebuilt in the new order", _dash_order() == DASH_SWAP, str(_dash_order()))
+    rec("stats drag: all borders back to normal", not _dash_lit(), str(_dash_lit()))
+    # obycajny klik (bez pohybu) na cislo karty
+    mouse_to(*_center(app.dashboard_cards["hrr"].value_label))
+
+
+@step(150, )
+def s_dash_click():
+    user32.mouse_event(LEFTDOWN, 0, 0, 0, 0)
+    user32.mouse_event(LEFTUP, 0, 0, 0, 0)
+
+
+def _dash_real_drag(key, name):
+    """Stlac na bode state[key][0], potiahni na state[key][1], pusti."""
+    def down():
+        if state.get(key):
+            mouse_to(*state[key][0])
+            user32.mouse_event(LEFTDOWN, 0, 0, 0, 0)
+    down.__name__ = f"{name}_down"
+    step(150, down)
+    for _j in range(1, DASH_N + 1):
+        def mv(i=_j):
+            if state.get(key):
+                (x0, y0), (x1, y1) = state[key]
+                mouse_to(x0 + (x1 - x0) * i // DASH_N, y0 + (y1 - y0) * i // DASH_N)
+        mv.__name__ = f"{name}_move_{_j}"
+        step(200 if _j == 1 else 40, mv)
+
+    def up():
+        if state.get(key):
+            user32.mouse_event(LEFTUP, 0, 0, 0, 0)
+    up.__name__ = f"{name}_up"
+    step(60, up)
+
+
+@step(300, )
+def s_dash_click_check():
+    rec("stats drag: a plain click changes nothing", app.dashboard_stats == DASH_SWAP,
+        str(app.dashboard_stats))
+    # pustenie do medzery medzi stlpcami
+    cards = app.dashboard_cards
+    left, right = cards[DASH_SWAP[0]], cards[DASH_SWAP[1]]
+    gx = (left.winfo_rootx() + left.winfo_width() + right.winfo_rootx()) // 2
+    gy = left.winfo_rooty() + left.winfo_height() // 2
+    gap_ok = app._dashboard_card_at(gx, gy) is None
+    rec("stats drag: there is a gap between the columns", gap_ok, f"{gx},{gy}")
+    state["dash_gap"] = (_center(left.value_label), (gx, gy)) if gap_ok else None
+
+
+_dash_real_drag("dash_gap", "dash_gap")
+
+
+@step(400, )
+def s_dash_gap_check():
+    rec("stats drag: dropping into the gap changes nothing", app.dashboard_stats == DASH_SWAP,
+        str(app.dashboard_stats))
+    rec("stats drag: borders back to normal after the gap drop", not _dash_lit(), str(_dash_lit()))
+    # stlacenie na ⓘ a tah na inu kartu: ⓘ je tlacidlo, tah z neho nezacina
+    cards = app.dashboard_cards
+    state["dash_info"] = (_center(cards[DASH_SWAP[0]]._info_btn), _center(cards[DASH_SWAP[3]]))
+
+
+_dash_real_drag("dash_info", "dash_info")
+
+
+@step(400, )
+def s_dash_info_check():
+    rec("stats drag: pressing ⓘ and dragging does not reorder", app.dashboard_stats == DASH_SWAP,
+        str(app.dashboard_stats))
+    rec("stats drag: borders normal after the ⓘ press", not _dash_lit(), str(_dash_lit()))
+    for card in app.dashboard_cards.values():
+        card._close_info()
+    # jedna varianta cez event_generate: tah za okraj karty (jej canvas)
+    cards = app.dashboard_cards
+    a, b = cards[DASH_SWAP[1]], cards[DASH_SWAP[2]]         # hrr -> over
+    ax, ay = a.winfo_rootx() + 4, a.winfo_rooty() + a.winfo_height() // 2
+    bx, by = _center(b)
+    cv = a._canvas
+    cv.event_generate("<ButtonPress-1>", x=4, y=ay - a.winfo_rooty(), rootx=ax, rooty=ay)
+    cv.event_generate("<B1-Motion>", x=bx - a.winfo_rootx(), y=by - a.winfo_rooty(),
+                      rootx=bx, rooty=by, state=0x100)
+    cv.event_generate("<ButtonRelease-1>", x=bx - a.winfo_rootx(), y=by - a.winfo_rooty(),
+                      rootx=bx, rooty=by, state=0x100)
+    root.update()
+    want = ["breath", "over", "hrr", "baseline"]
+    rec("stats drag: dragging by the card's edge swaps too (event_generate)",
+        app.dashboard_stats == want and _dash_order() == want, str(app.dashboard_stats))
+
+
+@step(300, )
+def s_dash_remove_check():
+    # ✕ na karte <-> ✓ vo vybere
+    card = app.dashboard_cards["over"]
+    card._on_enter()
+    card._remove_btn.invoke()
+    root.update_idletasks()
+    saved = _saved_dashboard()
+    rec("stats ✕: card removed and saved",
+        "over" not in app.dashboard_stats and isinstance(saved, list) and "over" not in saved,
+        f"{app.dashboard_stats} saved={saved}")
+    app._open_dashboard_picker()
+
+
+@step(400, )
+def s_dash_last_card_check():
+    marks = [(sid, c.cget("text") == "✓") for sid, _t, c in _picker_rows()]
+    rec("stats picker: ✓ marks match the cards after ✕",
+        all(on == (sid in app.dashboard_stats) for sid, on in marks), str(marks))
+    app._close_dashboard_picker()
+    # posledna karta ostava
+    last = app.dashboard_stats[0]
+    _dash_set([last])
+    rec("stats: the last card has no ✕", app.dashboard_cards[last]._remove_btn is None)
+    app._toggle_dashboard_stat(last)
+    rec("stats: the last card cannot be removed", app.dashboard_stats == [last],
+        str(app.dashboard_stats))
+    # strop 4 kariet
+    _dash_set(DASH_PLNE)
+    app._toggle_dashboard_stat("avg")
+    rec("stats: a 5th card is refused", app.dashboard_stats == DASH_PLNE
+        and len(app.dashboard_cards) == 4, str(app.dashboard_stats))
+    _dash_set(state["dash0"])
 
 
 # ---------------- 6d. jazyk ----------------
@@ -1288,11 +1645,10 @@ def s_lang_back():
 # ---------------- 7. téma ----------------
 @step(300, )
 def s_theme():
-    from i18n import tr
-    import theme as theme_mod
     state["theme0"] = app.theme_key
-    other = theme_mod.MODERN if app.theme_key == theme_mod.ZEN else theme_mod.ZEN
-    app.on_theme_switch(tr(f"theme.{other}.label"))
+    state["world0"] = app.world
+    # Od 0.2 tema patri svetu (B3-worlds) - prepina sa svet, nie tema.
+    app.set_world("work" if app.world == "play" else "play")
 
 
 @step(900, )
@@ -1306,8 +1662,7 @@ def s_theme_check():
 @step(500, )
 def s_theme_vhre():
     shot("15_theme_other_vhre")
-    from i18n import tr
-    app.on_theme_switch(tr(f"theme.{state['theme0']}.label"))
+    app.set_world(state["world0"])
 
 
 @step(800, )

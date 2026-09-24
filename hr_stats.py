@@ -72,8 +72,21 @@ ZONE_RAISED = "raised"
 ZONE_HIGH = "high"
 ZONE_CRITICAL = "critical"
 
+# Z kolkych poslednych vzoriek tepu sa berie median pre ZIVE slovo pasma
+# (`HeartStats.zone`). Jedna vzorka by pri tepe na hrane pasma preskakovala
+# medzi dvoma slovami a farbami; pat je pri kadencii hodiniek (~0,9 az
+# ~2,9 s na vzorku) zhruba 5 az 15 sekund - stale "teraz", ale uz nie sum.
+ZONE_MEDIAN_SAMPLES = 5
+
 
 def zone_for(stress):
+    """PEVNE pasma ZATAZE (25/50/75) - uz len pre `time_high_s`.
+
+    Slovo a farba pasma, ktore hrac vidi (HUD, Dnes, kontrolka tepu), sa od
+    0.2 NErataju odtialto, ale z tepu voci jeho pokoju (`HeartStats.zone`,
+    `zone_of_bpm`). Tu to ostava, lebo `time_high_s` je ulozena metrika a
+    musi znamenat to iste ako v starsich relaciach (viz `HeartStats.add`).
+    """
     if stress >= 75:
         return ZONE_CRITICAL
     if stress >= 50:
@@ -112,6 +125,31 @@ def _durations(samples):
     return gaps
 
 
+def kadencia_vzoriek(samples):
+    """Ako casto hodinky posielali tep - tri suhrnne cisla, ziadna krivka.
+
+    PRECO
+    Spustac hlasky rozlisuje ridsiu kadenciu od vypadku (`trigger.DIERA_S`)
+    a tato hranica stoji na tom, ako casto hodinky naozaj posielaju. Doteraz
+    sa to dalo len odhadovat spatne z inych pocitadiel. S tymito tromi
+    cislami v suhrne relacie sa po par veceroch da overit namerane, nie
+    modelom: median a 90. percentil medzery medzi vzorkami a pocet medzier
+    nad 5 s (strop kreditu `trigger.MAX_KROK_S` aj `MAX_SAMPLE_GAP_S`).
+
+    Su to agregaty - casove znacky ani krivka medzier sa neukladaju.
+    Menej nez dve vzorky: median a p90 su None, pocet 0.
+    """
+    medzery = [max(0.0, b[0] - a[0]) for a, b in zip(samples, samples[1:])]
+    median = _percentile(medzery, 0.5)
+    p90 = _percentile(medzery, 0.9)
+    return {
+        "sample_dt_median_s": round(median, 2) if median is not None else None,
+        "sample_dt_p90_s": round(p90, 2) if p90 is not None else None,
+        # 5.0 natvrdo, nie konstanta: je to cislo v nazve kluca.
+        "sample_gaps_over_5s": sum(1 for d in medzery if d > 5.0),
+    }
+
+
 def session_baseline(samples, min_samples=30):
     """Pokojova zakladna celej relacie - 20. percentil vsetkych vzoriek.
     Pod 30 vzoriek None (rovnaky prah ako ziva zakladna)."""
@@ -141,7 +179,11 @@ DLHODOBA_PODLAHA = 40.0        # nizsie uz to nie je pokojovy tep, ale chyba
 
 # Podiel fyziologicky nemoznych skokov, od ktoreho je relacia podozriva.
 #
-# Tep sa medzi dvoma vzorkami (~1,5 s) o 30 bpm neposunie. Ked sa to deje
+# Tep sa medzi dvoma susednymi bodmi krivky o 30 bpm neposunie. POZOR: skoky
+# sa rataju na `curve` (preriedenej na `CURVE_POINTS`), nie na surovych
+# vzorkach. Kym ma relacia menej nez 600 vzoriek, bod = vzorka (kadencia
+# hodiniek ~0,9 az ~2,9 s); dlhsia relacia ma bod kazdych trvanie/600 (2 h =
+# 12 s). Hranica 30 bpm sa s tym neskaluje. Ked sa to deje
 # opakovane, nemeria sa telo, ale nieco ine - 19. 9. to bol parser, ktory po
 # pridani krokov a rychlosti do spravy z hodiniek cital raz tep a raz pocet
 # krokov. Vysledkom bola 52-minutova relacia s priemerom 124 a maximom 235.
@@ -205,6 +247,68 @@ def ciste_relacie(sessions):
             and not je_podozriva(x) and not je_confounded(x)]
 
 
+def pokrytie_signalu(session):
+    """Aku cast relacie naozaj chodil tep: 0..1, alebo None, ked sa to nevie.
+
+    `sum(zone_seconds) / duration_s`, najviac 1. Obe polia ma kazdy ulozeny
+    suhrn, takze sa to da dopocitat aj spatne - nove pole sa neuklada.
+
+    PRECO JE SUCET PASIEM CAS SO SIGNALOM
+    `HeartStats.add` pripisuje do pasma cas od predoslej vzorky, najviac
+    5 s (`min(5.0, ...)`), a po vypadku `clear_live` zahodi `_last_ts`,
+    takze diera po vypadku neprida nic. Medzera 5 az 12 s sa zarata ako 5 s:
+    pokrytie je skor mierne nadhodnotene nez podhodnotene.
+
+    `duration_s` je cas na hodinach od otvorenia relacie, vratane cakania
+    na prvu vzorku. Kratka relacia ma preto pokrytie nizsie (v testoch z
+    vyvoja 0,79 az 0,96 pri 1 az 1,5 min, dlhe vecery 0,974 az 1,0).
+
+    None, ked chyba `zone_seconds` alebo je prazdne (stare a importovane
+    relacie), ked `duration_s <= 0`, pri pokazenom vstupe - a ked je sucet
+    pasiem nula. To nie je vecer bez tepu (ten by nemal krivku), ale
+    hodinky, ktore posielali ridsie nez kazdych 12 s: kazda medzera bola
+    vypadok a nepripisala nic. Meradlo vtedy nevie, nie "0 %".
+    """
+    try:
+        trvanie = float(session.get("duration_s") or 0)
+        zony = session.get("zone_seconds")
+        if not zony:
+            return None
+        signal = sum(float(v) for v in zony.values())
+    except (TypeError, ValueError, AttributeError):
+        return None
+    # Porovnanie zhora chyta aj NaN a nekonecno z pokazeneho suboru.
+    if not (0.0 < trvanie < float("inf") and 0.0 < signal < float("inf")):
+        return None
+    return min(1.0, signal / trvanie)
+
+
+# BRANA NA POKRYTIE v `ciste_relacie` - zvazena a ZAMERNE NEPOSTAVENA (C4).
+#
+# Kandidat bol "pod 0,5 sa z vecera appka neuci" (`je_slaby_signal`, vedla
+# `je_confounded`). Nepostavila sa, lebo:
+#   * po oprave prehravania v `load_z_krivky` uz ziadne ucenie nevazi relaciu
+#     podla pokrytia - dlhodoba zakladna berie jedno `baseline_bpm` za
+#     relaciu, kriticky tep najviac CURVE_POINTS bodov krivky a prah uz
+#     prehrava len cas so signalom;
+#   * pomer klesne aj vtedy, ked je PC uspate, hodinky na nabijacke alebo
+#     appka pocuva, kym si prec (vypadok relaciu nezatvara) - taky vecer ma
+#     dobre data a brana by ich zahodila;
+#   * na testovacich datach (9 relacii) by nevyradila ani jednu;
+#   * pokrytie sa da dopocitat z toho, co kazdy suhrn uz uklada, takze brana
+#     pridana neskor zaposobi na celu historiu naraz. Cakanie nic nestoji.
+# Postavit ju ma zmysel, az ked sa objavi skutocny vecer s pokrytim pod 50 %,
+# ktoreho zakladna alebo kriticky tep jasne vybocuje od susednych vecerov -
+# teda tep by vypadaval nenahodne (napr. prave pri pohybe v napatych
+# chvilach), nie len ubudol.
+
+# Zive pokrytie (`HeartStats.signal_coverage`) vracia cislo az minutu po
+# PRVEJ VZORKE (nie po minute nepretrziteho tepu), dovtedy None - widget
+# musi mat pre ten cas vlastny stav. Po 15 sekundach by jedna
+# 12-sekundova medzera ukazala 20 % - to je sum zaciatku, nie stav spojenia.
+POKRYTIE_ZIVE_MIN_S = 60.0
+
+
 # --------------------------------------------------------------------------
 # Kriticky tep: vypocet, nie nastavenie
 # --------------------------------------------------------------------------
@@ -232,7 +336,7 @@ def dynamicky_kriticky(sessions, baseline=None):
     CO SA RATA
     90. percentil zo zlucenych krivok poslednych `KRITICKY_Z_RELACII` CISTYCH
     relacii - teda "tep, nad ktory sa dostanes v hornej desatine hrania".
-    Na testovacich datach to dava 105 pri zakladni 77: headroom 28 a pasmo
+    Na testovacich datach to dava napr. 105 pri zakladni 77: headroom 28 a pasmo
     kriticka pokryva 10 % casu.
 
     Vracia `KRITICKY_ZALOHA`, kym nie je z coho ratat. `baseline` je len
@@ -284,6 +388,17 @@ def load_z_krivky(session, baseline, critical, krok_s=1.5):
     trvanie = float(session.get("duration_s") or 0)
     if len(krivka) < 10 or trvanie < PRAH_MIN_TRVANIE_S:
         return []
+    # Krivka je preriedena podla POCTU vzoriek, nie podla casu (`trace` ->
+    # `downsample`), takze diery po vypadkoch v nej nie su. Natiahnuta na
+    # cele `duration_s` vazila vecer s dierami 1/pokrytie-krat viac nez
+    # ostatne a roztiahla mu casovu os. Prehrava sa preto len cas, ked tep
+    # naozaj chodil (`trvanie * p` je sucet pasiem). Podmienka vyssie ostava
+    # na `duration_s`, aby sa nezmenilo, ktore relacie do prahu patria, ani
+    # "vypocitane z n relacii" v nastaveniach. Bez pokrytia (stare relacie,
+    # None) sa prehrava cele trvanie ako doteraz.
+    p = pokrytie_signalu(session)
+    if p:
+        trvanie *= p
     st = HeartStats(critical_bpm=int(critical or 110))
     st.long_baseline = baseline
     out = []
@@ -298,7 +413,10 @@ def load_z_krivky(session, baseline, critical, krok_s=1.5):
             continue
         t += krok_s
         st.add(hodnota, ts=t)
-        out.append(st.stress)
+        # Kalibracia sa vynecha: naostro ju spustac nevidi (`note_load`
+        # s `calibrating=True`), tak nesmie posuvat ani prah.
+        if not st.is_calibrating:
+            out.append(st.stress)
     return out
 
 
@@ -385,6 +503,11 @@ ZEN_WINDOW = 7
 ZEN_NEEDED = 5
 ZEN_MIN_TOTAL = 10
 ZEN_MIN_SPAN_DAYS = 10.0
+# Do serie sa rataju LEN HERNE relacie (0.2, B3-worlds) - rovnako ako
+# kriticky tep a prah zataze (`app.ALGORITMUS_SVET`). Pokojne popoludnie pri
+# praci nie je pokoj pri hre; a sprava hovori o "dalsom zapase". Svet urcuje
+# `session_world` (odpoved v dotazniku > svet zo startu > Hra).
+ZEN_SVET = "play"
 
 
 def _rising_crossings(curve, threshold):
@@ -418,15 +541,37 @@ def je_plne_zanshin(session):
       3. <= ZEN_MAX_CRIT_CROSSINGS stupajucich prekroceni kritickej linie
     Percentily (nie max_bpm): modul neveri jednotlivym extremom - jeden
     artefaktovy uder nesmie zrusit pokojny vecer.
+
+    ZAKLADNA MA TEN ISTY STROP AKO PASMA (0.2, C2). Zakladna relacie je 20.
+    percentil tohto vecera; dlhodoba zakladna (`long_baseline_bpm`, ulozena v
+    suhrne) je jej STROP - presne ako v `HeartStats.baseline`, voci ktorej sa
+    rata zataz aj pasmo "Pokoj". Bez stropu by presiel vecer, ktory cely drzal
+    rovnomerne VYSOKO (kava, suvisly stres): 20. percentil sa dotiahne za nim
+    a rozptyl ostane maly. Stare relacie bez pola maju len zakladnu relacie.
+
+    DLZKA = CAS S TEPOM. `duration_s` zahrna aj vypadky (hodinky prec, PC
+    uspane); od C3 suhrn nesie `blind_s`, takze sa vypadky do 15 minut
+    nerataju. Inak by 5 minut tepu a 20 minut ticha preslo ako cely pokojny
+    vecer. Cakanie na prvu vzorku sa neodpocitava - `blind_s` ho nepozna,
+    lebo tep este nechodil (viz `note_dropout`). Bez pola (stare relacie)
+    sa berie cele trvanie.
+
+    Zataz, pasma (`zone_seconds`) ani prah spustaca sem nevstupuju, takze
+    ich kalibracia nemeni nic: su to len ulozene TEPY (`curve`, aj z prvych
+    sekund), zakladne, `critical_bpm` a pocty.
     """
     try:
         if session is None or je_podozriva(session) or session.get("imported"):
             return None
         base = float(session.get("baseline_bpm") or 0)
+        dlhodoba = float(session.get("long_baseline_bpm") or 0)
+        if dlhodoba > 0 and base > 0:
+            base = min(base, dlhodoba)
         crit = float(session.get("critical_bpm") or 0)
         curve = [float(x) for x in (session.get("curve") or [])
                  if isinstance(x, (int, float))]
-        dur = float(session.get("duration_s") or 0)
+        dur = (float(session.get("duration_s") or 0)
+               - max(0.0, float(session.get("blind_s") or 0)))
         samples = int(session.get("samples") or 0)
     except (TypeError, ValueError):
         return None
@@ -444,10 +589,11 @@ def je_plne_zanshin(session):
 
 
 def _zen_eligible(sessions):
-    """Ciste relacie (bez podozrivych/importovanych) s vyhodnotenim
-    je_plne_zanshin, zoradene podla casu; None (nepocita sa) sa vynecha."""
+    """Ciste HERNE relacie (bez podozrivych/importovanych/confounded, len
+    `ZEN_SVET`) s vyhodnotenim je_plne_zanshin, zoradene podla casu; None
+    (nepocita sa) sa vynecha."""
     out = []
-    for s in ciste_relacie(sessions):
+    for s in ciste_relacie(sessions_in_world(sessions, ZEN_SVET)):
         r = je_plne_zanshin(s)
         if r is None:
             continue
@@ -469,7 +615,7 @@ def zanshin_streak(sessions):
 def zanshin_graduation(sessions, already_graduated=False):
     """Ma sa spustit promocia? Vracia dict s `fire` (raz) a `reason`.
 
-    Poistky: spusti sa az pri >=ZEN_MIN_TOTAL cistych relaciach, rozpatych
+    Poistky: spusti sa az pri >=ZEN_MIN_TOTAL cistych hernych relaciach, rozpatych
     aspon ZEN_MIN_SPAN_DAYS dni, pri existujucej stabilnej zakladni, a len
     ked posledny vecer bol pokojny (kruh sa uzavrie po pokoji, nie po strese).
     """
@@ -497,9 +643,11 @@ def zanshin_graduation(sessions, already_graduated=False):
 def zone_of_bpm(bpm, baseline, critical_bpm):
     """Pasmo jednej hodnoty tepu voci VLASTNEJ zakladne hraca.
 
-    Jediny zdroj pravdy pre pasma: pouziva to sucet casu (`time_in_zones`)
-    aj kazdy graf, ktory pas pasiem kresli (stopa relacie). Keby to kazdy
-    pocital sam, pruh a cisla pod nim by si po case prestali sediet.
+    Jediny zdroj pravdy pre pasma: pouziva to sucet casu (`time_in_zones`),
+    kazdy graf, ktory pas pasiem kresli (stopa relacie), aj zive slovo a
+    farba pasma na HUD-e, na Dnes a na kontrolke tepu (`HeartStats.zone`).
+    Keby to kazdy pocital sam, pruh a cisla pod nim by si po case prestali
+    sediet - a "Vysoka" by na jednej stranke znamenala dve rozne veci.
     """
     if bpm >= critical_bpm:
         return ZONE_CRITICAL
@@ -772,6 +920,105 @@ def day_activity(sessions, days=112, now=None):
 
 
 # --------------------------------------------------------------------------
+# Hodnoty jednej ULOZENEJ relacie (Historia: graf a detail; karta na Dnes)
+# --------------------------------------------------------------------------
+# Vsetko sa pocita z poli, ktore suhrn uz uklada - ziadne nove ulozene pole.
+# None vsade znamena "nevieme" (stara, importovana alebo pokazena relacia),
+# nikdy nie nulu: nula minut v pokoji je vypoved, chybajuce pasma nie.
+
+def _cislo(value):
+    """float, alebo None pre None / text / NaN / nekonecno."""
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return None
+    if v != v or v in (float("inf"), float("-inf")):
+        return None
+    return v
+
+
+def cas_v_pokoji_s(session):
+    """Sekundy relacie v pasme POKOJA (`zone_seconds["calm"]`), alebo None.
+
+    Pasmo je to iste ako vsade inde (`zone_of_bpm`): tep menej nez 10 BPM
+    nad pokojom. None, ked relacia pasma nema - nie 0."""
+    try:
+        zony = session.get("zone_seconds")
+        if not zony:
+            return None
+        v = _cislo(zony.get(ZONE_CALM) or 0.0)
+    except AttributeError:
+        return None
+    return v if v is not None and v >= 0.0 else None
+
+
+def hlasky_relacie(session):
+    """Kolko hlasok appka v relacii poslala SAMA (`auto_triggers`; stare
+    relacie maju len `triggers`), alebo None. JEDNO cislo na relaciu vsade:
+    tabulka Historie, detail relacie, graf Historie aj stlpec CSV
+    "breathing" (`session_row`)."""
+    try:
+        v = _cislo(session.get("auto_triggers", session.get("triggers")))
+    except AttributeError:
+        return None
+    return int(v) if v is not None and v >= 0 else None
+
+
+def namerana_zataz_0_10(session):
+    """Namerana zataz relacie na skale 0-10 - aby mohla stat vedla vnimanej
+    zataze z dotaznika (tiez 0-10), alebo None.
+
+    Je to SPICKA zataze relacie (`peak_stress`, 0-100) vydelena desiatimi a
+    zaokruhlena nahor od polovice (45 -> 5, nie bankarsky 4). Ine ulozene
+    cislo zataze za celu relaciu nie je; priemer zataze sa neuklada.
+    Hrac sa to docita v ⓘ karty aj pod tabulkou Historie
+    (`metric.felt_vs_measured.more`).
+    """
+    try:
+        v = _cislo(session.get("peak_stress"))
+    except AttributeError:
+        return None
+    if v is None or v < 0.0:
+        return None
+    return min(10, int(v / 10.0 + 0.5))
+
+
+def citene_a_merane(session):
+    """(citene, merane): vnimana zataz z dotaznika a namerana (obe 0-10).
+
+    None, ked hrac dotaznik preskocil (vnimanu zataz nezadal) - bez nej nie
+    je co porovnat. `merane` moze byt None (relacia bez spicky zataze).
+    ZAMERNE dve cisla, nie rozdiel, pomer ani verdikt: ani jedno nie je
+    "spravne" - tep nevidi, ako ti bolo, a ty necitis kazdy uder.
+    """
+    if not isinstance(session, dict):
+        return None
+    citene = normalize_felt_load(session.get("felt_load"))
+    if citene is None:
+        return None
+    return citene, namerana_zataz_0_10(session)
+
+
+def posledna_relacia(sessions):
+    """Posledna ULOZENA relacia (podla `started`), alebo None.
+
+    Ulozena = ukoncena: aktualna relacia sa do suboru dostane az pri
+    zatvoreni (`app._close_hr_session`). Importovane relacie (`imported`)
+    sa preskakuju - su to cudzie data (`data_io`), nie "tvoja posledna
+    relacia"; zlucenim cudzieho exportu by inak karta ukazala cudzie cisla."""
+    najnovsia = None
+    for s in sessions or []:
+        if not isinstance(s, dict) or s.get("imported"):
+            continue
+        started = _cislo(s.get("started"))
+        if started is None:
+            continue
+        if najnovsia is None or started >= najnovsia[0]:
+            najnovsia = (started, s)
+    return najnovsia[1] if najnovsia else None
+
+
+# --------------------------------------------------------------------------
 # Casove obdobia (Historia: Den / Tyzden / Mesiac / Rok)
 # --------------------------------------------------------------------------
 
@@ -842,14 +1089,21 @@ _BUCKET_LABEL_FMT = {
 }
 
 
+# Metriky, ktore bucket spriemeruje - kazda je priemer NA RELACIU v buckete.
+# Posledne styri pribudli v 0.2 (Historia = cely obraz): dlzka relacie, cas v
+# pokoji, pokrytie signalu (0..1) a pocet hlasok, ktore appka poslala sama.
+BUCKET_METRICS = ("baseline", "hrr", "over_s", "peak",
+                  "duration_s", "calm_s", "coverage", "cues")
+
+
 def aggregate_by_period(sessions, period):
     """Zoskupi relacie do bucketov podla kalendarneho obdobia (hour/day/
     week/month/year) a spriemeruje kluvove metriky v kazdom z nich.
 
     Vrati chronologicky zoradeny zoznam dictov {"started", "label",
-    "count", "baseline", "hrr", "over_s", "peak"} - kazda metrika je
-    priemer relacii v danom buckete, alebo None, ak ju ziadna relacia v
-    buckete nema. Relacie bez `started` sa preskocia.
+    "count"} + jedna hodnota pre kazdy kluc z `BUCKET_METRICS` - kazda
+    metrika je priemer relacii v danom buckete, alebo None, ak ju ziadna
+    relacia v buckete nema. Relacie bez `started` sa preskocia.
     """
     buckets = {}
     for s in sessions:
@@ -864,8 +1118,8 @@ def aggregate_by_period(sessions, period):
         b = buckets.get(key)
         if b is None:
             b = buckets[key] = {"label": floor.strftime(_BUCKET_LABEL_FMT[period]),
-                               "count": 0, "baseline": [], "hrr": [], "over_s": [],
-                               "peak": []}
+                               "count": 0}
+            b.update({m: [] for m in BUCKET_METRICS})
         b["count"] += 1
         if s.get("baseline_bpm"):
             b["baseline"].append(float(s["baseline_bpm"]))
@@ -875,16 +1129,26 @@ def aggregate_by_period(sessions, period):
             b["over_s"].append(float(s["time_over_s"]))
         if s.get("peak_stress") is not None:
             b["peak"].append(float(s["peak_stress"]))
+        # Nove metriky idu cez pomocnikov vyssie: pokazena hodnota z importu
+        # sa vynecha (None), nezhodi cely graf.
+        trvanie = _cislo(s.get("duration_s"))
+        if trvanie is not None and trvanie > 0:
+            b["duration_s"].append(trvanie)
+        for kluc, hodnota in (("calm_s", cas_v_pokoji_s(s)),
+                              ("coverage", pokrytie_signalu(s)),
+                              ("cues", hlasky_relacie(s))):
+            if hodnota is not None:
+                b[kluc].append(float(hodnota))
 
     def avg(values):
         return sum(values) / len(values) if values else None
 
-    return [
-        {"started": key, "label": b["label"], "count": b["count"],
-         "baseline": avg(b["baseline"]), "hrr": avg(b["hrr"]),
-         "over_s": avg(b["over_s"]), "peak": avg(b["peak"])}
-        for key, b in sorted(buckets.items())
-    ]
+    out = []
+    for key, b in sorted(buckets.items()):
+        row = {"started": key, "label": b["label"], "count": b["count"]}
+        row.update({m: avg(b[m]) for m in BUCKET_METRICS})
+        out.append(row)
+    return out
 
 
 def _period_next(dt, period):
@@ -920,10 +1184,10 @@ def bucket_axis(buckets, period, start, end=None):
     out = []
     while dt <= posledny and len(out) < EMPTY_BUCKET_LIMIT:
         key = dt.timestamp()
-        out.append(existujuce.get(key) or {
-            "started": key, "label": dt.strftime(_BUCKET_LABEL_FMT[period]),
-            "count": 0, "baseline": None, "hrr": None, "over_s": None,
-            "peak": None})
+        prazdny = {"started": key, "label": dt.strftime(_BUCKET_LABEL_FMT[period]),
+                   "count": 0}
+        prazdny.update({m: None for m in BUCKET_METRICS})
+        out.append(existujuce.get(key) or prazdny)
         dt = _period_next(dt, period)
     return out
 
@@ -1001,15 +1265,28 @@ class HeartStats:
         self._load = []
         self.zone_seconds = {ZONE_CALM: 0.0, ZONE_RAISED: 0.0,
                              ZONE_HIGH: 0.0, ZONE_CRITICAL: 0.0}
+        # [(bpm, sekundy)] z kalibracie prveho vecera, kym nie je zakladna
+        self._zony_cakaju = []
         self.trigger_offsets = []   # sekundy od zaciatku relacie
         # Hlasky s absolutnym casom a tym, ktora to bola. `trigger_offsets`
         # na meracie okna nestaci: je zaokruhleny na 0,1 s a pocita sa od
         # zapnutia senzora, nie od prvej vzorky.
         self.cues = []
         self._metric_cache = {}
+        # Vypadky tepu v tejto relacii: kolkokrat appka prestala pocut tep,
+        # ktory predtym pocula, a kolko sekund bola spolu slepa. Az tieto
+        # dve cisla povedia, ako casto je appka naozaj bez dat - odhad zo
+        # zrusenych usekov spustaca to nevie (viz `note_dropout`).
+        self.dropouts = 0
+        self.blind_s = 0.0
+        # Kedy prisla posledna vzorka pred otvorenym vypadkom (None = tep
+        # chodi). Uzavrie ho prva platna vzorka v `add`.
+        self._slepy_od = None
 
     def note_trigger(self, ts=None, auto=False, category=None, cue_id=None,
-                     arm="voice", source=None, delivery=None, delivered=True):
+                     arm="voice", source=None, delivery=None, delivered=True,
+                     rung=None, audible=None, load_at=None, load_peak=None,
+                     zone_at=None):
         """Zaznamena spustenu hlasku.
 
         `arm` je "voice" alebo "silent" - tiche kontrolne rameno pribudne
@@ -1017,6 +1294,12 @@ class HeartStats:
         `source` rozlisuje, ci hlasku spustilo telo ("auto") alebo klavesa
         ("key"); klavesove spustace vo faze 3 zaniknu, dovtedy sa hodia na
         overenie, ze merania funguju.
+
+        ZAZNAM O DORUCENI (0.2, rebrik + brana): `rung` je stupen rebrika
+        relacie, `audible` ci naozaj nieco zaznelo, `load_at` / `load_peak`
+        zataz pri doruceni a najvyssia od natiahnutia, `zone_at` pasmo tepu.
+        Ukladaju sa len ked ich volajuci posle - starsie zaznamy ich nemaju
+        a `measure.build_window` ich potom do okna nepise.
         """
         self.triggers += 1
         if auto:
@@ -1025,6 +1308,10 @@ class HeartStats:
         # casoch je to nepravdepodobne, v testoch s vlastnymi hodinami nie.
         now = float(ts) if ts is not None else time.time()
         self.trigger_offsets.append(round(max(0.0, now - self.session_start), 1))
+        zaznam_dorucenia = {k: v for k, v in (
+            ("rung", rung), ("audible", None if audible is None else bool(audible)),
+            ("load_at", load_at), ("load_peak", load_peak), ("zone_at", zone_at))
+            if v is not None}
         self.cues.append({
             "ts": now,
             "category": category,
@@ -1041,7 +1328,22 @@ class HeartStats:
             # `measure` take okno zneplatni (bug B17). True/False, nie None:
             # stare zaznamy pole nemaju a `measure` ich necha platne.
             "delivered": bool(delivered),
+            **zaznam_dorucenia,
         })
+
+    def last_auto_cue_ts(self):
+        """Cas poslednej hlasky, ktoru appka v TEJTO relacii poslala sama a
+        ktora sa naozaj ukazala - alebo None, kym ziadna neprisla.
+
+        Sama = `source == "auto"` (klavesa a tlacidlo "Test" nie, rovnako ako
+        `auto_triggers`). Ukazala sa = `delivered`: hlaska, ktorej vizual sa
+        nevykreslil, sa ako posledna nerata - hrac z nej nic nevidel.
+        `reset_session` zoznam `cues` maze, takze predosla relacia sem nevidi.
+        """
+        for cue in reversed(self.cues):
+            if cue.get("source") == "auto" and cue.get("delivered", True):
+                return cue.get("ts")
+        return None
 
     # ---------- zber ----------
 
@@ -1055,13 +1357,28 @@ class HeartStats:
             return
         now = float(ts) if ts else time.time()
 
+        # Prva platna vzorka po vypadku ho uzavrie: slepy cas je od poslednej
+        # vzorky pred nim po tuto (vratane 12 s, kym si to appka vsimla).
+        if self._slepy_od is not None:
+            self.blind_s += max(0.0, now - self._slepy_od)
+            self._slepy_od = None
+
         # cas straveny v zone pripisujeme SPATNE za interval od poslednej
         # vzorky - inak by rychlejsie hodinky (2 Hz) nazbierali dvojnasobok
         if self._last_ts is not None:
             delta = max(0.0, min(5.0, now - self._last_ts))
             if self.last_bpm is not None and self.last_bpm > self.critical_bpm:
                 self.time_over += delta
-            if zone_for(self.stress) in (ZONE_HIGH, ZONE_CRITICAL):
+            # Pocas kalibracie appka zataz nikde neukazuje - nesmie ju ani
+            # potichu zapisat do suhrnu relacie.
+            #
+            # `time_high` ostava ZAMERNE na pevnych pasmach zataze
+            # (`zone_for`: 50/75), nie na `self.zone`, ktore od 0.2 hovori
+            # o tepe voci pokoju. Je to ulozena metrika (`time_high_s`) a
+            # musi znamenat to iste ako v relaciach spred 0.2 - kto to tu
+            # "zjednoti", potichu zmeni vyznam celej historie.
+            if (not self.is_calibrating
+                    and zone_for(self.stress) in (ZONE_HIGH, ZONE_CRITICAL)):
                 self.time_high += delta
             # Pasma sa pripisuju podla TEPU voci vlastnej zakladne - tou
             # istou funkciou, akou ich farbi pas v grafe (`zone_of_bpm`).
@@ -1071,11 +1388,15 @@ class HeartStats:
             # zo zataze zamerne - to je ina otazka ("ako dlho ta to
             # tlacilo"), nie rozdelenie casu relacie.
             if self.last_bpm is not None:
-                base = self.baseline
+                base = self._zakladna_bez_odhadu()
                 if base is None:
-                    base = min(b for _, b in self._long) if self._long else self.last_bpm
-                self.zone_seconds[
-                    zone_of_bpm(self.last_bpm, base, self.critical_bpm)] += delta
+                    # Prve sekundy prveho vecera: sekundy sa odlozia a
+                    # pripisu sa, az ked zakladna pride (nizsie v `add`) -
+                    # nie voci minimu, ktore jedna zla vzorka stiahne dole.
+                    self._zony_cakaju.append((self.last_bpm, delta))
+                else:
+                    self.zone_seconds[
+                        zone_of_bpm(self.last_bpm, base, self.critical_bpm)] += delta
         self._last_ts = now
 
         self._samples.append((now, bpm))
@@ -1104,9 +1425,19 @@ class HeartStats:
             if self._baseline_kotva is None or ziva < self._baseline_kotva:
                 self._baseline_kotva = ziva
 
+        if self._zony_cakaju:
+            base = self._zakladna_bez_odhadu()
+            if base is not None:
+                for b, d in self._zony_cakaju:
+                    self.zone_seconds[zone_of_bpm(b, base, self.critical_bpm)] += d
+                self._zony_cakaju = []
+
         self._recompute(now)
-        self._load.append((now, self.stress))
-        self.peak_stress = max(self.peak_stress, self.stress)
+        # Zataz z kalibracie nejde ani do spicky, ani do stopy pre meracie
+        # okna (`pre_load` by inak priemeroval odhad alebo nuly).
+        if not self.is_calibrating:
+            self._load.append((now, self.stress))
+            self.peak_stress = max(self.peak_stress, self.stress)
 
     def note_metrics(self, steps=None, speed=None, ts=None, zdroj=None):
         """Kroky a rychlost z hodiniek. Obe su volitelne.
@@ -1225,6 +1556,80 @@ class HeartStats:
         self._raw_stress = 0.0
         self._last_ts = None
 
+    def note_dropout(self, od=None):
+        """Tep, ktory appka v tejto relacii pocula, prestal chodit.
+
+        Vola to appka pri `disconnected` / `client_gone` - PRED `clear_live`,
+        a len ked predtym tep naozaj chodil (vypadok pred prvou vzorkou nie
+        je vypadok, to je "este nic neprislo"). `od` je cas poslednej vzorky;
+        bez neho sa berie `last_beat_ts`.
+
+        Druhe volanie pocas toho isteho vypadku (hodinky pustia TCP spojenie
+        az po `disconnected`) sa nerata - je to stale ten isty vypadok.
+        """
+        if self._slepy_od is not None:
+            return
+        self.dropouts += 1
+        self._slepy_od = float(od) if od is not None else float(self.last_beat_ts)
+
+    def blind_seconds(self, now=None):
+        """Kolko sekund relacie bola appka bez tepu, ktory predtym pocula -
+        vratane vypadku, ktory este trva (relacia sa zatvara naslepo)."""
+        slepy = self.blind_s
+        if self._slepy_od is not None:
+            now = time.time() if now is None else float(now)
+            slepy += max(0.0, now - self._slepy_od)
+        return slepy
+
+    def signal_coverage_at(self, now=None):
+        """Aku cast casu od prvej vzorky tep naozaj chodil: 0..1, alebo None.
+
+        Zive cislo pre kvalitu signalu, tym istym meradlom ako ulozene
+        `pokrytie_signalu`: cas so signalom je sucet pasiem (kazda medzera
+        najviac 5 s, diera po vypadku nic) plus prave otvoreny interval od
+        poslednej vzorky, tiez najviac 5 s. Bez neho by cislo medzi dvoma
+        vzorkami zakazdym kleslo a pri dalsej skocilo spat.
+
+        Meria sa od PRVEJ VZORKY, nie od otvorenia relacie: cakanie, kym sa
+        hodinky pripoja, nie je slaby signal - to appka ukazuje zvlast.
+        Ulozene pokrytie ho zapocitava, lebo cas prvej vzorky suhrn nema;
+        prehravaniu prahu je to jedno (`load_z_krivky` prehrava sucet pasiem).
+
+        None, kym nie je aspon `POKRYTIE_ZIVE_MIN_S` od prvej vzorky. Vedla
+        neho pre ten isty widget: `dropouts` (kolkokrat tep vypadol) a
+        `blind_seconds()` (kolko sekund bola appka spolu slepa).
+        """
+        if not self._all:
+            return None
+        now = time.time() if now is None else float(now)
+        od_prvej = now - self._all[0][0]
+        if not od_prvej >= POKRYTIE_ZIVE_MIN_S:
+            return None
+        signal = (sum(self.zone_seconds.values())
+                  + sum(d for _, d in self._zony_cakaju))
+        if self._last_ts is not None:
+            # Ten isty strop ako v `add`: po 5 s ticha uz cas nepribuda.
+            signal += max(0.0, min(MAX_SAMPLE_GAP_S, now - self._last_ts))
+        return max(0.0, min(1.0, signal / od_prvej))
+
+    @property
+    def signal_coverage(self):
+        """`signal_coverage_at()` teraz - pre widget kvality signalu."""
+        return self.signal_coverage_at()
+
+    def calm_seconds(self):
+        """Sekundy TEJTO relacie v pasme pokoja, alebo None, kym sa nevie.
+
+        To iste pasmo ako vsade (`zone_of_bpm`: tep menej nez 10 BPM nad
+        pokojom) a ten isty sucet, z ktoreho kresli panel "Kde si dnes bol".
+        None bez jedinej vzorky - a na prvom veceri, kym appka nema zakladnu:
+        sekundy vtedy cakaju v `_zony_cakaju` a pasmo sa im este neda urcit
+        (nula by tvrdila, ze si nebol v pokoji ani minutu).
+        """
+        if not self.session_count or self._zony_cakaju:
+            return None
+        return max(0.0, float(self.zone_seconds.get(ZONE_CALM, 0.0) or 0.0))
+
     # ---------- odvodene hodnoty ----------
 
     @property
@@ -1270,8 +1675,120 @@ class HeartStats:
         return base
 
     @property
+    def is_calibrating(self):
+        """Relacia este nema vlastnu zakladnu - zataz sa zatial neukazuje.
+
+        Kalibruje sa RAZ ZA RELACIU: od zapnutia, kym nepride 30 vzoriek
+        (podla kadencie hodiniek: pri ~0,9 s na vzorku necela polminuta,
+        pri ~2,9 s zhruba poldruha minuty). Kym to plati, HUD aj stranka
+        Dnes pisu "kalibrujem…" a spustac hlasky sa nenatiahne - appka
+        nehovori cislo, ktoremu sama neveri.
+
+        Po vypadku dlhsom nez `BASELINE_SECONDS` sa uz NEkalibruje znova,
+        hoci `baseline` vtedy vrati None (desatminutove okno je prazdne).
+        Kotva z tohto vecera plati dalej a zataz sa pocita voci nej (viz
+        `_zakladna_bez_odhadu`). Druha kalibracia by nebola poctivejsia, len
+        by zabudla, co uz o tomto vecere vieme.
+        """
+        return self._baseline_kotva is None and self.baseline is None
+
+    @property
+    def is_settling(self):
+        """Tep sa prave vratil (po vypadku alebo po znovuzapnuti senzora) a
+        zataz sa este len rozbieha - pasmo sa zatial neukazuje.
+
+        `clear_live` zahodi zive vzorky aj zataz, takze po navrate zacina
+        vyhladena zataz od nuly a jej "suvisla" cast potrebuje aspon 5
+        vzoriek (`len(window) >= 5` v `_recompute`). Prve vzorky by teda
+        ukazali "Pokoj", hoci tep je hore. Kym ich je menej nez 5, HUD aj
+        Dnes pisu namiesto pasma tiche "…" (tou istou cestou ako kalibracia).
+
+        Je to len zaplata na falosny "Pokoj": par vzoriek potom moze zataz
+        este chvilu ukazovat menej, nez naozaj je. Chyba smerom k tichu.
+
+        Od C2 je slovo pasma tep voci pokoju (`zone`), takze samo by uz
+        "Pokoj" nepovedalo. Tlmi sa dalej kvoli pruhu: jeho dlzka je zataz
+        a ta sa po navrate rozbieha od nuly.
+        """
+        return 0 < len(self._samples) < 5 and not self.is_calibrating
+
+    def _zakladna_bez_odhadu(self):
+        """Zakladna, za ktorou si appka stoji - alebo None.
+
+        Mimo kalibracie je to `baseline`. Ked chyba, plati mensia z tychto
+        dvoch, ak aspon jednu pozname:
+
+          * kotva relacie - po dlhom vypadku. Predtym sa tu bralo minimum
+            novych vzoriek: po 12 minutach bez hodiniek a navrate na 85 BPM
+            skocila zakladna z 62 na 85 a zataz ukazala nulu. Kotva sa v
+            relacii smie len znizovat; tu sa tym padom ani neobide.
+          * dlhodoba zakladna z predchadzajucich vecerov - `baseline` je nou
+            zhora obmedzeny, takze prechod z kalibracie na zivu zakladnu ide
+            len NADOL.
+
+        Minimum prvych sekund sem zamerne nepatri. Je to hruby odhad (jedna
+        zle nacitana vzorka na 50 BPM a vsetko ostatne vyzera ako zataz) a
+        prechod z neho na zivu zakladnu ide NAHOR. Zataz sa voci nemu
+        nepocita vobec - pocas kalibracie ju aj tak nikto nevidi.
+        """
+        base = self.baseline
+        if base is not None:
+            return base
+        znama = [float(x) for x in (self._baseline_kotva, self.long_baseline) if x]
+        return min(znama) if znama else None
+
+    @property
     def zone(self):
-        return zone_for(self.stress)
+        """Pasmo PRAVE TERAZ - jedno slovo a jedna farba pre HUD, Dnes aj
+        kontrolku tepu. Pocita sa len tu; kresliace funkcie ho dostavaju
+        hotove a vlastnu hranicu pasma nemaju.
+
+        Je to TEP voci POKOJU, nie zataz: `zone_of_bpm` nad medianom
+        poslednych `ZONE_MEDIAN_SAMPLES` vzoriek a nad tou istou zakladnou,
+        voci ktorej sa rata zataz (`_zakladna_bez_odhadu`). Zvysena od
+        pokoja + 10, vysoka od + 25, kriticka od nameranej hranice
+        vysokeho tepu (`critical_bpm`). Tie iste pasma pocita panel "Kde si
+        dnes bol", stopa relacie aj Historia - "Vysoka" tak na jednej
+        stranke znamena jednu vec.
+
+        PRECO NIE PASMA ZATAZE (25/50/75), ako do 0.2
+        Pri pokoji 76 a hranici 109 dava stabilnych 95 BPM zataz okolo 57 -
+        a to bolo "Vysoka" pri tepe, ktory appka na tej istej stranke v
+        paneli "Kde si dnes bol" ratala ako "zvysenu". Cislo zataze, dlzka
+        pruhu, spustac ani `time_high_s` sa tym nemenia; meni sa len slovo
+        a farba.
+
+        Bez tepu alebo bez zakladne vracia pokoj. Volajuci to bez spojenia,
+        pocas kalibracie a po navrate tepu (`is_settling`) necitaju - tam
+        maju vlastny tichy stav, ktory ma prednost.
+        """
+        base = self._zakladna_bez_odhadu()
+        posledne = sorted(b for _, b in self._samples[-ZONE_MEDIAN_SAMPLES:])
+        if base is None or not posledne:
+            return ZONE_CALM
+        n = len(posledne)
+        median = (posledne[n // 2] if n % 2
+                  else (posledne[n // 2 - 1] + posledne[n // 2]) / 2.0)
+        return zone_of_bpm(median, base, self.critical_bpm)
+
+    @property
+    def known_zone(self):
+        """To iste pasmo ako `zone` - alebo None, ked ho appka NEPOZNA.
+
+        Pre branu hlasky (`trigger.CueTrigger.note_load(zona=...)`). `zone`
+        bez tepu, bez zakladne, pocas kalibracie aj hned po navrate tepu
+        vracia "pokoj" ako tichy zaskok pre obrazovku; brana ho ale nesmie
+        brat ako "nie je kriticke". Tam, kde HUD pise "…", tu je None - a
+        hlaska vtedy nejde.
+
+        NIKDY nie pasma zataze (`zone_for`): tie su o pruhu, nie o tom, ci
+        je tep nad hranicou vysokeho tepu.
+        """
+        if self.is_calibrating or self.is_settling or not self._samples:
+            return None
+        if self._zakladna_bez_odhadu() is None:
+            return None
+        return self.zone
 
     @property
     def average(self):
@@ -1307,9 +1824,10 @@ class HeartStats:
         return ((now - self.last_beat_ts) % period) / period
 
     def _recompute(self, now):
-        base = self.baseline
-        if base is None:
-            base = min(b for _, b in self._long) if self._long else self.last_bpm
+        # Bez zakladne, za ktorou si appka stoji (prve sekundy prveho
+        # vecera), sa zataz nepocita - ostava, kde bola. Vyhladeny priemer
+        # sa potom rozbehne az od skutocnej zakladne, nie z odhadu z minima.
+        base = self._zakladna_bez_odhadu()
         if not base:
             return
 
@@ -1368,6 +1886,16 @@ class HeartStats:
 
     # ---------- suhrn ----------
 
+    def _zony_do_suhrnu(self):
+        """Relacia skoncila este pocas kalibracie: odlozene sekundy sa
+        pripisu voci minimu (povodne spravanie), aby sucet sedel s trvanim."""
+        out = dict(self.zone_seconds)
+        if self._zony_cakaju:
+            base = min(b for b, _ in self._zony_cakaju)
+            for b, d in self._zony_cakaju:
+                out[zone_of_bpm(b, base, self.critical_bpm)] += d
+        return out
+
     def summary(self):
         elapsed = max(0.0, time.time() - self.session_start)
         events = self.hrr_events()          # tu vzdy cerstvo, nie z cache
@@ -1385,9 +1913,17 @@ class HeartStats:
             "auto_triggers": self.auto_triggers,
             "critical_bpm": self.critical_bpm,
             "samples": self.session_count,
+            # Ako casto hodinky posielali (viz `kadencia_vzoriek`) - tri
+            # agregaty, nie krivka medzier.
+            **kadencia_vzoriek(self._all),
+            # Vypadky tepu: kolkokrat a kolko sekund spolu bola appka slepa
+            # (viz `note_dropout`). Vypadok, ktory pri zatvoreni este trva,
+            # sa zarata az po tuto chvilu.
+            "dropouts": self.dropouts,
+            "blind_s": round(self.blind_seconds(), 1),
             # nove metriky z cisteho BPM (viz hlavicka modulu)
             "baseline_bpm": int(round(base)) if base else None,
-            "zone_seconds": {z: round(s, 1) for z, s in self.zone_seconds.items()},
+            "zone_seconds": {z: round(s, 1) for z, s in self._zony_do_suhrnu().items()},
             "hrr_bpm": hrr_headline(events),
             "hrr_events": len(events),
             "hrpi": persistence_index(self._all),
@@ -1429,16 +1965,15 @@ CONTEXT_DIANIE = ("call", "laugh", "grind", "competitive", "chill")
 # Co mal hrac V SEBE. Oddelene zamerne: prve su udalosti behom vecera,
 # druhe je stav, v ktorom vecer zacal - a posuvaju uplne ine veci.
 #
-# PRECO TO VOBEC JE: kofein, alkohol ci nikotin pred hranim mozu posunut
-# pokojovu zakladnu nad beznu hodnotu.
-# V datach o tom nebolo NIC. Keby sa takto nazbieralo tridsat vecerov,
+# PRECO TO VOBEC JE: kofein, nikotin ci alkohol pred hranim posunu pokojovu
+# zakladnu o kus hore - a v datach by o tom inak nebolo NIC. Keby sa takto nazbieralo tridsat vecerov,
 # rozptyl by sa nedal vysvetlit a nedal by sa ani odpocitat.
 #
 # Zadanie 2.1b, B2: "kazda premenna, ktora vysvetluje rozptyl, znizuje n."
 # Stimulanty su pravdepodobne najvacsi vysvetlitelny zdroj rozptylu v tomto
 # meraní - vacsi nez rozpravanie, kvoli ktoremu cely dialog vznikol.
-# `supplement` je zamerne vseobecny, nie nazov znacky: appka ide do deviatich
-# jazykov a konkretny pre-workout by inde nikomu nic nepovedal. Pre data je
+# `supplement` je zamerne vseobecny, nie nazov znacky: appka ide do vsetkych
+# svojich jazykov a konkretny pre-workout by inde nikomu nic nepovedal. Pre data je
 # podstatne, ze islo o stimulant, nie ktory.
 # `food` je tu preto, ze trávenie samo dvíha tep - jedlo tesne pred hranim
 # posunie zakladnu aj bez akehokolvek stresu.
@@ -1479,6 +2014,45 @@ def normalize_activity(raw):
     return raw if raw in ACTIVITY_KINDS else None
 
 
+# SVET RELACIE (0.2, B3-worlds): "dva svety, jedno telo".
+#
+# Hra a praca maju oddelenu historiu, postrehy aj vzhlad. Kazda relacia
+# si pri OTVORENI zapise svet, v ktorom zacala (`world`, pecati ho
+# `app._open_hr_session`). Prepinac uprostred relacie meni len vzhlad a
+# pohlady - bezuca relacia sa neprestitkuje.
+#
+# `activity` ostava tym, cim bolo: odpovedou hraca v dotazniku. Uklada sa
+# len ked na nu naozaj klikol, takze sa neskor da poctivo rozlisit "prislo
+# z prepinaca" od "hrac to potvrdil". Ked odpovedal, jeho slovo vyhrava.
+#
+# Relacie bez stitku (starsie verzie appky, preskoceny dotaznik) patria do
+# Hry PEVNYM pravidlom - nie podla "hlavneho sveta", inak by sa pri jeho
+# zmene presuvali medzi svetmi. Subor sa kvoli tomu nikdy neprepisuje.
+WORLD_DEFAULT = "play"
+
+
+def session_world(session):
+    """Do ktoreho sveta relacia patri: 'play' alebo 'work'.
+
+    Poradie: odpoved v dotazniku (`activity`) > svet zo startu relacie
+    (`world`) > Hra. Pokazena hodnota sa sprava ako chybajuca.
+    """
+    if not isinstance(session, dict):
+        return WORLD_DEFAULT
+    return (normalize_activity(session.get("activity"))
+            or normalize_activity(session.get("world"))
+            or WORLD_DEFAULT)
+
+
+def sessions_in_world(sessions, world):
+    """Len relacie daneho sveta, v povodnom poradi. Ne-dicty vypadnu.
+
+    Neznamy svet sa berie ako Hra (rovnako ako `session_world`)."""
+    svet = normalize_activity(world) or WORLD_DEFAULT
+    return [s for s in (sessions or [])
+            if isinstance(s, dict) and session_world(s) == svet]
+
+
 # Vlastna poznamka hraca k veceru. Volny text, bez interpretacie - appka ju
 # len drzi a ukaze. Strop dlzky, aby jeden zaznam nenafukol subor.
 NOTE_MAX = 280
@@ -1498,7 +2072,7 @@ def normalize_note(raw):
 # SUBJEKTIVNA VRSTVA (vyskum 2026-09-22): to, co TEP NEVIDI.
 # Aktivacia (tep) a valencia (dobre/zle) su dve NEZAVISLE osi. Hlavna
 # evaluacna metrika je ROZCHOD merane x citene - preto sa subjektivne osi
-# drzia ako ordinalne id (ako CONTEXT_IDS, prezije 9 jazykov), nie volny text.
+# drzia ako ordinalne id (ako CONTEXT_IDS, prezije vsetky jazyky), nie volny text.
 # Vsade plati None != "nevybrate" - None = hrac sa nevyjadril.
 # --------------------------------------------------------------------------
 
@@ -1531,7 +2105,7 @@ def normalize_valence(raw):
 
 # Telo pocas spicky - ZAZITKOVE dlazdice, viacvyber. NIE symptomovy skrining
 # (ziadna zavaznost, ziadne trvanie, ziadny kardialny termin) - ramcuje sa
-# "ako to bolo v tele", nie "mal si nevolnost?". Id anglicke kvoli 9 jazykom.
+# "ako to bolo v tele", nie "mal si nevolnost?". Id anglicke kvoli vsetkym jazykom.
 BODY_PEAK_IDS = ("ok", "flow", "wired", "tense", "sick")
 
 
@@ -1544,9 +2118,12 @@ def normalize_body_peak(raw):
 
 
 # Verdikt o hlaske - priama kontrola, ci cue robi spravnu vec. landed/unneeded/
-# disruptive ked cue ZAZNEL; missed = "bola chvila, ked mala a mlcala". None =
-# nevyjadril sa / neaplikovatelne.
-CUE_VERDICTS = ("landed", "unneeded", "disruptive", "missed")
+# disruptive/agitated ked cue ZAZNEL; missed = "bola chvila, ked mala a
+# mlcala". None = nevyjadril sa / neaplikovatelne.
+# `agitated` ("rozhodila ma", 0.2) oddeluje "vytocila ma" (vzrusenie, presne
+# obava zo spatnej vazby) od "rusila" (pozornost). Obe posuvaju rebrik hlasky
+# o stupen nizsie (`rebrik.py`).
+CUE_VERDICTS = ("landed", "unneeded", "disruptive", "agitated", "missed")
 
 
 def normalize_cue_verdict(raw):
@@ -1730,7 +2307,18 @@ CSV_COLUMNS = ("date", "start", "duration_min", "avg_bpm", "min_bpm", "max_bpm",
                # evaluacia = ROZCHOD merane (tep) x citene (tieto). `confounded`
                # = ci sa relacia NEucila do zakladne (alkohol/choroba/namaha).
                "sleep", "felt_load", "valence", "body_peak", "cue_verdict",
-               "confounded")
+               "confounded",
+               # Pokrytie signalu (0.2): aku cast relacie naozaj chodil tep
+               # (`pokrytie_signalu`). Na KONCI, nie vedla pasiem, z ktorych
+               # sa rata: stlpce pred nim tak ostavaju na svojich miestach
+               # pre kazdeho, kto si export uz spracuva podla poradia.
+               "signal",
+               # 0.2, tiez na konci z toho isteho dovodu: svet relacie
+               # (`session_world` - ten isty, podla ktoreho ju triedi
+               # Historia), kolkokrat tep vypadol a kolko sekund bola appka
+               # slepa, a kolko pauz vo vstupe za relaciu videla (brana
+               # hlasky na ne caka). Stare relacie ich nemaju - prazdna bunka.
+               "world", "dropouts", "blind_s", "pause_episodes")
 
 
 def _csv_cell(value, decimals=1):
@@ -1769,6 +2357,32 @@ def _csv_hud_seen(summary):
         return ""
 
 
+def _csv_signal(summary):
+    """Pokrytie signalu v celych percentach ("97%"), alebo prazdno, ked sa
+    nevie (relacia bez pasiem). Ten isty tvar ako `hud_seen`."""
+    pokrytie = pokrytie_signalu(summary)
+    if pokrytie is None:
+        return ""
+    return f"{round(pokrytie * 100)}%"
+
+
+def _csv_pocet(value):
+    """Nezaporny pocet (vypadky, pauzy) ako cele cislo, alebo prazdno, ked
+    ho relacia nema alebo je pokazeny (import, rucna uprava)."""
+    v = _cislo(value)
+    if v is None or v < 0:
+        return ""
+    return str(int(v))
+
+
+def _csv_sekundy(value):
+    """Nezaporne sekundy s desatinnou ciarkou, alebo prazdno."""
+    v = _cislo(value)
+    if v is None or v < 0:
+        return ""
+    return _csv_cell(v)
+
+
 def _csv_note(note):
     """Volna poznamka do bunky. `;` je oddelovac stlpcov a novy riadok rozbije
     riadok CSV - oboje sa nahradi, aby jedna poznamka nerozhodila tabulku."""
@@ -1798,7 +2412,8 @@ def session_row(summary):
         _csv_cell(summary.get("max_bpm")),
         _csv_cell(summary.get("baseline_bpm")),
         _csv_cell(minutes(summary.get("time_over_s"))),
-        _csv_cell(summary.get("auto_triggers", summary.get("triggers"))),
+        # To iste cislo ako tabulka, detail aj graf Historie.
+        _csv_cell(hlasky_relacie(summary)),
         _csv_cell(summary.get("peak_stress")),
         _csv_cell(summary.get("hrr_bpm")),
         _csv_cell(summary.get("hrpi")),
@@ -1828,6 +2443,11 @@ def session_row(summary):
         _csv_context(normalize_body_peak(summary.get("body_peak"))),
         normalize_cue_verdict(summary.get("cue_verdict")) or "",
         "áno" if je_confounded(summary) else "",
+        _csv_signal(summary),
+        session_world(summary),
+        _csv_pocet(summary.get("dropouts")),
+        _csv_sekundy(summary.get("blind_s")),
+        _csv_pocet(summary.get("pause_episodes")),
     ]
 
 

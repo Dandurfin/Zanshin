@@ -7,7 +7,7 @@ relaciami, ktore z jednej relacie vidiet nie je:
 
   * pokojova zakladna stupa/klesa tyzden po tyzdni,
   * zotavenie tepu (HRR) sa zlepsuje/zhorsuje,
-  * kedy v relacii prichadza vacsina spusteni dychania (prva hodina vs.
+  * kedy v relacii chodia spustenia dychania hustejsie (prva hodina vs.
     az po dvoch hodinach),
   * cas nad hranicou rastie.
 
@@ -16,11 +16,13 @@ Kazdy vysledok je (kluc do i18n, parametre, ton). Texty su formulovane ako
 cisto datovy: ziadny Tk, ziadna siet, ziadne I/O okrem save/load JSON,
 takze sa da spustit v pozadi (threading) aj testovat priamo.
 
-Prahy su zamerne konzervativne (aspon 3 relacie, rozdiel aspon 4 BPM),
-aby appka nehlasila "trend" z dvoch nahodnych vecerov.
+Prahy su zamerne konzervativne (aspon 3 relacie, rozdiel aspon 4 BPM,
+spustenia aspon 2x hustejsie a nie nahodou), aby appka nehlasila "trend"
+z dvoch nahodnych vecerov.
 """
 
 import json
+import math
 import os
 import time
 
@@ -30,10 +32,30 @@ MIN_SESSIONS = 3
 BASELINE_DELTA_BPM = 4.0       # od kolkych BPM je zmena zakladne "trend"
 HRR_DELTA_BPM = 4.0
 WEEK_S = 7 * 86400.0
-EARLY_SHARE = 0.66             # podiel spusteni v prvej hodine = "skoro"
-LATE_SHARE = 0.5               # podiel spusteni po 2 h = "neskoro"
 LONG_SESSION_S = 90 * 60.0
 VERY_LONG_SESSION_S = 150 * 60.0
+
+# Kedy prichadzaju spustenia (postreh 3). Porovnava sa HUSTOTA - kolko
+# spusteni pride na cas relacie v okne - nie ich podiel. (Cas relacie, nie
+# cas hrania: `duration_s` bezi od zapnutia senzora, aj cez menu a AFK.)
+# Podiel sa myli uz na rovnomernych spusteniach: v 90-min relacii je prva hodina dve tretiny
+# casu, takze aj uplne rovnomerne spustenia davaju ~67 % "v prvej hodine"
+# a stary prah 66 % hlasil vzor, ktory tam nebol. V 4-5 h relaciach to
+# iste robilo "po dvoch hodinach" (prah 50 %) - a to s tonom "watch".
+EARLY_WINDOW_S = 3600.0        # "v prvej hodine"
+LATE_FROM_S = 7200.0           # "az po dvoch hodinach"
+RATE_RATIO = 2.0               # okno musi byt aspon 2x hustejsie nez zvysok
+MIN_TRIGGERS = 6               # menej spusteni v porovnani = vecer, nie vzor
+# Ako velmi moze byt nepomer nahoda. Pri par spusteniach je aj 2x nahoda:
+# simulacia rovnomernych spusteni (3-5 relacii po 90-300 min, 1-3 za
+# hodinu, s odstupom a stropom z trigger.py) dala so samotnym "2x a aspon
+# 6 spusteni" hlasku v 4-18 % pripadov, s touto poistkou okolo 2 % (aj ked
+# su napate vecery kratsie alebo dlhsie nez pokojne - viz ocakavanie po
+# relaciach v analyze()).
+# Cena: z troch 90-min relacii sa skutocny rozbeh ukaze malokedy (po
+# prvej hodine je v nich len pol hodiny na porovnanie) - postreh pride
+# az s dalsimi relaciami. Radsej ticho nez plany poplach.
+CHANCE_P = 0.05
 
 # Kolko POSLEDNYCH relacii sa pyta pri odporucaniach o tichu. Tri su
 # minimum, z ktoreho sa da povedat "deje sa to opakovane" a nie "mal si
@@ -54,6 +76,31 @@ TONE_WATCH = "watch"
 def _mean(values):
     values = [float(v) for v in values if v is not None]
     return sum(values) / len(values) if values else None
+
+
+def _zadrzanych(sessions):
+    """Kolko natiahnuti appka v tychto relaciach SAMA zrusila
+    (`cues_withheld`, 0.2 stress-gate). Stare relacie ho nemaju - 0;
+    pokazena hodnota sa nerata."""
+    spolu = 0.0
+    for s in sessions:
+        zadrzane = s.get("cues_withheld")
+        if not isinstance(zadrzane, dict):
+            continue
+        for v in zadrzane.values():
+            try:
+                spolu += float(v or 0)
+            except (TypeError, ValueError):
+                pass
+    return spolu
+
+
+def _cislo_or_0(hodnota):
+    """Cislo zo suhrnu relacie; chybajuce alebo pokazene = 0."""
+    try:
+        return float(hodnota or 0)
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def _valid(sessions):
@@ -82,6 +129,41 @@ def _valid(sessions):
 
 def _insight(key, tone=TONE_INFO, **params):
     return {"key": key, "tone": tone, "params": params}
+
+
+def _binom_tail(k, n, p):
+    """P(X >= k) pre X ~ Bin(n, p). V logaritmoch, aby to nepretieklo ani
+    pri tisickach spusteni za roky hrania (math.comb * float by padol)."""
+    lp, lq = math.log(p), math.log1p(-p)
+    ln_n = math.lgamma(n + 1)
+    return sum(math.exp(ln_n - math.lgamma(i + 1) - math.lgamma(n - i + 1)
+                        + i * lp + (n - i) * lq)
+               for i in range(k, n + 1))
+
+
+def _denser(inside, outside, t_inside, t_outside):
+    """Chodia spustenia v okne ZRETELNE hustejsie nez mimo neho?
+
+    `inside`/`outside` su pocty spusteni, `t_inside`/`t_outside` kolko by
+    ich v okne a mimo neho bolo, keby v kazdej relacii chodili rovnomerne
+    (sucet podielov okna cez spustenia). Platit musi oboje:
+      * v okne je ich aspon RATE_RATIO-krat viac oproti ocakavaniu nez mimo
+        neho - aby to bol rozdiel, ktory stoji za vetu;
+      * pri rovnomernom rozlozeni by taky nepomer vznikol nahodou nanajvys
+        s pravdepodobnostou CHANCE_P. Binomicky chvost s priemernym podielom
+        je pri roznych dlzkach relacii opatrnejsi nez presny (Hoeffding
+        1956), takze chyba ide smerom k tichu.
+    """
+    n = inside + outside
+    if n < MIN_TRIGGERS or t_inside <= 0 or t_outside <= 0:
+        return False
+    # inside/t_inside >= RATE_RATIO * outside/t_outside, bez delenia nulou
+    if inside * t_outside < RATE_RATIO * outside * t_inside:
+        return False
+    p = t_inside / (t_inside + t_outside)
+    if not 0.0 < p < 1.0:       # pokazene trvanie (inf/nan) - radsej ticho
+        return False
+    return _binom_tail(inside, n, p) <= CHANCE_P
 
 
 def _split_recent(sessions, now, field):
@@ -131,30 +213,57 @@ def analyze(sessions, now=None):
             flagged = True
 
     # 3. kedy prichadzaju spustenia dychania
-    early = late = total = 0
+    #
+    # "Skoro" = prva hodina proti zvysku, v relaciach od 90 min. "Neskoro" =
+    # po dvoch hodinach proti prvym dvom, len v relaciach od 150 min - len
+    # tam je po dvoch hodinach aspon pol hodiny na porovnanie.
+    #
+    # Ocakavanie sa pocita PO RELACIACH, nie zo suctu casov: kazde spustenie
+    # prinesie podiel okna vo SVOJEJ relacii. So suctom casov by napata
+    # 90-min relacia vedla pokojnych 5-h relacii vyzerala ako "prva hodina
+    # je hustejsia", hoci v ziadnej relacii nebola (Simpsonov paradox).
+    early = after_early = 0
+    t_early = t_after_early = 0.0
+    late = before_late = 0
+    t_late = t_before_late = 0.0
     for s in valid:
         offsets = s.get("trigger_offsets_s") or []
         dur = float(s.get("duration_s", 0))
-        if dur < LONG_SESSION_S:
+        # nan/inf: preskocit len tuto relaciu, nie umlcat postreh navzdy
+        if not math.isfinite(dur) or dur < LONG_SESSION_S:
             continue
+        very_long = dur >= VERY_LONG_SESSION_S
+        p_early = EARLY_WINDOW_S / dur
+        p_late = (dur - LATE_FROM_S) / dur
         for off in offsets:
             try:
                 off = float(off)
             except (TypeError, ValueError):
                 continue
-            total += 1
-            if off <= 3600.0:
+            t_early += p_early
+            t_after_early += 1.0 - p_early
+            if very_long:
+                t_late += p_late
+                t_before_late += 1.0 - p_late
+            if off <= EARLY_WINDOW_S:
                 early += 1
-            if dur >= VERY_LONG_SESSION_S and off >= 7200.0:
-                late += 1
-    if total >= 4:
-        if early / total >= EARLY_SHARE:
-            insights.append(_insight("triggers_early", TONE_INFO,
-                                     share=int(round(100.0 * early / total))))
-        elif late / total >= LATE_SHARE:
-            insights.append(_insight("triggers_late", TONE_WATCH,
-                                     share=int(round(100.0 * late / total))))
-            flagged = True
+            else:
+                after_early += 1
+            if very_long:
+                if off >= LATE_FROM_S:
+                    late += 1
+                else:
+                    before_late += 1
+    # {share} ostava obycajny podiel spusteni v okne - veta "X % spusteni
+    # prislo v prvej hodine" je doslova pravdiva; to, ze je to VIAC, nez
+    # by zodpovedalo casu, overil _denser.
+    if _denser(early, after_early, t_early, t_after_early):
+        insights.append(_insight("triggers_early", TONE_INFO,
+                                 share=int(round(100.0 * early / (early + after_early)))))
+    elif _denser(late, before_late, t_late, t_before_late):
+        insights.append(_insight("triggers_late", TONE_WATCH,
+                                 share=int(round(100.0 * late / (late + before_late)))))
+        flagged = True
 
     # 4. cas nad hranicou rastie (podiel relacie)
     def over_share(s):
@@ -189,11 +298,29 @@ def analyze(sessions, now=None):
             insights.append(_insight("cue_dropouts", TONE_WATCH,
                                      n=int(round(vypadkov))))
             flagged = True
+        elif hlasok == 0 and any(s.get("cue_rung") == "pause" for s in posledne):
+            # 0.2 (rebrik hlasky): appka mala hlasky sama vypnute - "nemala
+            # som sa preco ozvat", "len na chvilu" ani "nic som si nevsimla"
+            # by nebola pravda. Preco, povie veta v Historii a dotaznik.
+            flagged = True
+        elif hlasok == 0 and any(_cislo_or_0(s.get("snoozed_s")) > 0
+                                 for s in posledne):
+            # 24. 9.: "teraz nie" relaciu uz nezatvara. Kym platilo, automat
+            # spal a `above_runs` ani `longest_above_s` ten cas nevidia -
+            # "nedostala sa nad hranicu" / "len na chvilu" by vysvetlovali
+            # ticho, ktore si hrac vybral sam. Co sa stalo, povie dotaznik.
+            flagged = True
         elif hlasok == 0 and behov == 0:
             # Telo sa ani raz nedostalo nad prah - politika nepomoze,
             # hranica tepu je na hraca nastavena privysoko.
             insights.append(_insight("cue_never_above", TONE_INFO,
                                      n=len(posledne)))
+            flagged = True
+        elif hlasok == 0 and _zadrzanych(posledne) > 0:
+            # 0.2 (stress-gate): spustac sa natiahol, ale appka sama mlcala
+            # (brana, odstup). Zataz teda hore vydrzala a "len na chvilu" /
+            # "tesne" by klamalo. Radsej ziadna rada (ani "nic som si
+            # nevsimla") - co sa stalo, povie dotaznik po relacii.
             flagged = True
         elif hlasok == 0 and behov > 0:
             najdlhsi = max(float(s.get("longest_above_s") or 0) for s in posledne)
@@ -217,9 +344,15 @@ def analyze(sessions, now=None):
 # Ulozenie vysledku (aby sa nemusel pocitat pri kazdom otvoreni stranky)
 # --------------------------------------------------------------------------
 
-def save_insights(path, insights, log=None):
+def save_insights(path, insights, log=None, world=None):
+    """`world` = svet, z ktoreho relacii sa postrehy ratali (B3-worlds).
+
+    Bez neho by sa po prepnuti sveta pri starte ukazali postrehy druheho
+    sveta - appka ich preto pri nezhode zahodi a prepocita (viz app.py)."""
     try:
         payload = {"computed_at": time.time(), "insights": list(insights or [])}
+        if world is not None:
+            payload["world"] = world
         tmp = path + ".tmp"
         with open(tmp, "w", encoding="utf-8") as fh:
             json.dump(payload, fh, ensure_ascii=False, indent=2)
@@ -239,4 +372,4 @@ def load_insights(path):
             return data
     except Exception:
         pass
-    return {"computed_at": None, "insights": []}
+    return {"computed_at": None, "insights": [], "world": None}

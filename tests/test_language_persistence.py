@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Zvoleny jazyk musi prezit restart appky - vsetkych devat, nie tri.
+"""Zvoleny jazyk musi prezit restart appky - vsetkych jedenast, nie tri.
 
 Pozadie chyby: `DandurfApp.load_settings()` porovnavala ulozeny jazyk voci
 rucne prepisanej trojici `(LANG_SK, LANG_EN, LANG_JA)` z cias, ked appka
@@ -12,7 +12,7 @@ dandurf_settings.json - volba hraca bola nenavratne prec.
 Overene naostro pred opravou: zh, ru, es, de, fr, pt sa stratili vsetky.
 
 Testy su staticke (citaju zdrojak), aby bezali aj bez Tk - realny beh
-appky pre vsetkych 9 jazykov je v manualnom harnesse.
+appky pre vsetky jazyky je v manualnom harnesse.
 """
 import os
 import re
@@ -30,11 +30,11 @@ def _read(name):
         return fh.read()
 
 
-def test_i18n_pozna_devat_jazykov():
+def test_i18n_pozna_jedenast_jazykov():
     """Poistka pre zvysok suboru: ak jazyk pribudne/ubudne, uprav aj testy."""
-    assert len(i18n.LANGUAGES) == 9, (
-        f"i18n.LANGUAGES ma {len(i18n.LANGUAGES)} jazykov, cakalo sa 9")
-    for code in ("sk", "en", "ja", "zh", "ru", "es", "de", "fr", "pt"):
+    assert len(i18n.LANGUAGES) == 11, (
+        f"i18n.LANGUAGES ma {len(i18n.LANGUAGES)} jazykov, cakalo sa 11")
+    for code in ("sk", "en", "ja", "zh", "ru", "es", "de", "fr", "pt", "cs", "bg"):
         assert code in i18n.LANGUAGES
 
 

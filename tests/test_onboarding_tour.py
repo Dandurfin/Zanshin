@@ -7,26 +7,37 @@ def _read(name):
     with open(os.path.join(here,name),encoding="utf-8-sig") as fh: return fh.read()
 
 def test_onboarding_newline_bug_is_fixed():
-    """Popisy tem sa musia zalamovat cez skutocny \\n, nie viacnasobne
-    escapovany \\\\n (to bola vizualna chyba - text '\\nPre nocne...')."""
+    """Popisy svetov (a tem pod nimi) sa musia zalamovat cez skutocny \\n,
+    nie viacnasobne escapovany \\\\n (to bola vizualna chyba - text
+    '\\nPre nocne...'). Stare `onboarding.zen/modern.*` nikto necital a
+    zmazali sa; ich miesto v onboardingu maju `ob.world.*.desc`."""
     import i18n
-    for k in ("onboarding.zen.desc","onboarding.modern.desc"):
+    for k in ("ob.world.play.desc","ob.world.work.desc"):
         v=i18n.STRINGS[k]["sk"]
         assert "\n" in v, f"{k} ma mat zalomenie"
         assert "\\n" not in v.replace("\n",""), f"{k} ma pokazeny escape"
 
-def test_onboarding_is_four_steps():
+def test_onboarding_is_five_steps():
+    """Od 0.2 piaty krok: ako sa ma appka ozvat (styl hlasky)."""
     ud=_read("ui_dialogs.py")
     w=ud[ud.index("class OnboardingWizard"):]
-    assert "STEP_COUNT = 4" in w
-    for step in ("_step1","_step2","_step3","_step4"):
+    assert "STEP_COUNT = 5" in w
+    for step in ("_step1","_step2","_step3","_step4","_step5"):
         assert f"def {step}(" in w, f"chyba {step}"
+    # kicker kazdeho kroku hovori "z 5"; stare "zo 4" neprezilo v ziadnom
+    # jazyku (jeho _tr7 riadky su zmazane, novy preklad je z fazy jazykov)
+    import i18n
+    for n in range(1, 6):
+        kicker = i18n.STRINGS[f"ob.step{n}.kicker"]
+        assert f"{n} z 5" in kicker["sk"] and f"{n} of 5" in kicker["en"]
+        assert all("5" in v for v in kicker.values()), (n, kicker)
 
 def test_onboarding_keeps_app_interface():
     """app.py cita .confirmed/.choice/.volume_value/.diagnostics - musia zostat."""
     ud=_read("ui_dialogs.py")
     w=ud[ud.index("class OnboardingWizard"):]
-    for attr in ("self.confirmed","self.choice","self.volume_value","self.diagnostics","self.wants_pairing"):
+    for attr in ("self.confirmed","self.choice","self.volume_value","self.diagnostics","self.wants_pairing",
+                 "self.cue_style"):
         assert attr in w, f"chyba {attr}"
 
 def test_onboarding_has_watch_step():

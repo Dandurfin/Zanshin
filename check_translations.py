@@ -47,7 +47,7 @@ if missing_lang:
         print(f"  {k}: chyba {', '.join(langs)}")
     print(f"  ... spolu {len(missing_lang)} klucov s chybajucim jazykom")
 else:
-    print("  ziadne - kazdy kluc ma vsetkych 9 jazykov")
+    print(f"  ziadne - kazdy kluc ma vsetkych {len(LANGS)} jazykov")
 
 print("\n== Nezhodne placeholdery ({meno}) ==")
 if ph_mismatch:

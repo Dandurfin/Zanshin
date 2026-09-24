@@ -1,12 +1,17 @@
 """Zabudovana kniznica kratkych meditacnych / herných SFX zvukov.
 
 Kazdy vizualny rezim (Zen Dojo / Modern Gamer) ma vlastnu sadu 4 zvukov.
-Pri prvom starte `ensure_assets()`:
-  1. Pre zvuky, kde mame overeny stabilny CC0 zdroj (Kenney Interface
-     Sounds, balicek na GitHube), sa skusi stiahnutie (kratky timeout).
+Pri prvom starte `ensure_assets()` pre kazdy chybajuci zvuk:
+  0. V nainstalovanej appke (sys.frozen) ho skopiruje z pribaleneho
+     `assets/sounds` (sys._MEIPASS) - build ich nesie vsetkych osem, takze
+     nainstalovana appka na siet kvoli zvukom nechodi vobec.
+  1. Az ked pribaleny chyba: pre zvuky, kde mame overeny stabilny CC0 zdroj
+     (Kenney Interface Sounds, balicek na GitHube), sa skusi stiahnutie
+     (kratky timeout, overeny SHA-256).
   2. Vsetko ostatne - a hlavne organicke/meditativne tony, pre ktore
      ziadny spolahlivy volne dostupny subor neexistuje - sa vygeneruje
      lokalne cez numpy priamo do .wav (ziadna zavislost na sieti).
+Pri behu zo zdrojakov su zvuky rovno v repozitari (assets/sounds).
 
 Vysledne .wav su kratke (0.35 - 1.2 s), bez ticha na zaciatku, mono
 16-bit PCM 44100 Hz - hotove na okamzite neblokujuce prehratie.
@@ -14,6 +19,8 @@ Vysledne .wav su kratke (0.35 - 1.2 s), bez ticha na zaciatku, mono
 
 import hashlib
 import os
+import shutil
+import sys
 import urllib.request
 import wave
 
@@ -301,7 +308,7 @@ def default_sound_for_slot_index(pack, index):
 
 
 def _try_download(url, path, expected_sha256=None, timeout=4.0):
-    req = urllib.request.Request(url, headers={"User-Agent": "Zanshin/0.1"})
+    req = urllib.request.Request(url, headers={"User-Agent": "Zanshin/0.2"})
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         data = resp.read()
     if len(data) < 200 or data[:4] != b"RIFF":
@@ -323,6 +330,41 @@ def _try_download(url, path, expected_sha256=None, timeout=4.0):
     os.replace(tmp, path)
 
 
+def _bundled_path(pack, info):
+    """Zvuk pribaleny v nainstalovanej appke, alebo None.
+
+    PyInstaller dava priecinok `assets` (Dandurf.spec) do `sys._MEIPASS`,
+    ale SOUNDS_DIR je v nainstalovanej appke %APPDATA%\\Zanshin - bez tejto
+    kopie by appka pribalene subory nikdy nepouzila a dva z nich by sa
+    zbytocne stahovali z GitHubu (su to presne tie iste, s tym istym hashom).
+    """
+    if not getattr(sys, "frozen", False):
+        return None
+    base = getattr(sys, "_MEIPASS", None)
+    if not base:
+        return None
+    return os.path.join(base, "assets", "sounds", pack, info["file"])
+
+
+def _try_copy_bundled(pack, info, path):
+    """Skopiruje pribaleny zvuk na `path`. True = hotovo, False = nie je."""
+    src = _bundled_path(pack, info)
+    if not src:
+        return False
+    try:
+        if os.path.getsize(src) <= 0:
+            return False
+    except OSError:
+        return False
+    if os.path.normcase(os.path.abspath(src)) == os.path.normcase(os.path.abspath(path)):
+        return False
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = f"{path}.tmp"
+    shutil.copyfile(src, tmp)
+    os.replace(tmp, path)
+    return True
+
+
 def _all_sound_paths():
     return [os.path.join(SOUNDS_DIR, pack, info["file"])
             for pack, sounds in SOUND_LIBRARY.items() for info in sounds.values()]
@@ -342,9 +384,10 @@ def missing_count():
 
 
 def ensure_assets(log=None, progress=None):
-    """Zaisti, ze vsetky bundled SFX existuju - stiahne alebo vygeneruje.
+    """Zaisti, ze vsetky bundled SFX existuju - najprv z pribalenych
+    suborov (nainstalovana appka), az potom stiahne alebo vygeneruje.
 
-    Blokuje (siet + numpy synteza) - vola sa z pomocneho vlakna pri starte.
+    Blokuje (kopia / siet / numpy synteza) - vola sa z pomocneho vlakna.
     `progress(done, total)` sa vola po kazdom vybavenom subore (aj preskocenom),
     aby volajuci mohol zobrazit priebeh (napr. v Onboarding sprievodcovi).
     """
@@ -375,6 +418,13 @@ def ensure_assets(log=None, progress=None):
                 continue
         except OSError:
             pass
+
+        try:
+            if _try_copy_bundled(pack, info, path):
+                _progress(done)
+                continue
+        except OSError:
+            pass            # kopia zlyhala -> ako keby pribaleny nebol
 
         label = tr(info["label_key"])
         url = info.get("download_url")

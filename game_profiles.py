@@ -2,6 +2,9 @@
 toho sama prepne profil a zapne/vypne odpocuvanie. Cisto read-only:
 len periodicky vycitava zoznam beziacich procesov (psutil), nic
 nespusta, nezatvara ani do niceho nezasahuje.
+
+Bezi LEN pri zapnutom prepinaci "auto_profile_enabled" - app.py ho pri
+vypnuti zastavi, takze vtedy sa zoznam procesov necita vobec.
 """
 
 import threading
@@ -15,13 +18,21 @@ except Exception:
     PSUTIL_AVAILABLE = False
 
 
+# "bootstrapper.exe" tu uz nie je: je to vseobecne meno spustaca, pod ktorym
+# bezia aj ine programy, takze by appka mohla sama spustit pocuvanie a
+# zalozit profil "Call of Duty" pri niecom celkom inom.
 GAME_PROCESS_MAP = {
     "cod.exe": "Call of Duty",
-    "bootstrapper.exe": "Call of Duty",
     "r5apex.exe": "Apex Legends",
     "cs2.exe": "CS2",
     "valorant-win64-shipping.exe": "Valorant",
 }
+
+
+def known_games():
+    """Mena hier, ktore auto-profil pozna - pre texty v appke, aby veta o
+    starte pri hre menovala presne tie hry, ktore mapa naozaj obsahuje."""
+    return sorted(set(GAME_PROCESS_MAP.values()), key=str.lower)
 
 
 class GameProcessWatcher(threading.Thread):

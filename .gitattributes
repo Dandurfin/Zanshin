@@ -1,0 +1,10 @@
+# Text files are stored with LF endings; Git converts them on checkout
+# according to your settings. Dandurf.iss and the installer language file
+# must keep their exact bytes (LF with a BOM) - tests check the .iss.
+* text=auto
+*.wav binary
+*.png binary
+*.webp binary
+*.ico binary
+Dandurf.iss -text
+installer_lang/*.isl -text

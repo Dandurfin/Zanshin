@@ -1,24 +1,24 @@
 # -*- coding: utf-8 -*-
 #
 # Metadata .exe (Windows VERSIONINFO resource) - to, co vidno v
-# Vlastnosti -> Podrobnosti a co citaju obchody vratane Steamu.
+# Vlastnosti -> Podrobnosti.
 #
 # POZN: .exe tieto udaje DOTERAZ NEMAL - ani PyInstaller spec na ne
-# neukazoval, takze zabaleny ZanshinDojoSync.exe sa hlasil bez nazvu,
-# autora aj popisu (prazdna zalozka Podrobnosti). Pre Steam store page a
-# pre doveryhodnost voci SmartScreen je to zbytocna diera.
+# neukazoval, takze zabaleny .exe sa hlasil bez nazvu, autora aj popisu
+# (prazdna zalozka Podrobnosti). Pre doveryhodnost voci SmartScreen je
+# to zbytocna diera.
 #
 # Verziu drz v sulade s:
 #   - MyAppVersion v Dandurf.iss        (instalator)
 #   - 'app.version_short' v i18n.py     (titulna lista appky)
-#   - "Desc" v steam\app_build.vdf      (popis buildu v Steamworks)
+#   - "*Alpha X.Y" v README.md          (hlavicka na GitHube)
 #
 # filevers/prodvers musia byt 4 cisla (Windows to inak neprijme), takze
-# verzia "0.1" (alpha) je tu 0, 1, 0, 0.
+# verzia "X.Y" (alpha) je tu X, Y, 0, 0 - napr. "0.2" -> 0, 2, 0, 0.
 VSVersionInfo(
   ffi=FixedFileInfo(
-    filevers=(0, 1, 0, 0),
-    prodvers=(0, 1, 0, 0),
+    filevers=(0, 2, 0, 0),
+    prodvers=(0, 2, 0, 0),
     mask=0x3f,
     flags=0x0,
     OS=0x40004,
@@ -35,13 +35,13 @@ VSVersionInfo(
           # pracuju najspolahlivejsie.
           '040904B0',
           [StringStruct('CompanyName', 'Dandurfin'),
-           StringStruct('FileDescription', 'Zanshin - somatic cues that keep you in flow while gaming'),
-           StringStruct('FileVersion', '0.1.0.0'),
-           StringStruct('InternalName', 'ZanshinDojoSync'),
+           StringStruct('FileDescription', 'Zanshin - heart-rate companion for gamers'),
+           StringStruct('FileVersion', '0.2.0.0'),
+           StringStruct('InternalName', 'Zanshin'),
            StringStruct('LegalCopyright', 'Copyright (c) 2026 Dandurfin - GNU GPLv3'),
-           StringStruct('OriginalFilename', 'ZanshinDojoSync.exe'),
+           StringStruct('OriginalFilename', 'Zanshin.exe'),
            StringStruct('ProductName', 'Zanshin'),
-           StringStruct('ProductVersion', '0.1.0.0')])
+           StringStruct('ProductVersion', '0.2.0.0')])
       ]),
     VarFileInfo([VarStruct('Translation', [1033, 1200])])
   ]

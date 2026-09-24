@@ -2,9 +2,9 @@
 
 Dva TTS motory:
   * "edge"  - Microsoft Edge Natural (neuronove hlasy). Hlasky sa
-              generuju DOPREDU do cache v audio/tts_cache/ a pri stlaceni
-              klavesu sa uz len prehra hotovy MP3 subor - ziadna sietova
-              komunikacia ani latencia pocas hrania.
+              generuju DOPREDU do cache v audio/tts_cache/ a v hre sa uz
+              len prehra hotovy MP3 subor. Chybajucu hlasku app.py pocas
+              pocuvania negeneruje (zaznie SAPI5, dopripravi sa po hre).
   * "sapi"  - klasicke offline Windows SAPI5 hlasy.
 
 DOLEZITE poradie importov v app.py: modul `gamepad` MUSI byt naimportovany
@@ -301,8 +301,9 @@ def edge_rate_str(rate):
 class EdgeTTSCache:
     """Generuje MP3 hlasky cez edge-tts a drzi ich v audio/tts_cache/.
 
-    Cielom je, aby sa pocas hrania NIKDY nevolala siet: vsetky hlasky su
-    hotove dopredu a trigger uz len prehra lokalny subor.
+    Cielom je, aby sa pocas hrania nevolala siet: vsetky hlasky su hotove
+    dopredu a trigger uz len prehra lokalny subor. Ked niektora chyba,
+    `app._speak_text` pocas pocuvania na siet nejde a odlozi ju na potom.
     """
 
     def __init__(self, log):
@@ -327,10 +328,17 @@ class EdgeTTSCache:
 
     # ---- generovanie ----
 
-    def ensure(self, text, voice, rate):
+    def ensure(self, text, voice, rate, abort=None):
         """Vygeneruje hlasku, ak este nie je v cache. Vracia cestu alebo None.
 
         Blokuje - volaj vzdy z pomocneho vlakna, nikdy z GUI ani z listenera.
+
+        `abort` (volitelne, bez argumentov) sa pyta tesne pred odoslanim na
+        Microsoft - uz PO ziskani zamku. Vlakno pripravy moze na zamku cakat,
+        kym ine vlakno dokonci svoju hlasku; ak sa medzitym zaplo pocuvanie
+        (alebo pripravu nahradila novsia), `abort()` vrati True a nova
+        poziadavka sa nezacne - vrati sa None. Hotovy subor z cache sa vrati
+        aj tak (na siet nejde).
         """
         if not (EDGE_AVAILABLE and text and text.strip() and voice):
             return None
@@ -341,6 +349,8 @@ class EdgeTTSCache:
         with self._lock:
             if self.has(text, voice, rate):
                 return path
+            if abort is not None and abort():
+                return None
             os.makedirs(TTS_CACHE_DIR, exist_ok=True)
             tmp = f"{path}.{os.getpid()}.part"
 
@@ -366,43 +376,22 @@ class EdgeTTSCache:
 
     @staticmethod
     def list_voices():
-        """Stiahne zoznam hlasov, orezany na kuratovany vyber z
-        EDGE_FALLBACK_VOICES. Predtym sa filtrovalo len podla jazyka
-        (`Locale`), co pri zivom pripojeni na Edge znamenalo desiatky
-        hlasov na kazdy jazyk v comboboxe - teraz sa berie presne ten
-        maly, rucne vybrany zoznam (1 zenský + 1 muzsky hlas na jazyk),
-        len s cerstvym popisom (pohlavie) zo ziveho API.
-        Vracia [(short_name, popis)], alebo priamo zalohu, ak sa
-        nepodari pripojit na internet, alebo ak by naopak zo ziveho
-        katalogu nevyslo ani jedno zhodujuce sa meno (napr. Microsoft
-        medzitym premenoval/zrusil niektory z kuratovanych hlasov)."""
-        curated_order = {short: i for i, (short, _) in enumerate(EDGE_FALLBACK_VOICES)}
-        if not EDGE_AVAILABLE:
-            return list(EDGE_FALLBACK_VOICES)
-        try:
-            voices = asyncio.run(edge_tts.list_voices())
-        except Exception:
-            return list(EDGE_FALLBACK_VOICES)
+        """Vyber Edge hlasov pre combobox - pevny zoznam z
+        `EDGE_FALLBACK_VOICES`, BEZ SIETE.
 
-        gender_map = {"Female": tr("voice.female"), "Male": tr("voice.male")}
+        Predtym sa tu z Microsoftu tahal zivy katalog (pri kazdom starte,
+        kym bol zvoleny Edge - a ten je predvoleny), len aby sa orezal
+        presne na tento rucne vybrany zoznam a doplnilo prelozene slovo
+        pre pohlavie. Rod je teraz priamo v zozname a popis sa sklada cez
+        tr(), takze na Microsoft ide appka az pri priprave samotnych hlasok
+        (`ensure`). Vracia [(short_name, popis)] v poradi zoznamu."""
+        rod = {"f": tr("voice.female"), "m": tr("voice.male")}
         items = []
-        for voice in voices:
-            short = voice.get("ShortName", "")
-            if short not in curated_order:
-                continue
-            locale = voice.get("Locale", "")
-            friendly = short.split("-")[-1].replace("Neural", "")
+        for short, meno, pohlavie in EDGE_FALLBACK_VOICES:
+            locale = "-".join(short.split("-")[:2])
             premium = any(h in short for h in EDGE_PREMIUM_HINT)
-            if premium:
-                friendly = friendly.replace("Multilingual", "")
-            gender = gender_map.get(voice.get("Gender", ""), voice.get("Gender", ""))
             suffix = f", {tr('voice.most_natural')}" if premium else ""
-            items.append((short, f"{locale} · {friendly} ({gender}{suffix})"))
-
-        if not items:
-            return list(EDGE_FALLBACK_VOICES)
-
-        items.sort(key=lambda item: curated_order.get(item[0], 99))
+            items.append((short, f"{locale} · {meno} ({rod.get(pohlavie, '')}{suffix})"))
         return items
 
     # ---- udrzba ----

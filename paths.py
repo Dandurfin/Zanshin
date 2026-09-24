@@ -23,7 +23,7 @@ def data_dir():
 
     Nainstalovana (zamrazena) appka moze sediet v Program Files, kam Windows
     beznemu pouzivatelovi zapisat nedovoli - vsetko pouzivatelske preto ide
-    do %APPDATA%\\Zanshin DojoSync. Pri spusteni zo zdrojakov ostava vsetko
+    do %APPDATA%\\Zanshin. Pri spusteni zo zdrojakov ostava vsetko
     vedla main.py, aby sa vyvoj nemiesal s ostrymi datami.
     """
     if getattr(sys, "frozen", False):
@@ -65,10 +65,19 @@ def _copy_data_dir(old, target):
 
 def migrate_legacy_data(target):
     """Prenesie data od starsej prenosnej verzie (vedla .exe) a od
-    predoslej znacky appky (Dandurf) do noveho %APPDATA%\\Zanshin DojoSync."""
+    predoslych nazvov appky (LEGACY_APP_NAMES) do %APPDATA%\\Zanshin.
+
+    LEN PRI PRVOM STARTE na novom mieste (v cieli este nie su nastavenia).
+    Kopia od .exe sa predtym spustala pri KAZDOM starte a doplnala, co v
+    cieli chyba - takze "Zmazat historiu" nevydrzala: pri dalsom spusteni
+    sa stara historia spoza .exe vratila. Stare priecinky sa nepresuvaju
+    (copy2/copytree), preto ich `legacy_data_dirs` vie najst a mazanie
+    historie (`data_io.delete_plan`) aj odinstalovanie ich zmazu tiez."""
     if not getattr(sys, "frozen", False):
         return
     try:
+        if os.path.exists(os.path.join(target, "dandurf_settings.json")):
+            return
         if not os.path.isdir(target):
             base = os.environ.get("APPDATA") or os.path.expanduser("~")
             for legacy_name in LEGACY_APP_NAMES:
@@ -81,6 +90,31 @@ def migrate_legacy_data(target):
             _copy_data_dir(old, target)
     except Exception:
         pass
+
+
+def legacy_data_dirs(target=None):
+    """Stare priecinky s datami, z ktorych mohla kopirovat migracia.
+
+    %APPDATA%\\Zanshin DojoSync, %APPDATA%\\Dandurf a priecinok vedla .exe
+    (stara prenosna verzia) - len tie, co existuju, a nikdy nie samotny
+    `target`. Migracia ich len KOPIROVALA, takze v nich ostala kopia
+    historie tepu; mazanie historie ich preto musi zmazat tiez, inak by
+    "Zmazat" nechalo druhu kopiu. Pri behu zo zdrojakov sa nemigruje nic,
+    takze nie je co vracat.
+    """
+    if not getattr(sys, "frozen", False):
+        return []
+    target = os.path.normcase(os.path.abspath(target or data_dir()))
+    base = os.environ.get("APPDATA") or os.path.expanduser("~")
+    kandidati = [os.path.join(base, meno) for meno in LEGACY_APP_NAMES]
+    kandidati.append(os.path.dirname(sys.executable))
+    von = []
+    for cesta in kandidati:
+        norm = os.path.normcase(os.path.abspath(cesta))
+        if (os.path.isdir(cesta) and norm != target
+                and norm not in (os.path.normcase(os.path.abspath(x)) for x in von)):
+            von.append(cesta)
+    return von
 
 
 DATA_DIR = data_dir()

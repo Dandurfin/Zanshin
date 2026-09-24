@@ -221,17 +221,29 @@ class StatsHud:
             return
 
         stats = self.stats
+        # Hned po navrate tepu (`HeartStats.is_settling`) sa zataz rozbieha od
+        # nuly - ide sa tou istou cestou ako kalibracia (prazdny pruh,
+        # neutralna farba), len namiesto "kalibrujem" je tiche "…".
+        labels = self.labels
+        settling = self.connected and stats.is_settling
+        if settling:
+            labels = dict(labels, calibrating="…")
+        # Pasmo sa pocita RAZ, v `HeartStats.zone` (tep voci pokoju) - to
+        # iste slovo ukazuje Dnes aj kontrolka tepu. `render_hud` ho len
+        # nakresli; kalibracia, usadzanie aj odpojenie maju prednost.
         image = hud_paint.render_hud(
             self.style,
             bpm=stats.last_bpm if self.connected else None,
             stress=stats.stress,
+            zone=stats.zone,
             history=stats.series(90),
             threshold=self.critical_bpm,
             baseline=stats.baseline,
-            labels=self.labels,
+            labels=labels,
             pulse=stats.beat_phase(now) if self.connected else 0.0,
             session=self.session_text,
             connected=self.connected,
+            calibrating=self.connected and (stats.is_calibrating or settling),
             ss=self._ss)
         if self.show_triggers and self._triggers:
             row = hud_paint.render_hud_trigger_row(

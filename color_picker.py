@@ -6,8 +6,11 @@ Obsahuje:
   * SV plochu (sytost x jas) + zvislu listu odtienov,
   * hex / RGB pole,
   * vzorky z palety temy (rychla volba),
-  * PIPETKU - vyber farby priamo z obrazovky (celoobrazovkovy nahlad s lupou),
   * tlacidlo "Predvolena" - vrati farbu spat na akcent temy (color=None).
+
+Pipetka (vyber farby z obrazovky) tu ZAMERNE nie je. Musela by odfotit celu
+plochu - aj s hrou - a SAFETY.md slubuje, ze appka obsah obrazovky necita.
+Plocha, hex a vzorky na vyber farby stacia.
 
 `ask_color(app, current, title=None, allow_default=True)` vrati:
   * "#rrggbb"        - zvolena farba,
@@ -24,7 +27,7 @@ from i18n import tr
 
 try:
     import numpy as np
-    from PIL import Image, ImageTk, ImageGrab
+    from PIL import Image, ImageTk
     _PIL = True
 except Exception:                       # pragma: no cover
     _PIL = False
@@ -92,7 +95,6 @@ class ColorPickerDialog:
         r, g, b = hex_to_rgb(current)
         self._h, self._s, self._v = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
         self._sv_photo = None
-        self._grab_img = None            # snimok obrazovky pri pipetke
 
         s = 1.0
         try:
@@ -179,17 +181,13 @@ class ColorPickerDialog:
             b.pack_propagate(False)
             b.bind("<Button-1>", lambda _e, c=hexc: self._set_hex(c))
 
-        # --- akcie: pipetka + predvolena ------------------------------------
-        act = ctk.CTkFrame(body, fg_color="transparent")
-        act.pack(fill="x", pady=(14, 0))
-        ctk.CTkButton(act, text=tr("colorpick.eyedropper"), width=int(130 * s),
-                      fg_color=pal["surface_alt"], hover_color=pal["border"],
-                      text_color=pal["text"], command=self.pick_from_screen).pack(side="left")
+        # --- akcia: predvolena -----------------------------------------------
         if allow_default:
+            act = ctk.CTkFrame(body, fg_color="transparent")
+            act.pack(fill="x", pady=(14, 0))
             ctk.CTkButton(act, text=tr("colorpick.reset_default"), width=int(120 * s),
                           fg_color=pal["surface_alt"], hover_color=pal["border"],
-                          text_color=pal["text"], command=self._use_default).pack(side="left",
-                                                                                  padx=(8, 0))
+                          text_color=pal["text"], command=self._use_default).pack(side="left")
 
         # --- OK / Zrusit -----------------------------------------------------
         btns = ctk.CTkFrame(body, fg_color="transparent")
@@ -282,90 +280,6 @@ class ColorPickerDialog:
                                          g=int(round(rgb[1])), b=int(round(rgb[2]))))
         self.preview.configure(bg=hexc)
         self._cur_hex = hexc
-
-    # ---- pipetka: vyber z obrazovky ----
-    def pick_from_screen(self):
-        try:
-            import ctypes
-            u = ctypes.windll.user32
-            vx, vy = u.GetSystemMetrics(76), u.GetSystemMetrics(77)     # SM_X/YVIRTUALSCREEN
-            vw, vh = u.GetSystemMetrics(78), u.GetSystemMetrics(79)     # SM_CX/CYVIRTUALSCREEN
-        except Exception:
-            vx = vy = 0
-            vw = self.top.winfo_screenwidth(); vh = self.top.winfo_screenheight()
-        try:
-            self._grab_img = ImageGrab.grab(bbox=(vx, vy, vx + vw, vy + vh),
-                                            all_screens=True).convert("RGB")
-        except Exception:
-            return
-
-        self.top.withdraw()
-        ov = None
-
-        def finish(_e=None):
-            # Zavri prekrytie a VZDY vrat hlavny dialog spat - inak by pri
-            # zlyhani ostalo modalne prekrytie bez dialogu a appka by sa
-            # zasekla (dialog je len schovany, wait_window by necakalo darmo).
-            try:
-                if ov is not None:
-                    ov.grab_release(); ov.destroy()
-            except Exception:
-                pass
-            self._grab_img = None     # nedrz plochu (desiatky MB) po zatvoreni
-            self._eye_photo = None
-            try:
-                self.top.deiconify(); self.top.grab_set(); self.top.lift()
-            except Exception:
-                pass
-
-        try:
-            ov = tk.Toplevel(self.app.root)
-            ui_kit.priprav_popup(ov)
-            ov.overrideredirect(True)
-            ov.geometry(f"{vw}x{vh}+{vx}+{vy}")
-            ov.attributes("-topmost", True)
-            # Escape HNED, este pred stavbou obrazka - keby nizsie nieco
-            # zlyhalo (velka plocha, malo pamate), da sa prekrytie zavriet.
-            ov.bind("<Escape>", finish)
-            try:
-                ov.grab_set()
-            except Exception:
-                pass
-            cv = tk.Canvas(ov, width=vw, height=vh, highlightthickness=0, bd=0,
-                           cursor="crosshair")
-            cv.pack(fill="both", expand=True)
-            self._eye_photo = ImageTk.PhotoImage(self._grab_img)
-            cv.create_image(0, 0, anchor="nw", image=self._eye_photo)
-            loupe = cv.create_rectangle(0, 0, 0, 0, outline="#ffffff", width=2, state="hidden")
-            chip = cv.create_rectangle(0, 0, 0, 0, outline="#000000", width=1, state="hidden")
-            txt = cv.create_text(0, 0, text="", fill="#ffffff", font=("Consolas", 11, "bold"),
-                                 anchor="nw", state="hidden")
-
-            def at(ex, ey):
-                ix = min(vw - 1, max(0, ex)); iy = min(vh - 1, max(0, ey))
-                return self._grab_img.getpixel((ix, iy))
-
-            def motion(e):
-                col = rgb_to_hex(at(e.x, e.y))
-                box = 26
-                cx = e.x + 18 if e.x < vw - 90 else e.x - 18 - box
-                cy = e.y + 18 if e.y < vh - 60 else e.y - 18 - box
-                cv.coords(chip, cx, cy, cx + box, cy + box)
-                cv.itemconfigure(chip, fill=col, state="normal")
-                cv.coords(txt, cx + box + 6, cy + 4)
-                cv.itemconfigure(txt, text=col.upper(), state="normal")
-                cv.coords(loupe, e.x - 10, e.y - 10, e.x + 10, e.y + 10)
-                cv.itemconfigure(loupe, state="normal")
-
-            def pick(e):
-                col = rgb_to_hex(at(e.x, e.y))
-                finish(); self._set_hex(col)
-
-            cv.bind("<Motion>", motion)
-            cv.bind("<Button-1>", pick)
-            ov.focus_force()
-        except Exception:
-            finish()      # cokolvek pri stavbe zlyha -> nezasekni appku
 
     # ---- vysledky ----
     def _use_default(self):

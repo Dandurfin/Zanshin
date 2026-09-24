@@ -159,15 +159,21 @@ class HeartRateMonitor:
     # 3 -> 12 PO TESTOVANOM VECERI 18. 9.
     # Toto cislo nie je len o indikatore v okne. `app._apply_hr_status`
     # na "disconnected" vola `_suspend_cue_trigger(A_TEP_VYPADOL)` a ten v
-    # `trigger.suspend()` VYNULUJE `_above_since`. Kedze natiahnutie
-    # vyzaduje SUVISLE `stress_hold_s` (45 s), kazdy taky vypadok zacal
-    # 45-sekundovy odpocet odznova.
+    # `trigger.suspend()` zahodi cely nazbierany cas nad prahom (vtedy
+    # SUVISLY usek, od 19. 9. aj kumulativne okno), takze kazdy taky vypadok
+    # zacina 45-sekundovy odpocet odznova.
     #
     # Pri troch sekundach na to stacil bezny jitter domacej Wi-Fi: hodinky
-    # posielaju v priemere kazdych ~1,5 s (1405 vzoriek za 2136 s z relacie
+    # posielali v priemere kazdych ~1,5 s (1405 vzoriek za 2136 s z relacie
     # 17. 9.), takze 3 s su len dvojnasobok priemernej medzery - jeden
     # strateny paket a odpocet je prec. V CSV z 18. 9. to vidno ako relaciu
     # 18:22 (12,2 min, 0,3 min nad hranicou) s NULOU hlasok.
+    #
+    # Kadencia sa ale meni: od 20. 9. chodi tep kazdych ~2,9 s (v OBS sa
+    # strieda s krokmi), takze jeden strateny paket je uz medzera ~5,6 s.
+    # Preto ma aj spustac tu istu hranicu vypadku - `trigger.DIERA_S` je
+    # rovnake cislo ako toto (test to strazi). Ked sa zmeni jedno, musi sa
+    # zmenit aj druhe.
     #
     # Nesymetria je jasna: falosne "odpojene" zabije funkciu, pomale
     # rozpoznanie skutocneho odpojenia znamena len to, ze okno 12 sekund
@@ -260,7 +266,8 @@ class HeartRateMonitor:
         # Bez toho sa neda zistit, CO hodinky posielaju - a to je prave
         # otazka, na ktorej stoji detekcia pohybu. Zapisuje sa obmedzeny
         # pocet: trvaly zapis kazdej spravy by z denniku spravil firehose
-        # (vzorka kazdych 1,5 s = 2400 riadkov za hodinu).
+        # (vzorka kazdych ~0,9 az ~2,9 s = zhruba 1200 az 4000 riadkov za
+        # hodinu, viz `trigger.MAX_KROK_S`).
         if run.log_left > 0:
             run.log_left -= 1
             try:

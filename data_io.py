@@ -16,9 +16,13 @@ byť horšia. Preto:
 
   * prísny parser, žiadny `pickle`, žiadny `eval`. Len `json.load` a potom
     kontrola typu každého poľa. Čo neprejde, zahodí sa a spočíta.
-  * importované záznamy dostanú `imported: True` a vylučujú sa z výpočtu
-    účinnosti. Cudzie telo nie je tvoje telo.
+  * importované záznamy dostanú `imported: True` a appka sa z nich neučí:
+    základňa, hranice a prah (`hr_stats.ciste_relacie`), rebrík hlášky,
+    postrehy, účinnosť (`measure`) aj karta poslednej relácie ich
+    preskakujú. Cudzie telo nie je tvoje telo.
   * hráč si vyberie ZLÚČIŤ alebo NAHRADIŤ - nikdy sa to neuhádne za neho.
+    NAHRADIŤ až na druhé potvrdenie a vždy so zálohou oboch súborov
+    (`zaloha_pred_importom`).
 
 Modul je čisto dátový: žiadny Tk, žiadne dialógy. Cesty dostáva zvonku,
 takže sa celý dá otestovať v tmp priečinku.
@@ -169,7 +173,7 @@ def export_rows_csv(rows, path, separator=";"):
 
     Nazvy stlpcov sa NEPREKLADAJU. Su to diagnosticke data: kto ich otvara,
     hlada `pre_bpm` a `arm`, nie "tep pred". Prekladat dvadsat takych nazvov
-    do devatich jazykov by bola praca, ktora nikomu nepomoze.
+    do vsetkych jazykov appky by bola praca, ktora nikomu nepomoze.
     """
     riadky = [r for r in (rows or []) if isinstance(r, dict)]
     if not riadky:
@@ -341,17 +345,140 @@ def merge_windows(existing, incoming):
     return sorted(spolu, key=lambda w: w.get("ts") or 0)
 
 
+def vlastne(zaznamy):
+    """Len vlastné záznamy, bez importovaných (`imported`).
+
+    Kde appka ráta "koľko relácií už máš" (napr. dávkovanie tichých
+    hlášok, `trigger.silent_share_for`), cudzie relácie nesmú posunúť
+    počítadlo - import 15 relácií od kamaráta by inak ukončil fázu, v
+    ktorej sa tvoje telo ešte len porovnáva."""
+    return [z for z in (zaznamy or ()) if isinstance(z, dict) and not z.get("imported")]
+
+
+def vysledok_importu(moje_s, moje_w, cudzie_s, cudzie_w, nahradit,
+                     max_s=None, max_w=None):
+    """Čo sa po importe zapíše - a KOĽKO ZO SÚBORU NAOZAJ PRIBUDLO.
+
+    Vracia (relacie, okna, pridane_relacie, pridane_okna). Hlásenie po
+    importe predtým ukazovalo dĺžku celého zlúčeného zoznamu: po zlúčení s
+    200 vlastnými reláciami tvrdilo "importované: 205", hoci zo súboru
+    pribudlo 5. Ráta sa preto, koľko záznamov zo súboru v zapisovanom
+    zozname naozaj je - duplikát (vlastný záznam vyhráva) ani to, čo odreže
+    strop dĺžky histórie (`max_s`, `max_w`), sa nepočíta.
+    """
+    cudzie_s = [s for s in (cudzie_s or ()) if isinstance(s, dict)]
+    cudzie_w = [w for w in (cudzie_w or ()) if isinstance(w, dict)]
+    if nahradit:
+        relacie = sorted(cudzie_s, key=lambda s: s.get("started") or 0)
+        okna = sorted(cudzie_w, key=lambda w: w.get("ts") or 0)
+    else:
+        relacie = merge_sessions([s for s in (moje_s or ()) if isinstance(s, dict)],
+                                 cudzie_s)
+        okna = merge_windows([w for w in (moje_w or ()) if isinstance(w, dict)],
+                             cudzie_w)
+    if max_s:
+        relacie = relacie[-int(max_s):]
+    if max_w:
+        okna = okna[-int(max_w):]
+    # Tie isté objekty (merge ani sorted ich nekopírujú) - podľa identity sa
+    # dá presne povedať, ktoré prišli zo súboru.
+    zo_suboru_s = {id(s) for s in cudzie_s}
+    zo_suboru_w = {id(w) for w in cudzie_w}
+    return (relacie, okna,
+            sum(1 for s in relacie if id(s) in zo_suboru_s),
+            sum(1 for w in okna if id(w) in zo_suboru_w))
+
+
+def zaloha_pred_importom(cesty, znacka=None):
+    """Odloží aktuálne súbory dát vedľa pôvodných ako
+    `<súbor>.pred-importom-<čas>.bak`. Vracia zoznam záloh.
+
+    Kópia 1:1 (`shutil.copy2`), nie prepis do iného tvaru. Predošlá záloha
+    `hr_sessions.json.bak` bola vo formáte exportu, ktorý `load_sessions`
+    nevie načítať - vrátiť sa z nej nedalo ani premenovaním - a meracie
+    okná (`hr_windows.json`) sa pri NAHRADIŤ prepísali bez zálohy vôbec.
+    Prípona je súrodenec pôvodného súboru, takže "Zmazať históriu"
+    (`delete_plan`) zmaže aj zálohy.
+    """
+    znacka = znacka or datetime.now().strftime("%Y%m%d-%H%M%S")
+    zalohy = []
+    for cesta in cesty or ():
+        if not os.path.isfile(cesta):
+            continue
+        ciel = "%s.pred-importom-%s.bak" % (cesta, znacka)
+        shutil.copy2(cesta, ciel)
+        zalohy.append(ciel)
+    return zalohy
+
+
+def zapis_zoznam(cesta, data):
+    """Zoznam do JSON cez `.tmp` + `os.replace` - pád uprostred nenechá
+    polovičnú históriu (predtým sa importovalo priamo cez open('w'))."""
+    tmp = cesta + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(list(data), fh, ensure_ascii=False, indent=2)
+    os.replace(tmp, cesta)
+    return cesta
+
+
 # --------------------------------------------------------------------------
 # Mazanie
 # --------------------------------------------------------------------------
 
-def delete_plan(data_dir):
+def delete_plan(data_dir, legacy_dirs=()):
     """Čo sa zmaže, ako zoznam (i18n kľúč, cesta, existuje, veľkosť).
 
     Vracia sa to PRED mazaním, aby sa dalo hráčovi presne ukázať, čo
     zmizne. Sľub "všetko ostáva u teba" znamená aj to, že "zmazať" naozaj
     zmaže - a to sa dá ukázať len menovite.
+
+    `legacy_dirs` sú staré priečinky, z ktorých migrácia pri premenovaní
+    appky dáta KOPÍROVALA (`paths.legacy_data_dirs`). Kópia histórie tepu
+    v nich zostala - bez nich by "zmazať" nechalo druhú kópiu, presne ten
+    najhorší druh chyby z hlavičky modulu. Z nich idú do plánu len veci,
+    ktoré tam naozaj sú, s kľúčom `legacy` = ten priečinok.
     """
+    plan = _plan_priecinka(data_dir, _LOG_SUBORY)
+    ciel = os.path.normcase(os.path.abspath(data_dir))
+    for stary in legacy_dirs or ():
+        if os.path.normcase(os.path.abspath(stary)) == ciel:
+            continue
+        # V starom priečinku nič nežije, takže ide aj `app.log`.
+        for polozka in _plan_priecinka(stary, ("app.log",) + _LOG_SUBORY):
+            if polozka["exists"]:
+                polozka["legacy"] = stary
+                plan.append(polozka)
+    return plan
+
+
+def plan_riadky(plan):
+    """Plán mazania zložený do riadkov pre dialóg.
+
+    Vracia [{"label", "params", "exists", "bytes"}]. Položky aktuálneho
+    priečinka idú po jednej ako doteraz. Kópie v starých priečinkoch sa
+    zhrnú do JEDNÉHO riadku na priečinok (`data.delete.legacy`) - hráč má
+    vedieť, že zmiznú aj tie a koľko ich je; zoznam súborov by dialóg
+    zahltil. Len meno priečinka, nie celá cesta: cesta v %APPDATA% nesie
+    meno účtu vo Windows.
+    """
+    riadky, stare = [], {}
+    for polozka in plan or ():
+        stary = polozka.get("legacy")
+        if not stary:
+            riadky.append({"label": polozka["label"], "params": {},
+                           "exists": polozka["exists"], "bytes": polozka["bytes"]})
+            continue
+        if stary not in stare:
+            meno = os.path.basename(os.path.normpath(stary)) or stary
+            stare[stary] = {"label": "data.delete.legacy", "params": {"folder": meno},
+                            "exists": True, "bytes": 0}
+            riadky.append(stare[stary])
+        stare[stary]["bytes"] += polozka["bytes"]
+    return riadky
+
+
+def _plan_priecinka(data_dir, log_subory):
+    """Plán mazania jedného priečinka dát (viz `delete_plan`)."""
     plan = []
     for kluc, meno in MAZATELNE:
         cesta = os.path.join(data_dir, meno)
@@ -378,7 +505,7 @@ def delete_plan(data_dir):
     # Vlastné logy po SÚBOROCH, nie celý priečinok - v dev režime `logs/`
     # drží aj gui_screenshots a iné veci mimo histórie hráča.
     logs_dir = os.path.join(data_dir, "logs")
-    for meno in _LOG_SUBORY:
+    for meno in log_subory:
         cesta = os.path.join(logs_dir, meno)
         if os.path.exists(cesta):
             plan.append({"label": "data.delete.logs", "path": cesta,
@@ -386,21 +513,23 @@ def delete_plan(data_dir):
     return plan
 
 
-def delete_all(data_dir, log=None):
+def delete_all(data_dir, log=None, legacy_dirs=()):
     """Zmaže všetko z `delete_plan`. Vracia počet zmazaných položiek.
 
-    Priečinok `logs` sa zmaže aj s obsahom a hneď vytvorí prázdny - appka
-    doň píše za behu a bez neho by logovanie ticho prestalo fungovať.
+    Priečinok z plánu (cache hlášok) sa zmaže aj s obsahom a hneď vytvorí
+    prázdny - appka doň píše za behu. V starých priečinkoch (`legacy`) sa
+    nič znova nevytvára: tam už appka nepíše.
     """
     zmazane = 0
-    for polozka in delete_plan(data_dir):
+    for polozka in delete_plan(data_dir, legacy_dirs):
         cesta = polozka["path"]
         if not polozka["exists"]:
             continue
         try:
             if os.path.isdir(cesta):
                 shutil.rmtree(cesta)
-                os.makedirs(cesta, exist_ok=True)
+                if not polozka.get("legacy"):
+                    os.makedirs(cesta, exist_ok=True)
             else:
                 os.remove(cesta)
             zmazane += 1

@@ -2,13 +2,13 @@
 """Vygeneruje `preklad_TODO.csv` - zoznam retazcov, ktore cakaju na dopreklad.
 
 Kriterium (rovnake ako v `check_before_run.py`, sekcia 2): retazec je "na
-dopreklad", ak niektory z NELATINKOVYCH jazykov (ja/zh/ru) ostal doslovne
+dopreklad", ak niektory z NELATINKOVYCH jazykov (ja/zh/ru/bg) ostal doslovne
 rovnaky ako `en` - to uz naozaj nemoze byt preklad, len anglicky fallback.
 
 POZOR NA PORUVNANIE S `de`: to bolo povodne kriterium a po doprelozeni
 hlasilo tri retazce navzdy, lebo nemecke "Timing" a "normal" su zhodou
 okolnosti rovnake slova ako anglicke. Latinkove jazyky sa s anglictinou
-legitimne trafia; japoncina, cinstina ani rustina nie.
+legitimne trafia; japoncina, cinstina, rustina ani bulharcina nie.
 
 POZN: doteraz sa CSV robilo rucne/ad hoc, takze po kazdom zmazani kluca
 (napr. po odstraneni minimalistickeho rezimu) v nom ostavali riadky pre
@@ -24,18 +24,29 @@ sys.path.insert(0, ".")
 import i18n
 
 OUT = "preklad_TODO.csv"
-TARGET_LANGS = ("ja", "zh", "ru", "es", "de", "fr", "pt")
+TARGET_LANGS = ("ja", "zh", "ru", "es", "de", "fr", "pt", "cs", "bg")
 # Jazyky, ktore sa s anglictinou nahodou netrafia (ine pismo) - viz hlavicka.
-SPOLAHLIVE = ("ja", "zh", "ru")
+SPOLAHLIVE = ("ja", "zh", "ru", "bg")
+
+# Kluce, kde je zhoda s anglictinou ZAMERNA aj v jazyku s inym pismom:
+# japoncina a cinstina pisu percento bez medzery ako anglictina („{n}%“),
+# slovencina s medzerou („{n} %“) - preto sa sk a en lisia.
+ZAMERNA_ZHODA = {"dashboard.fmt.pct"}
+
+
+def na_dopreklad(strings):
+    """Kluce, pri ktorych niektory z jazykov SPOLAHLIVE ostal anglicky."""
+    return sorted(
+        key for key, entry in strings.items()
+        if key not in ZAMERNA_ZHODA
+        and entry.get("en") != entry.get("sk")
+        and any(entry.get(lang) == entry.get("en") for lang in SPOLAHLIVE)
+    )
 
 
 def main():
     strings = i18n.STRINGS
-    todo = sorted(
-        key for key, entry in strings.items()
-        if entry.get("en") != entry.get("sk")
-        and any(entry.get(lang) == entry.get("en") for lang in SPOLAHLIVE)
-    )
+    todo = na_dopreklad(strings)
 
     header = ["kluc", "slovensky (zdroj)", "anglicky (zdroj)"]
     header += [f"{lang} (DOPLNIT)" for lang in TARGET_LANGS]

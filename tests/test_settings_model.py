@@ -290,7 +290,7 @@ def test_about_hovori_o_licencii_pravdivo():
     """GPLv3 predaj NEZAKAZUJE — zakazuje zavretie.
 
     Text v „O appke“ je verejné vyhlásenie o licencii a nesmie tvrdiť niečo
-    iné než interné poznámky a samotná licencia.
+    iné než samotná licencia (GPLv3) a LICENSE-DESIGN.md.
     """
     import i18n
     for jazyk in ("sk", "en"):

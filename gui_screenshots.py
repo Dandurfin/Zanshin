@@ -69,6 +69,7 @@ from PIL import ImageGrab                       # noqa: E402
 
 import hr_stats                                 # noqa: E402
 import theme as theme_mod                       # noqa: E402
+import ui_kit                                   # noqa: E402
 from app import DandurfApp                      # noqa: E402
 
 # Pevné semienko: dve spustenia po sebe majú dať tie isté obrázky, inak sa
@@ -95,6 +96,11 @@ app = DandurfApp(root)
 def foto(meno):
     root.update_idletasks()
     root.update()
+    # Okno, ktore este caka na odhalenie (DWM cloak pri starte), nevidno -
+    # snimka by zachytila plochu za nim. Radsej ziadna fotka.
+    if getattr(app, "_zahalene", False) or ui_kit.je_zahalene(root):
+        kontrola(f"foto {meno}: okno uz nie je zahalene", False)
+        return
     x, y = root.winfo_rootx(), root.winfo_rooty()
     # okno + kúsok okolo, aby bolo vidno aj vlastnú titulkovú lištu
     bbox = (x - 8, y - 40, x + root.winfo_width() + 8, y + root.winfo_height() + 8)
@@ -476,10 +482,11 @@ def k_about():
 @krok
 def k_tema():
     """Prepnutie témy je najčastejší zdroj „zabudnutých" farieb — prvky,
-    ktoré si držia vlastnú kópiu palety alebo kreslia na Canvas."""
-    from i18n import tr
-    opacna = theme_mod.ZEN if app.theme_key == theme_mod.MODERN else theme_mod.MODERN
-    app.on_theme_switch(tr(f"theme.{opacna}.label"))
+    ktoré si držia vlastnú kópiu palety alebo kreslia na Canvas.
+
+    Od 0.2 téma patrí svetu (B3-worlds), takže sa prepína svet - priame
+    `on_theme_switch` by rozišlo vzhľad a svet."""
+    app.set_world("work" if app.world == "play" else "play")
     app.sidebar._select("historia")
 
 
@@ -510,7 +517,7 @@ def k_tema_dnes_foto():
 
 @krok
 def k_jazyk_de():
-    """Nemčina má najdlhšie slová zo všetkých deviatich jazykov - ak sa
+    """Nemčina má najdlhšie slová zo všetkých jazykov appky - ak sa
     rozloženie niekde zlomí, zlomí sa tu. Japončina zase overí, či sa vôbec
     vykreslia CJK znaky (potrebujú systémové písmo)."""
     from app import LANG_NATIVE_LABELS

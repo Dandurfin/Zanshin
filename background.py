@@ -72,12 +72,13 @@ DEFAULT_OPACITY = 0.10
 
 # Nad tuto hodnotu sa uz neda ist ani cez nastavenia. Nie je to svojvola:
 # pri vyssej hodnote prestava byt citatelny maly text v paneloch, a tych je
-# devat jazykov vratane japonciny a cinstiny.
+# jedenast jazykov vratane japonciny a cinstiny.
 MAX_OPACITY = 0.35
 
-# Stary pas z verzie 2.0. Nechany ako zaloha, keby si niekto pusti appku bez
-# novej fotky - je to ta ista miestnost, len uzky vyrez.
-FALLBACK_NAME = "dojo_band.jpg"
+# POZN (0.2): tu bola zaloha - stary uzky pas `dojo_band.jpg` z verzie 2.0.
+# Za behu sa nikdy nenacital (`dojo_noc.webp` je v repe aj v builde, oba v
+# tom istom priecinku), takze ide do _archiv. Bez fotky appka kresli dalej -
+# `load` vrati None a volajuci nekresli nic.
 
 
 # --------------------------------------------------------------------------
@@ -89,15 +90,15 @@ _warned = False
 def image_path():
     """Cesta k fotke, alebo None ked ziadna nie je.
 
-    Skusa `IMAGE_NAME` so vsetkymi `EXTENSIONS`, potom `FALLBACK_NAME`.
-    Vsetko je v `assets/images/`, ktory oba `.spec` subory balia cely - do
-    buildu netreba nic dopisovat.
+    Skusa `IMAGE_NAME` so vsetkymi `EXTENSIONS`. Vsetko je v
+    `assets/images/`, ktory `Dandurf.spec` bali cely - do buildu netreba nic
+    dopisovat.
     """
     try:
         base = paths.images_dir()
     except Exception:
         return None
-    mena = [IMAGE_NAME + p for p in EXTENSIONS] + [FALLBACK_NAME]
+    mena = [IMAGE_NAME + p for p in EXTENSIONS]
     for meno in mena:
         cesta = os.path.join(base, meno)
         if os.path.exists(cesta):
@@ -148,8 +149,8 @@ def load(width, height, opacity=DEFAULT_OPACITY, log=None):
         if not _warned:
             _warned = True
             if callable(log):
-                log("pozadie: %s%s ani %s nie su v assets/images - kresli sa bez"
-                    % (IMAGE_NAME, "|".join(EXTENSIONS), FALLBACK_NAME))
+                log("pozadie: %s%s nie je v assets/images - kresli sa bez"
+                    % (IMAGE_NAME, "|".join(EXTENSIONS)))
         return None
 
     kluc = (cesta, width, height, round(opacity, 3),

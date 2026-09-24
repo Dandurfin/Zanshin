@@ -1,4 +1,4 @@
-"""Panel 'Sprievodca / Veda za aplikáciou' - vysuvne okno s kartami.
+"""Panel 'Sprievodca / Čo je za tým' - vysuvne okno s kartami.
 
 Kazda karta ma docasny vektorovy nacrt vykresleny cez tk.Canvas (jednoduha
 minimalisticka geometria). Ak v priecinku assets/guides/ existuje
@@ -205,7 +205,7 @@ class _GuideContent:
     """
 
     def __init__(self, parent, pal, card_ids=None, expand_first=True,
-                 wraplength=380):
+                 wraplength=380, medical_note=True):
         """`card_ids` obmedzi, ktore karty sa postavia.
 
         Od 18. 9. stoji vysvetlivka ku kazdej hlaske PRIAMO v jej karte
@@ -215,6 +215,7 @@ class _GuideContent:
         """
         self.pal = pal
         self._wraplength = wraplength
+        self._medical_note = medical_note
         self._bodies = {}
         karty = [c for c in guide_cards()
                  if card_ids is None or c["id"] in card_ids]
@@ -257,11 +258,27 @@ class _GuideContent:
                       text_color=self.pal["accent"] if expanded else self.pal["text"])
 
     def _populate_body(self, body, card, pal):
-        populate_card_body(body, card, pal, wraplength=self._wraplength)
+        populate_card_body(body, card, pal, wraplength=self._wraplength,
+                           medical_note=self._medical_note)
+
+
+def not_medical_note(parent, pal, wraplength=380):
+    """Ticha veta: vseobecne tipy, nie lekarska rada; nie zdravotnicka pomocka.
+
+    Septat, nie kricat - ten isty styl ako poznamka pod postrehmi v Historii
+    (ui 10, text_faint), ziadny ramik ani vystrazna farba. Na kazdej obrazovke
+    najviac raz: v hlavicke okna Sprievodca a pod dychacimi technikami v karte
+    dychovej hlasky (box breathing ma zadrze dychu). Do hry nejde nikdy.
+    """
+    label = ctk.CTkLabel(parent, text=tr("guide.not_medical_note"),
+                         font=ui_kit.ui(10), text_color=pal["text_faint"],
+                         anchor="w", justify="left", wraplength=wraplength)
+    label.pack(fill="x", anchor="w", pady=(8, 0))
+    return label
 
 
 def populate_card_body(body, card, pal, wraplength=380, sketch_side="right",
-                       sketch_size=SKETCH_SIZE):
+                       sketch_size=SKETCH_SIZE, medical_note=True):
     """Vykresli obsah jednej karty Sprievodcu do lubovolneho ramca.
 
     Vytiahnute z `_GuideContent`, lebo ten isty obsah teraz kresli aj karta
@@ -298,6 +315,10 @@ def populate_card_body(body, card, pal, wraplength=380, sketch_side="right",
                         justify="left", wraplength=wraplength).pack(fill="x", pady=(9, 0))
             block(text_col, tr("guide.block.steps_title"), tech["steps"])
             block(text_col, tr("guide.block.why_title"), tech["why"], dim=True)
+        # Dychacie techniky maju zadrze. Okno Sprievodca to uz povedalo v
+        # hlavicke nad scrollom - druhy raz na tej istej obrazovke netreba.
+        if medical_note:
+            not_medical_note(text_col, pal, wraplength)
     elif card.get("custom_blocks") is not None:
         for cb in card["custom_blocks"]:
             block(text_col, cb["title"], cb["text"])
@@ -305,6 +326,12 @@ def populate_card_body(body, card, pal, wraplength=380, sketch_side="right",
             ctk.CTkLabel(text_col, text=tr("guide.philosophy.sources_title"),
                         font=ui_kit.ui(11, "bold"), text_color=pal["accent"],
                         anchor="w", justify="left").pack(fill="x", pady=(9, 0))
+            # Tri priklady + veta, kde je cely zoznam (ZDROJE.md) - ten isty
+            # text ako panel "Ako to vzniklo" v Historii (guide_content).
+            if card.get("sources_intro"):
+                ctk.CTkLabel(text_col, text=card["sources_intro"], font=ui_kit.ui(11),
+                            text_color=pal["text_dim"], anchor="w", justify="left",
+                            wraplength=wraplength).pack(fill="x", pady=(2, 0))
             for src in card["sources"]:
                 link = ctk.CTkLabel(
                     text_col, text=f"↗ {src['label']}", font=ui_kit.ui(10, "underline"),
@@ -312,6 +339,10 @@ def populate_card_body(body, card, pal, wraplength=380, sketch_side="right",
                     cursor="hand2", wraplength=wraplength)
                 link.pack(fill="x", pady=(2, 0))
                 link.bind("<Button-1>", lambda _e, url=src["url"]: webbrowser.open(url))
+            if card.get("sources_note"):
+                ctk.CTkLabel(text_col, text=card["sources_note"], font=ui_kit.ui(10),
+                            text_color=pal["text_faint"], anchor="w", justify="left",
+                            wraplength=wraplength).pack(fill="x", pady=(6, 0))
     else:
         block(text_col, tr("guide.block.physiology"), card["physiology"])
         block(text_col, tr("guide.block.science"), card["science"])
@@ -366,7 +397,7 @@ def build_guide_into(parent, pal):
 
 
 class GuidePanel:
-    """Nemodalne okno so 'Sprievodca / Veda za aplikáciou' - da sa drzat
+    """Nemodalne okno so 'Sprievodca / Čo je za tým' - da sa drzat
     otvorene popri hlavnom okne a prezerat si mechaniku ku kazdemu triggeru.
 
     Obsah kariet je v _GuideContent (zdielany so strankou v lavom menu)."""
@@ -397,13 +428,16 @@ class GuidePanel:
         ctk.CTkLabel(header, text=tr("guide.panel_subtitle"),
                     font=ui_kit.ui(11), text_color=pal["text_dim"],
                     wraplength=650, justify="left").pack(anchor="w", pady=(4, 0))
+        # 500, nie 650 ako podtitulok: okno ide zuzit na 560 (minsize) a
+        # hlavicka ma potom ~516 px - pri 650 by sa veta orezala v strede.
+        not_medical_note(header, pal, wraplength=500)
 
         scroll = ctk.CTkScrollableFrame(
             root, fg_color="transparent", scrollbar_button_color=pal["surface_alt"],
             scrollbar_button_hover_color=pal["accent"])
         scroll.pack(fill="both", expand=True, padx=18, pady=10)
 
-        _GuideContent(scroll, pal)
+        _GuideContent(scroll, pal, medical_note=False)
 
         self.top.protocol("WM_DELETE_WINDOW", self.top.destroy)
 

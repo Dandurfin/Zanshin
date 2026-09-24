@@ -329,9 +329,12 @@ def test_striedanie_znesie_neznamy_posledny():
 # Účinnosť podľa kategórie
 # --------------------------------------------------------------------------
 
-def _okno(kat, pre, post, arm="voice", valid=True):
-    return {"category": kat, "pre_bpm": pre, "post_bpm": post,
-            "arm": arm, "valid": valid}
+def _okno(kat, pre, post, arm="voice", valid=True, **kw):
+    # Hlaska dorucena na pauze (0.2: graf rata len tie) - viz nizsie.
+    okno = {"category": kat, "pre_bpm": pre, "post_bpm": post,
+            "arm": arm, "valid": valid, "delivery": "pause"}
+    okno.update(kw)
+    return okno
 
 
 def test_ucinnost_pocita_len_hlasne_rameno():
@@ -427,9 +430,10 @@ def test_importovane_okna_sa_do_ucinnosti_nerataju():
     """
     okna = [
         {"valid": True, "arm": "voice", "category": "jaw",
-         "pre_bpm": 100.0, "post_bpm": 90.0},
+         "pre_bpm": 100.0, "post_bpm": 90.0, "delivery": "pause"},
         {"valid": True, "arm": "voice", "category": "jaw",
-         "pre_bpm": 100.0, "post_bpm": 40.0, "imported": True},
+         "pre_bpm": 100.0, "post_bpm": 40.0, "delivery": "pause",
+         "imported": True},
     ]
     podla = measure.by_category(okna)
     assert podla["jaw"]["n"] == 1, "cudzie okno sa zaratalo"

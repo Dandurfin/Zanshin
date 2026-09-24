@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Predbezna kontrola Zanshin DojoSync - spusti PRED tym, nez otvoris appku.
+"""Predbezna kontrola Zanshin - spusti PRED tym, nez otvoris appku.
 
 Na co to je
 -----------
@@ -10,15 +10,15 @@ tkinter a BEZ Windows. Tento skript overi vsetko, co sa overit da bez
 otvorenia okna:
 
   * kompilaciu vsetkych modulov,
-  * uplnost a konzistenciu prekladov vo vsetkych 9 jazykoch,
+  * uplnost a konzistenciu prekladov vo vsetkych 11 jazykoch,
   * ze appka nevola metody/tokeny, ktore neexistuju,
   * ze rebind a keycap maju spravne API (regresia z redizajnu),
   * ze data z uzivatelskych nastaveni sa normalizuju bez pada.
 
 NEotvara ziadne okno, NEsahat na siet, NEnahrava nikam. Len cita zdroj a
 importuje ciste (bez GUI) moduly. Co NEvie overit: skutocne kreslenie cez
-Tk/UpdateLayeredWindow, spravanie pynput hookov, vzhlad. To ostava na
-rucne overenie podla internych poznamok.
+Tk/UpdateLayeredWindow, vzhlad. To ostava na rucne overenie v bezaciej
+appke.
 
 Spustenie:  python check_before_run.py
 Navratovy kod 0 = vsetko preslo, 1 = nieco padlo.
@@ -95,10 +95,10 @@ except Exception as exc:
 
 
 # ==========================================================================
-# 2. Preklady - vsetkych 9 jazykov, placeholdery, dopreklad
+# 2. Preklady - vsetkych 11 jazykov, placeholdery, dopreklad
 # ==========================================================================
 
-check("2. Preklady (9 jazykov)")
+check("2. Preklady (vsetky jazyky)")
 try:
     import i18n
     S = i18n.STRINGS
@@ -127,7 +127,7 @@ try:
         for k, langs in list(missing.items())[:10]:
             print(f"  PAD  {k}: chyba {', '.join(langs)}")
     else:
-        print("  OK   kazdy kluc ma vsetkych 9 jazykov")
+        print(f"  OK   kazdy kluc ma vsetkych {len(LANGS)} jazykov")
     if mismatch:
         problems.append(f"preklady: {len(mismatch)} nezhodnych placeholderov")
         for m in mismatch[:10]:
@@ -140,19 +140,20 @@ try:
 
     # Dopreklad - NIE je chyba, len upozornenie.
     #
-    # Kriterium je ja/zh/ru, nie de: nemecke "Timing" a "normal" su zhodou
+    # Kriterium je ja/zh/ru/bg, nie de: nemecke "Timing" a "normal" su zhodou
     # okolnosti rovnake slova ako anglicke, takze porovnanie s `de` hlasilo
     # tri retazce navzdy aj po uplnom doprelozeni. Ine pismo sa s anglictinou
-    # nahodou netrafi. (Rovnaka logika je v make_translation_todo.py.)
-    todo = [k for k, e in S.items()
-            if e.get("en") != e.get("sk")
-            and any(e.get(lang) == e.get("en") for lang in ("ja", "zh", "ru"))]
+    # nahodou netrafi. Zamerne zhody (ja/zh „{n}%“ ako anglictina) su v
+    # make_translation_todo.ZAMERNA_ZHODA - inak by tu pred kazdym spustenim
+    # svietilo falosne upozornenie a skutocne by sa v nom stratilo.
+    from make_translation_todo import na_dopreklad
+    todo = na_dopreklad(S)
     if todo:
-        notes.append(f"{len(todo)} retazcov caka na dopreklad do ja/zh/ru/es/de/fr/pt "
+        notes.append(f"{len(todo)} retazcov caka na dopreklad do ja/zh/ru/es/de/fr/pt/cs/bg "
                      f"(zoznam v preklad_TODO.csv) - sk a en su hotove")
         print(f"  POZN {len(todo)} retazcov len anglicky (na dopreklad) - viz preklad_TODO.csv")
     else:
-        print("  OK   vsetkych 9 jazykov je doprelozenych")
+        print(f"  OK   vsetkych {len(LANGS)} jazykov je doprelozenych")
 except Exception as exc:
     problems.append(f"preklady: modul i18n padol pri importe: {exc}")
     print(f"  PAD  {exc}")
@@ -236,9 +237,18 @@ try:
     # NEVRATIL. (Keycap sa zatial nemaze: stranka Spustace sa prekresluje
     # az vo faze 5 a kontrola set_text() vyssie ho drzi funkcny.)
     ap = read("app.py")
-    ud = read("ui_dialogs.py")
-    dovoz = re.compile(r"^\s*(?:from\s+pynput|import\s+pynput)", re.M)
-    hook_prec = (not dovoz.search(ap) and not dovoz.search(ud)
+    dovoz =re.compile(r"^\s*(?:from\s+pynput|import\s+pynput)", re.M)
+    # Import pynput sa hlada vo VSETKYCH .py (nie len v app.py a
+    # ui_dialogs.py) a navyse v zavislostiach a v .spec - hook v inom module
+    # by pre anti-cheat vyzeral rovnako.
+    s_pynput = [n for n in sorted(py_files) if dovoz.search(read(n))]
+    s_pynput += [n for n in sorted(os.listdir(HERE))
+                 if (n.endswith(".spec") or n.startswith("requirements"))
+                 and "pynput" in read(n).lower()]
+    if s_pynput:
+        problems.append("pynput je spat: " + ", ".join(s_pynput))
+        print(f"  PAD  pynput je spat: {', '.join(s_pynput)}")
+    hook_prec = (not s_pynput
                  and "keyboard.Listener(" not in ap
                  and "mouse.Listener(" not in ap
                  and "def begin_rebind(self" not in ap
@@ -330,27 +340,34 @@ except Exception as exc:
 
 
 # ==========================================================================
-# 7. Steam vrstva je volitelna (nesmie zhodit appku bez SDK)
+# 7. Ziadna integracia so Steamom
 # ==========================================================================
+#
+# Zanshin na Steam zatial nejde (rozhodnutie autora, 0.2) a Steam vrstva
+# je v _archiv. Tato kontrola strazi, ze sa nevratila potichu - ani modul,
+# ani jeho import, ani Steamworks binding v builde.
 
-check("7. Steam integracia (volitelna)")
+check("7. Ziadna integracia so Steamom")
 try:
-    import steam_integration
-    st = steam_integration._SteamState()
-    assert st.init() is False        # bez SDK/App ID -> vypnute, nie pad
-    st.run_callbacks(); st.set_status(True); st.shutdown()
-    print("  OK   bez SDK sa Steam ticho vypne, vsetky volania su bezpecne")
-    appsrc = read("app.py")
-    import re as _re
-    ok = all("try:" in appsrc[max(0, mm.start() - 200):mm.start()]
-             for mm in _re.finditer(r"steam\.\w+\(", appsrc))
-    if ok:
-        print("  OK   app.py obaluje kazde volanie steam.* do try/except")
+    steam_problemy = []
+    if os.path.exists(os.path.join(HERE, "steam_integration.py")):
+        steam_problemy.append("steam_integration.py je spat v koreni projektu")
+    steam_dovoz = re.compile(r"^\s*(?:from|import)\s+(?:steam_integration|steamworks)\b",
+                             re.M)
+    for name in sorted(py_files):
+        if steam_dovoz.search(read(name)):
+            steam_problemy.append(f"{name} importuje Steam vrstvu")
+    for name in sorted(f for f in os.listdir(HERE) if f.endswith(".spec")):
+        if re.search(r"steam_integration|steamworks|steam_appid", read(name)):
+            steam_problemy.append(f"{name} bali Steam vrstvu")
+    if steam_problemy:
+        problems.extend(steam_problemy)
+        for p in steam_problemy:
+            print(f"  PAD  {p}")
     else:
-        problems.append("app.py: volanie steam.* mimo try/except")
-        print("  PAD  volanie steam.* nie je chranene")
+        print("  OK   ziadny Steam modul, import ani binding v builde")
 except Exception as exc:
-    problems.append(f"steam vrstva: {exc}")
+    problems.append(f"kontrola Steamu padla: {exc}")
     print(f"  PAD  {exc}")
 
 
@@ -372,6 +389,6 @@ if problems:
     sys.exit(1)
 else:
     print("VSETKY STRUKTURALNE KONTROLY PRESLI.")
-    print("Dalej: rucne overenie v GUI podla internych poznamok")
+    print("Dalej: spusti appku a pozri sa na okno aj vizualy v hre.")
     print(f"{'═' * 66}")
     sys.exit(0)

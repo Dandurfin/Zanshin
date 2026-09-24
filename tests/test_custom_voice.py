@@ -108,7 +108,7 @@ def test_dialog_hlasu_ma_vlastnu_nahravku():
     assert "dialog.voice_rec_label" in dialog
 
 
-# ---- i18n: vsetky nove kluce maju vsetkych 9 jazykov ---------------------
+# ---- i18n: vsetky nove kluce maju vsetky jazyky ---------------------------
 
 def test_nove_i18n_kluce_maju_vsetky_jazyky():
     import i18n

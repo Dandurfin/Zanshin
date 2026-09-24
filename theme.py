@@ -5,8 +5,8 @@ noc"). Zlato (`accent`/`kin`) je hlavny akcent v celom rozhrani; modra
 (`blue`) sa pouziva len na oznacenie pokojnych/nizkych hodnot (napr.
 zotavenie tepu), nie ako ozdoba.
 
-AIZOME - indigo variant pre toho, komu teply atrament nesadne. Rovnaka
-architektura, len iny podklad a modry akcent.
+AIZOME - indigo variant. Rovnaka architektura, len iny podklad a modry
+akcent. Od 0.2 je to vzhlad PRACOVNEHO sveta (viz `WORLD_THEME`).
 
 Stavova farba enso tlacidla (spusti/zastavi pocuvanie) je vzdy `success`
 (pocuva) alebo `danger` (nepocuva) - to je jej JEDINA uloha v
@@ -22,6 +22,20 @@ Aizome / Sumi).
 ZEN = "zen"
 MODERN = "modern"
 DEFAULT_THEME = ZEN
+
+# DVA SVETY, DVA VZHLADY (0.2, B3-worlds). Tema uz nie je vec vkusu, ale
+# znamenie sveta: jeden pohlad na okno povie, ci si v Hre alebo v Praci.
+# Kluce sveta su tie iste ako `hr_stats.ACTIVITY_KINDS` - napisane rucne,
+# aby tema nemusela importovat hr_stats.
+WORLD_THEME = {"play": ZEN, "work": MODERN}
+
+
+def theme_world(theme_key):
+    """Opak `WORLD_THEME`: tema -> svet. Neznama tema patri Hre."""
+    for world, key in WORLD_THEME.items():
+        if key == theme_key:
+            return world
+    return "play"
 
 THEMES = {
     # ---- AIZOME (indigo) ----

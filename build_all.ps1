@@ -1,4 +1,5 @@
-﻿# Postavi Zanshin.exe a z neho instalacku Zanshin-0.1-setup.exe
+﻿# Postavi Zanshin.exe a z neho instalacku Zanshin-<verzia>-setup.exe
+# (verzia = MyAppVersion v Dandurf.iss)
 #
 # Spustenie (funguje z hociakeho adresara):
 #     powershell -ExecutionPolicy Bypass -File ".\build_all.ps1"
@@ -53,8 +54,10 @@ function Invoke-Py {
 $version = Invoke-Py '-c' 'import sys; print(sys.version.split()[0])'
 Write-Host "Python $version  ($($PY.Exe) $($PY.Pre))" -ForegroundColor Green
 
+# pyttsx3 (zaloha hlasu Windows) a psutil (automaticke profily) tu chybali -
+# bez nich build presiel, ale appka potom ticho prisla o tieto funkcie.
 foreach ($module in @('edge_tts', 'comtypes', 'pystray', 'PIL',
-                     'customtkinter', 'numpy', 'pygame')) {
+                     'customtkinter', 'numpy', 'pygame', 'pyttsx3', 'psutil')) {
     Invoke-Py '-c' "import $module" 2>&1 | Out-Null
     if ($LASTEXITCODE -ne 0) {
         Write-Host "Chyba modul $module - instalujem zavislosti..." -ForegroundColor Yellow
@@ -76,6 +79,13 @@ if (-not (Test-Path "Dandurf.ico")) {
     Invoke-Py 'make_icon.py'
     if ($LASTEXITCODE -ne 0) { Fail "make_icon.py zlyhal." }
 }
+
+# Predbezna kontrola (preklady, volania, ziadny klavesovy hook, ziadna Steam
+# vrstva). Doteraz ju spustal len Steam build - verejny instalator nie.
+Write-Host "Predbezna kontrola (check_before_run.py)..." -ForegroundColor DarkGray
+$env:PYTHONIOENCODING = 'utf-8'
+Invoke-Py 'check_before_run.py'
+if ($LASTEXITCODE -ne 0) { Fail "check_before_run.py nasiel problem - build som nespustil." }
 
 # --------------------------------------------------------------------------
 # 2/3  Balenie .exe
@@ -143,7 +153,7 @@ if (-not $iscc) {
     exit 0
 }
 
-# Instalator hovori vsetkymi 9 jazykmi appky. Cinstinu Inno Setup nedodava,
+# Instalator hovori vsetkymi 11 jazykmi appky. Cinstinu Inno Setup nedodava,
 # preklad je v projekte (installer_lang\ChineseSimplified.isl) a MUSI byt
 # UTF-8 s BOM - bez BOM by kompilator znaky precital ako ANSI a v dialogu
 # by boli rozsypane. Radsej to overime, nez by sme dodali pokazeny build.
@@ -164,7 +174,7 @@ if (-not $setup) { Fail "Inno Setup nevyrobil ziadny setup.exe v priecinku insta
 $setupMb = [math]::Round($setup.Length / 1MB, 1)
 Write-Host ""
 Write-Host "HOTOVO: $($setup.FullName) ($setupMb MB)" -ForegroundColor Green
-Write-Host "Instalator ma 9 jazykov (en, sk, ja, zh, ru, es, de, fr, pt), predvolena je anglictina."
+Write-Host "Instalator ma 11 jazykov (en, sk, ja, zh, ru, es, de, fr, pt, cs, bg), predvolena je anglictina."
 Write-Host "Instaluje sa do %LOCALAPPDATA%\Programs\Zanshin (bez UAC)."
 Write-Host "Pouzivatelske data (nastavenia, nahravky, TTS cache) idu do %APPDATA%\Zanshin."
 Write-Host "Pri prvom spusteni ta SmartScreen moze upozornit - 'Dalsie informacie' -> 'Spustit aj tak'." -ForegroundColor DarkGray

@@ -1,4 +1,4 @@
-"""Struktura panelu 'Sprievodca / Veda za aplikáciou'.
+"""Struktura panelu 'Sprievodca / Čo je za tým'.
 
 Cely zobrazovany text (nazvy, fyziologia, veda, instrukcie, techniky
 dychania) je prekladany a zije v i18n.py pod klucmi "guide.<id>.*" - tu
@@ -8,8 +8,8 @@ a nazov PNG v assets/guides/) a pocet technik pre kartu dychania.
 
 from i18n import tr
 
-# Kam viesť z panela "O appke". Sú to odkazy na autora, nie na appku -
-# menia sa nezávisle od kódu, preto sú tu ako dáta a nie zadrôtované v UI.
+# Kam viesť z panela "O appke". Menia sa nezávisle od kódu, preto sú tu ako
+# dáta a nie zadrôtované v UI.
 #
 # DISCORD TU ZÁMERNE NIE JE. Na hlásenie chýb, nápady a spoluprácu je
 # GitHub: diskusia tam ostáva verejná, dohľadateľná a viazaná na kód, kým
@@ -17,10 +17,13 @@ from i18n import tr
 # po expirácii by prestala fungovať všetkým, čo si appku už stiahli - a
 # autor by sa to nedozvedel.
 #
-# TODO pred vydaním: sem pribudne odkaz na repozitár, keď bude existovať
-# (viď interné poznámky). Zástupný odkaz tu byť nesmie - rozbitý odkaz v
-# appke je horší než žiadny.
+# REPOZITÁR je jediné miesto, odkiaľ je oficiálny Zanshin (LICENSE-DESIGN.md,
+# bod 4) - a zároveň to, kde je zdrojový kód, ktorý inštalátor nenesie.
+# Preto je v "O appke" klikací, nie len spomenutý v texte licencie.
+REPO_URL = "https://github.com/Dandurfin/Zanshin"
+
 COMMUNITY_LINKS = [
+    ("GitHub", REPO_URL),
     ("Twitch", "https://www.twitch.tv/dandurfin"),
     ("YouTube", "https://www.youtube.com/channel/UCzZyqQfTNpiGkt_SIOmKO2w"),
     ("Kick", "https://kick.com/dandurfin"),
@@ -29,47 +32,27 @@ COMMUNITY_LINKS = [
 GUIDE_CARD_IDS = ["grounding", "jaw", "periphery", "breath", "philosophy"]
 BREATH_TECHNIQUE_COUNT = 2
 PHILOSOPHY_BLOCK_COUNT = 3
-# JEDEN zoznam recenzovanych studii pre Sprievodcu (karta "philosophy"),
-# historiu relacii aj check_sources.py - studie nie su na dvoch miestach v
-# roznom stave. Pravidlo: LEN realne, recenzovane, on-topic prace (ziadne
-# komercne blogy, SEO clanky ani preprinty vydavane za dokaz). Zoradene po
-# temach. HRV je len KONTEXT (veda o tepe a strese); appka HRV NEMERIA a
-# nikde to netvrdi.
+# TRI zdroje, ktore appka ukazuje - v Sprievodcovi (karta "philosophy") aj v
+# Historii (panel "Ako to vzniklo"), vzdy pod textom autora `origin.*`.
+# Su to presne tie, ktore karty Sprievodcu cituju "v zdrojoch nizsie":
+# dych (Lehrer & Gevirtz 2014), krabicove dychanie (Zaccaro 2018) a celust
+# (Ketelhut & Nigg 2024). Popisky su autorove priklady, nie nazvy studii.
+#
+# Cely zoznam - vsetko, co tu bolo do 0.2, aj vyskum k hlaskam pod zatazou -
+# je v ZDROJE.md v koreni repozitara. Dlhy zoznam v appke posobil ako "veda
+# za appkou", hoci ziadna z tych prac Zanshin netestuje (rozhodnutie autora,
+# 0.2). check_sources.py kontroluje tieto tri; odkazy v ZDROJE.md nie.
 PHILOSOPHY_SOURCES = [
-    # -- Pomaly dych a upokojenie (jadro appky: nadych/vydych -> vagus) --
-    ("guide.philosophy.source11", "https://doi.org/10.3389/fnhum.2018.00353"),   # Zaccaro 2018
     ("guide.philosophy.source12", "https://doi.org/10.3389/fpsyg.2014.00756"),   # Lehrer & Gevirtz 2014
-    # -- Ucinok: znizuje stres/uzkost --
-    ("guide.philosophy.source13", "https://doi.org/10.1017/S0033291717001003"),  # Goessl 2017 (meta)
-    ("guide.philosophy.source14", "https://doi.org/10.1001/jamainternmed.2013.13018"),  # Goyal 2014 (JAMA meta)
-    ("guide.philosophy.source15", "https://doi.org/10.1007/s10484-015-9293-x"),  # van der Zwan 2015 (RCT)
-    # -- Pozornost / bdelost ("zanshin") --
-    ("guide.philosophy.source16", "https://doi.org/10.1177/0956797610371339"),   # MacLean 2010
-    ("guide.philosophy.source17", "https://doi.org/10.1016/j.tics.2008.01.005"),  # Lutz 2008 (review)
-    # -- Biofeedback dych v hrach (format appky) --
-    ("guide.philosophy.source1", "https://ieeexplore.ieee.org/document/8319498/"),
-    ("guide.philosophy.source2", "https://dl.acm.org/doi/10.1145/3706599.3720103"),
-    # -- Esport a telo --
-    ("guide.philosophy.source4", "https://pmc.ncbi.nlm.nih.gov/articles/PMC7272664/"),
-    ("guide.philosophy.source10", "https://pubmed.ncbi.nlm.nih.gov/38638448/"),
-    ("guide.philosophy.source5", "https://doi.org/10.1080/1750984X.2020.1723122"),  # Pedraza-Ramirez 2020
-    # -- Tep: zotavenie a dlhodoby stres --
-    ("guide.philosophy.source6", "https://doi.org/10.1056/NEJM199910283411804"),  # Cole 1999 (NEJM)
-    ("guide.philosophy.source8", "https://doi.org/10.30773/pi.2017.08.17"),       # Kim 2018 (meta)
-    ("guide.philosophy.source9", "https://doi.org/10.1016/j.jpsychores.2005.06.074"),  # Brosschot 2006
+    ("guide.philosophy.source11", "https://doi.org/10.3389/fnhum.2018.00353"),   # Zaccaro 2018
+    ("guide.philosophy.source10", "https://pubmed.ncbi.nlm.nih.gov/38638448/"),  # Ketelhut & Nigg 2024
 ]
 
-# Podmnozina zdrojov k tepu - panel "Preco to funguje" v historii relacii.
-HEART_RATE_SOURCE_KEYS = ("guide.philosophy.source6", "guide.philosophy.source7",
-                          "guide.philosophy.source8", "guide.philosophy.source9",
-                          "guide.philosophy.source10")
 
-
-def heart_rate_sources():
-    """[(popisok, url)] pre historiu relacii - z toho isteho zoznamu ako
-    Sprievodca (jeden zdroj pravdy, prelozene popisky)."""
-    return [(tr(key), url) for key, url in PHILOSOPHY_SOURCES
-            if key in HEART_RATE_SOURCE_KEYS]
+def origin_sources():
+    """[(popisok, url)] pre Sprievodcu aj Historiu - jeden zoznam, jeden
+    stav, prelozene popisky."""
+    return [(tr(key), url) for key, url in PHILOSOPHY_SOURCES]
 
 
 def guide_cards():
@@ -88,6 +71,8 @@ def guide_cards():
             "instruction": None,
             "custom_blocks": None,
             "sources": None,
+            "sources_intro": None,
+            "sources_note": None,
         }
         if card_id == "breath":
             card["techniques"] = [
@@ -105,10 +90,12 @@ def guide_cards():
                     "text": tr(f"guide.philosophy.block{i}_text"),
                 }
                 for i in range(1, PHILOSOPHY_BLOCK_COUNT + 1)
-            ]
+            ] + [{"title": tr("origin.title"), "text": tr("origin.text")}]
+            card["sources_intro"] = tr("origin.examples")
             card["sources"] = [
-                {"label": tr(key), "url": url} for key, url in PHILOSOPHY_SOURCES
+                {"label": label, "url": url} for label, url in origin_sources()
             ]
+            card["sources_note"] = tr("origin.full_list")
         else:
             card["physiology"] = tr(f"guide.{card_id}.physiology")
             card["science"] = tr(f"guide.{card_id}.science")

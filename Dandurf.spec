@@ -13,13 +13,14 @@
 # POZN: povodne tu bolo `uac_admin=True` s odovodnenim, ze Smart App Control
 # povazuje globalne klavesove hooky bez elevacie za podozrive. To uz NEPLATI
 # a zamerne sa to nevracia:
-#   - pynput hooky (WH_KEYBOARD_LL) admin prava nepotrebuju, bezia aj v
-#     beznom pouzivatelskom procese - overene naživo (gui_harness_auto.py),
+#   - klavesovy hook (WH_KEYBOARD_LL) z neverejnych verzii admin prava
+#     nepotreboval ani vtedy - overene nazivo (gui_harness_auto.py); pred
+#     prvou verejnou alfou bol zruseny, globalne hooky appka dnes nema,
 #   - instalator uz nejde do C:\Program Files, ale do %LOCALAPPDATA%\Programs
 #     (PrivilegesRequired=lowest v Dandurf.iss), takze UAC netreba ani tam,
-#   - elevovany proces + hooky + overlay je presne profil, ktory anti-cheaty
+#   - elevovany proces + overlay nad hrou je presne profil, ktory anti-cheaty
 #     (Vanguard, EAC, VAC) hodnotia najprisnejsie.
-# Viz STEAM_BUILD.md. Kvoli Valorantu (Vanguard) - nikdy to nevracaj na admin.
+# Viz SAFETY.md. Nikdy to nevracaj na admin.
 import os
 from PyInstaller.utils.hooks import collect_all
 
@@ -34,10 +35,8 @@ psutil_datas, psutil_binaries, psutil_hidden = collect_all('psutil')
 extra_datas = []
 if os.path.isdir('assets'):
     extra_datas.append(('assets', 'assets'))
-# steam_appid.txt sa pribali len ak existuje (vyvojovy subor); do
-# finalneho Steam depotu netreba - Steam ho aj tak ignoruje.
-if os.path.isfile('steam_appid.txt'):
-    extra_datas.append(('steam_appid.txt', '.'))
+# POZN: tu sa pribaloval vyvojovy subor s App ID pre Steam. Zanshin nema
+# ziadnu integraciu so Steamom (0.2), takze build nic take nebali.
 
 a = Analysis(
     ['main.py'],
@@ -59,7 +58,11 @@ a = Analysis(
         'numpy',
         'pygame',
         'psutil',
-        'steam_integration',
+        # cestina a bulharcina (0.2) - i18n.py ich vklada importom na konci
+        # suboru; PyInstaller ho najde aj sam, toto je poistka, aby build
+        # nikdy neostal bez nich (bez modulu by import i18n pri starte spadol
+        # na ImportError - appka by sa vobec nespustila).
+        'i18n_cs_bg',
     ] + comtypes_hidden + edge_hidden + certifi_hidden + ctk_hidden + numpy_hidden + pygame_hidden + psutil_hidden,
     hookspath=[],
     hooksconfig={},
@@ -95,13 +98,13 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    # ADMIN VYPNUTY (bolo True). Elevovany proces + globalne hooky + overlay
-    # nad hrou je presne profil, ktory anti-cheaty (Vanguard, EAC, VAC)
-    # hodnotia najprisnejsie, a Steam elevaciu nepodporuje (viz
-    # STEAM_BUILD.md). pynput WH_KEYBOARD_LL hooky admin nepotrebuju -
-    # overene nazivo (gui_harness_auto: klaves spusti slot bez elevacie).
-    # Instalator (Dandurf.iss) preto instaluje do profilu pouzivatela bez
-    # UAC - to zaroven odstranuje "Error 707" pri instalacii.
+    # ADMIN VYPNUTY (bolo True). Elevovany proces + overlay nad hrou je
+    # presne profil, ktory anti-cheaty (Vanguard, EAC, VAC) hodnotia
+    # najprisnejsie (viz SAFETY.md).
+    # Globalne hooky appka nema - klavesovy hook z neverejnych verzii bol
+    # zruseny pred prvou verejnou alfou. Instalator (Dandurf.iss) preto
+    # instaluje do profilu pouzivatela bez UAC - to zaroven odstranuje
+    # "Error 707" pri instalacii.
     uac_admin=False,
 )
 

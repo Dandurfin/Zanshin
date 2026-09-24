@@ -21,7 +21,7 @@ GAMEPAD - ODMERANE, VIDI HO
 ---------------------------
 Povodne tu stalo, ze GetLastInputInfo gamepad nesleduje (klasicky argument:
 preto nabieha setric obrazovky, ked sa hra na ovladaci). Na tomto Windowse
-11 to NEPLATI. Odmerane 14. 9. 2026, tri behy, viz interne poznamky:
+11 to NEPLATI. Odmerane 14. 9. 2026, tri behy, viz MERANIE_GAMEPAD.md:
 
   DualSense cez HID, G7 Pro cez XInput, Steam zapnuty aj vypnuty:
   idle pri pohybe ovladaca medianovo 15-16 ms, kym v kludovych usekoch
@@ -62,7 +62,7 @@ MAX_SAMPLES = 60000
 # Z COHO HRAC PRAVE HRA
 # --------------------------------------------------------------------------
 # Appka o vstupe vie dve veci naraz: `GetLastInputInfo` (vidi VSETKO vratane
-# ovladaca, viz interne poznamky) a hlasenia z `gamepad.py` (vidi LEN
+# ovladaca, viz MERANIE_GAMEPAD.md) a hlasenia z `gamepad.py` (vidi LEN
 # ovladac). Z prieniku sa da odvodit trieda zariadenia:
 #
 #   ovladac hlasi cerstvy vstup            -> ovladac
@@ -184,8 +184,9 @@ class ActivityTracker:
         """Iny zdroj hlasi vstup PRAVE TERAZ (napr. tlacidlo na ovladaci).
 
         Nezapisuje sa CO to bolo - len ze sa nieco stalo. `gamepad.py` sem
-        posiela stlacenia tlacidiel od fazy 3, kedy prestal byt spustacom
-        hlasok a stal sa druhym zdrojom informacie o aktivite.
+        posiela aktivitu ovladaca (tlacidla, d-pad, pacicky a spuste za
+        mrtvou zonou, drzane kazdych 0,2 s) od fazy 3, kedy prestal byt
+        spustacom hlasok a stal sa druhym zdrojom informacie o aktivite.
         """
         now = self._clock() if now is None else now
         self._external_at = now
@@ -309,3 +310,56 @@ class ActivityTracker:
             return None
         active = sum(1 for idle in inside if idle is not None and idle < ACTIVE_IDLE_MS)
         return active / float(len(inside))
+
+
+# --------------------------------------------------------------------------
+# Vstup bez jedinej pauzy
+# --------------------------------------------------------------------------
+# Odmerane u zadavatela: G7 Pro so zapnutym gyroskopom ("Motion Always On")
+# nuloval `GetLastInputInfo` kazdych ~16 ms, takze appka nevidela ziadnu
+# pauzu, kym gyro nevypol - a hlaska, ktora na pauzu caka, nemala kedy prist.
+# Clovek pri hre kratku pauzu (menu, respawn, nacitanie) za 20 minut urobi;
+# kto ju nevidi, ma v PC skor nieco, co hlasi vstup samo. Naisto to appka
+# nevie, preto len tichy riadok na Dnes, raz za relaciu.
+NONSTOP_INPUT_S = 20 * 60.0
+# Najdlhsi krok, ktory sa zarata - uspaty PC alebo zaseknute okno nesmu
+# jednym tikom "pridat" minuty bez pauzy.
+_NONSTOP_MAX_STEP_S = 5.0
+
+
+class NonstopInputWatch:
+    """Ci appka uz dlho nevidela ani kratku pauzu vo vstupe.
+
+    `update()` sa vola s kazdym `poll` (4x za sekundu) s aktualnym `pause_s`
+    a s tym, ci sledovanie ma zmysel - appka pocuva a tep chodi, cize hrac ma
+    hodinky na ruke a je pri PC (lepsi znak appka nema). Cas bez pauzy sa
+    rata len vtedy; kratky vypadok tepu ho nevynuluje, len nerastie. Vynuluje
+    ho az pauza. Vracia, ci sa ma riadok ukazat.
+
+    Raz za relaciu: ked riadok zmizne (pauza prisla), v tejto relacii sa uz
+    neukaze. Novu relaciu zacina `reset()`.
+    """
+
+    def __init__(self, after_s=NONSTOP_INPUT_S):
+        self.after_s = float(after_s)
+        self.reset()
+
+    def reset(self):
+        self._bez_pauzy_s = 0.0
+        self._last = None
+        self.shown = False      # v tejto relacii sa uz ukazal
+        self.active = False     # prave sa ukazuje
+
+    def update(self, now, pause_s, watching, pause_needed_s=2.5):
+        last, self._last = self._last, now
+        if pause_s is not None and pause_s >= pause_needed_s:
+            # Pauza prisla - vstup teda nechodi bez prestania.
+            self._bez_pauzy_s = 0.0
+            self.active = False
+            return False
+        if watching and pause_s is not None and last is not None:
+            self._bez_pauzy_s += max(0.0, min(now - last, _NONSTOP_MAX_STEP_S))
+        if not self.shown and self._bez_pauzy_s >= self.after_s:
+            self.shown = True
+            self.active = True
+        return self.active

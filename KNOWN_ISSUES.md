@@ -1,111 +1,260 @@
-# Known issues & a commitment (alpha 0.2)
+# Known issues — Zanshin alpha 0.2
 
-I build Zanshin by one rule above the rest: **honest over polished.** If a line —
-in the app or in these docs — promises more than the code actually delivers, that
-line is the bug, not the missing feature.
+Zanshin 0.1 was my first public release. In places it promised more than it could
+keep, and some things didn't work the way it said they did. Here are the main
+points of what I've found so far: what 0.2 fixes, and what's still open. The
+seven problems named in the 0.1 version of this file are all below.
 
-After the first public alpha I audited Zanshin against a single question: *does it
-claim more than it can back?* In places, it did. Rather than quietly patch them, I'm
-naming them here, in the open, and committing to correct them in the 0.2 line. None
-of them change what Zanshin **is** — a local, quiet, heart-rate nudge for gamers —
-but each is a spot where the words ran ahead of the code.
+I'm not a programmer. I build Zanshin with AI and learn as I go. If you spot
+something, or know a better way, I'd be glad to hear it. **0.2, partly** means
+only part is fixed. Where something stays as it was, such as the online voice
+being the default, I say so.
 
-Grouped by theme, with a representative example or two each.
+**About 0.1 in this repository's history.** Along with the 0.1 code, some
+things went into the repository that didn't belong in public. Nothing
+terrible, but not meant to be there. So I set the repository up again: 0.1 is
+in the history as it was, only without those things, and 0.2 follows it. That
+was the lesson: work stays work, private stays private, and I check every file
+before publishing. What 0.1 got wrong in the app itself is written down below.
 
-## 1. Privacy wording — absolutes the code doesn't earn
+## What 0.1 got wrong, and what 0.2 changed
 
-The core guarantee is real and I stand behind it: **your heart rate, sessions,
-insights, recordings and settings never leave your computer.** But a few lines state
-it as an unconditional absolute the code doesn't back — and which Zanshin's own
-[`PRIVACY.md`](PRIVACY.md) was deliberately written to avoid. Examples: the README's
-"…or send a byte anywhere," and the in-app *Your data* panel's "Nothing is sent
-anywhere." A few things *do* touch the network: the optional online TTS voice sends
-the reminder *phrase text* to Microsoft; the first run may fetch two CC0 sound
-effects from GitHub; the Steam build sends a fixed, non-personal presence token. The
-README also says that online voice "needs the network only when you edit a phrase" —
-but it also fetches its voice list.
+### Privacy and what's on screen
 
-**0.2:** every privacy claim scoped to match `PRIVACY.md` — precise about the few
-things that leave, absolute only about the things that never do. (The QR-code and
-cloud-service wording is corrected in the same spirit: the in-app QR codes are
-download links to third-party companion apps, and cloud services like Pulsoid,
-HypeRate or Stromno can't be used as a source at all.)
+- **The online voice was the default, while the README and the *Your data* panel
+  said nothing is sent.** Your cue texts (never your heart rate) went to
+  Microsoft at first start, and mid-game if a line wasn't ready yet, for example
+  right after you changed it; only PRIVACY.md listed it. **0.2:** it's still the
+  default, but the docs and the app say so, and say when text is sent: after the
+  first start and after you change a line, the voice, the speed or the language.
+  Nothing is sent while Zanshin is listening; a line that isn't ready plays in
+  the Windows voice and is prepared after you stop.
+- **Two unneeded downloads.** With the online voice, every launch fetched
+  Microsoft's voice list (undocumented), and the first launch fetched two sounds
+  from GitHub that the installer already had. Neither request carried personal
+  data, though GitHub saw your IP address for nothing. **0.2:** the list is built
+  in, and GitHub is contacted only if a sound is missing.
+- **Your PC's local IP address was on screen** in the pairing window, where a
+  stream or screenshot could show it. **0.2:** it stays hidden until you click
+  *Show IP*.
+- **Shared profile codes could reveal your Windows user name** through the file
+  paths of your own sounds or recordings. **0.2:** codes contain no file paths.
+- **The heart-rate port was more open than documented, and × didn't close the
+  app.** Port 4455 accepts connections from any network your PC is on, without a
+  password, while PRIVACY.md said "local network"; × moved Zanshin to the tray
+  without telling you, where it kept the port open and kept measuring.
+  **0.2, partly:** the docs say so and advise home network only, and the first ×
+  explains the tray. The port is unchanged.
+- **The docs described a Steam presence that never ran.** Nothing was ever sent
+  to Steam. **0.2:** there's no Steam code at all.
 
-## 2. Insights that sound more certain than the data
+### Safety next to games
 
-Zanshin's insights read *ordinary gaming heart rate*, not a controlled test — so a
-handful of them state a cause or a trend more firmly than a few noisy sessions
-warrant. Examples: "you settle down faster than before" and "your body looks more
-rested" (from small shifts across as few as two recent sessions); "the start of a
-session winds you up the most" (a threshold that isn't adjusted for how long the
-session is); "the game keeps you tense longer than before" (measured against a limit
-the app recomputes from your own recent sessions, with no control for sleep or
-caffeine); a "this week vs. the previous week" wording that also fires when the
-comparison is really just the last few sessions; and a "steady" summary that can call
-a metric steady before enough sessions exist to judge it. The app already hedges some
-of these correctly — I'll make the rest match.
+- **The colour eyedropper captured the screen, while the docs said "never".** It
+  held all your monitors in memory while you picked a pixel; nothing was saved or
+  sent. **0.2:** the eyedropper is gone.
+- **"Anti-cheat safe" was a promise only anti-cheat makers can give.** The
+  technical part (no injection, no hooks, no reading game memory) was true.
+  **0.2:** the tag reads "Built to stay out of the game". The panel lists what
+  the app does and doesn't do, names the one exception (during the visual test
+  the pictures take mouse clicks so you can drag them), and says only the
+  anti-cheat's maker can guarantee it won't flag you.
+- **The names of running programs were read even with auto-profile off**, every
+  4 seconds; nothing was sent. The *Today* page also said the app starts "when a
+  game launches", though it knew only four games. **0.2:** with the switch off
+  they aren't read (it's still on by default), and the texts name the four
+  games.
+- **SAFETY.md's "complete" list wasn't complete.** It missed the microphone
+  (used only while you record your own cue), your PC's IP addresses (shown for
+  pairing) and the monitor list, and misdescribed the controller and walking.
+  **0.2, partly:** SAFETY.md and PRIVACY.md have the full list, but SAFETY.md is
+  still only in Slovak.
+- **Players already on Borderless got a log line telling them to switch to
+  Borderless**, because the check can't tell borderless from exclusive
+  fullscreen. **0.2, partly:** the log line is now a hedged guess; the check is
+  unchanged.
 
-**0.2:** softer, honest phrasing; name the confounders; fix the timeframe wording and
-the thresholds.
+### Your data
 
-## 3. Heart-rate recovery framed as a fitness test
+- **Import was risky.** The buttons didn't match the text; Replace, which
+  overwrites your history, had no second confirmation and didn't back up your
+  heart-rate readings; and after a merge the count showed your whole history.
+  **0.2:** a clear Merge / Replace / Cancel dialog; Replace asks twice and backs
+  up everything it replaces, and the message counts only what was imported.
+- **Imported history quietly stayed out of calibration, and "Export everything"
+  exported only history.** Moving to a new PC started calibration from zero.
+  **0.2:** the note says so (the app can't be sure an export is yours, so this
+  stays), and the button is "Export history".
+- **The uninstaller didn't name your heart-rate history**, though answering No
+  deleted it. **0.2:** the question names it.
+- **"Delete history" could leave copies that came back**, if you had used a
+  pre-release build or a portable copy. **0.2:** old copies are deleted too.
 
-The HRR card cites clinical/fitness numbers — "typically 12–23, trained people 29 and
-more, faster recovery goes with better fitness." Zanshin's HRR is read from ordinary
-gaming peaks, not a max-effort test, so those norms don't really apply.
+### Things that didn't work
 
-**0.2:** drop the clinical numbers and the fitness framing; keep HRR as what it
-honestly is — a rough sense of how fast you came back down.
+- **Ordinary gaps between readings counted as dropouts, so the app barely
+  spoke.** Any gap over 5 s wiped the build-up to a cue: over several evenings of
+  my testing, 194 of 199 build-ups, and one spoken cue in over four hours. The
+  end-of-session note also told you to move the watch closer to the PC, though
+  the watch talks to the phone. **0.2:** only a gap of 12 s or more counts, and
+  the dropout advice follows the real chain: watch to phone to PC.
+- **The controller listener never heard a controller.** Windows mostly covered
+  for it on my PC, but on a PC where Windows doesn't count controller input, the
+  app couldn't tell controller play from a pause at all. Either way, a cue could
+  come while you were playing. **0.2:** it hears sticks, triggers, buttons and
+  the D-pad.
+- **Gyro, or a stick with no deadzone, kept the voice silent without saying
+  why**, because input never paused. **0.2:** after 20 minutes without a pause, a
+  quiet line on *Today* says what may be causing it (gyro or a stick with no
+  deadzone); the app can't change your controller's settings.
+- **"Never mid-fight" was more than the app could know.** Its "break" was just
+  2.5 s without input, whatever your pulse was doing. **0.2:** the voice also
+  waits until your load stops climbing and never speaks in the Peak zone (your
+  pulse at or above your own high heart-rate limit).
+  The README now says a still moment mid-fight can still count as a pause.
+- **"Not now" (Ctrl+Alt+Z) ended the whole session**, could pop up the
+  questionnaire mid-game and stopped recording heart rate for 30 minutes.
+  **0.2:** it only quiets cues.
+- **"+ Add trigger" made cues that never spoke, and removing one put texts under
+  the wrong picture.** **0.2, partly:** the four categories are fixed and you
+  switch one off instead. In a 0.1 profile where you had removed a cue, a text
+  can still sit under the wrong picture; a new profile avoids it.
+- **The HUD looked confident before it had a baseline.** **0.2:** for the first
+  ~30 readings it shows "calibrating…", and cues can't fire.
+- **Smaller display bugs.** The cue counter on *Today* always showed 0×, zone
+  words meant different things in different places, a dropout looked like not
+  being paired, and some choices got reset (visuals you switched off came back
+  at every start; replaying the intro reset theme and volume). **0.2:** fixed,
+  except that the counter and the *Cues* card can still show different numbers.
 
-## 4. The "science" cards state mechanisms as fact
+### What the app said about itself
 
-Under a header literally called *The science*, a few cards state physiological
-mechanisms as settled fact without a citation — for example grounding "restricts
-blood flow to the brain and activates the amygdala," or the breathing cards' "the
-fastest biological mechanism for lowering heart rate" and "stabilizes the
-parasympathetic system."
+- **Insights sounded more certain than the data**, from a 4 BPM change and as
+  few as two sessions a week. **0.2, partly:** the texts are hedged and name
+  other possible reasons, but what triggers them is mostly unchanged (only the
+  session-start insight now needs a pattern unlikely to be chance).
+- **Heart-rate recovery was framed as a fitness test**, with norms from
+  maximum-effort exercise tests. **0.2:** it's your own rough trend, not a
+  fitness score.
+- **The Guide stated physiology as fact, with no medical note.** **0.2:** it's
+  called "Why it may help", each card says where the idea comes from (a study
+  where there is one, otherwise practice or tradition), and it says Zanshin is
+  not a medical device: with heart or breathing problems, ask a doctor first.
+- **Texts promised effects nobody had measured**, like "trains you to leave the
+  match calmer" and a chart called "Which cue works". **0.2, partly:** the texts
+  say Zanshin is meant to help, but the chart still colours a pulse drop as good.
+- **Claims about the licence and source code weren't true.** The installer had
+  no source or GPL text, though About said the source came with it, and the
+  README reserved the look and layout for me, although they are GPL code and the
+  GPL doesn't allow that. **0.2:** About links to the repository, the licence is
+  installed, and all code is plain GPLv3; only the icon and the dojo picture stay
+  mine.
 
-**0.2:** soften to hedged, attributed wording (or add a real citation where one
-exists); where it's background reasoning rather than proof, say so.
+### Heart-rate sources and pairing
 
-## 5. "Not a medical device" — said where it matters
+- **Cloud services (Pulsoid, HypeRate, Stromno) were described as usable
+  sources**, but Zanshin has no client for them. **0.2:** the docs say Zanshin
+  deliberately doesn't use them.
+- **The iPhone route was presented as working**, through a paid app I had never
+  been able to test, followed by steps that apply only to Android. **0.2:** the
+  app and README say it's untested and paid, and that the password, scene and
+  source steps are for Android only.
+- **Two pairing texts were wrong.** The docs called the QR codes pairing codes,
+  but they are store links to other people's companion apps (the captions in the
+  app were right). And the pairing guide named the phone source "Heart rate",
+  though it's called "Tep" (Slovak for heart rate). **0.2:** corrected; Zanshin
+  itself has no mobile app.
 
-Zanshin is deliberately **not** a medical device, and the README says so — but that
-line lives only in the README, while the clinical-sounding claims, the HRR numbers
-and the breath-hold instructions appear in the app's *Guide*, which carries no such
-note. The History screen already hedges ("observations and tips, not diagnoses"); the
-Guide should too.
+### Languages
 
-**0.2:** carry a short "general wellbeing, not medical advice; not a medical device"
-line into the Guide and the breathing screens.
+- **Nine languages, without saying seven were unreviewed AI translations**, some
+  out of date. Since the app picks your Windows language on first start, you
+  could land in one without being told. **0.2, partly:** now eleven (Czech and
+  Bulgarian are new and also unreviewed), and a line under the language picker
+  and the README say that all but Slovak are unreviewed AI-assisted
+  translations.
+- **Japanese, Chinese and Russian cue words went to an English voice, and the
+  Ctrl+K palette was in Slovak everywhere.** **0.2:** matching voices (while you
+  keep the default voice), and a translated palette.
 
-## 6. Nine languages offered, two complete
+### Smaller leftovers
 
-The switcher lists nine languages, but only **Slovak and English** are fully
-translated; the other seven fall back to English for anything not yet translated.
+- **The old name "DojoSync"** was left in texts and the repository. **0.2,
+  partly:** removed, except where needed to import 0.1 exports and find old
+  data, and in a few code comments.
+- **For people who build from source:** the build skipped two module checks, and
+  .gitignore could let your recordings or heart-rate data be committed. The 0.1
+  repository also held test scripts (one asked Windows for the state of chosen
+  keys) and an unused module with its own port; none was part of the app or the
+  installer. **0.2:** fixed, and those scripts and the module are gone. The
+  three GUI test scripts that remain (two of them move the mouse, all three take
+  screenshots of the app's own windows) are described in the README and
+  SAFETY.md.
 
-**0.2:** mark the seven as partial, so the choice is honest.
+### Corrections to the 0.1 version of this file
 
-## 7. Onboarding, HUD warm-up, and leftovers
+- It said seven languages "fall back to English". None did (a few texts, like
+  the Ctrl+K palette, stayed in Slovak instead); they were unreviewed, partly
+  outdated AI translations. It also planned to mark them as partial; 0.2
+  doesn't, and says instead that every language except Slovak is unreviewed.
+- It called the online voice "optional" and said your settings never leave your
+  PC; the voice was the default and sent your cue texts out. It also said a
+  "Steam build" sends a fixed presence token; no Steam build was released, and
+  nothing was sent to Steam.
 
-Onboarding implies the app will show, in numbers, that the game "strains you less" —
-but that particular decreasing-strain insight doesn't exist yet, and "after a few
-days" is really closer to a few weeks. The in-game HUD also shows a confident load
-reading from its very first samples: until it has about 30 readings it has no real
-resting baseline, so it measures strain against a rough minimum instead of telling
-you it's still calibrating. And a couple of cosmetic leftovers from the old name
-("DojoSync", "Since 2.1") are still around.
+## Still open — planned for 0.3
 
-**0.2:** reword onboarding to what actually exists; give the HUD a short
-"calibrating…" warm-up; clean up the leftover strings.
+As far as I know, none of these is harmful. Some are limits you should know
+about, and a few will stay.
 
----
+- **Zanshin can't see the game.** A pause is about 2.5 s without input, so a still
+  moment mid-fight counts, and aiming with gyro means no pause at all.
+  Controllers were tested on one PC.
+- **Exclusive fullscreen hides the pictures and the HUD** (voice still plays),
+  and the app can only guess it. It still counts such a picture as shown, which
+  skews the data on cues that stay silent on purpose (see below) and the "HUD
+  seen %" export column. Use Borderless.
+- **Port 4455 accepts connections from every network your PC is connected to,
+  without a password** (only your firewall limits who can reach it), so anything
+  that reaches it could send a fake heart rate. Allow it on your home network
+  only.
+- **Ctrl+Alt+Z is reserved.** While Zanshin runs, the game doesn't receive that
+  one key combination. In 0.1 the start-up log line said input is read with
+  "no blocking"; in 0.2 it names the shortcut as the one exception.
+- **The builds aren't code-signed.** The README gives the SmartScreen tip (*More
+  info → Run anyway*), but with Smart App Control on, an unsigned app can be
+  blocked outright with no "Run anyway" button, and the README doesn't say so
+  yet.
+- **Not a medical device.** Load, recovery and HRPI (one number for how high your
+  pulse ran and for how long) are rough trends from a consumer watch, not
+  diagnoses, and nothing is clinically validated. This stays.
+- **Your data:** imported history never feeds calibration (by design), and
+  walking isn't filtered out yet.
+- **Languages:** no translation has been checked by a native speaker, and
+  SAFETY.md is Slovak-only. *In-game language* (what the HUD and captions show;
+  English by default, on purpose) is separate from the app language and sits in
+  the panel about which screen to draw on, so the two are easy to mix up.
+- **The iPhone / Apple Watch route** is still untested.
+- **The voice-versus-picture comparison isn't shown yet**, though some cues stay
+  silent on purpose to collect it (about one in four in the first 15 sessions,
+  then one in ten). When it comes, it will compare voice plus picture with
+  picture only, not a cue with no cue.
+- **Numbers and labels:** the cue chart colours a pulse drop as good, some notes
+  are simpler than the math or name the wrong time span or unit, and the CSV
+  export is half-translated.
+- **Texts and controls:** a few explanations and settings texts claim a bit more
+  than the code does, onboarding misdescribes where the pictures sit, and the
+  "not now" shortcut is hard to find and can't be changed in the app.
 
-**The commitment.** Everything above is being corrected in the 0.2 line. Where
-something isn't verified yet — for example the iPhone / Apple Watch path, which is in
-the code but untested because I don't own Apple hardware — the app will say so plainly
-rather than imply it works. Zanshin will only claim what it can actually do.
+## How to help
 
-Truth without varnish. Alpha is a beginning, not an apology.
+Found something that doesn't work as it says, or know a better way? Please open
+an issue: <https://github.com/Dandurfin/Zanshin/issues>. A plain description is
+enough. I'd especially welcome native speakers for the translations, anyone who
+tries the iPhone route, reports from other controllers, and advice on code
+signing, anti-cheat or heart-rate data.
+
+Please don't post heart-rate files or logs publicly: heart-rate files are health
+data, and logs can name your devices and files. Describe what you saw instead.
 
 — **Dandurfin** · GPLv3

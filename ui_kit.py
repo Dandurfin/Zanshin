@@ -35,6 +35,7 @@ from tkinter import font as tkfont
 
 import customtkinter as ctk
 
+import display as display_mod     # `display` je v tomto module font (nizsie)
 import hr_stats
 import theme as theme_mod
 
@@ -186,6 +187,37 @@ def priprav_popup(top):
     return top
 
 
+def fit_popup(x, y, width, height, area, above_y, margin=8):
+    """Poloha (x, y) popupu tak, aby cely ostal v `area` = (x0, y0, x1, y1).
+
+    Vodorovne sa len pritlaci dovnutra. Ked sa nezmesti POD kotvu, vysunie
+    sa NAD nu: `above_y` je horny okraj kotvy (tlacidla) a popup potom konci
+    4 px nad nim - rovnako ako ⓘ na karte (`StatCard._toggle_info`)."""
+    x0, y0, x1, y1 = area
+    x = max(x0 + margin, min(int(x), x1 - width - margin))
+    if y + height > y1 - margin:
+        y = max(y0 + margin, above_y - height - 4)
+    return int(x), int(y)
+
+
+def work_area(widget):
+    """Pracovna plocha (bez listy uloh) TOHO monitora, na ktorom je stred
+    `widget` - v suradniciach virtualnej plochy, ako winfo_rootx/rooty.
+
+    Nie `winfo_screenwidth/height`: ta vracia len primarnu obrazovku, takze
+    na druhom monitore by popup odskocil spat na prvy."""
+    try:
+        cx = widget.winfo_rootx() + widget.winfo_width() // 2
+        cy = widget.winfo_rooty() + widget.winfo_height() // 2
+        for mon in display_mod.monitors(widget):
+            if mon.contains(cx, cy):
+                return (mon.work_x, mon.work_y,
+                        mon.work_x + mon.work_width, mon.work_y + mon.work_height)
+    except Exception:
+        pass
+    return (0, 0, widget.winfo_screenwidth(), widget.winfo_screenheight())
+
+
 def _window_hwnd(window):
     try:
         import ctypes
@@ -195,6 +227,43 @@ def _window_hwnd(window):
         return u.GetAncestor(ctypes.c_void_p(int(window.winfo_id())), 2)  # GA_ROOT
     except Exception:
         return None
+
+
+def pripni_k_vlastnikovi(top):
+    """Windows: dialog nech PATRI hlavnemu oknu - potom je vzdy nad nim.
+
+    Tk bezramovym (overrideredirect) oknam na Windows zahodi vlastnika
+    ("Parent must be desktop even if we have a transient parent" v
+    tkWinWm.c), takze `transient(root)` sa neprejavi. Hlavne okno potom
+    moze dialog prekryt - 24. 9. zostal dotaznik po relacii schovany za
+    appkou a hrac ho nevedel vyplnit (hlavne okno malo WS_EX_TOPMOST).
+
+    Vlastnika nastavime priamo (GWLP_HWNDPARENT). Vlastnene okno je vo
+    Windows v poradi okien VZDY nad svojim vlastnikom. Ak je vlastnik
+    topmost, dialog dostane topmost tiez, aby sa pred neho vzdy dostal.
+    Vlastny WinDLL handle - nemenime argtypes zdielanych funkcii windll.
+    Nikdy nevyhodi vynimku; vrati True, ked sa vlastnik nastavil."""
+    try:
+        import ctypes
+        master = getattr(top, "master", None)
+        if master is None:
+            return False
+        dlg = _window_hwnd(top)
+        own = _window_hwnd(master.winfo_toplevel())
+        if not dlg or not own or int(dlg) == int(own):
+            return False
+        u = ctypes.WinDLL("user32")
+        nastav = getattr(u, "SetWindowLongPtrW", None) or u.SetWindowLongW
+        nastav.restype = ctypes.c_void_p
+        nastav.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p]
+        nastav(ctypes.c_void_p(dlg), -8, ctypes.c_void_p(own))    # GWLP_HWNDPARENT
+        u.GetWindowLongW.restype = ctypes.c_long
+        u.GetWindowLongW.argtypes = [ctypes.c_void_p, ctypes.c_int]
+        if u.GetWindowLongW(ctypes.c_void_p(own), -20) & 0x00000008:   # WS_EX_TOPMOST
+            top.attributes("-topmost", True)
+        return True
+    except Exception:
+        return False
 
 
 def freeze_repaint(window, frozen):
@@ -222,6 +291,77 @@ def freeze_repaint(window, frozen):
             u.RedrawWindow(h, None, None, 0x0001 | 0x0004 | 0x0080 | 0x0100)
     except Exception:
         pass
+
+
+# DWM "cloak" (Windows 8+). Zahalene okno je pre Windows ZOBRAZENE - dostava
+# WM_PAINT a Tk ho normalne nakresli -, len ho DWM nepusti na obrazovku.
+# Presne to treba pri starte: okno sa ukaze az cele nakreslene, naraz.
+_DWMWA_CLOAK = 13      # zapis: 1 = zahalit, 0 = odhalit
+_DWMWA_CLOAKED = 14    # citanie: nenulove = okno je zahalene (appkou/shellom)
+_dwmapi = None
+
+
+def _dwm():
+    """Vlastny handle na dwmapi.dll, NIE zdielany `ctypes.windll.dwmapi`.
+
+    CustomTkinter vola ten isty `DwmSetWindowAttribute` cez `windll` (tmava
+    titulkova lista v ctk_tk.py) bez `argtypes`. Keby sme ich nastavili na
+    zdielanom objekte, menili by sme knizniciam cestu volania. `WinDLL` ma
+    vlastne funkcne objekty, takze nase `argtypes` nevidi nikto iny."""
+    global _dwmapi
+    if _dwmapi is None:
+        import ctypes
+        lib = ctypes.WinDLL("dwmapi")
+        for meno in ("DwmSetWindowAttribute", "DwmGetWindowAttribute"):
+            fn = getattr(lib, meno)
+            fn.argtypes = [ctypes.c_void_p, ctypes.c_uint,
+                           ctypes.c_void_p, ctypes.c_uint]
+            fn.restype = ctypes.c_long            # HRESULT, 0 = S_OK
+        _dwmapi = lib
+    return _dwmapi
+
+
+def zahal_okno(window, zahalit):
+    """Zahali (`zahalit=True`) alebo odhali okno cez DWM (DWMWA_CLOAK).
+
+    Na rozdiel od `withdraw()` sa okno pritom normalne kresli, len ho nevidno.
+    Vracia True, ked to Windows prijal; inak False a nedeje sa nic - okno sa
+    sprava ako doteraz. Nikdy nevyhodi vynimku (najlepsia snaha, ako
+    `freeze_repaint`).
+
+    POZOR: plasti sa HWND obalu okna. `overrideredirect(False)` (napr.
+    minimalizacia bezramoveho okna v `ui_shell.TitleBar`) necha Tk obal
+    znova vytvorit a NOVE okno zahalene nie je - teda sa ukaze. To je
+    bezpecna strana (okno nikdy neostane neviditelne); neopravovat to
+    opatovnym zahalenim stareho handle."""
+    try:
+        import ctypes
+        h = _window_hwnd(window)
+        if not h:
+            return False
+        hodnota = ctypes.c_int(1 if zahalit else 0)
+        return _dwm().DwmSetWindowAttribute(
+            h, _DWMWA_CLOAK, ctypes.byref(hodnota), ctypes.sizeof(hodnota)) == 0
+    except Exception:
+        return False
+
+
+def je_zahalene(window):
+    """Je okno prave zahalene (DWMWA_CLOAKED)? Pri akejkolvek chybe False.
+
+    Pre harnessy: zahalene okno ma `winfo_viewable()` stale True, takze len
+    podla Tk by "neviditelna" appka presla kazdou kontrolou."""
+    try:
+        import ctypes
+        h = _window_hwnd(window)
+        if not h:
+            return False
+        stav = ctypes.c_uint(0)
+        hr = _dwm().DwmGetWindowAttribute(
+            h, _DWMWA_CLOAKED, ctypes.byref(stav), ctypes.sizeof(stav))
+        return hr == 0 and stav.value != 0
+    except Exception:
+        return False
 
 
 def potlac_dpi_alpha_blik(window):
@@ -353,11 +493,17 @@ class SettingRow(ctk.CTkFrame):
     kazde inu sirku, takze nazov v texte "🖱️ Uvolnenie" zacinal inde nez
     "🥾 Tazisko" (nahlasene ako "prepinac mimo osi"). Rovnaky princip ako
     bocne menu (_NavRow).
+
+    `note` (volitelne) je drobna tichsia vysvetlivka pod CELYM riadkom -
+    pod nazvom aj pod ovladacom, este nad deliacou ciarou. Je pre vetu,
+    ktora patri k vyberu, ale nie je jeho popisom (napr. veta o prekladoch
+    pod vyberom jazyka).
     """
 
     ICON_W = 40      # aj sirsie emoji (🖱️ s variacnym selektorom) sa zmesti
 
-    def __init__(self, master, pal, title, sub=None, wrap=430, icon=None):
+    def __init__(self, master, pal, title, sub=None, wrap=430, icon=None,
+                 note=None, note_wrap=560):
         super().__init__(master, fg_color="transparent")
         self.pack(fill="x")
         inner = ctk.CTkFrame(self, fg_color="transparent")
@@ -375,10 +521,21 @@ class SettingRow(ctk.CTkFrame):
         self.title_label = ctk.CTkLabel(text_col, text=title, font=ui(13),
                                         text_color=pal["text"], anchor="w", justify="left")
         self.title_label.pack(fill="x")
+        # Vetu si drzime, aby sa dala prepisat, ked sa zmeni to, co
+        # popisuje (ukazka zvuku ide za stylom hlasky).
+        self.sub_label = None
         if sub:
-            ctk.CTkLabel(text_col, text=sub, font=ui(11), text_color=pal["text_faint"],
-                         anchor="w", justify="left", wraplength=wrap).pack(
-                fill="x", pady=(2, 0))
+            self.sub_label = ctk.CTkLabel(
+                text_col, text=sub, font=ui(11), text_color=pal["text_faint"],
+                anchor="w", justify="left", wraplength=wrap)
+            self.sub_label.pack(fill="x", pady=(2, 0))
+
+        self.note_label = None
+        if note:
+            self.note_label = ctk.CTkLabel(
+                self, text=note, font=ui(10), text_color=pal["text_faint"],
+                anchor="w", justify="left", wraplength=note_wrap)
+            self.note_label.pack(fill="x", pady=(0, 9))
 
         ctk.CTkFrame(self, fg_color=pal["line_soft"], height=1,
                      corner_radius=0).pack(fill="x")
@@ -916,8 +1073,12 @@ class SegmentBar(PalCanvas):
     """Zataz ako delený pruh. Plynula lišta by tvrdila presnost, ktoru
     cislo z tepu nema - dvadsat dielikov je poctivejsie.
 
-    Farby idu rovnakym radom ako pasma tepu (`theme.ZONE_TOKENS`), aby
-    plny pruh a "kriticka" v legende znamenali to iste.
+    Dlzka je zataz, farba plnych dielikov je AKTUALNE pasmo (`zone` z
+    `HeartStats.zone`, tep voci pokoju) - vsetky rovnako, ako na HUD-e.
+    Vlastne hranice pasiem pruh nema: predtym farbil dieliky podla
+    35/60/80 % dlzky, takze pri zatazi 57 koncil "zvysenou", HUD pri tej
+    istej zatazi "vysokou" (stvrtiny pruhu) a slovo nad nim mohlo hovorit
+    este nieco ine. Bez `zone` su dieliky neutralne (akcent).
     """
 
     SEGMENTS = 20
@@ -925,9 +1086,11 @@ class SegmentBar(PalCanvas):
     def __init__(self, master, pal, height=8):
         super().__init__(master, pal, height)
         self._value = 0.0
+        self._zone = None
 
-    def set_value(self, percent):
+    def set_value(self, percent, zone=None):
         self._value = max(0.0, min(100.0, float(percent or 0)))
+        self._zone = zone
         self._redraw()
 
     def _redraw(self):
@@ -938,16 +1101,11 @@ class SegmentBar(PalCanvas):
         c.delete("all")
         filled = int(round(self.SEGMENTS * self._value / 100.0))
         seg = w / float(self.SEGMENTS)
+        plna = theme_mod.zone_color(pal, self._zone)
         for i in range(self.SEGMENTS):
             x0 = i * seg
             x1 = x0 + seg * 0.72
-            if i < filled:
-                share = i / float(self.SEGMENTS - 1)
-                zone = ("calm" if share < 0.35 else "raised" if share < 0.6
-                        else "high" if share < 0.8 else "critical")
-                color = theme_mod.zone_color(pal, zone)
-            else:
-                color = pal["switch_off"]
+            color = plna if i < filled else pal["switch_off"]
             c.create_rectangle(x0, 0, x1, h, fill=color, outline="")
 
 
@@ -1543,7 +1701,8 @@ class StatList(ctk.CTkFrame):
 class StatCard(ctk.CTkFrame):
     """Karta jednej metriky: VELKE farebne cislo a pod nim jednoslovny
     popisok. ⓘ rozbali kratke vysvetlenie, ✕ (len pri hoveri nad kartou) ju
-    odstrani z vyberu.
+    odstrani z vyberu. Kartu mozno chytit (cislo, popisok alebo okraj - nie
+    ⓘ/✕) a pustit na inu: vymenia si miesto (`on_drag`, rozhoduje appka).
 
     Farba cisla je identita metriky - rovnaka farba ako bodka vo vybere v
     `_build_dnes_page`, takze si hrac vie kartu a polozku vo vybere spojit
@@ -1564,7 +1723,7 @@ class StatCard(ctk.CTkFrame):
     "zotavenie"), ktore nerastie s jazykom.
 
     ⓘ tym ZOSTAVA DOLEZITEJSIE, nie menej: "POKOJ" samo o sebe nepovie, o
-    co ide, a plati to v deviatich jazykoch.
+    co ide, a plati to vo vsetkych jazykoch.
 
     POZN: mikrograf poslednych relacii a veta o odchylke odtialto odisli
     (`set_trend`, `MicroChart`). Bola to poctiva myslienka - "62 BPM"
@@ -1574,7 +1733,7 @@ class StatCard(ctk.CTkFrame):
     """
 
     def __init__(self, master, pal, color_token, tag, value, info_text,
-                on_remove=None):
+                on_remove=None, on_drag=None):
         super().__init__(master, fg_color=pal["surface"], corner_radius=RADIUS_PANEL,
                          border_width=1, border_color=pal["line_soft"])
         self.pal = pal
@@ -1620,6 +1779,29 @@ class StatCard(ctk.CTkFrame):
         self._info_text = info_text
         self._info_pop = None
         self.bind("<Destroy>", lambda _e: self._close_info())
+
+        # Presun potiahnutim. Karta len HLASI stlacenie / pohyb / pustenie;
+        # co s tym (vymena, ulozenie) rozhoduje appka. Viaze sa len na plochy
+        # karty, NIKDY na ⓘ a ✕ - tie su tlacidla a musia klikat normalne.
+        # Tk po stlaceni posiela pohyb aj pustenie widgetu, ktory dostal
+        # stlacenie (implicitny grab), takze netreba globalny grab.
+        if on_drag is not None:
+            def _press(event):
+                self._close_info()
+                on_drag("press", event)
+            for widget in (self, body, head, self.value_label, self.tag_label):
+                widget.bind("<ButtonPress-1>", _press)
+                widget.bind("<B1-Motion>", lambda e: on_drag("move", e))
+                widget.bind("<ButtonRelease-1>", lambda e: on_drag("release", e))
+
+    def set_drag_look(self, role=None):
+        """Okraj pocas tahania: 'source' = karta, ktoru drzis, 'target' =
+        karta, s ktorou si vymeni miesto. None = bezny okraj."""
+        color = {"source": "accent", "target": "accent_hover"}.get(role, "line_soft")
+        try:
+            self.configure(border_color=self.pal[color])
+        except Exception:
+            pass
 
     def set_value(self, value):
         try:
@@ -1955,7 +2137,10 @@ class DialogChrome:
             try:
                 top.overrideredirect(True)
                 # obnov override po navrate z minimalizacie (ako root)
-                top.bind("<Map>", lambda _e: top.overrideredirect(True), add="+")
+                # a po kazdom zobrazeni znova pripni k hlavnemu oknu - Tk pri
+                # obnove overrideredirect vlastnika zahadzuje
+                top.bind("<Map>", lambda _e: (top.overrideredirect(True),
+                                              pripni_k_vlastnikovi(top)), add="+")
             except Exception:
                 pass
 
@@ -1993,6 +2178,7 @@ class DialogChrome:
         # titulkovej liste) a okamzity focus_force by ten trik prebil.
         def _take_focus():
             try:
+                pripni_k_vlastnikovi(top)   # inak ho hlavne okno moze prekryt
                 top.lift()
                 top.focus_force()
             except Exception:

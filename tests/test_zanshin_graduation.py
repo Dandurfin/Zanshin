@@ -131,6 +131,40 @@ def test_streak_prepocita_bez_ukladania():
     assert st["eligible"] == 10 and st["passed_in_window"] == 7
 
 
+# ---- vstupy po zmenach 0.2 (easter-egg-check) ----
+
+def test_rovnomerne_vysoky_vecer_nie_je_pokoj_voci_dlhodobej_zakladni():
+    """Cely vecer na 95 (kava, suvisly stres): zakladna relacie sa dotiahne
+    za tepom a rozptyl je maly. Voci dlhodobej zakladni (strop, ako pre pasma
+    a zataz) to pokoj nie je; stara relacia bez pola sa hodnoti ako doteraz."""
+    vysoky = _sess(0, curve_val=95.0, base=95.0)
+    assert hr_stats.je_plne_zanshin(vysoky) is True          # bez pola: po starom
+    vysoky["long_baseline_bpm"] = 72.0
+    assert hr_stats.je_plne_zanshin(vysoky) is False
+    # Strop, nie nahrada: pokojnejsi vecer nez zvycajne ostava voci sebe.
+    pokojny = _sess(0, curve_val=66.0, base=62.0, long_baseline_bpm=72.0)
+    assert hr_stats.je_plne_zanshin(pokojny) is True
+
+
+def test_pocita_sa_cas_s_tepom_nie_cas_na_hodinach():
+    """20 minut relacie, z toho 12 minut vypadok: 8 minut tepu nie je vecer."""
+    assert hr_stats.je_plne_zanshin(_sess(0, dur=1200.0, blind_s=720.0)) is None
+    assert hr_stats.je_plne_zanshin(_sess(0, dur=1200.0, blind_s=200.0)) is True
+    # Pokazene pole sa neberie ako nahrada casu.
+    assert hr_stats.je_plne_zanshin(_sess(0, dur=1200.0, blind_s=-500.0)) is True
+
+
+def test_do_serie_sa_rataju_len_herne_relacie():
+    """Pokojne pracovne popoludnia seriu nenaplnia (rovnako ako prahy)."""
+    praca = [dict(s, world="work") for s in _pass_history(10)]
+    v = hr_stats.zanshin_graduation(praca, already_graduated=False)
+    assert v["fire"] is False and v["reason"] == "need_more" and v["eligible"] == 0
+    assert hr_stats.zanshin_streak(praca)["eligible"] == 0
+    # Odpoved v dotazniku ma prednost pred svetom zo startu.
+    potvrdena_hra = [dict(s, world="work", activity="play") for s in _pass_history(10)]
+    assert hr_stats.zanshin_graduation(potvrdena_hra)["fire"] is True
+
+
 # ---- napojenie v appke (AST - teeth, ze hook nezmizne) ----
 
 def _telo_metody(subor, meno):

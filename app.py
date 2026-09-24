@@ -49,24 +49,26 @@ import hr_insights
 import data_io
 import hr_stats
 import measure
+import netinfo
+import rebrik
 import trigger
 import guide_content
-from guide_content import heart_rate_sources
+from guide_content import origin_sources
 from heart_rate import ANY_INTERFACE, DEFAULT_PORT as HR_DEFAULT_PORT, HeartRateMonitor
 from hud import StatsHud
 import theme as theme_mod
 import theme_recolor
 import ui_kit
-from steam_integration import steam
 from audio_engine import AudioDispatcher, EdgeTTSCache, SpeechWorker, speak_sapi_isolated
-from game_profiles import PSUTIL_AVAILABLE, GameProcessWatcher
+from game_profiles import PSUTIL_AVAILABLE, GameProcessWatcher, known_games
 from guide_panel import GuidePanel, build_guide_into
 from guided_tour import GuidedTour
-from i18n import (LANGUAGES, LANG_DE, LANG_EN, LANG_ES, LANG_FR, LANG_JA, LANG_PT,
-                  LANG_RU, LANG_SAME_AS_APP, LANG_SK, LANG_ZH, set_lang,
-                  system_lang, tr, tr_lang)
+from i18n import (LANGUAGES, LANG_BG, LANG_CS, LANG_DE, LANG_EN, LANG_ES, LANG_FR,
+                  LANG_JA, LANG_PT, LANG_RU, LANG_SAME_AS_APP, LANG_SK, LANG_ZH,
+                  set_lang, system_lang, tr, tr_lang)
 from overlay import SomaticOverlayManager
-from paths import APP_NAME, AUDIO_DIR, DATA_DIR, SETTINGS_PATH, TTS_CACHE_DIR, resolve_audio_path
+from paths import (APP_NAME, AUDIO_DIR, DATA_DIR, SETTINGS_PATH, TTS_CACHE_DIR,
+                   legacy_data_dirs, resolve_audio_path)
 
 # Licencia tak, ako ju vidno v titulnej liste. NIE je to prekladany retazec:
 # "GPLv3" je nazov licencie, rovnako ako "Zanshin" je nazov appky - prelozit
@@ -74,19 +76,24 @@ from paths import APP_NAME, AUDIO_DIR, DATA_DIR, SETTINGS_PATH, TTS_CACHE_DIR, r
 LICENCIA = "GPLv3"
 from settings_model import (DEFAULT_AUDIO, DEFAULT_BREATH_EXHALE_S,
                             DEFAULT_BREATH_INHALE_S,
+                            DASHBOARD_MAX_CARDS,
                             DEFAULT_COOLDOWN, DEFAULT_DASHBOARD_STATS,
                             DEFAULT_EDGE_VOICE,
                             DEFAULT_MONITOR_TARGET,
-                            DEFAULT_SLOT, ENGINE_EDGE,
-                            ENGINE_SAPI, JAPANESE_VOICE_HINT, MODE_COMBO, MODE_SFX, MODE_TTS,
+                            ENGINE_EDGE,
+                            ENGINE_SAPI, MODE_COMBO, MODE_SFX, MODE_TTS,
                             clamp_float, clamp_int, default_hud_config,
                             default_overlay_configs, default_slots, normalize_breath_seconds,
+                            doplnit_kategorie, je_kategoria,
                             engine_labels, label_to_engine, mode_labels,
-                            normalize_dashboard_stats,
+                            dashboard_stat_clickable, normalize_dashboard_stats,
                             normalize_hud_config, normalize_monitor_target,
-                            normalize_overlay_config, normalize_slot)
-from ui_dialogs import (watch_app_qr,
-                        DevLayerDialog, ImportProfileDialog, NewProfileDialog,
+                            normalize_overlay_config, normalize_slot,
+                            migrate_slot_text, slot_na_zdielanie, slot_zo_zdielania,
+                            suggested_voice, swap_dashboard_stats, toggle_dashboard_stat)
+from ui_dialogs import (watch_app_qr, CUE_STYLE_LABELS,
+                        DevLayerDialog, ImportDataDialog, ImportProfileDialog,
+                        NewProfileDialog,
                         OnboardingWizard, OverlaySettingsDialog,
                         SessionEndDialog, SlotCard, WatchPairingDialog)
 import ui_shell
@@ -116,6 +123,8 @@ LANG_NATIVE_LABELS = {
     LANG_DE: "Deutsch",
     LANG_FR: "Français",
     LANG_PT: "Português (BR)",
+    LANG_CS: "Čeština",
+    LANG_BG: "Български",
 }
 LABEL_TO_LANG = {v: k for k, v in LANG_NATIVE_LABELS.items()}
 
@@ -169,7 +178,8 @@ class DandurfApp:
     # PRECO VOBEC: tep od pohybu odlisit NEJDE. Uendes a kol. (2026, JMIR,
     # N=127) ukazali, ze model s 55 EKG priznakmi ma pri strednej fyzickej
     # aktivite specificitu 0,418 - takmer sest z desiatich okien chodze
-    # oznaci ako stres. Jeden BPM kazdych 1,5 s to nezvladne tobozu. Brana
+    # oznaci ako stres. Jeden BPM kazdych ~1 az 3 s (kadencia hodiniek, viz
+    # `trigger.MAX_KROK_S`) to nezvladne tobozu. Brana
     # na kroky teda nie je opatrnost, je to jedina cesta.
     #
     # PRECO NIE 100 (etablovana hranica strednej intenzity, 3 METy):
@@ -252,6 +262,9 @@ class DandurfApp:
         self.tray_icon = None
         self.typing = False
         self._ready = False
+        # Okno je zahalene (DWM cloak), kym sa pri starte cele nenakresli -
+        # viz `_zahal_do_dokreslenia` / `_odhal_hotove_okno`.
+        self._zahalene = False
         self._listen_started = None
         self.log_collapsed = True
         self._last_log_line = None
@@ -267,10 +280,26 @@ class DandurfApp:
 
         settings = self.load_settings()
         self.lang = settings["lang"]
+        # DVA SVETY, JEDNO TELO (0.2, B3-worlds). Svet (hra/praca) urcuje
+        # vzhlad (`theme.WORLD_THEME`), ktoru historiu a postrehy appka
+        # ukazuje a ci hlaska smie zaznit. `load_settings` uz zarucil, ze
+        # tema sedi so svetom.
+        self.world = settings["world"]
+        # Svet BEZIACEJ relacie - pecati sa pri jej otvoreni a prepinac ho
+        # uz nezmeni (viz `_open_hr_session`).
+        self._session_world = self.world
+        # Styl hlasky, ktory si hrac vybral, a stupen rebrika beziacej
+        # relacie (0.2, `rebrik.py`). Stupen sa urci pri otvoreni relacie.
+        self.cue_style = settings["cue_style"]
+        self._cue_style_rel = self.cue_style
+        self._cue_rung = rebrik.vrchol(self.world, self.cue_style)
+        self._snooze_po_hlaske = None
         self.theme_key = settings["theme"]
         self.pal = theme_mod.tokens(self.theme_key)
 
         self.start_minimized = bool(settings["start_minimized"])
+        # Uz raz povedane, ze × appku neukonci, len schova do listy (`on_close`).
+        self.tray_close_explained = bool(settings["tray_close_explained"])
         self.auto_profile_enabled = bool(settings["auto_profile_enabled"]) and PSUTIL_AVAILABLE
         self.overlay_configs = settings["overlay_configs"]
         self._vizualy_napravene = bool(settings.get("_vizualy_napravene"))
@@ -280,10 +309,16 @@ class DandurfApp:
             wizard = OnboardingWizard(self.root)
             self.root.wait_window(wizard.top)
             if wizard.confirmed:
-                self.theme_key = wizard.choice
+                # Krok 4 vybera HLAVNY SVET; `choice` je jeho tema.
+                self.world = theme_mod.theme_world(wizard.choice)
+                self._session_world = self.world
+                self.theme_key = theme_mod.WORLD_THEME[self.world]
                 self.pal = theme_mod.tokens(self.theme_key)
                 self._apply_diagnostics(settings, wizard.diagnostics)
                 settings["volume"] = wizard.volume_value
+                # Krok 5: ako sa ma appka ozvat (styl hlasky). None = hrac
+                # nevybral nic a ostava predvoleny hlas (ako "neviem").
+                self._prevezmi_styl_z_onboardingu(wizard)
                 # ak hrac v onboardingu klikol "Sparovat hodinky teraz",
                 # otvorime parovaci dialog az PO dostaveni okna (viz koniec
                 # __init__) - teraz appka este nie je hotova
@@ -297,6 +332,13 @@ class DandurfApp:
             # onboardingu vidi len plochu (guided tour potom plaval nad
             # prazdnou obrazovkou). Pomaha spracovat cakajuce udalosti a
             # zavolat deiconify znova; overene nazivo (gui_harness_onboarding).
+            #
+            # Zahalit az TU, za sprievodcom: ten je `transient(root)`, takze
+            # pocas neho root zahaleny byt nesmie. Hrac potom stavbu stranok
+            # (vratane preblikajucich Nastaveni) nevidi - okno sa ukaze
+            # naraz a hotove az po __init__, ked sa rozbehne slucka Tk
+            # (viz `_odhal_hotove_okno`).
+            self._zahal_do_dokreslenia()
             self.root.deiconify()
             self.root.update()
             self.root.deiconify()
@@ -305,7 +347,9 @@ class DandurfApp:
 
         self.monitor_target = settings["monitor_target"]
         self.hud_config = settings["hud_config"]
-        self.dashboard_stats = settings["dashboard_stats"]
+        # Na Dnes najviac DASHBOARD_MAX_CARDS kariet (mriezka 2x2). Dlhsi
+        # zoznam sa dal dostat len rucnou upravou JSON - vybrat sa neda.
+        self.dashboard_stats = list(settings["dashboard_stats"])[:DASHBOARD_MAX_CARDS]
         self.breath_inhale_s = float(settings["breath_inhale_s"])
         self.breath_exhale_s = float(settings["breath_exhale_s"])
         # Prah zataze si appka rata sama pri kazdej relacii z vlastnych dat
@@ -340,6 +384,13 @@ class DandurfApp:
 
         # --- Senzor Tepu (Wi-Fi / UDP biofeedback) ---
         self.hr_ip = str(settings["hr_ip"])
+        # SKRYTA IP (0.2): adresa PC sa na obrazovke neukaze sama - okno
+        # appky byva na streame aj na screenshote pre testera. Odkryje ju
+        # az "Ukazat IP" (parovanie, Nastavenia) a len do restartu: ZAMERNE
+        # len v pamati, do nastaveni sa nezapisuje (viz netinfo.mask_ip).
+        self.show_ip = False
+        self.show_ip_var = None
+        self.hr_ip_entry = None
         self.hr_port = int(settings["hr_port"])
         # Vypocitana hodnota, nie nastavenie. Realne cislo pride pri prvom
         # otvoreni relacie z `hr_stats.dynamicky_kriticky`; dovtedy zaloha.
@@ -349,6 +400,12 @@ class DandurfApp:
         self.zanshin_graduated_at = settings.get("zanshin_graduated_at")
         self._hr_state = "disconnected"   # disconnected | connecting | connected
         self._hr_last_bpm = None
+        # Tep, ktory appka v tomto behu pocula, prestal chodit ("vypadol") -
+        # na rozdiel od "este nic neprislo". Len zobrazenie a zaznam; spustac
+        # ma vlastne pozastavenie (`_suspend_cue_trigger`). `_hr_lost_od` je
+        # cas poslednej vzorky pred vypadkom (pre riadok v denniku).
+        self._hr_lost = False
+        self._hr_lost_od = None
         self._hr_over_since = None
         self._hr_overlay_warned = False
         self._hr_client_linked = False
@@ -383,6 +440,11 @@ class DandurfApp:
         # a vo faze 2 z neho bude aj rozpoznanie pauzy.
         self.activity = activity.ActivityTracker()
         self._activity_job = None
+        # Uz 20 minut ani kratka pauza vo vstupe (gyro ovladaca, pacicka bez
+        # mrtvej zony)? Tichy riadok na Dnes, raz za relaciu - viz
+        # `_tick_nonstop_input`.
+        self._nonstop_input = activity.NonstopInputWatch()
+        self._dnes_nonstop_text = ""
         # Stavovy automat hlasky: zataz nad prahom 90 s -> natiahnute ->
         # caka na pauzu -> hlaska. Cisty modul, testovany bez Tk.
         self.cue_trigger = trigger.CueTrigger()
@@ -408,9 +470,18 @@ class DandurfApp:
         # vysledok sa ukaze hned, cerstvy sa dopocita v pozadi po starte
         self.hr_insights_path = os.path.join(DATA_DIR, "hr_insights.json")
         _stored = hr_insights.load_insights(self.hr_insights_path)
+        # Postrehy su za JEDEN svet (B3-worlds). Ulozene za iny svet - alebo
+        # zo starsej verzie, ktora ich ratala zo vsetkeho spolu - sa neukazu;
+        # cerstve sa dopocitaju chvilu po starte (`run_hr_analysis`).
+        if _stored.get("world") != self.world:
+            _stored = {}
         self._hr_insights = list(_stored.get("insights") or [])
         self._hr_insights_at = _stored.get("computed_at")
         self._hr_analysis_thread = None
+        # Analyza odmietnuta, lebo este bezala predosla (napr. hned po
+        # prepnuti sveta) - dobehne znova, ked ta skonci. Viz `run_hr_analysis`.
+        self._hr_analysis_rerun = False
+        self._hr_rerun_job = None
         self._hr_session_open = False
         # Kolko sekund relacie bol HUD viditelny (biofeedback: videny tep sa
         # podvedome reguluje). Snima sa v `_tick_cue_trigger`, aby chytilo aj
@@ -448,6 +519,9 @@ class DandurfApp:
         self.edge_status_label = None
         self._pregen_job = None
         self._pregen_seq = 0
+        # Hlaska, ktora pocas pocuvania chybala v cache (`_speak_text`) -
+        # dogeneruje sa az po `stop_listening`, nie uprostred hry.
+        self._pregen_po_hre = False
 
         self.worker = SpeechWorker(self.log_threadsafe, on_voices=self.on_voices_ready)
         self.worker.pending_voice = self.saved_voice_id or None
@@ -472,7 +546,7 @@ class DandurfApp:
         os.makedirs(TTS_CACHE_DIR, exist_ok=True)
         self._ready = True
         self.save_settings()
-        self.log(tr("log.ready", app=APP_NAME))
+        self.log(tr("log.ready"))
         self.log(tr("log.safe_mode"))
         if self._vizualy_napravene:
             # Appka si prave sama zapla vizualy, ktore ju umlcovali. Nema to
@@ -481,20 +555,19 @@ class DandurfApp:
             self.log(tr("log.vizualy_napravene"))
 
         if PSUTIL_AVAILABLE:
-            self.game_watcher = GameProcessWatcher(self.on_game_process_found,
-                                                   self.on_game_process_gone)
-            self.game_watcher.start()
+            # Zoznam procesov sa cita LEN pri zapnutom auto-profile. Predtym
+            # sken bezal vzdy a vypnuty prepinac len zahodil vysledok - appka
+            # tak kazde 4 s citala mena procesov aj hracovi, ktory to vypol.
+            if self.auto_profile_enabled:
+                self._start_game_watcher()
         else:
             self.log(tr("log.auto_profile_unavailable"))
 
         if self.hr_monitoring_enabled:
             self.start_heart_rate_monitor()
-        # Volitelna Steamworks vrstva - ak SDK/Steam nie je, ticho sa vypne
-        # a appka bezi presne ako doteraz (rovnaky vzor ako setup_tray).
-        try:
-            steam.init()
-        except Exception:
-            app_log.exception("steam.init zlyhal - pokracujem bez neho")
+        # POZN: tu sa zapinala volitelna Steamworks vrstva. Zanshin nema
+        # ziadnu integraciu so Steamom (0.2) - vrstva bez SDK aj tak nerobila
+        # nic, takze appka bezi presne ako doteraz.
         self._tick_session()
         self._tick_activity()
         # analyza historie tepu v pozadi (nie na GUI vlakne), az ked okno stoji
@@ -504,9 +577,20 @@ class DandurfApp:
         # listy sa appka schova len na vyslovnu ziadost pouzivatela (tlacidlo
         # "Minimalizovat do lišty" alebo zavretie okna, ak je to tak
         # nastavene), nikdy automaticky.
+        #
+        # Ukazat ho ale az NAKRESLENE: Windows kresli len zobrazene okno, takze
+        # bez zahalenia by hrac videl najprv priesvitny ram a potom skladanie
+        # po kusoch (lista, pas, prazdna stranka, statistiky, dojo).
+        self._zahal_do_dokreslenia()
         self.root.deiconify()
         self.root.lift()
         self.root.focus_force()
+        if self._zahalene:
+            self.root.after(0, self._odhal_hotove_okno)
+            # Poistka: okno nesmie nikdy ostat neviditelne, nech sa stane
+            # cokolvek (odhalenie sa nespusti, CTk zmeni poradie krokov...).
+            self.root.after(self.ODHAL_POISTKA_MS, lambda: self._odhal_hotove_okno(
+                pokus=self.ODHAL_MAX_POKUSOV))
         if self.start_minimized and not settings["first_run"] and TRAY_AVAILABLE:
             self.root.after(150, self.minimize_to_tray)
 
@@ -515,12 +599,12 @@ class DandurfApp:
             self.show_assets_progress()
         threading.Thread(target=self._ensure_sfx_assets, daemon=True).start()
         if audio_engine.EDGE_AVAILABLE:
-            # Zoznam Edge hlasov sa tiaha z Microsoftu (sietovy dotaz). Robime
-            # to LEN ked hrac naozaj pouziva online Edge - kto zvolil offline
-            # SAPI (alebo sa TTS ani nedotkne), na Microsoft pri kazdom starte
-            # NEcinka. Pri prepnuti na Edge sa hlasy dotiahnu (on_engine_change).
-            if self.engine == ENGINE_EDGE:
-                threading.Thread(target=self._load_edge_voices, daemon=True).start()
+            # Zoznam Edge hlasov je pevny (`EDGE_FALLBACK_VOICES`) a NESTAHUJE
+            # sa. Predtym sa pri kazdom starte s Edge - a ten je predvoleny -
+            # tahal katalog z Microsoftu, len aby sa orezal presne na tento
+            # zoznam. Na Microsoft ide appka az pri priprave hlasok
+            # (`pregenerate`), a to len ked hlasky v hre naozaj hovoria.
+            self._load_edge_voices()
         else:
             self.log(tr("log.edge_tts_missing"))
 
@@ -550,6 +634,65 @@ class DandurfApp:
             # Prva prehliadka appky - az po onboardingu a len ak hrac neisiel
             # rovno parovat hodinky (aby sa dva sprievodcovia neprekryvali).
             self.root.after(600, self.start_tour)
+
+    # ---------- start bez preblikania ----------
+    #
+    # Pri starte bolo okno na obrazovke skor, nez bolo nakreslene: prvy obraz
+    # takmer cely priesvitny (presvitala plocha), potom 4-8 medzikrokov. Pri
+    # prvom spusteni po onboardingu bolo vidno skladat sa vsetky stranky.
+    # Nebolo to mnozstvom dat (pri dnesnej velkosti historie) - Windows
+    # posiela kreslenie len ZOBRAZENEMU oknu a Tk kresli lenivo. DWM cloak
+    # (`ui_kit.zahal_okno`) okno zobrazi a necha nakreslit, len ho neukaze.
+
+    # Kolkokrat po 10 ms pockat, kym CTk v `mainloop()` okno schova a znova
+    # ukaze (spolu zhruba 1-2 s, casovace Tk na Windows su hrubsie). Potom
+    # sa okno odhali aj tak. Bezne to CTk stihne za menej nez 0,1 s.
+    ODHAL_MAX_POKUSOV = 100
+    # Posledna poistka: najneskor po 10 s je okno viditelne vzdy.
+    ODHAL_POISTKA_MS = 10000
+
+    def _zahal_do_dokreslenia(self):
+        """Zahali okno tesne pred prvym zobrazenim. Ked to Windows neprijme
+        (starsi system, chyba), `_zahalene` ostane False a start bezi ako
+        doteraz - len s preblikanim."""
+        if not getattr(self, "_zahalene", False):
+            self._zahalene = ui_kit.zahal_okno(self.root, True)
+
+    def _okno_este_schovane(self):
+        try:
+            return self.root.state() != "normal"
+        except Exception:
+            return False
+
+    def _odhal_hotove_okno(self, pokus=0):
+        """Ukaze okno az ked je cele nakreslene - naraz, nie po kusoch.
+
+        CTk v `mainloop()` okno este raz schova, prepocita a ukaze (tmava
+        lista, `_windows_set_titlebar_color`); `after(0)` pribehne prave v
+        tom schovanom useku. Kym okno nie je "normal", skusi to znova o
+        10 ms - najviac `ODHAL_MAX_POKUSOV`-krat, potom odhali aj tak.
+
+        Cakanie je ZAMERNE mimo try/finally: `return` zvnutra by cez
+        `finally` odhalil okno predcasne, este nenakreslene. Samotne
+        odhalenie je vo `finally`, takze prebehne aj ked kreslenie spadne.
+        Ked by zlyhalo aj odhalenie, `_zahalene` ostane True a poistka
+        (`ODHAL_POISTKA_MS`) to skusi znova."""
+        if not getattr(self, "_zahalene", False):
+            return
+        if pokus < self.ODHAL_MAX_POKUSOV and self._okno_este_schovane():
+            try:
+                self.root.after(10, lambda: self._odhal_hotove_okno(pokus + 1))
+                return
+            except Exception:
+                app_log.exception("start: odklad odhalenia zlyhal - odhalim hned")
+        try:
+            self.root.update()               # rozlozenie + WM_PAINT + prekreslenie
+            self._refresh_dnes_backdrop()    # dojo nech je uz v prvom obraze
+            self.root.update_idletasks()
+        except Exception:
+            app_log.exception("start: dokreslenie pred odhalenim zlyhalo")
+        finally:
+            self._zahalene = not ui_kit.zahal_okno(self.root, False)
 
     # ---------- SFX kniznica ----------
 
@@ -623,7 +766,7 @@ class DandurfApp:
         except (KeyError, IndexError):
             return
         # diagnostika 0 = zovreta ruka/trasenie pri mierení -> slot 2
-        # (Release), 1 = zatate zuby/celust -> slot 1 (Teeth), 2 =
+        # (Release), 1 = zatate zuby/celust -> slot 1 (Jaw), 2 =
         # predklananie/nestabilita -> slot 0 (Grounded), 3 = zadrziavanie
         # dychu/panika -> slot 3 (Breathe).
         mapping = {0: 2, 1: 1, 2: 0, 3: 3}
@@ -672,10 +815,16 @@ class DandurfApp:
         # z fixnej vysky okna (WINDOW_H). S nim odisiel aj posuvnik
         # "Pozadie dojo" v Nastaveniach a hodnota `dojo_intensity` - bez
         # pasu uz nemali co ovladat.
+        # Prepinac sveta (Hra | Praca) sedi v liste vlavo od ⓘ - viz
+        # `set_world` a `ui_shell.TitleBar`.
         titlebar = TitleBar(appwrap, root_window=self.root, app_name=APP_NAME,
                             on_close=self.on_close, version=tr("app.version_short"),
                             pal=pal, on_about=self.show_about,
-                            about_tip=tr("about.title"), licence=LICENCIA)
+                            about_tip=tr("about.title"), licence=LICENCIA,
+                            world_values=self._world_labels(),
+                            world_value=self._world_label(self.world),
+                            on_world=self._on_world_label,
+                            world_tip=tr("world.tip"))
         titlebar.pack(fill="x", side="top")
         self.titlebar = titlebar
         # Patnast klikov na cislo verzie otvori ladenie (§3.2). Lokalna Tk
@@ -772,6 +921,11 @@ class DandurfApp:
         # Cez tento alias ju najdu a `Sidebar.set_pal` ju aj dalej prefarbi.
         if getattr(self, "sidebar", None) is not None:
             self.sidebar.enso = self.enso
+        # Prestavba okna (jazyk, zachrana pri teme) postavi bodku stavu nanovo
+        # a ta zacina neodlozena. Pocas "teraz nie", ktore od 24. 9. pocuva
+        # dalej, by potom svietila zelenou "appka pocuva" namiesto jantarovej.
+        if getattr(self, "_snooze_job", None) is not None:
+            self._refresh_snooze_indicator()
 
     def _build_dnes_page(self, page, pal):
         """Dnes: dychajuci pas (spustit/zastavit), tep so zatazou, suhrn
@@ -987,8 +1141,9 @@ class DandurfApp:
         # ktory z dvojice (live / empty) je vidno, riesi _refresh_dnes_stats
 
         # "Moje štatistiky" - volitelna mriezka 2x2 (nahradza povodny pevny
-        # 7-riadkovy StatList). "✎ upraviť" otvori popup so vsetkymi 8
-        # metrikami; vyber sa uklada do settings (self.dashboard_stats).
+        # 7-riadkovy StatList). "✎ upraviť" otvori popup so vsetkymi
+        # metrikami, zvolit sa daju najviac 4 (DASHBOARD_MAX_CARDS); vyber aj
+        # poradie sa uklada do settings (self.dashboard_stats).
         stats_wrap = ctk.CTkFrame(cols, fg_color="transparent")
         stats_wrap.grid(row=0, column=1, sticky="nsew", padx=(8, 0))
 
@@ -1140,13 +1295,51 @@ class DandurfApp:
         ("hrr", "metric.hrr.title", "blue"),
         ("over", "metric.over.title", "zone_high"),
         ("peak", "metric.peak.title", "accent"),
+        # 0.2 - Historia ma ukazat cely obraz, nielen tep: ako dlho sa
+        # hralo, kolko z toho v pokoji, ako dobre appka pocula a kolko
+        # hlasok poslala. Id a farby su tie iste ako karty na Dnes.
+        ("session_len", "metric.session_len.title", "text_dim"),
+        ("calm_time", "metric.calm_time.title", "zone_calm"),
+        ("signal", "metric.signal.title", "blue"),
+        ("breath", "metric.breath.title", "murasaki"),
     )
-    _METRIC_BUCKET_KEY = {"baseline": "baseline", "hrr": "hrr", "over": "over_s", "peak": "peak"}
-    _METRIC_INFO_KEY = {"baseline": "baseline", "hrr": "hrr", "over": "zones", "peak": "peak"}
+    _METRIC_BUCKET_KEY = {"baseline": "baseline", "hrr": "hrr", "over": "over_s", "peak": "peak",
+                          "session_len": "duration_s", "calm_time": "calm_s",
+                          "signal": "coverage", "breath": "cues"}
+    _METRIC_INFO_KEY = {"baseline": "baseline", "hrr": "hrr", "over": "zones", "peak": "peak",
+                        "session_len": "session_len", "calm_time": "calm_time",
+                        "signal": "signal", "breath": "breath"}
     # Co sa kresli stlpcami: veliciny, ktorych prirodzena nula nieco
     # znamena (nula minut nad hranicou je vypoved). Zakladna a zotavenie
     # su ciara - stlpec od nuly by na usek 60-70 BPM nechal par pixelov.
-    _METRIC_BARS = frozenset({"over", "peak"})
+    # Signal tiez: zije okolo 95-100 % a stlpec od nuly by kazdy vypadok
+    # schoval do par pixelov na vrchu.
+    _METRIC_BARS = frozenset({"over", "peak", "session_len", "calm_time", "breath"})
+    # Bucket drzi sekundy a pokrytie 0..1; graf ukazuje minuty a percenta.
+    _METRIC_SCALE = {"over": 1 / 60.0, "session_len": 1 / 60.0,
+                     "calm_time": 1 / 60.0, "signal": 100.0}
+    # Desatinne miesta na osi a v "prvy -> posledny". Hlasky su priemer na
+    # relaciu (1,5 je poctivejsie nez zaokruhlenych 2).
+    _METRIC_DECIMALS = {"over": 1, "breath": 1}
+    HISTORY_METRIC_CHIPS_PER_ROW = 4
+
+    # Detail jednej relacie: (kluc bunky, i18n kluc popisku, token farby).
+    # Popisky su tie iste slova ako v tabulke a na kartach - nove len tam,
+    # kde take slovo este nebolo.
+    HISTORY_DETAIL_COLS = 4
+    HISTORY_DETAIL_CELLS = (
+        ("duration", "history.col_duration", "text_dim"),
+        ("avg", "history.col_avg", "text"),
+        ("max", "history.detail_peak", "danger"),
+        ("calm", "history.detail_calm", "zone_calm"),
+        ("over", "history.col_over", "zone_high"),
+        ("breath", "history.detail_breath", "murasaki"),
+        ("peak", "history.col_peak", "accent"),
+        ("hrr", "history.detail_hrr", "blue"),
+        ("hrpi", "history.detail_hrpi", "accent"),
+        ("signal", "history.detail_signal", "blue"),
+        ("felt", "history.detail_felt", "text"),
+    )
 
     def _build_historia_page(self, page, pal):
         """Historia relacii tepu: postrehy z analyzy na pozadi, trend
@@ -1167,7 +1360,14 @@ class DandurfApp:
                      text_color=pal["text"], anchor="w").pack(fill="x", padx=6)
         ctk.CTkLabel(scroll, text=tr("history.subtitle"), font=ui_kit.ui(11),
                      text_color=pal["text_dim"], wraplength=680, anchor="w",
-                     justify="left").pack(fill="x", padx=6, pady=(4, 10))
+                     justify="left").pack(fill="x", padx=6, pady=(4, 2))
+        # Ktory svet stranka ukazuje (B3-worlds). Bez tejto vety by prazdna
+        # Praca vyzerala ako stratena historia. Text doplna
+        # `_refresh_history_page`, lebo svet sa meni bez prestavby stranky.
+        self.history_world_note = ctk.CTkLabel(
+            scroll, text="", font=ui_kit.ui(10), text_color=pal["text_faint"],
+            wraplength=680, anchor="w", justify="left")
+        self.history_world_note.pack(fill="x", padx=6, pady=(0, 10))
 
         # --- postrehy (analyza na pozadi) ---
         ins = ui_kit.Panel(scroll, pal, title=tr("history.insights_title"), right="")
@@ -1197,13 +1397,19 @@ class DandurfApp:
         metric_row.pack(fill="x", pady=(0, 4))
         ctk.CTkLabel(metric_row, text=tr("history.pick_metric").upper(), width=74,
                      font=ui_kit.ui(9, "bold"), text_color=pal["text_faint"],
-                     anchor="w").pack(side="left")
+                     anchor="w").pack(side="left", anchor="n")
+        # Osem metrik sa do jedneho radu nezmesti - chipy idu do mriezky
+        # po styroch vpravo od popisku, ktory tak ostava jeden pre vsetky.
+        chips = ctk.CTkFrame(metric_row, fg_color="transparent")
+        chips.pack(side="left", fill="x", expand=True)
         self.history_metric_chips = {}
-        for key, title_key, _color in self.HISTORY_METRICS:
-            btn = ui_kit.chip(metric_row, pal, tr(title_key),
+        for i, (key, title_key, _color) in enumerate(self.HISTORY_METRICS):
+            btn = ui_kit.chip(chips, pal, tr(title_key),
                               lambda k=key: self._set_history_metric(k),
                               pressed=(key == self.history_metric))
-            btn.pack(side="left", padx=(0, 6))
+            row, col = divmod(i, self.HISTORY_METRIC_CHIPS_PER_ROW)
+            btn.grid(row=row, column=col, sticky="w", padx=(0, 6),
+                     pady=(4, 0) if row else (0, 0))
             self.history_metric_chips[key] = btn
 
         self.history_period = getattr(self, "history_period", hr_stats.PERIOD_WEEK)
@@ -1245,6 +1451,13 @@ class DandurfApp:
             text_color=pal["text_faint"], anchor="w", justify="left",
             wraplength=560)
         self.history_effect_hint.pack(fill="x", pady=(8, 0))
+        # REBRIK HLASKY (0.2): jedna ticha veta, len ked sa appka sama
+        # stisila pod vrchol - s dovodom. Na vrchole sa nezobrazi vobec
+        # (`_refresh_rebrik_note`).
+        self.history_rebrik_note = ctk.CTkLabel(
+            ep.body, text="", font=ui_kit.ui(10),
+            text_color=pal["text_faint"], anchor="w", justify="left",
+            wraplength=560)
 
         # --- pravidelnost: mriezka dni + serie ---
         # Jedina vec na tejto stranke, ktora nehovori o jednej relacii, ale
@@ -1289,14 +1502,20 @@ class DandurfApp:
             text_color=pal["text_faint"], anchor="w", justify="left",
             wraplength=640)
         self.history_detail_legend.pack(fill="x", pady=(6, 0))
-        detail_row = ctk.CTkFrame(dp.body, fg_color="transparent")
-        detail_row.pack(fill="x", pady=(10, 0))
+        # VSETKY hodnoty vybranej relacie (0.2: "Historia = cely obraz"),
+        # v mriezke po styroch - v jednom rade by sa jedenast buniek
+        # nezmestilo. Poradie a popisky v `HISTORY_DETAIL_CELLS`.
+        detail_grid = ctk.CTkFrame(dp.body, fg_color="transparent")
+        detail_grid.pack(fill="x", pady=(10, 0))
+        for col in range(self.HISTORY_DETAIL_COLS):
+            detail_grid.grid_columnconfigure(col, weight=1, uniform="detail")
         self.history_detail_cells = {}
-        for key, token in (("peak", "danger"), ("hrr", "blue"),
-                           ("breath", "murasaki"), ("hrpi", "accent")):
-            cell = ctk.CTkFrame(detail_row, fg_color="transparent")
-            cell.pack(side="left", padx=(0, 26))
-            ctk.CTkLabel(cell, text=tr(f"history.detail_{key}").upper(),
+        for i, (key, label_key, token) in enumerate(self.HISTORY_DETAIL_CELLS):
+            row, col = divmod(i, self.HISTORY_DETAIL_COLS)
+            cell = ctk.CTkFrame(detail_grid, fg_color="transparent")
+            cell.grid(row=row, column=col, sticky="w", padx=(0, 12),
+                      pady=(10, 0) if row else (0, 0))
+            ctk.CTkLabel(cell, text=tr(label_key).upper(),
                          font=ui_kit.ui(9, "bold"), text_color=pal["text_faint"],
                          anchor="w").pack(fill="x")
             value = ctk.CTkLabel(cell, text="—", font=ui_kit.display(18),
@@ -1341,30 +1560,39 @@ class DandurfApp:
         self.history_info_zones.pack(fill="x", pady=(6, 0))
         self.history_info_hrpi = self._metric_info(infos, pal, "hrpi", wrap=640)
         self.history_info_hrpi.pack(fill="x", pady=(6, 0))
+        # "Cítené · merané" v detaile su dve cisla bez sipky a bez verdiktu -
+        # bez vety o tom, co je co, by sa "6 · 8" citalo ako "appka tvrdi,
+        # ze sa mylis". Graf tuto metriku nema, tak vysvetlenie stoji tu.
+        self.history_info_felt = self._metric_info(infos, pal, "felt_vs_measured", wrap=640)
+        self.history_info_felt.pack(fill="x", pady=(6, 0))
 
-        # --- Preco to funguje: rozbalitelny panel so studiami ---
+        # --- Ako to vzniklo: rozbalitelny panel, text autora + tri priklady ---
+        # (0.2) Namiesto dlheho zoznamu studii - cely je v ZDROJE.md.
         sc = ui_kit.Panel(scroll, pal)
         sc.pack(fill="x", pady=(14, 0))
         self.history_science_btn = ctk.CTkButton(
-            sc.body, text=f"▸   {tr('history.science_title')}", anchor="w",
+            sc.body, text=f"▸   {tr('origin.title')}", anchor="w",
             fg_color="transparent", hover_color=pal["surface_alt"], text_color=pal["text"],
             font=ui_kit.ui(13, "bold"), command=self._toggle_history_science)
         self.history_science_btn.pack(fill="x")
         self.history_science_body = ctk.CTkFrame(sc.body, fg_color="transparent")
-        ctk.CTkLabel(self.history_science_body, text=tr("history.science_intro"),
+        ctk.CTkLabel(self.history_science_body, text=tr("origin.text"),
                      font=ui_kit.ui(11), text_color=pal["text_dim"], wraplength=640,
                      anchor="w", justify="left").pack(fill="x", pady=(6, 4))
+        ctk.CTkLabel(self.history_science_body, text=tr("origin.examples"),
+                     font=ui_kit.ui(11), text_color=pal["text_dim"], wraplength=640,
+                     anchor="w", justify="left").pack(fill="x", pady=(4, 0))
         # rovnaky mechanizmus ako Sprievodca: "↗ zdroj" -> webbrowser.open,
         # zoznam je ten isty (guide_content.PHILOSOPHY_SOURCES)
         self.history_source_links = []
-        for label, url in heart_rate_sources():
+        for label, url in origin_sources():
             link = ctk.CTkLabel(self.history_science_body, text=f"↗ {label}",
                                 font=ui_kit.ui(10, "underline"), text_color=pal["accent"],
                                 anchor="w", justify="left", cursor="hand2", wraplength=640)
             link.pack(fill="x", pady=(2, 0))
             link.bind("<Button-1>", lambda _e, u=url: webbrowser.open(u))
             self.history_source_links.append((link, url))
-        ctk.CTkLabel(self.history_science_body, text=tr("history.science_hrv_note"),
+        ctk.CTkLabel(self.history_science_body, text=tr("origin.full_list"),
                      font=ui_kit.ui(10), text_color=pal["text_faint"], wraplength=640,
                      anchor="w", justify="left").pack(fill="x", pady=(8, 0))
 
@@ -1374,10 +1602,10 @@ class DandurfApp:
         body = self.history_science_body
         if body.winfo_ismapped():
             body.pack_forget()
-            self.history_science_btn.configure(text=f"▸   {tr('history.science_title')}")
+            self.history_science_btn.configure(text=f"▸   {tr('origin.title')}")
         else:
             body.pack(fill="x", pady=(4, 0))
-            self.history_science_btn.configure(text=f"▾   {tr('history.science_title')}")
+            self.history_science_btn.configure(text=f"▾   {tr('origin.title')}")
 
     def _history_sessions(self):
         # `log` odovzdaný zámerne: nečitateľná história sa nesmie tváriť ako
@@ -1385,6 +1613,16 @@ class DandurfApp:
         return [s for s in hr_stats.load_sessions(self.hr_sessions_path,
                                                   log=self.log_threadsafe)
                 if isinstance(s, dict)]
+
+    def _world_sessions(self):
+        """Relacie AKTUALNEHO sveta - len pre POHLADY (B3-worlds).
+
+        Historia, trend a jeho pasmo, tabulka, rytmus, detail, karty na Dnes
+        a postrehy ukazuju len svoj svet. Algoritmus sa na toto NEPYTA:
+        pokojova zakladna ide zo vsetkych relacii (telo je jedno), kriticky
+        tep a prah zataze len z hernych (viz `_open_hr_session`). Export
+        berie vzdy vsetko."""
+        return hr_stats.sessions_in_world(self._history_sessions(), self.world)
 
     @staticmethod
     def _fmt_minutes(seconds):
@@ -1443,7 +1681,8 @@ class DandurfApp:
         pal = self.pal
         metric = self.history_metric
         period = self.history_period
-        sessions = self._history_sessions()
+        # Len aktualny svet - aj pasmo "bezne rozpatie" nizsie (B3-worlds).
+        sessions = self._world_sessions()
         # Posuvne okno, nie kalendarne obdobie - viz hr_stats.rolling_start_ts
         since = hr_stats.rolling_start_ts(period)
         period_sessions = [s for s in sessions if isinstance(s, dict)
@@ -1456,8 +1695,10 @@ class DandurfApp:
             hr_stats.aggregate_by_period(period_sessions, bucket_period),
             bucket_period, since)
         bucket_key = self._METRIC_BUCKET_KEY[metric]
-        # "over" je v sekundach - na grafe citatelnejsie v minutach
-        scale = 1 / 60.0 if metric == "over" else 1.0
+        # casy su v sekundach - na grafe citatelnejsie v minutach; pokrytie
+        # signalu je 0..1 - na grafe percenta (viz _METRIC_SCALE)
+        scale = self._METRIC_SCALE.get(metric, 1.0)
+        decimals = self._METRIC_DECIMALS.get(metric, 0)
         # Bucket BEZ dat sa posiela ako None, nie ako vynechany bod: inak
         # by sa stredajsia pauza na grafe nezobrazila a utorok by sa
         # posunul na jej miesto. Popisky osi x su uz spocitane v buckete.
@@ -1469,8 +1710,8 @@ class DandurfApp:
         color_token = {k: c for k, _t, c in self.HISTORY_METRICS}[metric]
         bars = metric in self._METRIC_BARS
 
-        # "Tvoje bezne rozpatie" (p25-p75) sa rata z CELEJ historie v tom
-        # istom rozliseni bucketov - aby sa porovnavali rovnake veliciny.
+        # "Tvoje bezne rozpatie" (p25-p75) sa rata z CELEJ historie SVETA v
+        # tom istom rozliseni bucketov - aby sa porovnavali rovnake veliciny.
         # Bez neho je kazdy bod len cislo; s nim je jasne, ktory z nich je
         # naozaj mimo.
         vsetky = hr_stats.aggregate_by_period(sessions, bucket_period)
@@ -1481,7 +1722,7 @@ class DandurfApp:
         self.history_trend.set_series(chart_values, labels=labels,
                                       color=pal[color_token], band=band,
                                       band_label=tr("history.band_label"), bars=bars,
-                                      decimals=1 if metric == "over" else 0)
+                                      decimals=decimals)
 
         if len(raw_values) >= 2:
             first_v, last_v = raw_values[0], raw_values[-1]
@@ -1495,6 +1736,11 @@ class DandurfApp:
             elif metric == "over":
                 delta_text = tr("history.trend_simple_delta",
                                 first=f"{first_v / 60.0:.1f}", last=f"{last_v / 60.0:.1f}")
+            elif scale != 1.0 or decimals:
+                # nove metriky 0.2: v tych istych jednotkach ako graf
+                delta_text = tr("history.trend_simple_delta",
+                                first=f"{first_v * scale:.{decimals}f}",
+                                last=f"{last_v * scale:.{decimals}f}")
             else:
                 delta_text = tr("history.trend_simple_delta",
                                 first=int(round(first_v)), last=int(round(last_v)))
@@ -1511,7 +1757,18 @@ class DandurfApp:
         if box is None or not box.winfo_exists():
             return
         pal = self.pal
-        sessions = self._history_sessions()
+        # Len relacie aktualneho sveta (B3-worlds); detail je index do
+        # PRAVE tohto zoznamu, preto ho `set_world` nuluje.
+        sessions = self._world_sessions()
+        note = getattr(self, "history_world_note", None)
+        if note is not None:
+            # Graf "ktora hlaska zabera" rata len herne hlasky, ktore
+            # zazneli (viz `_refresh_cue_effect`) - veta to musi povedat,
+            # inak by stranka s napisom "Svet: Praca" ukazovala herne hlasky
+            # bez slova.
+            note.configure(text=tr("history.world_note",
+                                   world=self._world_label(self.world),
+                                   chart=tr("history.effect_title")))
         self._refresh_history_trend()
 
         # tabulka
@@ -1544,11 +1801,16 @@ class DandurfApp:
                 started = float(s.get("started") or 0)
                 date = time.strftime("%d.%m.%Y %H:%M", time.localtime(started)) if started else "-"
                 hrr = s.get("hrr_bpm")
+                # Hlasky = to iste cislo ako detail, graf aj CSV: len tie,
+                # ktore appka poslala sama (`hlasky_relacie`). Stare
+                # `triggers` ratalo aj klavesu a tlacidlo "Test".
+                hlasky = hr_stats.hlasky_relacie(s)
                 cells = (date, self._fmt_minutes(s.get("duration_s")),
                          str(s.get("avg_bpm") or "-"),
                          f"{s.get('min_bpm') or '-'} / {s.get('max_bpm') or '-'}",
                          self._fmt_minutes(s.get("time_over_s")),
-                         str(s.get("triggers", 0)), f"{s.get('peak_stress', 0)} %",
+                         str(hlasky) if hlasky is not None else "-",
+                         f"{s.get('peak_stress', 0)} %",
                          f"{int(hrr):+d}" if hrr is not None else "-",
                          str(s.get("hrpi") if s.get("hrpi") is not None else "-"))
                 bunky = [row]
@@ -1583,7 +1845,46 @@ class DandurfApp:
         self._refresh_history_rhythm(sessions)
         self._refresh_history_detail(sessions)
         self._refresh_cue_effect()
+        self._refresh_rebrik_note(sessions)
         self._render_hr_insights()
+
+    def _refresh_rebrik_note(self, sessions):
+        """Jedna ticha veta pod grafom ucinnosti, ked je rebrik hlasky
+        (`rebrik.py`) v zobrazenom svete POD vrcholom: co appka teraz robi,
+        preco a kolko relacii chyba do dalsieho pokusu. Na vrchole nic -
+        appka nema co vysvetlovat. `sessions` su relacie zobrazeneho sveta.
+        """
+        label = getattr(self, "history_rebrik_note", None)
+        if label is None or not label.winfo_exists():
+            return
+        text = ""
+        try:
+            stav = rebrik.stupen(sessions, svet=self.world,
+                                 styl=getattr(self, "cue_style", None))
+            text = self._rebrik_veta(stav)
+        except Exception:
+            app_log.exception("historia: veta rebrika zlyhala")
+        try:
+            if text:
+                label.configure(text=text)
+                label.pack(fill="x", pady=(6, 0))
+            else:
+                label.pack_forget()
+        except Exception:
+            pass
+
+    @staticmethod
+    def _rebrik_veta(stav):
+        """Veta pre stav rebrika, alebo "" na vrchole."""
+        if not stav or stav.get("stupen") == stav.get("vrchol"):
+            return ""
+        dovod = stav.get("dovod")
+        preco = (tr(f"history.rebrik.why.{dovod}")
+                 if dovod in rebrik.DOVODY_POD_VRCHOLOM else "")
+        kluc = ("history.rebrik.pause" if stav["stupen"] == rebrik.PAUZA
+                else "history.rebrik.visual")
+        # Bez dovodu (peciatka po orezani historie) by ostali dve medzery.
+        return " ".join(tr(kluc, dovod=preco, n=stav.get("zostava", 0)).split())
 
     def _refresh_cue_effect(self):
         """Naplni graf "ktora hlaska zabera".
@@ -1591,6 +1892,11 @@ class DandurfApp:
         Pocita sa LEN z hlasneho ramena (viz `measure.by_category`) - tiche
         okna su referencia pre to, ci hlaska funguje vobec, nie pre
         porovnanie kategorii medzi sebou.
+
+        Od 0.2 (rebrik + brana) len hlasky, ktore naozaj zazneli, dorucene
+        na pauze a z HRY - v praci je hlaska len obrazom. Ked uz su okna s
+        branou, len tie (`measure.by_category`); veta pod grafom hovori, ze
+        pokles po hlaske nie je dokaz.
         """
         graf = getattr(self, "history_effect", None)
         if graf is None or not graf.winfo_exists():
@@ -1624,6 +1930,8 @@ class DandurfApp:
         Data su hracove - appka mu ich nesmie drzat v JSON-e, ktory bezny
         clovek neotvori. CSV Excel otvori dvojklikom a appka na to
         nepotrebuje ziadnu kniznicu navyse (viz hr_stats.export_sessions_csv).
+
+        Vzdy VSETKY relacie, z oboch svetov (B3-worlds) - su to jeho data.
         """
         sessions = self._history_sessions()
         if not sessions:
@@ -1713,7 +2021,7 @@ class DandurfApp:
         dni = hr_stats.day_activity(sessions, days=371)
         grid.set_days(dni, legend=(tr("history.grid_less"), tr("history.grid_more")))
         # Cislo samo, jednotka je v popisku nad nim ("Dní s reláciou · rok").
-        # Slovencina sklonuje "deň/dni/dní" podla poctu a appka ma devat
+        # Slovencina sklonuje "deň/dni/dní" podla poctu a appka ma vela
         # jazykov - cislo bez podstatneho mena je spravne v kazdom z nich.
         aktivne = sum(1 for den in dni if den.get("count"))
         self.history_days_value.configure(text=str(aktivne) if aktivne else "—")
@@ -1748,18 +2056,76 @@ class DandurfApp:
                         duration_s=session.get("duration_s") or 0,
                         triggers=session.get("trigger_offsets_s") or [],
                         activity=session.get("activity_curve") or ())
-        hrr = session.get("hrr_bpm")
-        hrpi = session.get("hrpi")
-        hodnoty = {
-            "peak": str(session.get("max_bpm") or "—"),
-            "hrr": f"{int(hrr):+d}" if hrr is not None else "—",
-            "breath": str(session.get("auto_triggers", session.get("triggers", 0))),
-            "hrpi": str(hrpi) if hrpi is not None else "—",
-        }
+        hodnoty = self._history_detail_values(session)
         for key, cell in self.history_detail_cells.items():
             cell.configure(text=hodnoty.get(key, "—"))
         self.history_detail_hint.configure(
             text=tr("history.detail_hint") if curve else tr("history.detail_no_curve"))
+
+    def _history_detail_values(self, session):
+        """{kluc bunky: text} pre VSETKY bunky detailu jednej relacie.
+
+        Co relacia nema (stara verzia, import, preskoceny dotaznik), je "—",
+        nie nula - "nevieme" a "nic" su dve rozne vypovede.
+        """
+        def cislo(key):
+            v = session.get(key)
+            return str(v) if v not in (None, "") else "—"
+
+        hrr = session.get("hrr_bpm")
+        try:
+            hrr_text = f"{int(hrr):+d}" if hrr is not None else "—"
+        except (TypeError, ValueError):
+            hrr_text = "—"
+        calm = hr_stats.cas_v_pokoji_s(session)
+        hlasky = hr_stats.hlasky_relacie(session)
+        pokrytie = hr_stats.pokrytie_signalu(session)
+        par = hr_stats.citene_a_merane(session)
+        duration = session.get("duration_s")
+        over = session.get("time_over_s")
+        return {
+            "duration": self._fmt_dlzka(duration) if duration else "—",
+            "avg": cislo("avg_bpm"),
+            "max": cislo("max_bpm"),
+            "calm": ("—" if calm is None
+                     else tr("dashboard.fmt.min", n=int(calm // 60))),
+            "over": self._fmt_minutes(over) if over is not None else "—",
+            "breath": str(hlasky) if hlasky is not None else "—",
+            "peak": cislo("peak_stress"),
+            "hrr": hrr_text,
+            "hrpi": cislo("hrpi"),
+            "signal": self._fmt_pokrytie(pokrytie),
+            "felt": self._fmt_citene_merane(par),
+        }
+
+    @staticmethod
+    def _fmt_dlzka(seconds):
+        """Dlzka "45 min" alebo "1 h 05 min" - karta "Dĺžka relácie" aj
+        detail relacie v Historii. Pokazena hodnota -> "—"."""
+        try:
+            total_min = int(max(0.0, float(seconds or 0.0)) // 60)
+        except (TypeError, ValueError, OverflowError):
+            return "—"
+        hodiny, minuty = divmod(total_min, 60)
+        if hodiny:
+            return tr("dashboard.fmt.h_min", h=hodiny, m=f"{minuty:02d}")
+        return tr("dashboard.fmt.min", n=minuty)
+
+    @staticmethod
+    def _fmt_pokrytie(pokrytie):
+        """Pokrytie signalu 0..1 -> "97 %", None -> "—"."""
+        if pokrytie is None:
+            return "—"
+        return tr("dashboard.fmt.pct", n=int(round(float(pokrytie) * 100)))
+
+    @staticmethod
+    def _fmt_citene_merane(par):
+        """(citene, merane) -> "6 · 8"; bez dotaznika "—". Dve cisla vedla
+        seba, ziadny rozdiel ani sipka - ktore je "spravne", appka nevie."""
+        if par is None:
+            return "—"
+        citene, merane = par
+        return f"{citene} · {'—' if merane is None else merane}"
 
     def _render_hr_insights(self):
         box = getattr(self, "history_insights_box", None)
@@ -1812,6 +2178,10 @@ class DandurfApp:
             self.history_insights_panel.set_right(tr(
                 "history.analysis_stamp",
                 when=time.strftime("%d.%m. %H:%M", time.localtime(stamp))))
+        else:
+            # Po prepnuti sveta sa postrehy zahodia - cas analyzy druheho
+            # sveta by pri nich klamal.
+            self.history_insights_panel.set_right("")
 
     # ---------- analyza historie na pozadi ----------
 
@@ -1819,33 +2189,81 @@ class DandurfApp:
         """Spusti hr_insights.analyze() v samostatnom vlakne - nie na GUI
         vlakne (historia moze mat desiatky relacii a analyza nesmie
         zaseknut okno). Vysledok sa zapise do hr_insights.json a do UI sa
-        dostane cez ui_call. Bezi po starte, po kazdej ulozenej relacii a
-        na tlacidlo 'Prepocitat'."""
+        dostane cez ui_call. Bezi po starte, po kazdej ulozenej relacii,
+        po prepnuti sveta a na tlacidlo 'Prepocitat'.
+
+        Postrehy su za JEDEN svet - ten, ktory platil pri spusteni
+        (B3-worlds). Ked uz analyza bezi, nova sa neodmietne potichu:
+        zapise sa `_hr_analysis_rerun` a po dobehnuti bezucej sa spusti
+        znova (viz `_po_analyze`). Inak by po rychlom prepnuti sveta
+        ostali na obrazovke postrehy druheho sveta."""
         existing = getattr(self, "_hr_analysis_thread", None)
         if existing is not None and existing.is_alive():
+            self._hr_analysis_rerun = True
             return
+        self._hr_analysis_rerun = False
+        world = self.world
         sessions_path, insights_path = self.hr_sessions_path, self.hr_insights_path
 
         def work():
             try:
-                sessions = hr_stats.load_sessions(sessions_path)
+                sessions = hr_stats.sessions_in_world(
+                    hr_stats.load_sessions(sessions_path), world)
                 insights = hr_insights.analyze(sessions)
-                hr_insights.save_insights(insights_path, insights, log=self.log_threadsafe)
+                hr_insights.save_insights(insights_path, insights,
+                                          log=self.log_threadsafe, world=world)
             except Exception as exc:
                 app_log.exception("HR analyza zlyhala")
                 self.log_threadsafe(f"HR analysis failed: {exc}")
+                self.ui_call(lambda: self._po_analyze(world))
                 return
-            self.ui_call(lambda: self._apply_hr_insights(insights))
+            self.ui_call(lambda: self._apply_hr_insights(insights, world))
 
         self._hr_analysis_thread = threading.Thread(target=work, daemon=True,
                                                     name="hr-analysis")
         self._hr_analysis_thread.start()
         self._render_hr_insights()
 
-    def _apply_hr_insights(self, insights):
-        self._hr_insights = list(insights or [])
-        self._hr_insights_at = time.time()
+    def _apply_hr_insights(self, insights, world=None):
+        """Vysledok analyzy do UI - len ked je za AKTUALNY svet.
+
+        Vysledok za iny svet (prepnuty pocas analyzy) sa zahodi a analyza
+        sa spusti znova. `world=None` = volajuci svet nepozna, berie sa."""
+        if world is None or world == self.world:
+            self._hr_insights = list(insights or [])
+            self._hr_insights_at = time.time()
+        self._po_analyze(world)
         self._render_hr_insights()
+
+    def _po_analyze(self, world):
+        """Dobehla analyza (aj neuspesna). Treba ju zopakovat?
+
+        Ano, ked medzitym niekto poziadal o novu (`_hr_analysis_rerun`) alebo
+        ked bola za iny svet, nez aky plati teraz."""
+        if self._hr_analysis_rerun or (world is not None and world != self.world):
+            self._hr_analysis_rerun = False
+            self._naplanuj_analyzu()
+
+    def _naplanuj_analyzu(self):
+        """Spusti analyzu, AZ KED dobehne bezuce vlakno.
+
+        `_apply_hr_insights` prichadza cez `ui_call` zvnutra vlakna, takze
+        vlakno moze byt v tej chvili este nazive - priame `run_hr_analysis`
+        by sa odmietlo a poziadavka by sa stratila. Caka sa preto po 100 ms;
+        naplanovane je najviac jedno cakanie naraz."""
+        if getattr(self, "_hr_rerun_job", None) is not None:
+            return
+        vlakno = getattr(self, "_hr_analysis_thread", None)
+        if vlakno is not None and vlakno.is_alive():
+            def znova():
+                self._hr_rerun_job = None
+                self._naplanuj_analyzu()
+            try:
+                self._hr_rerun_job = self.root.after(100, znova)
+            except Exception:
+                self._hr_rerun_job = None
+            return
+        self.run_hr_analysis()
 
     def _build_spustace_page(self, page, pal):
         """Spustace: profil, jeho zdielanie, a mapa spustacov.
@@ -1905,28 +2323,40 @@ class DandurfApp:
         self.auto_profile_var = tk.BooleanVar(value=self.auto_profile_enabled)
         auto_text = tr("settings.auto_profile") if PSUTIL_AVAILABLE \
             else tr("settings.auto_profile_unavailable")
-        auto_switch = ctk.CTkSwitch(inner, text=auto_text, variable=self.auto_profile_var,
+        # Vlastny riadok pod profilmi: veta pod prepinacom povie, ktore hry
+        # appka pozna, ze sama spusti aj zastavi pocuvanie a ze vypnuta
+        # procesy necita - vedla styroch tlacidiel profilu by sa nezmestila.
+        auto_row = ctk.CTkFrame(bar, fg_color="transparent")
+        auto_row.pack(fill="x", padx=14, pady=(0, 11))
+        auto_switch = ctk.CTkSwitch(auto_row, text=auto_text, variable=self.auto_profile_var,
                                     progress_color=pal["accent2"],
                                     fg_color=pal["switch_off"],
                                     button_hover_color=pal["accent_hover"],
                                     text_color=pal["text_dim"], font=ui_kit.ui(11),
                                     command=self.on_auto_profile_toggle)
-        auto_switch.pack(side="right")
+        auto_switch.pack(anchor="w")
         if not PSUTIL_AVAILABLE:
             auto_switch.configure(state="disabled")
+        else:
+            ctk.CTkLabel(auto_row, text=tr("settings.auto_profile_sub",
+                                           games=self._zname_hry()),
+                         font=ui_kit.ui(10), text_color=pal["text_faint"],
+                         wraplength=640, anchor="w", justify="left").pack(
+                fill="x", pady=(4, 0))
 
         # --- mapa spustacov ---
-        head = ctk.CTkFrame(wrap, fg_color="transparent")
-        head.pack(fill="x", pady=(0, 6))
         # FAZA 3: legenda tlacidiel gamepadu (A=X, B=O, ...) tu bola preto,
         # ze sa tlacidlom dala spustit hlaska. Uz sa neda - ovladac len
         # hlasi, ze je hrac aktivny. Kluc `slots.gamepad_hint` v i18n
         # ostava, kym sa stranka vo faze 5 neprekresli.
-        ctk.CTkButton(head, text=tr("slots.add"), height=30, width=132,
-                      corner_radius=ui_kit.RADIUS_CONTROL, fg_color=pal["accent2"],
-                      hover_color=pal["accent2_hover"], text_color=pal["text"],
-                      border_width=1, border_color=pal["accent"],
-                      font=ui_kit.ui(12), command=self.add_slot).pack(side="right")
+        #
+        # TLACIDLO "+ Pridat spustac" TU UZ NIE JE (0.2). Hlasky maju pevne
+        # styri kategorie (Tazisko, Celust, Uvolnenie, Dych) - kazda so svojim
+        # vizualom v hre. Piaty a dalsi slot nemal vizual ani kategoriu, takze
+        # `_dalsi_cue_slot` ho preskakoval a sam od seba nezaznel nikdy; log
+        # pritom hracovi slubil, ze "kedy sa ozve, rozhoduje appka sama".
+        # Stare nastavenia s viac nez styrmi slotmi sa nacitaju dalej (nic sa
+        # nemaze) - navyse sloty zaznia len cez tlacidlo Test.
 
         # --- lista hromadneho vyberu (skryta, kym nie je nic oznacene) ---
         # Objavi sa az ked hrac zaskrtne aspon jeden slot - inak by nad
@@ -2020,9 +2450,28 @@ class DandurfApp:
             label.pack(side="left", padx=(10, 0))
             return label
 
+        # --- ako sa ozyvam (styl hlasky, 0.2) ---
+        # Ta ista otazka ako v 5. kroku onboardingu, s tymi istymi vetami.
+        # Je navrchu: rozhoduje, ci zo vsetkeho pod nou v hre vobec nieco
+        # zaznie. "Neviem" tu nie je - v onboardingu znamena hlas.
+        styl_panel = ui_kit.Panel(wrap, pal)
+        styl_panel.pack(fill="x")
+        row = ui_kit.SettingRow(styl_panel.body, pal, tr("settings.cue_style"),
+                                tr("settings.cue_style_sub"), wrap=WRAP)
+        self.cue_style_var = tk.StringVar(
+            value=self._cue_style_label(getattr(self, "cue_style", None)))
+        ctk.CTkOptionMenu(
+            row.control, values=self._cue_style_labels(),
+            variable=self.cue_style_var, width=250, height=28,
+            corner_radius=ui_kit.RADIUS_CONTROL, fg_color=pal["surface_alt"],
+            button_color=pal["accent2"], button_hover_color=pal["accent2_hover"],
+            text_color=pal["text"], dropdown_fg_color=pal["surface"],
+            dropdown_text_color=pal["text"], font=ui_kit.ui(12),
+            command=self._on_cue_style_label).pack()
+
         # --- hlas ---
         voice_panel = ui_kit.Panel(wrap, pal, title=tr("settings.audio_voice_title"))
-        voice_panel.pack(fill="x")
+        voice_panel.pack(fill="x", pady=(14, 0))
 
         row = ui_kit.SettingRow(voice_panel.body, pal, tr("settings.engine"),
                                 tr("settings.engine_sub"), wrap=WRAP)
@@ -2083,8 +2532,11 @@ class DandurfApp:
         self.balance_value_label = _hodnota(box, self._balance_label_text())
         box.pack()
 
+        # Veta pod ukazkou ide za stylom hlasky - prepisuje ju aj volba
+        # "Ako sa ozyvam" vyssie (`_nastav_styl_hlasky`).
         row = ui_kit.SettingRow(loud_panel.body, pal, tr("settings.preview"),
-                                tr("settings.preview_sub"), wrap=WRAP)
+                                self._preview_sub_text(), wrap=WRAP)
+        self.preview_sub_label = row.sub_label
         ui_kit.chip(row.control, pal, tr("settings.preview_btn"),
                     self.preview_sound, width=130).pack()
 
@@ -2143,22 +2595,70 @@ class DandurfApp:
         self.on_rate_change()
         self.log(tr("log.audio_reset"))
 
+    # Veta pod "Ako to znie" podla stylu hlasky (rozhodnutie 24. 9.).
+    PREVIEW_SUB = {rebrik.STYL_HLAS: "settings.preview_sub",
+                   rebrik.STYL_ZVUK: "settings.preview_sub_sound",
+                   rebrik.STYL_OBRAZ: "settings.preview_sub_visual"}
+
+    def _preview_sub_text(self):
+        """Co ukazka naozaj urobi - podla stylu, ktory si hrac vybral."""
+        styl = rebrik.normalize_cue_style(getattr(self, "cue_style", None))
+        return tr(self.PREVIEW_SUB[styl])
+
     def preview_sound(self):
-        """Prehra prvu zapnutu pripomienku presne tak, ako zaznie v hre.
+        """Prehra prvu zapnutu pripomienku tak, ako sa v hre ozve vo
+        zvolenom STYLE hlasky (`cue_style`, rozhodnutie 24. 9.):
+
+          * hlas   - `_emit` so zvukom aj slovami, bez vizualu (ako doteraz);
+          * zvuk   - zvuk slotu a jeho obrazok, ziadne slova (`bez_slov`);
+          * obraz  - nic nezaznie, len obrazok.
+        Predtym zaznel hlas vzdy - aj hracovi, ktory si vybral "len obrazok,
+        nic nehovor", a veta pod tlacidlom mu slubovala, ze presne tak to
+        znie v hre.
 
         Hlas sa podla nazvu vybrat neda: "Prirodzený hlas (Edge)" a "Hlas
         z Windows" su dve vety, ktore o vysledku nepovedia nic, a to iste
         plati pre hlasitost aj pomer zvuk/hlas. Pusta sa `_emit` s
-        realnym slotom (nie `fire_slot`), takze zaznie zvuk aj hlas, ale
-        NEspusti sa vizual v hre - ukazka zvuku nema blikat cez obrazovku
-        ani sa pocitat do relacie.
+        realnym slotom (nie `fire_slot`), takze sa ukazka NEpocita do
+        relacie.
         """
-        slot = next((s for s in self.slots if s.enabled_value), None)
-        if slot is None and self.slots:
-            slot = self.slots[0]
-        if slot is None:
+        styl = rebrik.normalize_cue_style(getattr(self, "cue_style", None))
+        if styl == rebrik.STYL_HLAS:
+            slot = next((s for s in self.slots if s.enabled_value), None)
+            if slot is None and self.slots:
+                slot = self.slots[0]
+            if slot is None:
+                return
+            threading.Thread(target=self._emit, args=(slot,), daemon=True).start()
             return
-        threading.Thread(target=self._emit, args=(slot,), daemon=True).start()
+        # Zvuk aj obraz: obrazok je v tychto styloch cela hlaska (alebo jej
+        # polovica), tak ho ukazka ukaze. Bezi to na Tk vlakne (klik).
+        # Slot sa berie ako v hre (`_dalsi_cue_slot`): zapnuty A so zapnutym
+        # obrazkom v hre. Prvy zapnuty slot bez obrazka by po kliku neukazal
+        # nic a v "len obrazok" ani nic neprehral - tlacidlo by mlcalo a veta
+        # pod nim by slubovala obrazok.
+        slot = next((s for s in self.slots
+                     if s.enabled_value and self._ma_obrazok_v_hre(s)), None)
+        if slot is None:
+            # V hre by sa v tomto style neozvala vobec (`_dalsi_cue_slot`
+            # vrati None) - povie sa to narovinu, nie tichym klikom.
+            self.log(tr("log.preview_no_picture"))
+            return
+        try:
+            self.overlay_manager.trigger(slot.index)
+        except Exception:
+            app_log.exception("ukazka: obrazok sa nepodarilo ukazat")
+        if styl == rebrik.STYL_ZVUK:
+            threading.Thread(target=self._emit, args=(slot,),
+                             kwargs={"bez_slov": True}, daemon=True).start()
+
+    def _ma_obrazok_v_hre(self, slot):
+        """Ma slot zapnuty obrazok v hre? Ta ista podmienka ako v
+        `_dalsi_cue_slot` - bez nej sa hlaska v hre vobec nedoruci."""
+        try:
+            return bool(self.overlay_configs[int(slot.index)]["enabled"])
+        except (AttributeError, IndexError, KeyError, TypeError, ValueError):
+            return False
 
     def _build_vhre_page(self, page, pal):
         """Hodinky: sparovat a vidiet, co z toho appka kresli do hry.
@@ -2529,21 +3029,30 @@ class DandurfApp:
         look = ui_kit.Panel(wrap, pal, title=tr("settings.look_title"))
         look.pack(fill="x", pady=(14, 0))
 
-        # Vysvetlenie tu chybalo ako jedine v celej skupine: "Aizome" a
-        # "Sumi" su nazvy, ktore bez vety nepovedia, co si clovek vyberá.
-        row = ui_kit.SettingRow(look.body, pal, tr("settings.theme"),
-                                tr("settings.theme_sub"))
-        self.theme_switch = ctk.CTkSegmentedButton(
-            row.control, values=[tr("theme.modern.label"), tr("theme.zen.label")],
+        # SVET namiesto farebnej temy (0.2, B3-worlds). Vzhlad patri svetu -
+        # Hra je Sumi, Praca Aizome - takze samostatny vyber temy by len
+        # rozbil to, co ma jeden pohlad na okno povedat. Je to ten isty
+        # prepinac ako v liste hore (`set_world`); veta pod nim hovori
+        # poctivo, co vsetko sa s nim meni. (Do 0.2 tu bola "Farebna tema"
+        # s vetou "skus obe" - to by teraz prestitkovalo relacie.)
+        row = ui_kit.SettingRow(look.body, pal, tr("settings.world"),
+                                tr("settings.world_sub"))
+        self.world_switch = ctk.CTkSegmentedButton(
+            row.control, values=self._world_labels(),
             selected_color=pal["accent2"], selected_hover_color=pal["accent2_hover"],
             unselected_color=pal["surface_alt"], unselected_hover_color=pal["border"],
             text_color=pal["text"], fg_color=pal["surface_alt"],
-            font=ui_kit.ui(12), command=self.on_theme_switch)
-        self.theme_switch.set(tr(f"theme.{self.theme_key}.label"))
-        self.theme_switch.pack()
+            font=ui_kit.ui(12), command=self._on_world_label)
+        self.world_switch.set(self._world_label(self.world))
+        self.world_switch.pack()
 
+        # Veta pod vyberom jazyka hovori poctivo, co je zdroj a co preklad:
+        # appka je pisana po slovensky, ostatne jazyky su preklady s AI,
+        # ktore este necital rodeny hovoriaci. Ukazuje sa vo vsetkych
+        # jazykoch (sama sa preklada ako ostatne texty).
         row = ui_kit.SettingRow(look.body, pal, tr("settings.language"),
-                                tr("settings.language_sub"))
+                                tr("settings.language_sub"),
+                                note=tr("settings.language_note"))
         self.lang_var = tk.StringVar(value=self._lang_switch_value(self.lang))
         self.lang_switch = ctk.CTkOptionMenu(
             row.control, values=list(LANG_NATIVE_LABELS.values()), variable=self.lang_var,
@@ -2602,8 +3111,22 @@ class DandurfApp:
         inner.grid_columnconfigure(1, weight=1)
 
         self.hr_ip_var = tk.StringVar(value=self.hr_ip)
+        # Pole IP je skryte ako heslo, kym si ho hrac neodkryje prepinacom
+        # vedla neho (skryta IP, viz `set_show_ip`). Ukladanie hodnoty sa
+        # tym nemeni - maska je len to, ako pole kresli.
+        self.show_ip_var = tk.BooleanVar(value=self.show_ip)
+
+        def _prepinac_ip(bunka):
+            ctk.CTkSwitch(bunka, text=tr("hr.ip_show"), variable=self.show_ip_var,
+                          progress_color=pal["accent"], text_color=pal["text_dim"],
+                          font=ui_kit.ui(11),
+                          command=lambda: self.set_show_ip(self.show_ip_var.get())
+                          ).pack(side="left", padx=(12, 0))
+
         self.hr_ip_entry = self._hr_entry(inner, pal, 1, tr("settings.hr_ip_label"),
-                                          self.hr_ip_var)
+                                          self.hr_ip_var, extra=_prepinac_ip)
+        self.hr_ip_var.trace_add("write", lambda *_a: self._apply_hr_ip_mask())
+        self._apply_hr_ip_mask()
         self._hr_hint(inner, pal, 2, tr("settings.hr_ip_hint"))
 
         self.hr_port_var = tk.StringVar(value=str(self.hr_port))
@@ -2659,23 +3182,34 @@ class DandurfApp:
         qr_row.grid(row=10, column=0, columnspan=2, sticky="w", pady=(10, 0))
         self.hr_qr = watch_app_qr(qr_row, pal, pady=0)
 
-    def _hr_entry(self, inner, pal, row, label, variable):
+    def _hr_entry(self, inner, pal, row, label, variable, extra=None):
         """Jeden riadok "popisok + policko" karty Senzor Tepu.
 
         set_typing() je tu rovnako dolezity ako v slotoch (viz SlotCard):
         globalny odchytavac klavesnice bezi aj ked hrac prave pise do
         nastaveni, takze bez tejto poistky by mu pisanie "110" spustilo
-        slot, ktory ma nabindovany na klavesu "1"."""
+        slot, ktory ma nabindovany na klavesu "1".
+
+        `extra(bunka)` prida vedla policka dalsi ovladac (prepinac
+        "Ukazat IP") - policko ostava na tom istom mieste v osi."""
         # pevna sirka popisku + rovnaka sirka policka: vsetky tri riadky
         # (IP, port, tep) sedia v jednej osi (feedback: "nie su v jednej osi")
         ctk.CTkLabel(inner, text=label, text_color=pal["text"], width=190,
                      anchor="w", justify="left").grid(
             row=row, column=0, sticky="w", pady=6)
-        entry = ctk.CTkEntry(inner, textvariable=variable, width=150, height=30,
+        bunka = inner
+        if extra is not None:
+            bunka = ctk.CTkFrame(inner, fg_color="transparent")
+            bunka.grid(row=row, column=1, sticky="w", padx=(10, 0), pady=6)
+        entry = ctk.CTkEntry(bunka, textvariable=variable, width=150, height=30,
                              corner_radius=ui_kit.RADIUS_CONTROL,
                              fg_color=pal["entry_bg"], border_color=pal["border"],
                              text_color=pal["text"])
-        entry.grid(row=row, column=1, sticky="w", padx=(10, 0), pady=6)
+        if extra is not None:
+            entry.pack(side="left")
+            extra(bunka)
+        else:
+            entry.grid(row=row, column=1, sticky="w", padx=(10, 0), pady=6)
         entry.bind("<FocusIn>", lambda _e: self.set_typing(True))
         entry.bind("<FocusOut>", lambda _e: (self.set_typing(False),
                                              self.on_hr_config_change()))
@@ -2683,8 +3217,12 @@ class DandurfApp:
         return entry
 
     def _kriticky_popis(self):
-        """Veta pod polickami senzora - co si appka spocitala a z coho."""
-        n = len(hr_stats.ciste_relacie(self._history_sessions()))
+        """Veta pod polickami senzora - co si appka spocitala a z coho.
+
+        Z coho = z HERNYCH relacii (B3-worlds), rovnako ako samotny vypocet
+        v `_open_hr_session`; pracovne vecery sa do `n` nerataju."""
+        n = len(hr_stats.ciste_relacie(hr_stats.sessions_in_world(
+            self._history_sessions(), self.ALGORITMUS_SVET)))
         if n < hr_stats.KRITICKY_MIN_RELACII:
             return tr("settings.hr_critical_learning",
                       bpm=int(self.hr_critical_bpm),
@@ -2733,34 +3271,46 @@ class DandurfApp:
         # `pal=self.pal`: bez nej sa paleta farbila z moduloveho SHELL_PAL,
         # teda z inej farebnej rodiny nez zvysok okna (viz CommandPalette).
         self._palette = CommandPalette(self.root, self._command_palette_items(),
-                                       pal=self.pal)
+                                       pal=self.pal,
+                                       placeholder=tr("palette.placeholder"))
         self._palette.open()
 
     def _command_palette_items(self):
+        # Vsetky texty palety idu cez i18n - predtym tu boli natvrdo po
+        # slovensky, takze anglicky hrac videl v inak anglickom okne
+        # "Navigácia" a "Pomoc". Sprievodca sa vola rovnako ako jeho panel
+        # (guide.panel_title), len bez ikonky: tk.Listbox emoji mimo BMP
+        # nevykresli spolahlivo.
+        pomoc = tr("palette.cat.help")
+        navigacia = tr("palette.cat.nav")
+        appka = tr("palette.cat.app")
+        profily = tr("palette.cat.profiles")
+        sprievodca = tr("guide.panel_title").replace("📖", "").strip()
         items = [
-            ("Ukáž mi appku znova (onboarding tour)", "Pomoc", self.replay_onboarding),
-            (tr("nav.dnes"), "Navigácia", lambda: self.sidebar._select("dnes")),
-            (tr("nav.historia"), "Navigácia", lambda: self.sidebar._select("historia")),
-            (tr("nav.spustace"), "Navigácia", lambda: self.sidebar._select("spustace")),
-            (tr("nav.zvuk"), "Navigácia", lambda: self.sidebar._select("zvuk")),
-            (tr("nav.vhre"), "Navigácia", lambda: self.sidebar._select("vhre")),
-            (tr("nav.nastavenia"), "Navigácia", lambda: self.sidebar._select("nastavenia")),
-            ("Sprievodca / Veda za aplikáciou", "Pomoc", self.open_guide_panel),
-            (tr("common.prepare_voices"), "Zvuk", lambda: self.pregenerate(force=True)),
-            (tr("status.running") + " / " + tr("status.stopped"), "Appka",
+            (tr("palette.replay_intro"), pomoc, self.replay_onboarding),
+            (tr("nav.dnes"), navigacia, lambda: self.sidebar._select("dnes")),
+            (tr("nav.historia"), navigacia, lambda: self.sidebar._select("historia")),
+            (tr("nav.spustace"), navigacia, lambda: self.sidebar._select("spustace")),
+            (tr("nav.zvuk"), navigacia, lambda: self.sidebar._select("zvuk")),
+            (tr("nav.vhre"), navigacia, lambda: self.sidebar._select("vhre")),
+            (tr("nav.nastavenia"), navigacia, lambda: self.sidebar._select("nastavenia")),
+            (sprievodca, pomoc, self.open_guide_panel),
+            (tr("common.prepare_voices"), tr("palette.cat.sound"),
+             lambda: self.pregenerate(force=True)),
+            (tr("status.running") + " / " + tr("status.stopped"), appka,
              self.toggle_listening),
-            (tr("common.minimize"), "Appka", self.minimize_to_tray),
+            (tr("common.minimize"), appka, self.minimize_to_tray),
         ]
         for profile in self.profiles:
             name = profile["name"]
-            items.append((f"Profil — {name}", "Profily",
+            items.append((tr("palette.profile", name=name), profily,
                           lambda n=name: (self.sidebar._select("spustace"),
                                           self.switch_profile(n))))
         for slot in self.slots:
             # Bez klavesu v zatvorke: hlasku uz nespusta stlacenie, takze
             # "Slot [c]" by ukazovalo pismeno, ktore nic nerobi.
             label = slot.text_value.strip() or mode_labels().get(slot.mode, "")
-            items.append((tr("palette.slot", label=label), "Profily",
+            items.append((tr("palette.slot", label=label), profily,
                           lambda: self.sidebar._select("spustace")))
         return items
 
@@ -2768,15 +3318,31 @@ class DandurfApp:
         """Znova ukaze Onboarding Wizard (rovnaky ako pri prvom spusteni).
         Na rozdiel od prveho behu NEPREPISUJE zapnutie/vypnutie existujucich
         slotov podla diagnostiky (self._apply_diagnostics) - je to len
-        prehliadka appky, nie reset uz nastavenych slotov."""
-        wizard = OnboardingWizard(self.root)
+        prehliadka appky, nie reset uz nastavenych slotov.
+
+        Svet a hlasitost sa predvyplnia AKTUALNE - kto uvod len preklikne,
+        ostane tam, kde bol (napr. v Praci, kde hlasky nehovoria nahlas)."""
+        wizard = OnboardingWizard(self.root, choice=self.theme_key,
+                                  volume=self.volume_value)
         self.root.wait_window(wizard.top)
         if not wizard.confirmed:
             return
-        self.theme_key = wizard.choice
+        # Krok 4 vybera hlavny svet (B3-worlds); tema ide s nim. Okno sa
+        # nizsie stavia cele znova, takze staci zmenit stav - historia a
+        # postrehy sa prepocitaju az na konci.
+        novy_svet = theme_mod.theme_world(wizard.choice)
+        svet_sa_zmenil = novy_svet != self.world
+        if svet_sa_zmenil:
+            self.world = novy_svet
+            self.history_detail_index = None
+            self._hr_insights = []
+            self._hr_insights_at = None
+        self.theme_key = theme_mod.WORLD_THEME[self.world]
         self.pal = theme_mod.tokens(self.theme_key)
         self.overlay_manager.set_colors(self.pal["accent"], self.pal["danger"])
         self.volume_value = wizard.volume_value
+        # Krok 5 (styl hlasky). Kto na nic neklikol, nechava si svoj styl.
+        self._prevezmi_styl_z_onboardingu(wizard)
         self._recompute_volumes()
         self._apply_volumes()
         self.save_settings()
@@ -2793,6 +3359,10 @@ class DandurfApp:
         if was_listening:
             self._apply_listening_visuals()
         self.log(tr("log.theme_switched", theme=tr(f"theme.{self.theme_key}.label")))
+        if svet_sa_zmenil:
+            self.run_hr_analysis()
+        # Svet aj styl hlasky rozhoduju, ci sa hlasky pre Edge pripravuju.
+        self.schedule_pregenerate(200)
 
     # ---------- rychly dock (mute / stiszit / rychly profil / stop) ----------
 
@@ -2809,7 +3379,9 @@ class DandurfApp:
 
         Ked je kombinacia obsadena inou appkou, registracia zlyha a appka
         bezi dalej bez nej - `hotkey.GlobalHotkey` to zaloguje. Tlacidlo v
-        doku funguje aj tak, takze sa nic nestraca.
+        doku uz nie je, takze "teraz nie" potom nejde vobec; zostava len
+        zastavit pocuvanie (pas, lista), co zastavi aj meranie - presne to
+        hovori `log.hotkey_failed`.
         """
         self.stop_snooze_hotkey()
         if not self.snooze_hotkey:
@@ -2872,35 +3444,103 @@ class DandurfApp:
     # bez spustaca - viz poznamka pri nom.
 
     def _start_snooze(self, minutes):
-        """Stisi appku na `minutes` minut. Interval vybera hrac v menu
-        pod tlacidlom 😴 v doku (`_toggle_snooze_menu`)."""
+        """"Teraz nie": stisi HLASKY na `minutes` minut - a nic viac.
+
+        ROZHODNUTIE ZADAVATELA (24. 9.): pocuva a meria sa DALEJ. Relacia
+        ostava otvorena, tep sa zapisuje, dotaznik nepride; len spustac je
+        pozastaveny s dovodom `A_SNOOZE` (ten sa neratá ako vypadok) a po
+        vyprsani alebo zruseni sa zdvihne. Doteraz sa tu volalo
+        `stop_listening`, ktore relaciu zatvorilo a otvorilo dotaznik -
+        "teraz nie" tak znamenalo "koniec merania", a to hrac nechcel.
+        Zastavit pocuvanie je samostatny, vedomy krok (pas, lista).
+
+        Dlzka je pevna zo skratky (`SNOOZE_HOTKEY_MINUTES`); menu s vyberom
+        (`_toggle_snooze_menu`) dnes spustac nema."""
         if getattr(self, "_snooze_job", None) is not None:
             self._cancel_snooze()
-        self._snooze_was_listening = self.listening
-        if self.listening:
-            self.stop_listening()
-        # `stop_listening` zabije len pynput hooky - senzor tepu bezi dalej.
-        # Bez tohto riadku by "teraz nie" stisilo klavesy, ale telo nie, a
-        # hlaska by prisla aj tak. To je presne ten zly moment, pred ktorym
-        # snooze chrani.
+        now = time.time()
+        # "Teraz nie" kratko po hlaske je signal pre rebrik hlasky. Relacia
+        # po nom bezi dalej, takze `_close_hr_session` zapise skutocny cas,
+        # ktory sa este hralo (`snooze_then_s`).
+        self._zapis_snooze_po_hlaske(now)
+        # Kolko z relacie platilo "teraz nie" (`snoozed_s` v suhrne). Relacia
+        # ho teraz v sebe nesie a pocitadla spustaca ho nevidia - dotaznik by
+        # inak ticho vysvetlil "zataz sa ani raz nedostala nad hranicu".
+        if getattr(self, "_hr_session_open", False):
+            self._snooze_rel_od = now
+        # Senzor tepu bezi dalej a relacia tiez - bez tohto riadku by hlaska
+        # prisla aj tak. To je presne ten zly moment, pred ktorym snooze chrani.
         self._suspend_cue_trigger(trigger.A_SNOOZE)
         self.log(tr("log.snooze_started", minutes=minutes))
 
         def _resume():
+            self._zapocitaj_snooze()
             self._snooze_job = None
+            self._snooze_until = None
+            # Pocuvanie sa tu uz NESPUSTA - "teraz nie" ho nezastavilo.
             self._resume_cue_trigger()
-            # `and not self.listening`: hrac mohol pocuvanie medzitym spustit
-            # sam (Kamae, dock, lista). Bez tejto podmienky by start_listening
-            # bezalo druhy raz, pynput hooky by sa zdvojili, kazdy spustac by
-            # strielal dvakrat a Stop by uz nezastavil ten stary par.
-            if self._snooze_was_listening and not self.listening:
-                self.start_listening()
             self.log(tr("log.snooze_ended"))
             self._refresh_snooze_indicator()
 
         self._snooze_job = self.root.after(int(minutes) * 60 * 1000, _resume)
-        self._snooze_minutes = int(minutes)
+        self._snooze_until = now + int(minutes) * 60
         self._refresh_snooze_indicator()
+
+    def _snooze_do(self):
+        """Dokedy "teraz nie" plati, ako 'HH:MM' ('' ked nebezi).
+
+        Cas konca, nie zvysne minuty: text sa nastavi raz a "zostava 30 min"
+        by po piatich minutach klamal."""
+        do = getattr(self, "_snooze_until", None)
+        if do is None or getattr(self, "_snooze_job", None) is None:
+            return ""
+        try:
+            return time.strftime("%H:%M", time.localtime(do))
+        except Exception:
+            return ""
+
+    def _zapocitaj_snooze(self, now=None):
+        """Pripocita beziaci usek "teraz nie" k otvorenej relacii
+        (`_snooze_rel_s`). Vola sa pri konci a zruseni snooze; zatvorenie
+        relacie (`_close_hr_session`) si beziaci usek dopocita samo a dalej
+        sa uz nic nepripocita - cas mimo relacie (zastavene pocuvanie) sa
+        nerata."""
+        od = getattr(self, "_snooze_rel_od", None)
+        if od is None:
+            return
+        now = time.time() if now is None else now
+        self._snooze_rel_s = (getattr(self, "_snooze_rel_s", 0.0)
+                              + max(0.0, float(now) - float(od)))
+        self._snooze_rel_od = None
+
+    def _zapis_snooze_po_hlaske(self, now):
+        """Prislo "teraz nie" do `rebrik.SNOOZE_PO_HLASKE_S` po poslednej
+        dorucenej automatickej hlaske? Zapise sa k hlaske (`snooze_after_s`,
+        ide do okna) a do relacie (`_close_hr_session`: `snooze_after_cue_s`
+        a `snooze_then_s` = kolko relacia po nom este bezala).
+
+        Rebrik ho rata, len ked relacia potom bezala aspon
+        `rebrik.SNOOZE_POTOM_S` a verdikt nie je "sadla" - "teraz nie" na
+        konci hrania znamena skor "koncim" nez "prekazala si". Zapisuje sa
+        len prvy v relacii."""
+        if not getattr(self, "_hr_session_open", False):
+            return
+        if getattr(self, "_snooze_po_hlaske", None) is not None:
+            return
+        try:
+            posledna = self.hr_stats.last_auto_cue_ts()
+            if posledna is None:
+                return
+            po = float(now) - float(posledna)
+            if not 0.0 <= po <= rebrik.SNOOZE_PO_HLASKE_S:
+                return
+            self._snooze_po_hlaske = (round(po, 1), float(now))
+            for cue in reversed(self.hr_stats.cues):
+                if cue.get("ts") == posledna:
+                    cue["snooze_after_s"] = round(po, 1)
+                    break
+        except Exception:
+            app_log.exception("rebrik hlasky: snooze po hlaske sa nezapisal")
 
     def _cancel_snooze(self):
         job = getattr(self, "_snooze_job", None)
@@ -2910,10 +3550,11 @@ class DandurfApp:
             self.root.after_cancel(job)
         except Exception:
             pass
+        self._zapocitaj_snooze()
         self._snooze_job = None
+        self._snooze_until = None
+        # Pocuvanie "teraz nie" nezastavilo, takze ho tu netreba spustat.
         self._resume_cue_trigger()
-        if not self.listening and getattr(self, "_snooze_was_listening", False):
-            self.start_listening()
         self.log(tr("log.snooze_cancelled"))
         self._refresh_snooze_indicator()
 
@@ -2927,18 +3568,22 @@ class DandurfApp:
         odlozena. Bodka stavu uz je na kazdej stranke, cize je to jedine
         miesto, kde to nezmizne pri prepnuti stranky.
 
-        Zvysny cas nesie tooltip: farba povie "nieco je inak", cas povie
-        dokedy, a na to v 64px rade textovy popisok nie je."""
+        Cas konca nesie tooltip: farba povie "nieco je inak", cas povie
+        dokedy, a na to v 64px rade textovy popisok nie je.
+
+        Od 24. 9. appka pocas "teraz nie" pocuva dalej, takze aj stred
+        stranky Dnes musi povedat, ze sa neozve (`_kamae_state_text`) -
+        "cakam na spravnu chvilu" by klamalo."""
+        self._refresh_dnes_state_text()
         bodka = getattr(getattr(self, "sidebar", None), "state_dot", None)
         if bodka is None:
             return
         active = getattr(self, "_snooze_job", None) is not None
-        minutes = getattr(self, "_snooze_minutes", 0)
         try:
             bodka.set_snoozed(
                 active,
-                tip=(tr("dock.snooze_active_tip", minutes=minutes) if active
-                     else tr("sidebar.state_tip")))
+                tip=(tr("dock.snooze_active_tip", until=self._snooze_do())
+                     if active else tr("sidebar.state_tip")))
         except Exception:
             app_log.exception("bodka stavu: odlozenie sa nepodarilo ukazat")
 
@@ -3043,10 +3688,10 @@ class DandurfApp:
             return
         self.lang = code
         set_lang(code)
-        # Ak si uzivatel hlas nikdy sam nezmenil, pri prepnuti na
-        # japoncinu mu rovno ponukneme prirodzeny japonsky hlas.
-        if code == LANG_JA and self.edge_voice_id == DEFAULT_EDGE_VOICE:
-            self.edge_voice_id = JAPANESE_VOICE_HINT
+        # Ak si uzivatel hlas nikdy sam nezmenil, pri prepnuti na jazyk s
+        # inym pismom (ja/zh/ru/bg) mu rovno ponukneme hlas toho jazyka -
+        # viz settings_model.VOICE_HINTS.
+        self.edge_voice_id = suggested_voice(code, self.edge_voice_id)
         self.save_settings()
         was_listening = self.listening
         # Zmena jazyka meni TEXTY, takze sa (na rozdiel od zmeny temy) musi
@@ -3057,6 +3702,9 @@ class DandurfApp:
         try:
             self._build_ui()
             self.refresh_edge_banner()
+            if audio_engine.EDGE_AVAILABLE:
+                # popisy hlasov (zena/muz) su v jazyku rozhrania
+                self._load_edge_voices(pregen=False)
             self.refresh_voice_box()
             self.refresh_slot_summaries()
             self.refresh_hr_status_label()
@@ -3072,6 +3720,81 @@ class DandurfApp:
         # Pregeneracia Edge TTS nie je UI - az po odmrazeni okna.
         if self.engine == ENGINE_EDGE:
             self.pregenerate()
+
+    # ---------- prepinanie sveta (hra / praca) ----------
+
+    # Z akeho sveta sa rata kriticky tep a prah zataze. Rozhodnutie
+    # zadavatela (B3-worlds): LEN z hry - oba su definovane ako percentily
+    # HRANIA (`hr_stats.dynamicky_kriticky`, `dynamicky_prah_zataze`). Na
+    # testovacich datach jedina pracovna relacia v spolocnom pool-e stiahla
+    # cas hrania nad prahom z ~23 % na ~9 % (ciel je ~20 %). Pokojova
+    # zakladna ostava zo vsetkeho: telo je jedno.
+    ALGORITMUS_SVET = "play"
+
+    @staticmethod
+    def _world_label(world):
+        """'play'/'work' -> "Hra"/"Praca" v jazyku rozhrania."""
+        return tr("world.work") if world == "work" else tr("world.play")
+
+    def _world_labels(self):
+        return [self._world_label("play"), self._world_label("work")]
+
+    def _on_world_label(self, label):
+        """Klik na segment "Hra | Praca" (lista hore aj Nastavenia)."""
+        self.set_world("work" if label == self._world_label("work") else "play")
+
+    def set_world(self, world):
+        """Prepne svet: vzhlad, historiu, postrehy. BEZIACU RELACIU NIE.
+
+        Vzhlad ide cez `on_theme_switch` - prefarbenie bez prestavby okna,
+        vratane HUD-u a vizualov v hre (v rohu oka to trochu blikne, s tym
+        sa pocita). Detail v Historii je index do zoznamu relacii sveta,
+        takze sa nuluje. Postrehy druheho sveta sa zahodia a prepocitaju.
+
+        Otvorena relacia ostava vo svete, v ktorom zacala
+        (`_session_world`), aj s tym, ci smie mat hlas - prezriet si
+        pracovne statistiky uprostred hry teda hru neprepise na pracu.
+        """
+        world = hr_stats.normalize_activity(world) or hr_stats.WORLD_DEFAULT
+        if world == self.world:
+            self._sync_world_switches()
+            return
+        self.world = world
+        self.history_detail_index = None
+        self._hr_insights = []
+        self._hr_insights_at = None
+        tema_pred = self.theme_key
+        # `on_theme_switch` sam ulozi nastavenia - uz aj s novym svetom.
+        self.on_theme_switch(tr(f"theme.{theme_mod.WORLD_THEME[world]}.label"))
+        if self.theme_key == tema_pred:
+            self.save_settings()
+        self._sync_world_switches()
+        app_log.info("svet prepnuty na %s", world)
+        try:
+            self._refresh_history_page()
+        except Exception:
+            app_log.exception("historia: prekreslenie po prepnuti sveta zlyhalo")
+        self._refresh_dnes_stats()
+        self.run_hr_analysis()
+        # V Praci hlaska nehovori, takze sa pre nu nic nepripravuje
+        # (`_hlasky_hovoria`); po navrate do Hry sa hlasky dopripravia.
+        self.schedule_pregenerate(200)
+
+    def _sync_world_switches(self):
+        """Oba prepinace sveta (lista, Nastavenia) ukazu aktualny svet.
+
+        CTkSegmentedButton si vybrany segment nezmeni sam, ked svet prepne
+        nieco ine nez klik priamo naň."""
+        label = self._world_label(self.world)
+        lista = getattr(self, "titlebar", None)
+        if lista is not None and hasattr(lista, "set_world"):
+            lista.set_world(label)
+        prepinac = getattr(self, "world_switch", None)
+        if prepinac is not None:
+            try:
+                prepinac.set(label)
+            except Exception:
+                pass
 
     # ---------- prepinanie temy ----------
 
@@ -3090,6 +3813,10 @@ class DandurfApp:
 
         Keby prefarbenie z akehokolvek dovodu zlyhalo, padne sa spat na
         povodnu prestavbu: radsej pomale a spravne nez rychle a rozbite.
+
+        Od 0.2 (B3-worlds) tema patri svetu - vola sa cez `set_world`, nie
+        priamo; inak by sa vzhlad a svet rozisli (pri dalsom starte by tema
+        aj tak nasledovala svet).
         """
         key = theme_mod.ZEN if label == tr("theme.zen.label") else theme_mod.MODERN
         if key == self.theme_key:
@@ -3187,17 +3914,12 @@ class DandurfApp:
             except Exception:
                 app_log.exception("set_pal zlyhal na %r", widget)
 
-        # Prepinac tem si sam od seba nezmeni vybrany segment, ked temu
-        # zmeni nieco ine nez klik naň (napr. paleta prikazov alebo
-        # obnovenie z nastaveni). Pri prestavbe to riesil `.set()` v
+        # Prepinac sveta (predtym temy) si sam od seba nezmeni vybrany
+        # segment, ked svet zmeni nieco ine nez klik naň (lista hore vs.
+        # Nastavenia, sprievodca). Pri prestavbe to riesi `.set()` v
         # `_build_ui`, tu ho musime zavolat sami - inak by prepinac
-        # ukazoval stary rezim, hoci appka uz bezi v novom.
-        prepinac = getattr(self, "theme_switch", None)
-        if prepinac is not None:
-            try:
-                prepinac.set(tr(f"theme.{self.theme_key}.label"))
-            except Exception:
-                pass
+        # ukazoval stary svet, hoci appka uz bezi v novom.
+        self._sync_world_switches()
 
         self._redraw_dnes_preview(nova_pal)
 
@@ -3305,7 +4027,11 @@ class DandurfApp:
             messagebox.showinfo(APP_NAME, tr("profile.duplicate_name"))
             return
         self._sync_active_profile_slots()
-        new_slots = [normalize_slot(dict(DEFAULT_SLOT, text=tr("slot.new_text_default")))]
+        # Novy profil dostane VSETKY STYRI kategorie, rovnako ako profil
+        # zalozeny automaticky pre hru (`_handle_game_found`). Doteraz mal
+        # jeden slot a zvysne si hrac "pridal" tlacidlom - to je prec, takze
+        # by profil ostal navzdy len s Taziskom.
+        new_slots = [normalize_slot(s) for s in default_slots()]
         self.profiles.append({"name": name, "slots": new_slots})
         self.active_profile_name = name
         self.rebuild_slots(new_slots)
@@ -3356,10 +4082,35 @@ class DandurfApp:
     def _handle_game_gone(self):
         if not self.auto_profile_enabled:
             return
-        self.log(tr("log.auto_profile_ended"))
+        # "Odpocuvanie pozastavene" sa pise LEN ked sa naozaj zastavilo.
+        # Doteraz sa zapisalo vzdy - aj ked pocuvanie spustil hrac sam a
+        # bezalo dalej (port aj meranie), takze dennik tvrdil opak.
         if self.listening and self._auto_started_listening:
             self.stop_listening()
+            self.log(tr("log.auto_profile_ended"))
         self._auto_started_listening = False
+
+    @staticmethod
+    def _zname_hry():
+        """Hry, ktore auto-profil pozna, do viet v appke. Z mapy
+        (`game_profiles.GAME_PROCESS_MAP`), aby veta nemohla slubovat start
+        pri hre, ktoru appka nepozna."""
+        return " / ".join(known_games())
+
+    def _start_game_watcher(self):
+        """Spusti citanie mien procesov (auto-profil). Vlakno sa neda
+        spustit dvakrat, preto pri kazdom zapnuti nove."""
+        if not PSUTIL_AVAILABLE or getattr(self, "game_watcher", None) is not None:
+            return
+        self.game_watcher = GameProcessWatcher(self.on_game_process_found,
+                                               self.on_game_process_gone)
+        self.game_watcher.start()
+
+    def _stop_game_watcher(self):
+        """Zastavi citanie procesov - vypnuty auto-profil necita nic."""
+        watcher, self.game_watcher = getattr(self, "game_watcher", None), None
+        if watcher is not None:
+            watcher.stop()
 
     def _kamae_zastavene(self):
         """Dvojica textov pre stav "Zastavene".
@@ -3371,10 +4122,17 @@ class DandurfApp:
         """
         kluc = ("kamae.stopped_sub_auto" if self.auto_profile_enabled
                 else "kamae.stopped_sub")
-        return tr("kamae.stopped"), tr(kluc)
+        return tr("kamae.stopped"), tr(kluc, games=self._zname_hry())
 
     def on_auto_profile_toggle(self):
         self.auto_profile_enabled = bool(self.auto_profile_var.get())
+        if self.auto_profile_enabled:
+            self._start_game_watcher()
+        else:
+            # Vypnute = mena procesov sa necitaju vobec. Pocuvanie, ktore
+            # spustila hra, bezi dalej - odteraz ho riadi hrac, nie detekcia.
+            self._stop_game_watcher()
+            self._auto_started_listening = False
         self.save_settings()
         # Veta v pase hovori o tomto nastaveni, takze sa musi prepisat hned -
         # inak by po vypnuti este stale slubovala start pri hre.
@@ -3446,31 +4204,48 @@ class DandurfApp:
         if prepoj:
             self._hr_state = "connecting"
         self._hr_last_bpm = None
+        # Vypadok patri do predoslej relacie, aj ked sa otvara bez prepojenia
+        # (`start_listening` pocas vypadku). Inak by sa priznak preniesol do
+        # novej relacie a riadok "tep je spat" by ratal od casu, ktory
+        # `reset_session` nizsie prepise.
+        self._hr_lost = False
+        self._hr_lost_od = None
         self._hr_over_since = None
         self._hr_overlay_warned = False
         self._hr_retry_job = None
         self._hr_bind_retries = 0
         self._hr_client_linked = False
         self.hr_stats.critical_bpm = self.hr_critical_bpm
+        # SVET RELACIE SA PECATI TU (B3-worlds), pri otvoreni - nie pri
+        # zatvoreni. Kto si uprostred hry len prepne na Pracu, aby videl
+        # pracovne statistiky, a zabudne prepnut spat, nema mat hru
+        # zapisanu ako pracu. Ide do suhrnu ako `world` (`_close_hr_session`)
+        # a urcuje, ci hlaska smie mat hlas (nizsie, `open_session`).
+        self._session_world = self.world
         # Pokojovy tep z predchadzajucich vecerov. Bez neho appka v suvislom
         # strese nevidi ziadnu zataz - zakladna sa jej dotiahne za stresom a
         # pocita voci nemu (viz `hr_stats.dlhodoba_zakladna`).
         try:
             historia = self._history_sessions()
+            # Zakladna zo VSETKYCH relacii - telo je jedno (B3-worlds).
             self.hr_stats.long_baseline = hr_stats.dlhodoba_zakladna(historia)
+            # Kriticky tep a prah zataze len z HERNYCH relacii (B3-worlds,
+            # viz `ALGORITMUS_SVET`). Plati aj pre pracovnu relaciu - tam
+            # sa hlaska aj tak ukaze len obrazom.
+            herna = hr_stats.sessions_in_world(historia, self.ALGORITMUS_SVET)
             # Kriticky tep sa prepocita RAZ ZA RELACIU, nie priebezne.
             # Menit skalu zataze uprostred vecera by znamenalo, ze okna z
             # prvej polovice a z druhej sa nedaju porovnat - to iste
             # pravidlo, ake plati pre prahy spustaca (zadanie §3.3).
             self.hr_critical_bpm = int(hr_stats.dynamicky_kriticky(
-                historia, baseline=self.hr_stats.long_baseline))
+                herna, baseline=self.hr_stats.long_baseline))
             # Prah zataze z vlastnych relacii. None = este nie je z coho,
             # vtedy ostavaju cisla pre priemerneho hraca.
             self._prah_z_dat = hr_stats.dynamicky_prah_zataze(
-                historia, baseline=self.hr_stats.long_baseline,
+                herna, baseline=self.hr_stats.long_baseline,
                 critical=self.hr_critical_bpm)
             self._prah_z_relacii = len([
-                r for r in hr_stats.ciste_relacie(historia)
+                r for r in hr_stats.ciste_relacie(herna)
                 if float(r.get("duration_s") or 0) >= hr_stats.PRAH_MIN_TRVANIE_S])
         except Exception:
             self.hr_stats.long_baseline = None
@@ -3485,6 +4260,8 @@ class DandurfApp:
         # Zaznam aktivity sa vynuluje spolu s relaciou, aby meracie okna
         # nevideli nic spred zapnutia senzora.
         self.activity.reset_session()
+        # Riadok "ziadna pauza vo vstupe" je raz za relaciu.
+        self._nonstop_input.reset()
         # Podiel tichych hlasok klesne po kalibracii (25 % -> 10 %), ale
         # nikdy nie na nulu. Pocet relacii sa berie z historie.
         self._cue_log = []
@@ -3502,7 +4279,31 @@ class DandurfApp:
         if getattr(self, "_dev_params", None):
             self.cue_trigger.params.update(self._dev_params)
         podiel = self._silent_share_for_next_session()
-        self.cue_trigger.open_session(silent_share=podiel)
+        # REBRIK HLASKY (0.2): na akom stupni bezi tato relacia. Pauza =
+        # automat sa vobec nenatiahne (diagnostika bezi dalej).
+        self._urci_stupen_hlasky()
+        if self._cue_rung == rebrik.PAUZA:
+            self.cue_trigger.params["cues_enabled"] = False
+        self._snooze_po_hlaske = None
+        self._snooze_rel_s = 0.0
+        self._snooze_rel_od = None
+        # PRACA = LEN OBRAZ (B3-worlds, rozhodnutie zadavatela). Kto sa v
+        # praci sustredi, nema mu do toho nic hovorit ani cinkat - vizual v
+        # rohu oka staci. Plati pre celu relaciu podla sveta, v ktorom zacala.
+        # Pod stupnom hlasu (rebrik) tiez len obraz - `hlas` v udalosti tak
+        # hovori pravdu o tom, co mohlo zaznet.
+        self.cue_trigger.open_session(silent_share=podiel,
+                                      voice=self._session_world != "work"
+                                      and self._cue_rung == rebrik.HLAS)
+        # "TERAZ NIE" PLATI AJ CEZ NOVU RELACIU. `open_session` automat
+        # zdvihne - a nova relacia sa da otvorit aj pocas stisenia (stop a
+        # start, zapnutie senzora, zmena IP), odkedy snooze pocuvanie
+        # nezastavuje (24. 9.).
+        if getattr(self, "_snooze_job", None) is not None:
+            self._suspend_cue_trigger(trigger.A_SNOOZE)
+            # Aj do `snoozed_s` novej relacie - od jej zaciatku.
+            if meria:
+                self._snooze_rel_od = time.time()
         # MERIA SA LEN, KED SVIETI ZELENA.
         #
         # `hr_stats.add()` bezi pri kazdej vzorke bez ohladu na to, ci appka
@@ -3534,6 +4335,10 @@ class DandurfApp:
         self._hr_last_bpm = None
         self._hr_over_since = None
         self._hr_client_linked = False
+        # Senzor vypol hrac - to uz nie je vypadok. Relacia sa zatvara az
+        # nizsie, takze vypadok, ktory prave trval, sa do suhrnu este zarata.
+        self._hr_lost = False
+        self._hr_lost_od = None
         self._close_hr_session()
         self.hud.set_connected(False)
         self.hr_stats.clear_live()
@@ -3570,7 +4375,38 @@ class DandurfApp:
             self._refresh_kamae_state_text()
 
     def _hr_ip_display(self):
-        return self.hr_ip if self.hr_ip.strip() else ANY_INTERFACE
+        """IP pre riadok v denniku appky - skryta, kym ju hrac neodkryje
+        (0.0.0.0 sa neskryva, nie je to adresa PC)."""
+        ip = self.hr_ip if self.hr_ip.strip() else ANY_INTERFACE
+        return netinfo.ip_for_screen(ip, self.show_ip)
+
+    def set_show_ip(self, show):
+        """Ukazat / Skryt IP pre celu appku (okno parovania aj pole IP v
+        Nastaveniach). Len v pamati - po restarte je IP znova skryta, preto
+        to `save_settings` ZAMERNE nezapisuje."""
+        self.show_ip = bool(show)
+        var = getattr(self, "show_ip_var", None)
+        if var is not None:
+            try:
+                if bool(var.get()) != self.show_ip:
+                    var.set(self.show_ip)
+            except Exception:
+                pass
+        self._apply_hr_ip_mask()
+
+    def _apply_hr_ip_mask(self):
+        """Pole IP v Nastaveniach kresli skutocnu adresu bodkami, kym nie je
+        `show_ip`. Prazdne pole a 0.0.0.0 ostavaju citatelne."""
+        entry = getattr(self, "hr_ip_entry", None)
+        var = getattr(self, "hr_ip_var", None)
+        if entry is None or var is None:
+            return
+        try:
+            maska = netinfo.entry_mask(var.get(), self.show_ip)
+            if str(entry.cget("show")) != maska:
+                entry.configure(show=maska)
+        except Exception:
+            pass            # pole uz neexistuje (prestavba UI)
 
     def on_hr_bpm(self, bpm, generation):
         self.ui_call(lambda: self._apply_hr_bpm(bpm, generation))
@@ -3582,6 +4418,10 @@ class DandurfApp:
         self._hr_bind_retries = 0       # port sa uvolnil, pocitadlo odznova
         self._hr_last_bpm = bpm
         self.hr_stats.add(bpm)
+        # Vypadok konci az PLATNOU vzorkou - tou istou, ktora v `hr_stats`
+        # uzavrie slepy cas, aby riadok v denniku a suhrn nehovorili ine.
+        if self._hr_lost and self.hr_stats.last_bpm is not None:
+            self._tep_je_spat()
         self.hud.set_connected(True)
         self._refresh_hud_session_text()
         self._refresh_dnes_stats()
@@ -3605,7 +4445,15 @@ class DandurfApp:
         if not self._hr_session_open:
             return
         self.cue_trigger.resume(now)
-        udalost = self.cue_trigger.note_load(self.hr_stats.stress, now)
+        # Pocas kalibracie (prvych ~30 vzoriek relacie) sa nic nenatiahne -
+        # viz `trigger.CueTrigger.note_load`.
+        # `zona` je pre BRANU hlasky (0.2): pasmo TEPU (`zone_of_bpm`, to
+        # iste slovo ako na HUD-e), None ked ho appka nepozna. Nikdy nie
+        # pasma zataze - nad hranicou vysokeho tepu hlas nezaznie.
+        udalost = self.cue_trigger.note_load(
+            self.hr_stats.stress, now,
+            calibrating=self.hr_stats.is_calibrating,
+            zona=self.hr_stats.known_zone)
         if udalost is not None:
             self._on_cue_event(udalost)
 
@@ -3640,7 +4488,8 @@ class DandurfApp:
         if kind == "bound_any":
             # zadanu IP toto PC nema - pocuvame na vsetkych sietach, nech
             # hracovi funkcia nezomrie kvoli jednemu zlemu cislu
-            self.log(tr("log.hr_bind_fallback", ip=payload))
+            self.log(tr("log.hr_bind_fallback",
+                        ip=netinfo.ip_for_screen(payload, self.show_ip)))
             return
         if kind == "client":
             # hodinky drzia spojenie - to este NEznamena, ze posielaju tep
@@ -3649,6 +4498,7 @@ class DandurfApp:
             self._hr_state = "linked"
             self.log(tr("log.hr_client_connected"))
         elif kind == "client_gone":
+            self._zaznamenaj_vypadok(kind)      # PRED clear_live
             self.hud.set_connected(False)
             self.hr_stats.clear_live()
             self._hr_client_linked = False
@@ -3663,6 +4513,7 @@ class DandurfApp:
         elif kind == "disconnected":
             # tep prestal chodit; ak hodinky spojenie stale drzia, je to
             # "pripojene, ale bez dat", nie "odpojene" - iny problem, iny text
+            self._zaznamenaj_vypadok(kind)      # PRED clear_live
             self.hud.set_connected(False)
             self.hr_stats.clear_live()
             self._hr_state = "linked" if self._hr_client_linked else "disconnected"
@@ -3688,6 +4539,8 @@ class DandurfApp:
             self._hr_last_bpm = None
             self._hr_over_since = None
             self._hr_client_linked = False
+            self._hr_lost = False           # port, nie vypadok tepu
+            self._hr_lost_od = None
             self._hr_generation = 0
             self._close_hr_session()
             self._hr_bind_retries = getattr(self, "_hr_bind_retries", 0) + 1
@@ -3714,6 +4567,8 @@ class DandurfApp:
             self._hr_last_bpm = None
             self._hr_over_since = None
             self._hr_client_linked = False
+            self._hr_lost = False           # senzor je vypnuty, nie slepy
+            self._hr_lost_od = None
             self.hr_monitoring_enabled = False
             if self.hr_enabled_var is not None:
                 self.hr_enabled_var.set(False)
@@ -3734,6 +4589,41 @@ class DandurfApp:
         # (connecting / disconnected / client_gone), nie len prepínač — inak
         # tvrdia "Sledujem tep" aj keď hodinky vypadli (bug A2).
         self._refresh_kamae_state_text()
+
+    def _zaznamenaj_vypadok(self, kind):
+        """Tep, ktory appka pocula, prestal chodit - zapamataj si to.
+
+        Vola sa z vetiev `disconnected` a `client_gone` PRED `clear_live`
+        (potom uz `hr_stats` nevie, kedy prisla posledna vzorka). Len ked
+        appka tep naozaj pocula: vypadok pred prvou vzorkou je "este nic
+        neprislo" a ma vlastny text. Obe udalosti mozu prist za sebou (TCP
+        spojenie padne az po 12 s ticha, alebo naopak) - druha uz `_hr_last_bpm`
+        nema, takze sa ten isty vypadok nerata dvakrat.
+
+        ZIADNY NOVY CASOVAC, ZVUK ANI OKNO. Hranica 12 s je ta ista ako doteraz
+        (`heart_rate.STALE_AFTER_S`); tu sa len prestane tvarit, ze hodinky
+        ani neboli sparovane (Dnes necha zivy blok a stopu relacie).
+        """
+        if self._hr_last_bpm is None:
+            return
+        self._hr_lost = True
+        self._hr_lost_od = self.hr_stats.last_beat_ts
+        try:
+            self.hr_stats.note_dropout(od=self._hr_lost_od)
+        except Exception:
+            app_log.exception("vypadok tepu sa nepodarilo zapisat")
+        app_log.info("tep vypadol (%s)", kind)
+
+    def _tep_je_spat(self):
+        """Prva platna vzorka po vypadku: jeden riadok do dennika, nic viac."""
+        od = self._hr_lost_od
+        self._hr_lost = False
+        self._hr_lost_od = None
+        if od is None:
+            return
+        sekund = max(0, int(round(self.hr_stats.last_beat_ts - od)))
+        self.log(tr("log.hr_back", s=sekund))
+        app_log.info("tep je spat po %d s", sekund)
 
     # POZN: tu bol `_maybe_trigger_hr_breathing` - starý automatický spúšťač
     # z fázy 1 (tep nad kritickou 5 s → dýchací kruh). Už ho nič nevolalo,
@@ -3828,8 +4718,8 @@ class DandurfApp:
             pass
 
     def _tick_session(self):
-        """Raz za sekundu obnovi "naposledy sa ozvala pred X min" a
-        prepumpuje Steam callbacky (ak je Steam pripojeny).
+        """Raz za sekundu obnovi "naposledy sa ozvala pred X min" a pri
+        otvorenej relacii skontroluje exkluzivny fullscreen.
 
         Popri nom bezi este `_tick_activity` (4x za sekundu); vsetko ostatne
         sa prekresluje az na zaklade prichadzajucich dat.
@@ -3851,16 +4741,14 @@ class DandurfApp:
         # takže vizuál (jadro appky) ticho zmizne. Kontrola má zmysel LEN keď
         # je popredím hra — čo počas relácie väčšinou je, a nikdy to nie je
         # počas `start_heart_rate_monitor`, kde kontrola pôvodne bola a bola
-        # preto mŕtva (bug A3). Raz za reláciu (flag `_fullscreen_warned`).
+        # preto mŕtva (bug A3). Raz za spustenie appky (flag
+        # `_fullscreen_warned` sa nenuluje) - a len ako odhad: rovnako veľké
+        # je aj okno bez okrajov, preto text hovorí „ak vizuály nevidíš“.
         if getattr(self, "_hr_session_open", False):
             try:
                 self._warn_exclusive_fullscreen_once()
             except Exception:
                 pass
-        try:
-            steam.run_callbacks()
-        except Exception:
-            pass
         try:
             self.root.after(1000, self._tick_session)
         except Exception:
@@ -3892,6 +4780,10 @@ class DandurfApp:
             except Exception:
                 pass
         try:
+            self._tick_nonstop_input()
+        except Exception:
+            app_log.exception("vstup bez pauzy: tick zlyhal")
+        try:
             self._tick_cue_trigger()
         except Exception:
             app_log.exception("spustac hlasky: tick zlyhal")
@@ -3900,6 +4792,38 @@ class DandurfApp:
                 int(activity.POLL_S * 1000), self._tick_activity)
         except Exception:
             self._activity_job = None
+
+    def _tick_nonstop_input(self, now=None):
+        """Tichy riadok na Dnes, ked appka uz dlho nevidela ani kratku pauzu
+        vo vstupe (`activity.NonstopInputWatch`).
+
+        Stalo sa to zadavatelovi: gyroskop ovladaca hlasil Windowsu vstup
+        kazdych ~16 ms a appka nemala kedy najst pauzu. Rata sa, len ked
+        appka pocuva a tep chodi (hrac je pri PC). LEN na Dnes - nie v hre,
+        nie v HUD-e; hrac to uvidi, ked sa na appku sam pozrie.
+        """
+        now = time.time() if now is None else now
+        watching = bool(self.listening
+                        and getattr(self, "_hr_session_open", False)
+                        and self._hr_state == "connected"
+                        and self._hr_last_bpm is not None
+                        and not getattr(self, "_hr_lost", False))
+        try:
+            potrebna = float(self.cue_trigger.params.get("pause_s", 2.5))
+        except Exception:
+            potrebna = 2.5
+        ukaz = self._nonstop_input.update(
+            now, self.activity.pause_s(now), watching, pause_needed_s=potrebna)
+        text = ""
+        if ukaz and self.listening:
+            text = tr("dnes.nonstop_input",
+                      min=int(self._nonstop_input.after_s // 60))
+        if text != getattr(self, "_dnes_nonstop_text", ""):
+            if text:
+                app_log.info("vstup: %d min bez jedinej pauzy - riadok na Dnes",
+                             int(self._nonstop_input.after_s // 60))
+            self._dnes_nonstop_text = text
+            self._refresh_dnes_backdrop(force=False)
 
     # ---------- automaticky spustac hlasky (faza 2) ----------
 
@@ -3950,9 +4874,24 @@ class DandurfApp:
         # opravoval pre vypnuty senzor. Pravda podla STAVU SPOJENIA, nie
         # prepinaca: naozaj sledujeme, len ked chodi tep.
         if self._hr_state != "connected" or self._hr_last_bpm is None:
+            # Nadpis "Cakam na tep" plati aj pri vypadku. Veta pod nim nie:
+            # "z hodiniek zatial nic nechodi" patri pred prvu vzorku, nie
+            # doprostred vecera, ked tep chodil a prestal.
+            if getattr(self, "_hr_lost", False):
+                return tr("kamae.no_hr"), tr("kamae.lost_sub")
             return tr("kamae.no_hr"), tr("kamae.no_hr_sub")
+        # "TERAZ NIE" (24. 9.): pocuva a meria sa dalej, ale hlaska neprijde.
+        # "Cakam na spravnu chvilu" by slubovalo presne to, co hrac vypol.
+        if getattr(self, "_snooze_job", None) is not None:
+            return tr("kamae.snoozed"), tr("kamae.snoozed_sub",
+                                           until=self._snooze_do())
         if self._cue_armed:
             return tr("kamae.armed"), tr("kamae.armed_sub")
+        # Rebrik hlasky je na pauze (`rebrik.py`): "cakam na spravnu chvilu"
+        # by slubovalo hlasku, ktora v tejto relacii neprijde.
+        if (getattr(self, "_hr_session_open", False)
+                and getattr(self, "_cue_rung", None) == rebrik.PAUZA):
+            return tr("kamae.running"), tr("kamae.paused_sub")
         return tr("kamae.running"), tr("kamae.running_sub")
 
     def _refresh_kamae_state_text(self):
@@ -4018,8 +4957,102 @@ class DandurfApp:
         except (TypeError, ValueError):
             podiel = None
         if not podiel:                  # None aj 0.0
-            podiel = trigger.silent_share_for(len(self._history_sessions()))
+            # Len VLASTNE relacie: importovane (cudzie telo) by inak posunuli
+            # pocitadlo - import 15 relacii by ukoncil fazu, v ktorej tiche
+            # rameno mlci castejsie (1/4), skor nez sa tvoje telo porovnalo.
+            podiel = trigger.silent_share_for(
+                len(data_io.vlastne(self._history_sessions())))
         return podiel
+
+    def _urci_stupen_hlasky(self):
+        """REBRIK HLASKY (0.2, `rebrik.py`): stupen pre relaciu, ktora sa
+        prave otvara. Vola ju `_open_hr_session`, az ked je svet opecateny.
+
+        Vrchol dava svet (praca = len obraz, B3-worlds - svet sa tu nepocita
+        znova, berie sa opecateny `_session_world`) a styl, ktory si hrac
+        vybral (`cue_style`); rebrik ide len pod neho. Styl aj stupen platia
+        pre celu relaciu, rovnako ako svet.
+
+        Ked vyhodnotenie zlyha, relacia ide len obrazom: radsej tichsie nez
+        hlas, ktory mal byt stiseny.
+        """
+        self._cue_style_rel = rebrik.normalize_cue_style(
+            getattr(self, "cue_style", None))
+        svet = getattr(self, "_session_world", hr_stats.WORLD_DEFAULT)
+        try:
+            stav = rebrik.stupen(
+                hr_stats.sessions_in_world(self._history_sessions(), svet),
+                svet=svet, styl=self._cue_style_rel)
+        except Exception:
+            app_log.exception("rebrik hlasky: vyhodnotenie zlyhalo")
+            stav = {"stupen": rebrik.OBRAZ, "dovod": None}
+        self._cue_rung = stav["stupen"]
+        app_log.info("rebrik hlasky: %s (styl %s, dovod %s)",
+                     self._cue_rung, self._cue_style_rel, stav.get("dovod"))
+        return stav
+
+    # ---------- styl hlasky (onboarding krok 5, Nastavenia -> Zvuk) ----------
+
+    @staticmethod
+    def _cue_style_label(styl):
+        """'voice'/'sound'/'visual' -> veta z onboardingu v jazyku rozhrania."""
+        return tr(dict(CUE_STYLE_LABELS)[rebrik.normalize_cue_style(styl)])
+
+    def _cue_style_labels(self):
+        return [tr(kluc) for _styl, kluc in CUE_STYLE_LABELS]
+
+    def _on_cue_style_label(self, label):
+        """Vyber v riadku "Ako sa ozyvam" (Nastavenia -> Zvuk)."""
+        styl = next((s for s, kluc in CUE_STYLE_LABELS if tr(kluc) == label), None)
+        if styl is None:
+            return
+        self._nastav_styl_hlasky(styl)
+        self.save_settings()
+        # Styl rozhoduje, ci sa texty hlasok posielaju na syntezu
+        # (`_hlasky_hovoria`) - hlas sa pripravi hned, ked ho hrac zapne.
+        self.schedule_pregenerate(200)
+
+    def _prevezmi_styl_z_onboardingu(self, wizard):
+        """Styl z 5. kroku onboardingu. None = hrac nevybral nic a ostava
+        mu, co mal (novemu hracovi hlas - to iste ako odpoved "neviem")."""
+        styl = getattr(wizard, "cue_style", None)
+        if styl is not None:
+            self._nastav_styl_hlasky(styl)
+
+    def _nastav_styl_hlasky(self, styl):
+        """Hrac vybral styl hlasky (onboarding alebo Nastavenia -> Zvuk).
+
+        Novy styl je vrchol rebrika od dalsej relacie (`_urci_stupen_hlasky`).
+        TICHSI styl navyse plati HNED, aj v beziacej relacii: veta pri volbe
+        slubuje "nikdy nie hlasnejsie, nez tu vyberies", a hlas, ktory by
+        dohral vecer po tom, co si hrac vybral len obrazok, by ju porusil.
+        Hlasnejsi styl pocka na dalsiu relaciu - stupen sa uprostred relacie
+        neprepocitava (ako svet) a byt tichsie, nez hrac dovolil, smie.
+        Relacia si do suhrnu zapise styl a stupen, s ktorymi naozaj dobehla.
+        """
+        styl = rebrik.normalize_cue_style(styl)
+        self.cue_style = styl
+        app_log.info("styl hlasky: %s", styl)
+        # Veta pod ukazkou v Nastaveniach -> Zvuk ide za stylom HNED - aj
+        # hlasnejsim, lebo ukazka hra styl, nie stupen beziacej relacie.
+        veta = getattr(self, "preview_sub_label", None)
+        if veta is not None:
+            try:
+                veta.configure(text=self._preview_sub_text())
+            except Exception:
+                app_log.exception("ukazka: vetu sa nepodarilo prepisat")
+        if not rebrik.je_tichsi(styl, getattr(self, "_cue_style_rel", None)):
+            return
+        self._cue_style_rel = styl
+        svet = getattr(self, "_session_world", hr_stats.WORLD_DEFAULT)
+        if (rebrik.vrchol(svet, styl) == rebrik.OBRAZ
+                and getattr(self, "_cue_rung", rebrik.HLAS) == rebrik.HLAS):
+            # Len obrazok: automat uz hlas neohlasi (`hlas` v udalosti hovori
+            # pravdu) a `_fire_somatic_cue` pod stupnom hlasu nic neprehra.
+            self._cue_rung = rebrik.OBRAZ
+            automat = getattr(self, "cue_trigger", None)
+            if automat is not None:
+                automat.voice = False
 
     def _build_dnes_backdrop(self, parent, pal):
         """Zavesi prekreslenie stredu na zmenu velkosti.
@@ -4172,6 +5205,10 @@ class DandurfApp:
         titul = getattr(self, "_dnes_titul", "") or ""
         veta = getattr(self, "_dnes_veta", "") or ""
         last = getattr(self, "_dnes_lastcue_text", "") or ""
+        # Tichy riadok "ziadna pauza vo vstupe" ide pod neho, rovnako tlmeny.
+        nonstop = getattr(self, "_dnes_nonstop_text", "") or ""
+        if nonstop:
+            last = f"{last}\n{nonstop}" if last else nonstop
 
         # (1) PRESKOC identicke prekreslenie.
         frame_sig = (w, h, round(mierka, 2), id(dojo), id(pil),
@@ -4463,7 +5500,14 @@ class DandurfApp:
         Volat treba VZDY, aj ked sa `start_listening` nezavola: pri snooze
         spustenom v nepocuvajucom stave by inak spustac ostal pozastaveny
         navzdy.
+
+        KYM PLATI "TERAZ NIE", NEZDVIHNE NIC. Od 24. 9. snooze pocuvanie
+        nezastavuje, takze `start_listening` (hrac dal stop a start pocas
+        stisenia) by ho inak ticho zrusil. Koniec a zrusenie snooze nulu
+        `_snooze_job` PRED volanim.
         """
+        if getattr(self, "_snooze_job", None) is not None:
+            return
         try:
             self.cue_trigger.resume(force=True)
         except Exception:
@@ -4655,16 +5699,47 @@ class DandurfApp:
         # hlada cez `slot.index`, takze poradie v `self.slots` nemusi sediet.
         slot = next((s for s in self.slots if s.index == index), None)
         label = (slot.text_value if slot is not None else "") or ""
-        if ev.get("hlas") and slot is not None:
+        # `hlas` je v pracovnom svete vzdy False (B3-worlds) - rozhoduje
+        # automat (`CueTrigger.open_session(voice=...)`), nie tato vetva,
+        # aby aj zaznam udalosti hovoril pravdu o tom, co zaznelo.
+        #
+        # REBRIK (0.2): zvuk LEN na stupni hlasu. Pod nim ide hlaska len
+        # obrazom v oboch ramenach - automat to uz vie (`voice` pri
+        # otvoreni), tu je to druha poistka. Styl "zvuk" = stupen hlasu so
+        # stlmenymi slovami: slot zahra svoj zvuk, TTS ani nahravka nie.
+        stupen = getattr(self, "_cue_rung", rebrik.HLAS)
+        bez_slov = (getattr(self, "_cue_style_rel", rebrik.STYL_HLAS)
+                    == rebrik.STYL_ZVUK)
+        zaznie = False
+        if ev.get("hlas") and slot is not None and stupen == rebrik.HLAS:
+            zaznie = self._slot_zaznie(slot, bez_slov)
             # `_emit` prehrava a blokuje - v Tk vlakne by zamrazilo okno.
-            threading.Thread(target=self._emit, args=(slot,), daemon=True).start()
+            threading.Thread(target=self._emit, args=(slot,),
+                             kwargs={"bez_slov": bez_slov}, daemon=True).start()
 
+        # Zaznam o doruceni ide do okna (`measure.build_window`): stupen,
+        # ci naozaj nieco zaznelo, zataz a jej vrchol, pasmo tepu.
         self.hr_stats.note_trigger(
             ts=ev["ts"], auto=True,
             category=measure.category_for_slot(index),
             cue_id=f"slot{index}", arm=ev["arm"], source="auto",
-            delivery=ev.get("delivery"), delivered=vykreslene)
+            delivery=ev.get("delivery"), delivered=vykreslene,
+            rung=stupen, audible=zaznie, load_at=ev.get("load"),
+            load_peak=ev.get("load_peak"), zone_at=ev.get("zone_at"))
         self.log(tr("log.cue_delivered", label=label))
+        # Pocitadlo v hlavicke dennika (`session.summary`, "Ťažisko 2× | ...").
+        # Doteraz ho zvysoval len `_deliver` pri source=="trigger" - lenze
+        # tadial automaticka hlaska nikdy nechodi, takze riadok ukazoval 0×
+        # pri vsetkych styroch, kym karta na Dnes hlasila tri hlasky.
+        # Rata sa len hlaska, ktora sa naozaj ukazala, a nie tiche kontrolne
+        # rameno (to je meranie, nie hlaska pre hraca).
+        if vykreslene and ev.get("arm") != trigger.ARM_SILENT:
+            pocty = getattr(self, "session_counts", None)
+            if isinstance(pocty, dict):
+                pocty[index] = pocty.get(index, 0) + 1
+                obnov = getattr(self, "update_session_label", None)
+                if callable(obnov):
+                    obnov()
         self._refresh_hud_session_text()
         self._refresh_dnes_stats()
         return vykreslene
@@ -4712,6 +5787,12 @@ class DandurfApp:
             return
         stats = self.hr_stats
         connected = self._hr_state == "connected" and stats.last_bpm is not None
+        # VYPADOK NIE JE "ESTE SOM TA NEPOCULA". Pocas vypadku ostava zivy
+        # blok aj stopa relacie (ziadne "Sparuj hodinky" uprostred vecera),
+        # ale cislo je "--" a pasmo "—" - to riesi `connected` nizsie, takze
+        # ziadny falosny pokoj.
+        lost = bool(getattr(self, "_hr_lost", False)) and not connected
+        ukaz = connected or lost
         pal = self.pal
         try:
             self.dnes_bpm.configure(
@@ -4720,24 +5801,46 @@ class DandurfApp:
             self.dnes_spark.set_series(stats.series(120) if connected else [],
                                        threshold=self.hr_critical_bpm,
                                        baseline=stats.baseline)
-            self.dnes_load.set_value(stats.stress if connected else 0)
-            zone = stats.zone if connected else None
+            # Kym sa relacia kalibruje, pruh ostane prazdny a namiesto pasma
+            # je tiche "kalibrujem…" - rovnako ako HUD v hre. Hned po navrate
+            # tepu (`is_settling`) to iste, len namiesto slova "…": zataz sa
+            # rozbieha od nuly a inak by par sekund tvrdila "Pokoj".
+            kalibruje = connected and stats.is_calibrating
+            usadza = connected and not kalibruje and stats.is_settling
+            tlmene = kalibruje or usadza
+            # Slovo aj farba plnych dielikov su `stats.zone` (tep voci
+            # pokoju) - to iste ako na HUD-e a na kontrolke tepu. Dlzka
+            # pruhu je zataz.
+            zone = stats.zone if connected and not tlmene else None
+            self.dnes_load.set_value(stats.stress if connected and not tlmene else 0,
+                                     zone=zone)
+            if kalibruje:
+                zone_text = tr("hud.calibrating")
+            elif usadza:
+                zone_text = "…"
+            else:
+                zone_text = tr(f"hud.zone.{zone}") if zone else "—"
             self.dnes_zone.configure(
-                text=tr(f"hud.zone.{zone}") if zone else "—",
+                text=zone_text,
                 text_color=theme_mod.zone_color(pal, zone) if zone else pal["text_faint"])
-            self._refresh_session_trace(connected)
+            self._refresh_session_trace(ukaz)
             self._refresh_zone_panel()
             self._refresh_dashboard_stats()
             if getattr(self, "hr_panel", None) is not None:
-                self.hr_panel.set_right(
-                    tr("dnes.hr_connected") if connected else tr("dnes.hr_waiting"))
+                if connected:
+                    vpravo = tr("dnes.hr_connected")
+                elif lost:
+                    vpravo = tr("dnes.hr_lost")
+                else:
+                    vpravo = tr("dnes.hr_waiting")
+                self.hr_panel.set_right(vpravo)
             empty, live = getattr(self, "dnes_empty", None), getattr(self, "dnes_live", None)
             if empty is not None and live is not None:
-                if connected and not live.winfo_ismapped():
+                if ukaz and not live.winfo_ismapped():
                     empty.pack_forget()
                     live.pack(fill="x")
                     self._stop_dnes_hero()       # dýcha už len pás
-                elif not connected and not empty.winfo_ismapped():
+                elif not ukaz and not empty.winfo_ismapped():
                     live.pack_forget()
                     empty.pack(fill="x", pady=(6, 0))
                     self._start_dnes_hero()      # rozdýchaj dojo za ensom
@@ -4792,8 +5895,9 @@ class DandurfApp:
     # ---------- volitelne statistiky na Dnes ("Moje štatistiky") ----------
 
     def _dashboard_stat_catalog(self):
-        """(id, nazov, TOKEN farby) pre vsetkych 8 volitelnych statistik -
-        rovnake poradie v pickeri aj (ked su vybrane) v mriezke.
+        """(id, nazov, TOKEN farby) pre vsetky volitelne statistiky, v poradi
+        vo vybere. V mriezke je poradie hracovo (self.dashboard_stats) -
+        meni sa potiahnutim karty na inu.
 
         Token, nie hodnota: kartu aj bodku vo vybere treba po zmene temy
         prefarbit, a token si novu farbu najde sam."""
@@ -4809,6 +5913,14 @@ class DandurfApp:
             ("max", tr("metric.max.title"), "zone_critical"),
             ("peak", tr("metric.peak.title"), "accent"),
             ("week", tr("metric.week.title"), "blue"),
+            # 0.2: ta ista farba ako ciara tej istej metriky v Historii
+            # (HISTORY_METRICS) - karta a graf su jedna vec
+            ("session_len", tr("metric.session_len.title"), "text_dim"),
+            ("last_cue", tr("metric.last_cue.title"), "murasaki"),
+            ("calm_time", tr("metric.calm_time.title"), "zone_calm"),
+            ("signal", tr("metric.signal.title"), "blue"),
+            # neutralna farba: ani jedno z dvoch cisel nie je "to spravne"
+            ("felt_vs_measured", tr("metric.felt_vs_measured.title"), "text"),
         ]
 
     # POZN: tu boli `_STAT_HISTORY` (ktore pole ulozeneho suhrnu zodpoveda
@@ -4849,7 +5961,8 @@ class DandurfApp:
 
     def _dashboard_stat_value(self, stat_id):
         """(hodnota, popisok) pre jednu kartu - zo ziveho self.hr_stats,
-        "week" z ulozenej historie relacii (hr_sessions.json)."""
+        "week" a "felt_vs_measured" z ulozenej historie relacii
+        (hr_sessions.json, cez `_history_cached`)."""
         stats = self.hr_stats
         if stat_id == "baseline":
             base = stats.session_baseline
@@ -4873,14 +5986,55 @@ class DandurfApp:
         if stat_id == "week":
             try:
                 since = hr_stats.period_start_ts(hr_stats.PERIOD_WEEK)
+                # Len aktualny svet (B3-worlds). Filtruje sa ulozeny zoznam,
+                # takze prepnutie sveta sa prejavi hned, bez citania disku.
                 count, duration = hr_stats.count_sessions_since(
-                    self._history_cached(), since)
+                    hr_stats.sessions_in_world(self._history_cached(), self.world),
+                    since)
             except Exception:
                 count, duration = 0, 0.0
             hours, rem = divmod(int(duration), 3600)
             minutes = rem // 60
             sub = f"{hours}h {minutes}m" if hours else f"{minutes}m"
             return (str(count), sub)
+        # --- 0.2 (widgets-history). Co sa nevie, je "—", nie nula. ---
+        # Dlzka, posledna hlaska a signal sa pytaju len OTVORENEJ relacie:
+        # po jej zatvoreni by hodiny bezali dalej od zaciatku uz skoncenej
+        # relacie a pokrytie by ticho klesalo k nule.
+        otvorena = getattr(self, "_hr_session_open", False)
+        if stat_id == "session_len":
+            unit = tr("dashboard.unit.session_len")
+            if not otvorena:
+                return ("—", unit)
+            return (self._fmt_dlzka(time.time() - stats.session_start), unit)
+        if stat_id == "last_cue":
+            unit = tr("dashboard.unit.last_cue")
+            ts = stats.last_auto_cue_ts() if otvorena else None
+            if ts is None:
+                return ("—", unit)
+            return (tr("dashboard.fmt.min", n=int(max(0.0, time.time() - ts) // 60)), unit)
+        if stat_id == "calm_time":
+            # Ako "nad hranicou": suhrn relacie, ostava aj po jej zatvoreni.
+            calm = stats.calm_seconds()
+            return ("—" if calm is None else tr("dashboard.fmt.min", n=int(calm // 60)),
+                    tr("dashboard.unit.calm_time"))
+        if stat_id == "signal":
+            unit = tr("dashboard.unit.signal")
+            pokrytie = stats.signal_coverage if otvorena else None
+            if pokrytie is None:
+                return ("—", unit)
+            text = self._fmt_pokrytie(pokrytie)
+            if stats.dropouts:
+                text = f"{text} · {stats.dropouts}×"
+            return (text, unit)
+        if stat_id == "felt_vs_measured":
+            try:
+                # Posledna relacia AKTUALNEHO sveta (B3-worlds).
+                par = hr_stats.citene_a_merane(hr_stats.posledna_relacia(
+                    hr_stats.sessions_in_world(self._history_cached(), self.world)))
+            except Exception:
+                par = None
+            return (self._fmt_citene_merane(par), tr("dashboard.unit.felt_vs_measured"))
         return ("-", "")
 
     def _rebuild_dashboard_stats_grid(self):
@@ -4891,7 +6045,10 @@ class DandurfApp:
         for child in grid.winfo_children():
             child.destroy()
         self.dashboard_cards = {}
+        self._dashboard_drag_state = None     # stare karty su prec
         catalog = {s[0]: s for s in self._dashboard_stat_catalog()}
+        # Posledna karta nema ✕ - jedna ostava vzdy (toggle_dashboard_stat).
+        removable = len(self.dashboard_stats) > 1
         for i, stat_id in enumerate(self.dashboard_stats):
             meta = catalog.get(stat_id)
             if meta is None:
@@ -4905,7 +6062,9 @@ class DandurfApp:
             card = ui_kit.StatCard(
                 grid, pal, color_token, tr(f"metric.{stat_id}.tag"), value,
                 tr(f"metric.{stat_id}.more"),
-                on_remove=lambda k=stat_id: self._toggle_dashboard_stat(k))
+                on_remove=((lambda k=stat_id: self._toggle_dashboard_stat(k))
+                           if removable else None),
+                on_drag=lambda phase, e, k=stat_id: self._dashboard_drag(k, phase, e))
             card.grid(row=row, column=col, sticky="nsew",
                      padx=(0, 7) if col == 0 else (7, 0),
                      pady=(7, 0) if row > 0 else (0, 0))
@@ -4939,23 +6098,33 @@ class DandurfApp:
         top.configure(bg=pal["border"])
         self._dashboard_picker = top
 
+        # Vysku berie ramec z obsahu. Kedysi tu bolo `pack_propagate(False)`
+        # bez vysky, takze ramec ostal na predvolenych 200 px CTkFrame: vidno
+        # boli 3 riadky, stvrty napoly a zvysok sa vybrat vobec nedal. Sirku
+        # (230) drzi nulovo vysoka rozpera.
         frame = ctk.CTkFrame(top, fg_color=pal["surface"], corner_radius=ui_kit.RADIUS_PANEL,
                              border_width=1, border_color=pal["border"], width=230)
-        frame.pack_propagate(False)
         frame.pack(padx=1, pady=1)
+        ctk.CTkFrame(frame, width=228, height=0, fg_color="transparent").pack()
         ctk.CTkLabel(frame, text=tr("dashboard.picker_title").upper(), font=ui_kit.ui(9, "bold"),
                      text_color=pal["text_faint"], anchor="w").pack(fill="x", padx=12, pady=(10, 4))
         self._dashboard_picker_rows = ctk.CTkFrame(frame, fg_color="transparent")
-        self._dashboard_picker_rows.pack(fill="both", expand=True, padx=6, pady=(0, 8))
+        self._dashboard_picker_rows.pack(fill="both", expand=True, padx=6, pady=(0, 4))
         self._render_dashboard_picker_rows()
+        # jeden tichy riadok: strop 4 kariet a ze sa daju presuvat
+        ctk.CTkLabel(frame, text=tr("dashboard.picker_hint"), font=ui_kit.ui(10),
+                     text_color=pal["text_faint"], anchor="w", justify="left",
+                     wraplength=200).pack(fill="x", padx=12, pady=(0, 10))
 
         # pravy okraj popupu = pravy okraj tlacidla (rovnake ako makety
         # `position:absolute; top:100%; right:0`) - az PO postaveni obsahu,
-        # inak by sirka este nebola znama
+        # inak by sirka este nebola znama. Ked sa pod tlacidlo nezmesti
+        # (nizka obrazovka, okno dole), vysunie sa nad neho.
         top.update_idletasks()
-        w = top.winfo_reqwidth()
+        w, h = top.winfo_reqwidth(), top.winfo_reqheight()
         x = btn.winfo_rootx() + btn.winfo_width() - w
         y = btn.winfo_rooty() + btn.winfo_height() + 4
+        x, y = ui_kit.fit_popup(x, y, w, h, ui_kit.work_area(btn), btn.winfo_rooty())
         top.geometry(f"+{x}+{y}")
 
         top.bind("<FocusOut>", lambda _e: self._close_dashboard_picker())
@@ -4985,18 +6154,37 @@ class DandurfApp:
         pal = self.pal
         for stat_id, title, color_token in self._dashboard_stat_catalog():
             on = stat_id in self.dashboard_stats
+            # Riadok, na ktorom klik nic neurobi, nema ruku na kurzore:
+            #  - nezvolena metrika, ked su 4 karty plne -> aj bledy text
+            #    (uvolni sa, ked jednu kartu odoberies)
+            #  - posledna zvolena metrika (jedna karta ostava vzdy) -> vyzera
+            #    ako zvolena, len nereaguje
+            clickable = dashboard_stat_clickable(self.dashboard_stats, stat_id)
+            if on:
+                text_color = pal["text"]
+            elif clickable:
+                text_color = pal["text_dim"]
+            else:
+                text_color = pal["text_faint"]
             row = ctk.CTkFrame(container, fg_color=pal["surface_alt"] if on else "transparent",
                                corner_radius=6)
             row.pack(fill="x", pady=1)
             inner = ctk.CTkFrame(row, fg_color="transparent")
-            inner.pack(fill="x", padx=8, pady=6)
+            # Nizsie riadky (popisok 20 px namiesto predvolenych 28 CTkLabel,
+            # okraj 4 namiesto 6): od 0.2 je v katalogu 13 metrik a vyber musi
+            # ostat na obrazovke cely. Odmerane pri 150 %: riadok 60 -> 42 px,
+            # cely vyber s 13 riadkami 719 px (predtym s 8 riadkami 643).
+            inner.pack(fill="x", padx=8, pady=4)
             ctk.CTkFrame(inner, width=8, height=8, corner_radius=4,
-                        fg_color=pal[color_token]).pack(side="left", padx=(0, 8))
-            ctk.CTkLabel(inner, text=title, font=ui_kit.ui(12),
-                         text_color=pal["text"] if on else pal["text_dim"],
+                        fg_color=pal[color_token] if (on or clickable) else pal["text_faint"]
+                        ).pack(side="left", padx=(0, 8))
+            ctk.CTkLabel(inner, text=title, font=ui_kit.ui(12), height=20,
+                         text_color=text_color,
                          anchor="w").pack(side="left", fill="x", expand=True)
             ctk.CTkLabel(inner, text="✓" if on else "", font=ui_kit.ui(11, "bold"),
-                         text_color=pal["accent"], width=16).pack(side="right")
+                         text_color=pal["accent"], width=16, height=20).pack(side="right")
+            if not clickable:
+                continue
             for w in (row, inner) + tuple(inner.winfo_children()):
                 try:
                     w.configure(cursor="hand2")
@@ -5005,13 +6193,107 @@ class DandurfApp:
                 w.bind("<Button-1>", lambda _e, k=stat_id: self._toggle_dashboard_stat(k))
 
     def _toggle_dashboard_stat(self, stat_id):
-        if stat_id in self.dashboard_stats:
-            self.dashboard_stats = [s for s in self.dashboard_stats if s != stat_id]
-        else:
-            self.dashboard_stats = self.dashboard_stats + [stat_id]
+        """Klik na riadok vo vybere alebo ✕ na karte. Strop kariet aj
+        "posledna ostava" rata `toggle_dashboard_stat`; ked sa nic nezmeni,
+        nic sa neuklada ani neprestavuje."""
+        new = toggle_dashboard_stat(self.dashboard_stats, stat_id)
+        if new == self.dashboard_stats:
+            return
+        self.dashboard_stats = new
         self.save_settings()
         self._rebuild_dashboard_stats_grid()
         self._render_dashboard_picker_rows()
+
+    # ---- presun karty potiahnutim (vymena miest) ----
+    #
+    # Chytis kartu (cislo, popisok, okraj - nie ⓘ/✕), potiahnes aspon
+    # DASHBOARD_DRAG_PX a pustis ju na inu kartu: vymenia si miesto. Pri
+    # mriezke 2x2 je vymena presne predvidatelna - zvyraznena karta je
+    # presne tam, kam tvoja dopadne. Ziadne "duchove" okno, animacia ani
+    # posuvanie ostatnych kariet.
+    #
+    # ROZHODUJE PUSTENIE, nie pohyb: vzdialenost stlacenie->pustenie a
+    # karta pod bodom pustenia. Pohyb len kresli zvyraznenie a kurzor.
+    # Pri skutocnej mysi totiz niekedy do Tk nepride ani jeden B1-Motion
+    # (rychly svih, touchpad) - drop, ktory by na nom zavisel, by sa ticho
+    # stratil.
+
+    DASHBOARD_DRAG_PX = 8
+
+    def _dashboard_card_at(self, x_root, y_root):
+        """stat_id karty pod bodom obrazovky, alebo None (medzera, mimo)."""
+        for stat_id, card in getattr(self, "dashboard_cards", {}).items():
+            try:
+                x0, y0 = card.winfo_rootx(), card.winfo_rooty()
+                if (x0 <= x_root < x0 + card.winfo_width()
+                        and y0 <= y_root < y0 + card.winfo_height()):
+                    return stat_id
+            except Exception:
+                continue
+        return None
+
+    def _dashboard_drag_reset(self):
+        """Zhodi zvyraznenie aj kurzor. Vola sa pri KAZDOM stlaceni: ked sa
+        pustenie stratilo (alt-tab uprostred tahu), nic neostane visiet."""
+        st, self._dashboard_drag_state = getattr(self, "_dashboard_drag_state", None), None
+        for card in getattr(self, "dashboard_cards", {}).values():
+            try:
+                card.set_drag_look(None)
+            except Exception:
+                pass
+        if st and st.get("widget") is not None:
+            try:
+                st["widget"].configure(cursor="")
+            except Exception:
+                pass
+
+    def _dashboard_drag(self, stat_id, phase, event):
+        if phase == "press":
+            self._dashboard_drag_reset()
+            self._dashboard_drag_state = {
+                "id": stat_id, "x": event.x_root, "y": event.y_root,
+                "widget": event.widget, "active": False, "target": None}
+            return
+        st = getattr(self, "_dashboard_drag_state", None)
+        if not st or st["id"] != stat_id:
+            return
+        moved = (abs(event.x_root - st["x"]) + abs(event.y_root - st["y"])
+                 >= self.DASHBOARD_DRAG_PX)
+        cards = getattr(self, "dashboard_cards", {})
+        if phase == "move":
+            if not st["active"]:
+                if not moved:
+                    return
+                st["active"] = True
+                if stat_id in cards:
+                    cards[stat_id].set_drag_look("source")
+                try:
+                    st["widget"].configure(cursor="fleur")
+                except Exception:
+                    pass
+            target = self._dashboard_card_at(event.x_root, event.y_root)
+            if target == stat_id:
+                target = None
+            if target != st["target"]:
+                if st["target"] in cards:
+                    cards[st["target"]].set_drag_look(None)
+                if target in cards:
+                    cards[target].set_drag_look("target")
+                st["target"] = target
+            return
+        if phase != "release":
+            return
+        self._dashboard_drag_reset()
+        if not moved:
+            return                              # obycajny klik
+        target = self._dashboard_card_at(event.x_root, event.y_root)
+        new = swap_dashboard_stats(self.dashboard_stats, stat_id, target)
+        if new == self.dashboard_stats:
+            return                              # medzera, mimo, sama na seba
+        self.dashboard_stats = new
+        self.save_settings()
+        # after_idle: prestavba znici aj widget, ktory prave vybavuje event
+        self.root.after_idle(self._rebuild_dashboard_stats_grid)
 
     # POZN: tu bolo `_refresh_kamae_metrics()` - dlzka relacie, pocet
     # pripomienok a tep, kreslene vpravo v dychajucom pase. Odstranene:
@@ -5140,6 +6422,7 @@ class DandurfApp:
             "high": g("hud.zone.high"),
             "critical": g("hud.zone.critical"),
             "waiting": g("hud.waiting"),
+            "calibrating": g("hud.calibrating"),
         }
 
     def _apply_hud_labels(self):
@@ -5582,8 +6865,8 @@ class DandurfApp:
     def import_all_json(self):
         """Jedine miesto, kam vstupuje cudzi subor.
 
-        Prisny parser je v `data_io`; tu sa uz len pyta zlucit/nahradit a
-        zapisuje sa vysledok.
+        Prisny parser je v `data_io`; tu sa uz len pyta zlucit/nahradit
+        (vlastny dialog `ImportDataDialog`) a zapisuje sa vysledok.
         """
         cesta = filedialog.askopenfilename(filetypes=[("JSON", "*.json")])
         if not cesta:
@@ -5602,32 +6885,34 @@ class DandurfApp:
         if zahodene:
             sprava += "\n" + tr("data.import.dropped", n=zahodene)
         sprava += "\n\n" + tr("data.import.flagged")
-        # messagebox namiesto vlastneho dialogu: su to tri volby a jedna z
-        # nich je nevratna, takze systemovy dialog je tu na mieste.
-        odpoved = messagebox.askyesnocancel(
-            tr("data.import.title"),
-            f"{sprava}\n\n{tr('data.import.merge')} = Áno\n"
-            f"{tr('data.import.replace')} = Nie")
-        if odpoved is None:
-            return
+        sprava += "\n\n" + tr("data.import.question")
+        # Vlastny dialog, nie systemovy askyesnocancel: ten mal tlacidla
+        # Ano/Nie v jazyku Windowsu a volby natvrdo v texte ("= Ano"), takze
+        # v inom jazyku nesedeli. Nahradit ide az na druhe potvrdenie.
+        ImportDataDialog(self, sprava, lambda volba: self._zapis_import(
+            sessions, windows, nahradit=(volba == "replace")))
 
+    def _zapis_import(self, sessions, windows, nahradit):
+        """Zapise vysledok importu. Najprv ZALOHA oboch suborov (aj pri
+        zluceni - aj to ich prepisuje), potom atomicky zapis. Hlasi sa
+        pocet zaznamov zo suboru, ktore v historii naozaj pribudli."""
         try:
-            if odpoved:
-                sessions = data_io.merge_sessions(self._history_sessions(), sessions)
-                windows = data_io.merge_windows(
-                    measure.load_windows(self.hr_windows_path), windows)
-            data_io.write_bundle(self.hr_sessions_path + ".bak",
-                                 data_io.build_bundle(self._history_sessions(), []))
-            with open(self.hr_sessions_path, "w", encoding="utf-8") as fh:
-                json.dump(sessions[-hr_stats.MAX_SESSIONS:], fh,
-                          ensure_ascii=False, indent=2)
-            with open(self.hr_windows_path, "w", encoding="utf-8") as fh:
-                json.dump(windows[-measure.MAX_WINDOWS:], fh,
-                          ensure_ascii=False, indent=2)
+            relacie, okna, n_relacii, n_okien = data_io.vysledok_importu(
+                self._history_sessions(), measure.load_windows(self.hr_windows_path),
+                sessions, windows, nahradit,
+                max_s=hr_stats.MAX_SESSIONS, max_w=measure.MAX_WINDOWS)
+            zalohy = data_io.zaloha_pred_importom(
+                [self.hr_sessions_path, self.hr_windows_path])
+            data_io.zapis_zoznam(self.hr_sessions_path, relacie)
+            data_io.zapis_zoznam(self.hr_windows_path, okna)
             self._history_cache = (0.0, None)
             self._refresh_history_page()
-            self._data_note(tr("data.import.done", sessions=len(sessions),
-                               windows=len(windows)))
+            sprava = tr("data.import.done", sessions=n_relacii, windows=n_okien)
+            if zalohy:
+                # len mena suborov - cela cesta v %APPDATA% nesie meno uctu
+                sprava += "\n" + tr("data.import.backup", files=", ".join(
+                    os.path.basename(z) for z in zalohy))
+            self._data_note(sprava)
         except Exception as exc:
             app_log.exception("zapis importu zlyhal")
             self._data_note(str(exc))
@@ -5638,10 +6923,14 @@ class DandurfApp:
         Sub "vsetko ostava u teba" znamena aj to, ze "zmazat" naozaj
         zmaze - a to sa da ukazat len menovite.
         """
-        plan = data_io.delete_plan(DATA_DIR)
+        # Stare priecinky po premenovani appky: migracia z nich historiu len
+        # KOPIROVALA, takze tam ostala druha kopia - maze sa aj ta a dialog
+        # ju menuje (jeden riadok na priecinok, viz data_io.plan_riadky).
+        stare = legacy_data_dirs()
+        plan = data_io.delete_plan(DATA_DIR, legacy_dirs=stare)
         riadky = []
-        for polozka in plan:
-            meno = tr(polozka["label"])
+        for polozka in data_io.plan_riadky(plan):
+            meno = tr(polozka["label"], **polozka["params"])
             if not polozka["exists"]:
                 riadky.append(f"  · {meno} — {tr('data.delete.empty')}")
             else:
@@ -5650,7 +6939,8 @@ class DandurfApp:
                 tr("data.delete.title"),
                 tr("data.delete.intro") + "\n\n" + "\n".join(riadky)):
             return
-        pocet = data_io.delete_all(DATA_DIR, log=self.log_threadsafe)
+        pocet = data_io.delete_all(DATA_DIR, log=self.log_threadsafe,
+                                   legacy_dirs=stare)
         self._history_cache = (0.0, None)
         self._hr_insights = []
         try:
@@ -5717,6 +7007,23 @@ class DandurfApp:
             ok = False
         if ok:
             self._history_cache = (0.0, None)
+            # Odpoved hral/pracoval moze relaciu presunut do druheho sveta
+            # (B3-worlds): detail by potom ukazoval na inu relaciu a postrehy
+            # by boli z inej mnoziny - preto nulovanie a nova analyza.
+            zmena_sveta = (hr_stats.normalize_activity(activity) is not None
+                           and hr_stats.normalize_activity(activity)
+                           != hr_stats.session_world(summary))
+            if zmena_sveta:
+                self.history_detail_index = None
+            # Detail relacie v Historii ukazuje aj "citene · merane" - bez
+            # prekreslenia by tam po dotazniku ostala pomlcka do dalsej
+            # relacie. (Karta na Dnes si to precita sama pri dalsom tiku.)
+            try:
+                self._refresh_history_page()
+            except Exception:
+                app_log.exception("historia: prekreslenie po dotazniku zlyhalo")
+            if zmena_sveta:
+                self.run_hr_analysis()
         else:
             app_log.error("kontext relacie sa neulozil - relacia sa nenasla "
                           "alebo subor nebolo mozne zapisat")
@@ -5752,9 +7059,15 @@ class DandurfApp:
             # rozdiel v tom, co sa zmenilo, alebo v tom, ako sa hrac vyspal.
             params = dict(self.cue_trigger.params)
             params["silent_share"] = self.cue_trigger.silent_share
+            # Svet relacie (B3-worlds) priamo v okne: okna ziju dlhsie nez
+            # relacie (MAX_SESSIONS), takze spajat ich so suhrnom by casom
+            # stratilo prave tie najstarsie. V `world` "work" hlaska nemala
+            # hlas ani zvuk - graf ucinnosti ich tak vie raz oddelit.
+            svet = getattr(self, "_session_world", hr_stats.WORLD_DEFAULT)
             for w in windows:
                 w["params"] = params
                 w["natiahnuti"] = self.cue_trigger.armed_count
+                w["world"] = svet
             if measure.save_windows(self.hr_windows_path, windows,
                                     log=self.log_threadsafe):
                 platne = sum(1 for w in windows if w.get("valid"))
@@ -5772,9 +7085,14 @@ class DandurfApp:
         `hr_stats.zanshin_graduation`; pri splneni nastavi trvaly flag, ulozi
         nastavenia, oznaci summary pre dotaznik (mysticka sprava) a prepne
         znacku na zlaty mesiac. Appka bezi dalej - je to len pozorovanie.
+
+        Len po HERNEJ relacii (`hr_stats.ZEN_SVET`): seria sa rata z hry a
+        kruh sa uzavrie po pokojnom vecere pri hre - nie v dotazniku po praci.
         """
         try:
             if self.zanshin_graduated:
+                return
+            if hr_stats.session_world(summary) != hr_stats.ZEN_SVET:
                 return
             sessions = hr_stats.load_sessions(self.hr_sessions_path,
                                               log=self.log_threadsafe)
@@ -5823,19 +7141,62 @@ class DandurfApp:
         except Exception:
             app_log.exception("udalosti: zapis zlyhal")
         summary = self.hr_stats.summary()
+        # SVET, V KTOROM RELACIA ZACALA (B3-worlds). Samostatny kluc, nie
+        # `activity`: to je odpoved hraca v dotazniku a strojovy stitok by
+        # ju nesmel prekryt - neskor sa musi dat rozlisit, co hrac naozaj
+        # potvrdil. Ktory plati, rozhoduje `hr_stats.session_world`.
+        summary["world"] = getattr(self, "_session_world", hr_stats.WORLD_DEFAULT)
         # PRECO SA TOTO PRILEPUJE K SUHRNU
         # Prvy skutocny vecer skoncil s nulou hlasok, hoci spicka zataze bola
         # 87 pri prahu 55. Zo suhrnu sa nedalo rozlisit, ci bolo pravidlo
         # "suvisle 90 s" pritvrde, alebo ci pocitanie rozbijali vypadky tepu.
-        # Su to styri cisla, nie krivka - do suboru nejde nic surove.
+        # Su to jednotlive cisla, nie krivka - do suboru nejde nic surove.
         try:
             summary["longest_above_s"] = round(self.cue_trigger.najdlhsi_nad_s, 1)
             summary["above_runs"] = self.cue_trigger.behov_nad
             summary["runs_cancelled_dip"] = self.cue_trigger.zrusenych_prepadom
             summary["runs_cancelled_gap"] = self.cue_trigger.zrusenych_vypadkom
             summary["stress_hold_s"] = self.cue_trigger.params["stress_hold_s"]
+            # Na AKOM prahu relacia bezala. Po par veceroch sa prah pocita z
+            # vlastnych dat (`_prah_z_dat`) a meni sa medzi relaciami - bez
+            # neho sa po par veceroch neda povedat, ci bol vecer na 55, 78
+            # alebo 72, ani oddelit vecery pred opravou spustaca a po nej.
+            summary["stress_threshold"] = self.cue_trigger.params["stress_threshold"]
+            # BRANA HLASKY (0.2): kolko pauz vo vstupe appka za relaciu
+            # vobec videla a kolko natiahnuti sama zrusila (podla dovodu).
+            # Nula pauz za dlhy vecer = hlas nemal kedy zaznet; dotaznik to
+            # povie narovinu (`SessionEndDialog._preco_ticho`).
+            summary["pause_episodes"] = self.cue_trigger.pause_episodes
+            summary["cues_withheld"] = dict(self.cue_trigger.zadrzane)
+            # REBRIK HLASKY (0.2, `rebrik.py`): stupen a styl, na ktorych
+            # relacia bezala, a "teraz nie" kratko po hlaske - s tym, kolko
+            # relacia po nom este bezala (`_zapis_snooze_po_hlaske`).
+            summary["cue_rung"] = getattr(self, "_cue_rung", rebrik.HLAS)
+            summary["cue_style"] = getattr(self, "_cue_style_rel", rebrik.STYL_HLAS)
+            snooze = getattr(self, "_snooze_po_hlaske", None)
+            if snooze is not None:
+                summary["snooze_after_cue_s"] = snooze[0]
+                summary["snooze_then_s"] = round(max(0.0, time.time() - snooze[1]), 1)
+            self._snooze_po_hlaske = None
+            # Dlhodoba zakladna, voci ktorej sa zataz v tejto relacii ratala
+            # (None = este nebola z coho).
+            dlhodoba = self.hr_stats.long_baseline
+            summary["long_baseline_bpm"] = (round(float(dlhodoba), 1)
+                                           if dlhodoba is not None else None)
         except Exception:
             app_log.exception("suhrn: pocitadla spustaca sa nepodarilo pridat")
+        # Kolko z relacie platilo "teraz nie" (od 24. 9. relaciu nezatvara).
+        # Pocitadla vyssie ten cas nevidia - automat vtedy spal - takze
+        # dotaznik aj postrehy podla nich nesmu vysvetlovat ticho, ktore si
+        # hrac vybral sam (`SessionEndDialog._preco_ticho`, `hr_insights`).
+        od = getattr(self, "_snooze_rel_od", None)
+        stisene = getattr(self, "_snooze_rel_s", 0.0) or 0.0
+        if od is not None:
+            stisene += max(0.0, time.time() - od)
+        if stisene > 0.0:
+            summary["snoozed_s"] = round(stisene, 1)
+        self._snooze_rel_s = 0.0
+        self._snooze_rel_od = None
         # Koľko relácie hráč reálne videl svoj tep (HUD). Doťahuje sa posledný
         # úsek od posledného tiku po zatvorenie. Podiel z trvania: relácia s
         # viditeľným HUD je iný experiment než naslepo (biofeedback).
@@ -5926,7 +7287,16 @@ class DandurfApp:
             self._watch_zone_cakajuce = None
             return True, True, None, 0.0
 
-        nove = hud_paint.zone_for(getattr(stats, "stress", 0.0))
+        # Pocas kalibracie HUD aj Dnes pisu "kalibrujem…" - kontrolka nesmie
+        # popri tom svietit pasmom. Neutralna farba, tep bije dalej. To iste
+        # par vzoriek po navrate tepu (`is_settling`): zataz sa rozbieha od
+        # nuly a zelena by tvrdila pokoj, ktory appka nevie.
+        if (getattr(stats, "is_calibrating", False)
+                or getattr(stats, "is_settling", False)):
+            nove = "neutral"
+        else:
+            # To iste pasmo ako HUD a Dnes - pocita sa len v `HeartStats.zone`.
+            nove = stats.zone
         teraz = time.monotonic()
         drzane = getattr(self, "_watch_zone", None)
         if nove != getattr(self, "_watch_zone_cakajuce", None):
@@ -6110,7 +7480,11 @@ class DandurfApp:
         if profile is None:
             return
         try:
-            payload = {"name": profile["name"], "slots": profile["slots"]}
+            # Len to, co ma zmysel pre druheho hraca (`slot_na_zdielanie`):
+            # BEZ absolutnych ciest k nahravkam (niesli meno uctu vo Windows),
+            # bez uid a bez mrtvych poli z cias klavesovych spustacov.
+            payload = {"name": profile["name"],
+                       "slots": [slot_na_zdielanie(s) for s in profile["slots"]]}
             raw = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
             code = base64.b64encode(raw).decode("ascii")
             self.root.clipboard_clear()
@@ -6136,25 +7510,17 @@ class DandurfApp:
         while name in existing:
             name = f"{base_name} ({suffix})"
             suffix += 1
-        # Importovany profil dostane CERSTVE uid a bez lokalnych nahravok.
-        # uid z ineho profilu/stroja by inak zdielalo subory nahravok
-        # (rec_<uid>.wav) a re-nahratie by prepisalo cudzi klip - presne tá
-        # strata dat, proti ktorej uid vzniklo (B1). Vlastne .wav sa kodom
-        # aj tak neprenasaju (cesty su absolutne, mimo tohto profilu), tak
-        # ich vynulujeme - padne to na TTS / preset SFX.
-        slots = []
-        for s in data["slots"]:
-            if not isinstance(s, dict):
-                continue
-            s = dict(s)
-            s["uid"] = ""                       # normalize dogeneruje nove
-            s["voice_path"] = ""
-            if s.get("sfx_key") == "__custom__":
-                s["audio_path"] = ""
-                s["sfx_key"] = ""
-            slots.append(normalize_slot(s))
-        if not slots:
-            slots = [normalize_slot({})]
+        # Importovany profil dostane CERSTVE uid a bez lokalnych nahravok
+        # (`slot_zo_zdielania`). uid z ineho profilu/stroja by inak zdielalo
+        # subory nahravok (rec_<uid>.wav) a re-nahratie by prepisalo cudzi
+        # klip - presne ta strata dat, proti ktorej uid vzniklo (B1). Cesty
+        # k .wav sa nuluju VZDY, aj pri prazdnom `sfx_key`: cudzia cesta by
+        # sa inak prehrala, keby na tomto PC nahodou existovala. Padne to na
+        # TTS / preset SFX.
+        slots = [s for s in (slot_zo_zdielania(x) for x in data["slots"]) if s]
+        # Kod z 0.1 moze niest menej nez styri sloty - chybajuce kategorie
+        # sa doplnia na koniec (vypnute), nic sa neprepise.
+        slots = doplnit_kategorie(slots)
         self._sync_active_profile_slots()
         self.profiles.append({"name": name, "slots": slots})
         self.active_profile_name = name
@@ -6164,15 +7530,13 @@ class DandurfApp:
         self.schedule_pregenerate(200)
         self.log(tr("log.profile_imported", name=name))
 
-    def add_slot(self):
-        data = self.slot_dicts()
-        new_slot = dict(DEFAULT_SLOT, text=tr("slot.new_text_default"))
-        data.append(new_slot)
-        self.rebuild_slots(data)
-        self.save_settings()
-        self.log(tr("log.slot_added", n=len(self.slots)))
-
     def remove_slot(self, index):
+        # Styri kategorie su pevne: kategoriu, obrazok aj meranie urcuje
+        # POZICIA slotu, takze odstranenie by posunulo texty pod cudziu
+        # kategoriu a vratit sa uz neda. Vypina sa prepinacom; ✕ ma len
+        # slot navyse z 0.1 (index 4+).
+        if je_kategoria(index):
+            return
         if len(self.slots) <= 1:
             messagebox.showinfo(APP_NAME, tr("log.slot_only_one"))
             return
@@ -6210,7 +7574,10 @@ class DandurfApp:
         spustat. Ak by vyber pokryval vsetky, jeden (prvy neoznaceny, alebo
         posledny) sa zachova a hrac dostane hlasku.
         """
-        selected = [i for i, slot in enumerate(self.slots) if slot.selected]
+        # Len sloty navyse (index 4+) - styri kategorie sa neodstranuju,
+        # viz `remove_slot`.
+        selected = [i for i, slot in enumerate(self.slots)
+                    if slot.selected and not je_kategoria(i)]
         if not selected:
             return
         if len(selected) >= len(self.slots):
@@ -6268,8 +7635,8 @@ class DandurfApp:
             return
         except RuntimeError:
             # Tk este nie je v `mainloop()`. Deje sa to pri KAZDOM starte:
-            # `_ensure_sfx_assets` aj `_load_edge_voices` bezia na vlastnom
-            # vlakne uz z `__init__` (app.py:401, 403) a logovat zacnu skor,
+            # `_ensure_sfx_assets` aj priprava Edge hlasok bezia na vlastnom
+            # vlakne uz z `__init__` a logovat zacnu skor,
             # nez sa slucka rozbehne. Predtym sa tie riadky ticho zahadzovali.
             #
             # Odlozime a dorucime, ked sa slucka rozbehne - `_flush_ui_pending`
@@ -6309,7 +7676,7 @@ class DandurfApp:
         # Jazyk sa zisti hned na zaciatku - ukazkove sloty pre nove
         # instalacie musia byt uz vygenerovane v spravnom jazyku.
         #
-        # POZN: tu stalo natvrdo `LANG_SK`. Na Steame si appku kupi
+        # POZN: tu stalo natvrdo `LANG_SK`. Appku si stiahne aj
         # Nemec alebo Japonec a pri prvom spusteni na neho vyskoci
         # slovencina - vratane tlacidla "Sparovat hodinky", ktore je
         # prvym krokom onboardingu. Prva instalacia teraz berie jazyk
@@ -6348,8 +7715,16 @@ class DandurfApp:
             **DEFAULT_AUDIO,
             "voice_id": "",
             "engine_pref": ENGINE_EDGE,
-            "edge_voice": DEFAULT_EDGE_VOICE,
+            # Prvy start: bulharsky (japonsky, cinsky, rusky) Windows dostane
+            # hlas svojho jazyka - predvolene hlasky su v jeho pisme.
+            "edge_voice": suggested_voice(lang),
             "theme": theme_mod.DEFAULT_THEME,
+            # Svet (B3-worlds). Novy hrac zacina v Hre - je to appka pre
+            # hracov; hlavny svet si vyberie v onboardingu (krok 4).
+            "world": hr_stats.WORLD_DEFAULT,
+            # Styl hlasky (hlas / zvuk bez slov / len obraz). Urcuje vrchol
+            # rebrika hlasky (`rebrik.py`); chybajuci kluc = hlas.
+            "cue_style": rebrik.STYL_HLAS,
             "first_run": True,
             "tour_seen": False,
             "tour_step": 0,
@@ -6358,6 +7733,7 @@ class DandurfApp:
             "game_lang": LANG_EN,
             "lang": lang,
             "start_minimized": False,
+            "tray_close_explained": False,
             "auto_profile_enabled": True,
             "overlay_configs": default_overlay_configs(),
             "hr_ip": ANY_INTERFACE,
@@ -6387,8 +7763,11 @@ class DandurfApp:
                         pslots = p.get("slots")
                         pslots = ([normalize_slot(s) for s in pslots if isinstance(s, dict)]
                                   if isinstance(pslots, list) else [])
+                        # Profil bez slotov dostane styri kategorie - pridat
+                        # si ich hrac uz nema ako (tlacidlo je prec).
                         profiles.append({"name": name,
-                                         "slots": pslots or [dict(DEFAULT_SLOT)]})
+                                         "slots": pslots or [normalize_slot(s)
+                                                             for s in default_slots()]})
                 if not profiles:
                     # migracia zo starej plochej schemy (Dandurf/pred-profilova verzia)
                     legacy_slots = loaded.get("slots")
@@ -6408,6 +7787,7 @@ class DandurfApp:
                 data["volume"] = clamp_int(loaded.get("volume"), 0, 100, 100)
                 data["balance"] = clamp_int(loaded.get("balance"), 0, 100, 50)
                 data["start_minimized"] = bool(loaded.get("start_minimized", False))
+                data["tray_close_explained"] = bool(loaded.get("tray_close_explained", False))
                 data["auto_profile_enabled"] = bool(loaded.get("auto_profile_enabled", True))
                 overlay_raw = loaded.get("overlay_configs")
                 if isinstance(overlay_raw, list) and len(overlay_raw) >= 4:
@@ -6457,9 +7837,15 @@ class DandurfApp:
                 # zapnuteho vizualu hlasku nepusti - appka teda v tomto stave
                 # mlci a hrac nema ako zistit preco. Nikto si to takto
                 # nezvolil, vzniklo to predvolbou, tak to raz narovname.
-                # Kto si ich vypne sam, uz ma v subore aspon jeden zapnuty
-                # (inak by appka nemala co robit) a tato vetva sa nechyti.
-                if all(not cfg["enabled"] for cfg in data["overlay_configs"]):
+                #
+                # NAOZAJ RAZ (0.2). Predpoklad "kto si ich vypne sam, ma aspon
+                # jeden zapnuty" neplatil - UI dovoli vypnut vsetky styri, a
+                # appka ich potom pri KAZDOM starte zapla spat, hoci log
+                # slubil, ze sa vypnut daju. Po prvom nacitani sa do nastaveni
+                # zapise `visuals_repaired` a dalej je vypnutie rozhodnutie
+                # hraca, ktore appka neobchadza.
+                if (not loaded.get("visuals_repaired")
+                        and all(not cfg["enabled"] for cfg in data["overlay_configs"])):
                     for cfg in data["overlay_configs"]:
                         cfg["enabled"] = True
                     data["_vizualy_napravene"] = True
@@ -6473,16 +7859,35 @@ class DandurfApp:
                 game_lang = loaded.get("game_lang")
                 if game_lang in LANGUAGES or game_lang == LANG_SAME_AS_APP:
                     data["game_lang"] = game_lang
+                # Ulozena tema je ZNACKA "prvy start uz bol" - tak to aj
+                # ostava; samotny vzhlad uz ale urcuje svet (nizsie).
                 if loaded.get("theme") in (theme_mod.ZEN, theme_mod.MODERN):
                     data["theme"] = loaded["theme"]
                     data["first_run"] = False
+                # SVET (B3-worlds). Chybajuci alebo nezmyselny -> Hra.
+                # MIGRACIA: nastavenia zo starsej verzie svet nemaju, a to aj
+                # ked mal hrac vybrane Aizome. Svet sa z temy NEODVODZUJE -
+                # inak by sa mu hranie zacalo ratat ako praca; ide do Hry a
+                # tema ide za svetom (rozhodnutie zadavatela).
+                data["world"] = (hr_stats.normalize_activity(loaded.get("world"))
+                                 or hr_stats.WORLD_DEFAULT)
+                data["cue_style"] = rebrik.normalize_cue_style(loaded.get("cue_style"))
             except Exception:
                 app_log.exception("load_settings: castocne poskodeny/neocakavany "
                                   "obsah %s - pouzijem defaulty pre chybajuce polia",
                                   SETTINGS_PATH)
+        # Vzhlad patri svetu - aj po poskodenom subore, aj pri prvom starte.
+        data["theme"] = theme_mod.WORLD_THEME.get(data["world"], theme_mod.DEFAULT_THEME)
         for profile in data["profiles"]:
-            profile["slots"] = [normalize_slot(s) for s in profile["slots"]]
-            for slot in profile["slots"]:
+            # Profil s menej nez styrmi slotmi (rucne zalozeny v 0.1, kde sa
+            # sloty pridavali tlacidlom, alebo po odstraneni) dostane chybajuce
+            # kategorie na koniec, VYPNUTE. Tlacidlo "+ Pridat spustac" je
+            # prec, takze inak by sa kategoria do profilu uz nedala vratit.
+            profile["slots"] = doplnit_kategorie(profile["slots"])
+            for index, slot in enumerate(profile["slots"]):
+                # Stare predvolene slovo ("Teeth", ja 脱力, zh 放松) -> nove.
+                # Len pri nacitani, viz `settings_model.migrate_slot_text`.
+                slot["text"] = migrate_slot_text(slot["text"], index)
                 slot["audio_path"] = resolve_audio_path(slot["audio_path"])
                 slot["voice_path"] = resolve_audio_path(slot["voice_path"])
         return data
@@ -6500,9 +7905,14 @@ class DandurfApp:
             "balance": int(self.balance_value),
             "engine_pref": self.engine_pref,
             "edge_voice": self.edge_voice_id,
+            # `theme` sa uklada dalej: je to znacka "prvy start uz bol"
+            # (`load_settings`). Pri starte ju aj tak prepise svet.
             "theme": self.theme_key,
+            "world": getattr(self, "world", hr_stats.WORLD_DEFAULT),
+            "cue_style": getattr(self, "cue_style", rebrik.STYL_HLAS),
             "lang": self.lang,
             "start_minimized": bool(self.start_minimized),
+            "tray_close_explained": bool(getattr(self, "tray_close_explained", False)),
             "auto_profile_enabled": bool(self.auto_profile_enabled),
             "overlay_configs": self.overlay_configs,
             "tour_seen": bool(getattr(self, "tour_seen", False)),
@@ -6520,6 +7930,10 @@ class DandurfApp:
             "dashboard_stats": list(self.dashboard_stats),
             "breath_inhale_s": float(self.breath_inhale_s),
             "breath_exhale_s": float(self.breath_exhale_s),
+            # Jednorazova naprava vypnutych vizualov uz prebehla (alebo
+            # nebola treba) - viz `load_settings`. Odteraz su vypnute
+            # vizualy volba hraca.
+            "visuals_repaired": True,
         }
         try:
             # Atomicky zapis: najprv .tmp, az potom os.replace() - rovnaky
@@ -6583,7 +7997,7 @@ class DandurfApp:
             self.engine_var.set(engine_labels()[ENGINE_EDGE])
             self.refresh_edge_banner()
             self.save_settings()
-            threading.Thread(target=self._load_edge_voices, daemon=True).start()
+            self._load_edge_voices()
         else:
             self.log(tr("log.edge_still_missing", err=audio_engine.EDGE_IMPORT_ERROR))
             messagebox.showwarning(
@@ -6605,11 +8019,12 @@ class DandurfApp:
             self.refresh_voice_box()
         self.refresh_slot_summaries()
 
-    def _load_edge_voices(self):
-        items = EdgeTTSCache.list_voices()
-        self.ui_call(lambda: self._apply_edge_voices(items))
+    def _load_edge_voices(self, pregen=True):
+        """Naplni vyber Edge hlasov z pevneho zoznamu - bez siete, takze
+        priamo na Tk vlakne (predtym vlakno + stiahnutie katalogu)."""
+        self._apply_edge_voices(EdgeTTSCache.list_voices(), pregen=pregen)
 
-    def _apply_edge_voices(self, items):
+    def _apply_edge_voices(self, items, pregen=True):
         self.edge_voice_map = {name: short for short, name in items}
         known = set(self.edge_voice_map.values())
         if self.edge_voice_id not in known:
@@ -6617,7 +8032,8 @@ class DandurfApp:
                                   else (items[0][0] if items else DEFAULT_EDGE_VOICE))
         if self.engine == ENGINE_EDGE:
             self.refresh_voice_box()
-            self.pregenerate()
+            if pregen:
+                self.pregenerate()
         self.refresh_slot_summaries()
 
     def current_voice_map(self):
@@ -6686,10 +8102,10 @@ class DandurfApp:
         self.save_settings()
         self.log(tr("log.engine_switched", engine=engine_labels()[engine]))
         if engine == ENGINE_EDGE:
-            # Ak sme hlasy pri starte nenatiahli (bezal SAPI), dotiahnime ich
-            # teraz - inak by bol vyber Edge hlasov prazdny.
+            # Poistka: vyber Edge hlasov sa plni pri starte (bez siete); keby
+            # bol prazdny, naplni sa teraz - inak by bol combobox prazdny.
             if not getattr(self, "edge_voice_map", None):
-                threading.Thread(target=self._load_edge_voices, daemon=True).start()
+                self._load_edge_voices(pregen=False)
             self.pregenerate()
         else:
             self.set_edge_status("")
@@ -6732,8 +8148,23 @@ class DandurfApp:
             except Exception:
                 pass
 
+    def _hlasky_hovoria(self):
+        """Povie hlaska v hre vobec nieco hlasom (TTS)? Len v style "hlas"
+        a mimo sveta Praca - tam ide len obrazom (`rebrik.vrchol`). Styl
+        "zvuk" hra zvuk slotu bez slov a "obraz" len obrazok."""
+        styl = rebrik.normalize_cue_style(getattr(self, "cue_style", None))
+        return (styl == rebrik.STYL_HLAS
+                and rebrik.vrchol(getattr(self, "world", None), styl) == rebrik.HLAS)
+
     def pregen_jobs(self):
-        """[(text, hlas)] pre vsetky TTS/kombinovane sloty - respektuje hlas kazdeho slotu."""
+        """[(text, hlas)] pre vsetky TTS/kombinovane sloty - respektuje hlas kazdeho slotu.
+
+        Prazdne, ked hlasky v hre nehovoria (`_hlasky_hovoria`): hracovi,
+        ktory zvolil len obrazok alebo zvuk bez slov, alebo je vo svete
+        Praca, by sa inak texty hlasok posielali do Microsoftu zbytocne.
+        """
+        if not self._hlasky_hovoria():
+            return []
         jobs = []
         for slot in self.slots:
             if slot.mode not in (MODE_TTS, MODE_COMBO) or not slot.text_value.strip():
@@ -6771,6 +8202,20 @@ class DandurfApp:
             self._prune_cache(jobs, rate)
             return
 
+        if getattr(self, "listening", False):
+            # POCAS POCUVANIA SA NA MICROSOFT NECHODI - ani kvoli priprave.
+            # Auto-profil prepne profil hry pri jej starte (`_handle_game_found`
+            # -> `switch_profile` -> `schedule_pregenerate`) a pocuvanie sa
+            # zapne hned za tym, takze priprava by inak isla na siet presne
+            # vtedy, ked sa hra nacitava. Rovnako rucne prepnutie profilu alebo
+            # zmena hlasu uprostred hry. Priprava sa odlozi a spusti ju az
+            # `stop_listening` (`_dopriprav_hlasky_po_hre`) - ten isty
+            # mechanizmus ako pre hlasku, ktora v hre chybala (`_speak_text`).
+            # `_pregen_seq` vyssie uz zastavil pripadnu rozbehnutu pripravu.
+            self._pregen_po_hre = True
+            self.set_edge_status(tr("edge.after_game"), self.pal["text_dim"])
+            return
+
         self.set_edge_status(tr("edge.generating"), self.pal["warn"])
 
         def work():
@@ -6778,11 +8223,30 @@ class DandurfApp:
             for text, voice in jobs:
                 if seq != self._pregen_seq:
                     return
-                if self.edge_cache.ensure(text, voice, rate):
+                if getattr(self, "listening", False):
+                    # Pocuvanie sa zaplo uprostred pripravy: dalsia hlaska uz
+                    # na siet nejde. O zvysku rozhodne `pregenerate` na
+                    # GUI vlakne - pocas pocuvania ho odlozi na po hre.
+                    self.ui_call(self.pregenerate)
+                    return
+                # Kontrola vyssie nestaci: `ensure` moze cakat na zamku cache,
+                # kym ine (starsie) vlakno pripravy dokonci svoju hlasku - a
+                # medzitym sa moze zapnut pocuvanie. `abort` sa preto pyta
+                # znova az po ziskani zamku, tesne pred odoslanim.
+                if self.edge_cache.ensure(
+                        text, voice, rate,
+                        abort=lambda: (seq != self._pregen_seq
+                                       or getattr(self, "listening", False))):
                     ok += 1
             if seq != self._pregen_seq:
                 return
             total = len(jobs)
+            if ok < total and getattr(self, "listening", False):
+                # Posledna hlaska sa vzdala na zamku, lebo sa zaplo pocuvanie
+                # (alebo zlyhala a hra uz bezi) - nie je to chyba pripravy,
+                # zvysok odlozi `pregenerate` na po hre.
+                self.ui_call(self.pregenerate)
+                return
             if ok == total:
                 self.ui_call(lambda: self.set_edge_status(
                     tr("edge.ready"), self.pal["success"]))
@@ -6811,13 +8275,15 @@ class DandurfApp:
     # nema ako dozvediet, ani keby chcela.
     #
     # Gamepad listener ostava, ale UZ NESPUSTA NIC - sluzi ako druhy zdroj
-    # detekcie aktivity vedla GetLastInputInfo (viz interne poznamky:
+    # detekcie aktivity vedla GetLastInputInfo (viz MERANIE_GAMEPAD.md:
     # na tomto Windowse 11 ho GetLastInputInfo vidi, ale je to jeden
     # pocitac a tiche zlyhanie na inom by sa neprejavilo ako chyba).
 
     def on_gamepad_button(self, label):
-        """Tlacidlo na ovladaci. Uz nespusta hlasku - len potvrdi, ze hrac
-        je aktivny. Meno tlacidla sa nikam nezapisuje."""
+        """Aktivita na ovladaci (tlacidlo, d-pad, pacicka alebo spust za
+        mrtvou zonou - aj drzane). Uz nespusta hlasku - len potvrdi, ze hrac
+        je aktivny. `label` je vzdy "activity"; ktory prvok to bol, listener
+        nepovie (`gamepad.py`)."""
         self.activity.note_external_input()
 
     def on_gamepad_status(self, message):
@@ -6904,7 +8370,13 @@ class DandurfApp:
             return sfx_assets.sound_path(pack, sound_key)
         if not key and slot.audio_path:
             return slot.audio_path if os.path.exists(slot.audio_path) else None
+        # Predvolena sada ide za vzhladom - ale pocas relacie za SVETOM
+        # RELACIE (B3-worlds): kto si uprostred hry len pozrie Pracu, nema
+        # od dalsej hlasky pocut zvuky druheho sveta.
         pack = self.theme_key
+        if getattr(self, "_hr_session_open", False):
+            pack = theme_mod.WORLD_THEME.get(
+                getattr(self, "_session_world", None), pack)
         default_key = sfx_assets.default_sound_for_slot_index(pack, slot.index)
         if not default_key:
             items = sfx_assets.library_items(pack)
@@ -6958,8 +8430,18 @@ class DandurfApp:
                 else:
                     self.audio.play_tts(path)
                 return
-            self.log_threadsafe(tr("log.edge_not_cached"))
-            self.ui_call(self.pregenerate)
+            if not self._hlasky_hovoria():
+                # Styl bez slov / svet Praca: hlasky v hre nehovoria, takze sa
+                # nic nepripravuje (`pregen_jobs`) - ukazka zaznie cez SAPI.
+                pass
+            elif getattr(self, "listening", False):
+                # Pocas hry sa na Microsoft nechodi: hlaska zaznie hlasom
+                # z Windows a dopripravi sa po `stop_listening`.
+                self._pregen_po_hre = True
+                self.log_threadsafe(tr("log.edge_not_cached_later"))
+            else:
+                self.log_threadsafe(tr("log.edge_not_cached"))
+                self.ui_call(self.pregenerate)
 
         voice_id = slot.voice_sapi or self.saved_voice_id
         if concurrent:
@@ -6969,10 +8451,35 @@ class DandurfApp:
         else:
             self.audio.speak(text, voice_id)
 
-    def _emit(self, slot):
+    def _slot_zaznie(self, slot, bez_slov=False):
+        """Zaznie z `_emit(slot, bez_slov)` vobec nieco? Rovnake vetvy ako
+        `_emit`, len bez prehravania - pre `audible` v zazname hlasky (graf
+        ucinnosti rata len hlasky, ktore naozaj zazneli)."""
+        mode = slot.mode
+        sfx_path = self.resolve_sfx_path(slot) if mode in (MODE_SFX, MODE_COMBO) else None
+        zvuk = bool(sfx_path and os.path.exists(sfx_path))
+        if bez_slov or mode == MODE_SFX:
+            # V rezime SFX `_emit` text nema (`text` je len pre TTS/COMBO),
+            # takze bez suboru nezaznie nic.
+            return zvuk
+        if mode == MODE_COMBO:
+            return zvuk or self._slot_has_voice(slot)
+        return self._slot_has_voice(slot)
+
+    def _emit(self, slot, bez_slov=False):
+        """Prehra slot. `bez_slov=True` (styl hlasky "zvuk", `rebrik.py`)
+        zahra LEN zvuk slotu - ziadne TTS, ziadnu vlastnu nahravku, ani ako
+        zalohu za chybajuci zvuk. Slot bez zvuku potom mlci."""
         mode = slot.mode
         sfx_path = self.resolve_sfx_path(slot) if mode in (MODE_SFX, MODE_COMBO) else None
         text = slot.text_value if mode in (MODE_TTS, MODE_COMBO) else ""
+
+        if bez_slov:
+            if sfx_path and os.path.exists(sfx_path):
+                self.audio.play(sfx_path)
+            elif sfx_path:
+                self.log_threadsafe(tr("log.slot_sfx_missing_plain", n=slot.index + 1))
+            return
 
         if mode == MODE_COMBO:
             played_sfx = False
@@ -7066,7 +8573,8 @@ class DandurfApp:
                 self._hr_generation = self.heart_rate_monitor.start(
                     self.hr_ip, self.hr_port)
         # `stop_listening` spustac pozastavi; bez tohto by ho zdvihla az
-        # nejaka ina cesta a do vtedy by appka mlcala.
+        # nejaka ina cesta a do vtedy by appka mlcala. Kym plati "teraz nie",
+        # nezdvihne nic (`_resume_cue_trigger`) - stisenie plati dalej.
         self._resume_cue_trigger()
         self.listening = True
         self.session_counts = {0: 0, 1: 0, 2: 0, 3: 0}
@@ -7093,6 +8601,14 @@ class DandurfApp:
         self._apply_listening_visuals()
         self.log(tr("log.listening_off"))
         self.update_tray_icon()
+        self._dopriprav_hlasky_po_hre()
+
+    def _dopriprav_hlasky_po_hre(self):
+        """Hlasky, ktore pocas hry chybali v cache (`_speak_text`), sa
+        pripravia az teraz - pocas pocuvania appka na Microsoft nechodi."""
+        if getattr(self, "_pregen_po_hre", False):
+            self._pregen_po_hre = False
+            self.schedule_pregenerate(200)
 
     def _apply_listening_visuals(self):
         """Prenesie stav do dychajuceho pasu a do rychleho docku.
@@ -7131,10 +8647,6 @@ class DandurfApp:
         # neprekresluje sam - staci raz pri kazdej zmene stavu pocuvania,
         # aby ikonky odrazali aktualne enabled/disabled sloty.
         self._refresh_hud_trigger_row()
-        try:
-            steam.set_status(self.listening)
-        except Exception:
-            pass
         self._refresh_nav_badges()
 
 
@@ -7187,13 +8699,30 @@ class DandurfApp:
         (zelena pocuvam / cervena nie) ako znacka v listi. Najlepsia snaha:
         pri bezramovom okne sa nemusi vsade zobrazit, preto je cela v
         try/except a bez nej appka bezi dalej. Referenciu na obrazok si drzime,
-        inak ju Tk zahodi a ikona zbelie."""
+        inak ju Tk zahodi a ikona zbelie.
+
+        CustomTkinter si 200 ms po vzniku okna nastavi VLASTNU ikonu priamo
+        na okno (`CTk._windows_set_titlebar_icon`), ak appka dovtedy nevolala
+        `iconbitmap()`. O `iconphoto()` nevie, takze v liste a v Alt-Tab
+        ostavalo logo CustomTkinter namiesto ensa. Dve cesty:
+          * bezny start - casovac CTk pribehne az v `mainloop()`, teda PO
+            tejto metode. Vlajku, ktorou si CTk pamata "appka ma vlastnu
+            ikonu", preto nastavime sami (len ked sa enso naozaj nastavilo;
+            inak radsej ikona CTk nez ziadna);
+          * prvy start - casovac pribehne uz pocas sprievodcu, PRED touto
+            metodou. `iconphoto(True, ...)` meni len predvolenu ikonu a tu
+            vlastna ikona okna prebije - preto enso dostane aj hlavne okno
+            priamo (`iconphoto(False, ...)`).
+        Ze CTk vlajku stale cita, strazi test v tests/test_ui_fixes.py."""
         try:
             photo = _ImageTk.PhotoImage(self.make_tray_image())
-            self.root.iconphoto(True, photo)
+            self.root.iconphoto(True, photo)     # predvolena pre okna appky
+            self.root.iconphoto(False, photo)    # vlastna ikona hlavneho okna
             self._window_icon_ref = photo
         except Exception:
-            pass
+            return
+        if hasattr(self.root, "_iconbitmap_method_called"):
+            self.root._iconbitmap_method_called = True
 
     def minimize_to_tray(self):
         if TRAY_AVAILABLE:
@@ -7210,10 +8739,21 @@ class DandurfApp:
         self.root.focus_force()
 
     def on_close(self):
-        if TRAY_AVAILABLE:
-            self.minimize_to_tray()
-        else:
+        if not TRAY_AVAILABLE:
             self.quit_app()
+            return
+        # PRVY KRIZIK: povedat, ze appka nekonci. Doteraz × okno potichu
+        # schovalo do listy - port pre telefon ostal otvoreny a tep sa dalej
+        # meral a ukladal, hoci si hrac myslel, ze appku zavrel. Raz to
+        # povie a da na vyber (Nie = ukoncit hned); dalej × len schovava.
+        if not getattr(self, "tray_close_explained", True):
+            self.tray_close_explained = True
+            self.save_settings()
+            if not messagebox.askyesno(
+                    APP_NAME, tr("tray.close_first", port=self.hr_port)):
+                self.quit_app()
+                return
+        self.minimize_to_tray()
 
     def quit_app(self, *_):
         self.ui_call(self._quit)
@@ -7231,10 +8771,6 @@ class DandurfApp:
                 except Exception:
                     pass
                 setattr(self, attr, None)
-        try:
-            steam.shutdown()
-        except Exception:
-            pass
         self._close_hr_session()
         self.hud.stop()
         self.overlay_manager.stop_all()
