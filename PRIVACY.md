@@ -23,8 +23,8 @@ anywhere:
 - **Logs / crash log** (kept in a local file — there is **no** remote crash
   reporting).
 
-In development these live next to the program; in the installed build they live
-in `%APPDATA%\Zanshin`. There is **no telemetry, no analytics, and no
+Run from source (`python main.py`), these live next to the program; in the
+built app (`Zanshin.exe`) they live in `%APPDATA%\Zanshin`. There is **no telemetry, no analytics, and no
 update-checker** anywhere in the app.
 
 ## The few things that can use the network
@@ -63,8 +63,8 @@ update-checker** anywhere in the app.
      from* if you want even your reminder wording to stay local.
 
 2. **Built-in sounds — normally nothing.** The eight sound effects ship with
-   the app; on first launch the installed app copies them into its data folder.
-   Only if one is missing (for example a damaged install) does the app replace
+   the app; on first launch the built app copies them into its data folder.
+   Only if one is missing (for example a damaged build) does the app replace
    it: two small CC0 sounds are fetched from GitHub
    (`raw.githubusercontent.com`, checksum-verified, and the download stops if
    it grows past 256 KB — like any download, GitHub sees your IP address, and

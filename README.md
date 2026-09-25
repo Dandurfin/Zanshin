@@ -115,30 +115,92 @@ jaw, drop your shoulders, and breathe.
   study from the source list where there is one, practice or tradition where
   there isn't.
 
-## Install (for players)
+## Install (build it yourself)
 
-**Official download:** only <https://github.com/Dandurfin/Zanshin> (Releases).
-Each release lists the installer's SHA-256. A copy from anywhere else is not
-from me.
+**Official source:** only <https://github.com/Dandurfin/Zanshin>. There is no
+ready-made download, neither an installer nor an `.exe`. You build Zanshin on
+your own PC from the source code, so Zanshin's own code is exactly what you can
+read here. The libraries it uses (`requirements.txt`) and PyInstaller, which
+packs it into an `.exe`, come from PyPI, the usual Python package index, in
+whatever version is newest on the day you build. If anyone offers you a
+ready-made Zanshin `.exe` or installer, it isn't from me.
 
-Download `Zanshin-<version>-setup.exe` (for this version
-`Zanshin-0.2.1-setup.exe`) from the release and run it. The
-installer asks for a language (11 available, English default) and installs
-**without administrator rights** (no UAC) into `%LOCALAPPDATA%\Programs\Zanshin`.
-Your data (settings, recordings, generated speech and SFX) always goes to
-`%APPDATA%\Zanshin`, wherever the app is installed.
+**Why no installer:** Windows warns about programs downloaded from an "unknown
+publisher", which is what an app without a code-signing certificate is.
+Zanshin has no such certificate, and an app that asks you to click past a
+warning like that is not a good start. A program you build on your own PC
+wasn't downloaded, so that warning doesn't come up for it.
 
-**Why no admin rights:** the app draws a window over the game. An elevated
-process doing that is exactly what anti-cheats (Vanguard, EAC, VAC) treat most
-harshly. See `SAFETY.md` (in Slovak).
+This is how I install it myself. You need an internet connection; the first
+build downloads under 100 MB and takes about 550 MB on disk, Python included.
+
+1. **Install Python.** On <https://www.python.org/downloads/> click
+   **Download Python install manager**, open the downloaded file and click
+   **Install**. It needs no administrator rights and there's nothing to tick.
+   You don't have to pick a Python version: the first build (step 3) fetches
+   the current Python 3 by itself. I build with Python 3.14; if you already
+   have Python 3.10 or newer, you can skip this step, but only 3.14 is tested.
+2. **Get the source.** On the GitHub page open **Tags** and, next to the
+   newest version, click **zip**. Before unpacking, right-click the ZIP →
+   **Properties** → tick **Unblock** → **OK**. Windows marks everything you
+   download, and without this it shows an "unknown publisher" warning for
+   `build.bat` in step 3. Unblock only a ZIP you got from the page above. Then
+   right-click the ZIP → **Extract All…** and choose a folder that OneDrive
+   doesn't back up, for example `C:\Games` (Desktop and Documents often are in
+   OneDrive). You get a folder like `Zanshin-0.2.1`; if there's another folder
+   of the same name inside it, open that one too, until you see `build.bat`.
+3. **Build it.** Double-click **`build.bat`** (with file extensions hidden, it
+   shows as `build`). The first time, it fetches Python through the install
+   manager, the packages Zanshin needs and PyInstaller, then builds the app;
+   on my PC that took about 3 minutes, and for a while the window shows
+   nothing new. The script's own messages are in Slovak, and a lot of English
+   text from pip and PyInstaller scrolls past, including WARNING lines about
+   PATH: that's normal. It ends with *Inno Setup som nenasiel* ("I didn't find
+   Inno Setup"): you don't need it, the app is ready. Press any key to close
+   the window. If it stops at a red line starting **CHYBA:** ("error"), the
+   rest says what went wrong: *Nenasiel som Python* means Python isn't there
+   or couldn't be downloaded, *pip install zlyhal* means the packages couldn't
+   be downloaded. Check your connection and step 1, then run `build.bat` again;
+   if it still fails, please open an issue and paste the last lines.
+4. **Start it.** In the same folder, open `dist`, then `Zanshin`: the app is
+   `dist\Zanshin\Zanshin.exe`. For a desktop shortcut, right-click it → on
+   Windows 11 **Show more options** → **Send to → Desktop (create shortcut)**.
+   Keep the whole `dist\Zanshin\` folder together: the `.exe` needs the
+   `_internal` folder next to it. When Zanshin first opens its heart-rate
+   port, Windows Firewall may ask whether to allow it; see *Getting your heart
+   rate in* below.
+
+**If Windows blocks it:** antivirus programs, Windows Security included,
+sometimes flag programs packed with PyInstaller by mistake. I've switched off
+the packing step (UPX) that triggers this most, but I can't promise it won't
+happen. And with Smart App Control on (Windows Security → App & browser
+control), Windows can block unsigned programs outright, with no "Run anyway".
+I haven't been able to test how it treats a Zanshin you built yourself. If
+either happens, please don't switch your protection off for Zanshin; open an
+issue instead, so I know.
+
+**Updating:** quit Zanshin first (right-click its tray icon → **Quit**). If it's
+still running, `build.bat` closes it without asking, and a session in progress
+isn't saved. Then get the new version and build it the same way. Your data
+stays, because it isn't in the build folder. Make a new shortcut to the new
+`dist\Zanshin\Zanshin.exe` and delete the old folder.
+
+**Your data** (settings, heart-rate history, recordings, generated speech and
+SFX) lives in `%APPDATA%\Zanshin`, not in the build folder, so rebuilding
+doesn't touch it. **To remove Zanshin,** delete its folder and the shortcut;
+your data stays in `%APPDATA%\Zanshin` until you delete that folder too.
+Python stays installed: if you don't need it for anything else, uninstall
+*Python 3.x* first and then *Python install manager*, in Settings → Apps →
+Installed apps.
+
+**No administrator rights,** not for Python's install manager, not for the
+build, not for the app, and don't run Zanshin as administrator. The app draws
+a window over the game, and an elevated process doing that is exactly what
+anti-cheats (Vanguard, EAC, VAC) treat most harshly. See `SAFETY.md` (in
+Slovak).
 
 Zanshin has no Steam integration — it doesn't load the Steam SDK or talk to
 Steam in any way.
-
-Windows SmartScreen may warn on first launch that the file is from an unknown
-publisher — choose **More info → Run anyway**. (Removing that warning
-permanently requires signing the `.exe` with a code-signing certificate, which
-is outside the scope of this build.)
 
 ## Getting your heart rate in
 
@@ -201,11 +263,12 @@ please open an issue — credit where it's due.
 ## Run from source (development)
 
 ```bash
-pip install -r requirements.txt
-python main.py
+py -m pip install -r requirements.txt
+py main.py
 ```
 
-Requires Python 3.10+ on Windows.
+Requires Python 3.10+ on Windows; I use 3.14. Run this way, the app keeps its data next to
+`main.py`, separate from the built app's `%APPDATA%\Zanshin`.
 
 ## Build the installer
 
@@ -220,8 +283,9 @@ The script (1) checks/installs Python deps and PyInstaller, draws
 a problem, nothing is built; (2) force-closes a running Zanshin without asking
 (Windows locks a running `.exe`), deletes the old `dist\Zanshin\` and packages
 the app into `dist\` (onedir, no admin manifest, UPX off); and (3) assembles
-the installer with Inno Setup 6 into `installer\` (if Inno Setup 6 is
-installed; otherwise you can run the `.exe` straight from `dist\`).
+an installer with Inno Setup 6 into `installer\`, but only if Inno Setup 6 is
+installed. I don't publish an installer (see *Install* above); without Inno
+Setup the app in `dist\Zanshin\` is ready as it is.
 
 ## Tests
 
@@ -230,12 +294,12 @@ tools first — `requirements-dev.txt` holds pytest and pyflakes — then run th
 tests:
 
 ```bash
-pip install -r requirements-dev.txt
-python -m pytest tests/
+py -m pip install -r requirements-dev.txt
+py -m pytest tests/
 ```
 
 Other developer scripts, run by hand from the repository folder. None of them
-is part of the app or the installer:
+is part of the built app:
 
 - `check_before_run.py` — checks what can be checked without opening a
   window: every module compiles, no undefined names (with pyflakes), the
@@ -254,7 +318,7 @@ is part of the app or the installer:
 - `prepocitaj_okna.py` — re-checks measurement windows that were already
   saved against today's validity rules. **It rewrites the saved
   `hr_windows.json`** next to `main.py` (the data of Zanshin run from source,
-  not of the installed app); a backup copy goes next to it first, and
+  not of the built app); a backup copy goes next to it first, and
   `--nahlad` only previews. Nothing is deleted: a window that no longer
   passes is marked invalid, with the reason.
 
@@ -262,7 +326,7 @@ The repository also holds three developer scripts for testing the window by
 hand: `gui_harness_auto.py`, `gui_harness_onboarding.py` and
 `gui_screenshots.py`. The first two use the real mouse (move, click, drag,
 scroll) and press Escape; all three take screenshots of the app's own windows
-and pictures, with a small margin around them. None of them is part of the app or the installer:
+and pictures, with a small margin around them. None of them is part of the built app:
 the build packs `main.py`, the modules it imports and the `assets` folder, and
 nothing imports these scripts.
 

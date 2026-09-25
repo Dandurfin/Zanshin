@@ -66,13 +66,23 @@ def test_readme_port_pocuva_na_vsetkych_sietach():
         assert "the log says so" in _plain(meno), meno
 
 
-def test_readme_meno_instalatora_je_z_iss():
+def test_readme_vedie_k_buildu_nie_k_instalatoru():
+    """Instalacka sa nevydava: bez podpisoveho certifikatu by ju Windows
+    hlasil ako od neznameho vydavatela (rozhodnutie autora, 0.2.1). README
+    preto hraca vedie k buildu zo zdrojakov cez build.bat a na stiahnutie
+    setup.exe ho neposiela. Ak README meno instalatora predsa spomenie
+    (napr. vyvojar s Inno Setup), musi sediet s .iss."""
     iss = _read("Dandurf.iss")
     verzia = re.search(r'#define\s+MyAppVersion\s+"([^"]+)"', iss).group(1)
     zaklad = re.search(r"^OutputBaseFilename=(.+)$", iss, re.M).group(1).strip()
     subor = zaklad.replace("{#MyAppVersion}", verzia) + ".exe"
     readme = _read("README.md")
-    assert "`" + subor + "`" in readme
+    instal = _sekcia(readme, "Install")
+    assert "setup.exe" not in instal
+    assert "`build.bat`" in instal
+    assert "dist\\Zanshin\\Zanshin.exe" in instal
+    for meno in re.findall(r"Zanshin-[\w.<>]+-setup\.exe", readme):
+        assert meno == subor, meno
     assert "installer/Zanshin" not in readme
 
 

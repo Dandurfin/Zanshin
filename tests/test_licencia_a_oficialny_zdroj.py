@@ -49,8 +49,13 @@ def test_readme_hovori_to_iste_co_license_design():
     for zle in ("feature arrangement", "written consent", "all rights reserved",
                 "dual-licensed"):
         assert zle not in readme, zle
-    assert "Official download:** only <https://" + REPO + ">" in readme
-    assert "SHA-256" in readme
+    # Od 0.2.1 sa nevydava instalacka ani .exe (bez podpisoveho certifikatu) -
+    # oficialny je len zdrojak v repozitari a hrac si appku postavi sam.
+    # Hotova kopia odinakial preto nie je od autora - README to musi povedat.
+    assert "Official source:** only <https://" + REPO + ">" in readme
+    assert "ready-made Zanshin `.exe` or installer, it isn't from me" in (
+        " ".join(readme.split()))
+    assert "Each release lists the installer's SHA-256" not in readme
 
 
 def test_soul_neprivlastnuje_vzhlad():

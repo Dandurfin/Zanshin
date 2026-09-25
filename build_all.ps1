@@ -43,7 +43,12 @@ foreach ($candidate in $pythonCandidates) {
     if ($LASTEXITCODE -eq 0) { $PY = $candidate; break }
 }
 if (-not $PY) {
-    Fail "Nenasiel som Python. Nainstaluj ho z python.org a pri instalacii zaskrtni 'Add python.exe to PATH'."
+    # Python install manager (dnes hlavne tlacidlo na python.org) nema ziadne
+    # zaskrtavatko PATH - 'py' ide cez alias vo WindowsApps a Python si pri
+    # prvom 'py -3' stiahne sam. Ak ani to neprejde, byva to bez internetu.
+    Fail ("Nenasiel som Python (alebo sa ho nepodarilo stiahnut - skontroluj internet). " +
+          "Nainstaluj 'Python install manager' z https://www.python.org/downloads/ " +
+          "a spusti build.bat znova. Klasicka instalacka z python.org funguje tiez.")
 }
 
 function Invoke-Py {
@@ -147,9 +152,11 @@ if (-not $iscc) {
 
 if (-not $iscc) {
     Write-Host ""
-    Write-Host "Inno Setup som nenasiel - instalacku som nepostavil." -ForegroundColor Yellow
-    Write-Host "Stiahni ho zadarmo z https://jrsoftware.org/isdl.php a spusti tento skript znova."
-    Write-Host "Priecinok dist\Zanshin\ uz funguje aj takto - staci spustit .exe v nom." -ForegroundColor Green
+    # Instalacka sa nevydava (bez podpisoveho certifikatu) - hrac ju nepotrebuje,
+    # takze ho tu neposielame stahovat Inno Setup. Vyvojar, ktory ju chce,
+    # vie z README, ze staci Inno Setup 6 nainstalovat a skript spustit znova.
+    Write-Host "Inno Setup som nenasiel - instalacku som nepostavil (netreba ju)." -ForegroundColor Yellow
+    Write-Host "HOTOVO: appka je dist\Zanshin\Zanshin.exe - staci ju spustit." -ForegroundColor Green
     exit 0
 }
 

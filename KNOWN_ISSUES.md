@@ -301,10 +301,10 @@ about, and a few will stay.
 - **Ctrl+Alt+Z is reserved.** While Zanshin runs, the game doesn't receive that
   one key combination. In 0.1 the start-up log line said input is read with
   "no blocking"; in 0.2 it names the shortcut as the one exception.
-- **The builds aren't code-signed.** The README gives the SmartScreen tip (*More
-  info → Run anyway*), but with Smart App Control on, an unsigned app can be
-  blocked outright with no "Run anyway" button, and the README doesn't say so
-  yet.
+- **Zanshin isn't code-signed, so there's no installer.** You build it yourself
+  from the source (see the README). With Smart App Control on, Windows can
+  block unsigned programs outright, with no "Run anyway" button. The README
+  says so, but how it treats a Zanshin you built yourself is untested.
 - **Not a medical device.** Load, recovery and HRPI (one number for how high your
   pulse ran and for how long) are rough trends from a consumer watch, not
   diagnoses, and nothing is clinically validated. This stays.
