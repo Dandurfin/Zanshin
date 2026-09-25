@@ -44,9 +44,9 @@ this whole work:
 
 ## 4. Where the official Zanshin is
 
-Only at **<https://github.com/Dandurfin/Zanshin>** (Releases). Each release
-lists the SHA-256 fingerprint of the installer, so you can check that you have
-the real file. A copy from anywhere else is not from me.
+Only at **<https://github.com/Dandurfin/Zanshin>**, as source code you build
+yourself (see the README). There is no ready-made installer or `.exe`; a copy
+from anywhere else is not from me.
 
 ## 5. Contact
 

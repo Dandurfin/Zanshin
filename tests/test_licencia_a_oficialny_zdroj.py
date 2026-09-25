@@ -56,6 +56,11 @@ def test_readme_hovori_to_iste_co_license_design():
     assert "ready-made Zanshin `.exe` or installer, it isn't from me" in (
         " ".join(readme.split()))
     assert "Each release lists the installer's SHA-256" not in readme
+    # LICENSE-DESIGN.md §4 slubovalo instalacku s odtlackom SHA-256 v Releases -
+    # ziadna nie je. Oficialny je zdrojak, ktory si hrac postavi sam.
+    licencia = " ".join(_read("LICENSE-DESIGN.md").split())
+    assert "fingerprint of the installer" not in licencia
+    assert "There is no ready-made installer or `.exe`" in licencia
 
 
 def test_soul_neprivlastnuje_vzhlad():
