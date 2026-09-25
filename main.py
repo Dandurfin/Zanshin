@@ -25,6 +25,8 @@ Toto je len vstupny bod - overi zavislosti a spusti hlavnu appku
   guide_panel.py       - panel "Sprievodca / Čo je za tým"
   ui_dialogs.py        - dialogy a karty hlavneho okna (vratane Onboardingu)
   app.py              - DandurfApp: hlavne okno, prepojenie vsetkeho
+  app_audio.py        - AudioMixin (cast DandurfApp): SFX kniznica, hlasitost,
+                        hlasy, priprava Edge hlasok, prehratie slotu
   app_controls.py     - ControlsMixin (cast DandurfApp): paleta prikazov,
                         "teraz nie", dennik, ovladac a rucna hlaska (Test)
   app_data.py         - DataMixin (cast DandurfApp): export/import/mazanie

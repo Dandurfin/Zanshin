@@ -291,6 +291,7 @@ Author: **Dandurfin** — [Twitch](https://www.twitch.tv/dandurfin) ·
 |---|---|
 | `main.py` | Entry point — checks deps, starts `app.DandurfApp` |
 | `app.py` | Main window, wiring for the whole app |
+| `app_audio.py` | Part of the main window (a mixin of `DandurfApp`): preparing the built-in sound library, volume and the SFX / voice balance, choosing the voice engine and voice, preparing Edge voice lines ahead of time, and playing a cue's sound, voice or your own recording |
 | `app_controls.py` | Part of the main window (a mixin of `DandurfApp`): the command palette (Ctrl+K), "not now" (pausing cues from the shortcut or the tray menu), the collapsible log, gamepad activity and the manual Test cue |
 | `app_data.py` | Part of the main window (a mixin of `DandurfApp`): export / import / delete of your data, what is saved when a session ends, sharing a profile as a code |
 | `app_prefs.py` | Part of the main window (a mixin of `DandurfApp`): switching language, world (play / work) and theme; loading and saving your settings, volume and balance |
