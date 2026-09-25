@@ -94,6 +94,12 @@ class ProfilesMixin:
         self.active_profile_name = name
         self.rebuild_slots(new_slots)
         self.refresh_profile_switch()
+        # Slova noveho profilu su v jazyku appky: v japoncine, cinstine,
+        # rustine ci bulharcine dostane hrac s predvolenym hlasom hlas toho
+        # jazyka (anglicky by ich nevyslovil). Ulozi sa nizsie a priprava
+        # hlasok uz ide novym hlasom.
+        if self._hlas_k_hlaskam(new_slots):
+            self.refresh_voice_box()
         self.save_settings()
         # Novy profil = ine aktivne hlasky, rovnako ako prepnutie profilu
         # (`switch_profile`): priprava hlasok predosleho profilu konci hned
@@ -133,6 +139,10 @@ class ProfilesMixin:
             new_slots = [normalize_slot(s) for s in default_slots()]
             self.profiles.append({"name": profile_name, "slots": new_slots})
             self.refresh_profile_switch()
+            # Ako `create_profile`: hlas k slovam noveho profilu. Ulozi ho a
+            # pripravu naplanuje `switch_profile` nizsie.
+            if self._hlas_k_hlaskam(new_slots):
+                self.refresh_voice_box()
             self.log(tr("log.auto_profile_created", name=profile_name))
         if profile_name != self.active_profile_name:
             self.switch_profile(profile_name)

@@ -40,6 +40,17 @@ adds one thing: "Not now" is also in the tray icon's menu.
   stops at once; only a line already on its way is finished. A new profile's
   lines are now prepared right away too; before, a line not yet in the cache
   played in the Windows voice until something else started preparing.
+- **Switching the language to Japanese, Chinese, Russian or Bulgarian also
+  switched the natural voice to that language** (while you were on the
+  default voice), but your reminders kept their words, for most people
+  English ones. The new voice then read English words it may mangle or not
+  say at all. **0.2.1:** the voice follows the words, not the menu. Switching
+  the language changes it only if the reminders that speak in your current
+  profile use that language's built-in words, and a profile created in one of
+  these languages gets its voice. A voice other than the default is never
+  changed, so if an earlier switch already changed yours, pick it again under
+  *Voice* in Settings → Sound. One voice still reads all your profiles, so a
+  profile in another language is read by it too.
 
 ### Cues and what the app learns
 

@@ -104,6 +104,9 @@ def test_novy_profil_ma_styri_kategorie():
         # od 0.2.1 novy profil spusti pripravu hlasok ako prepnutie profilu
         # (test_021b_pregen_novy_profil.py)
         schedule_pregenerate=lambda *_: None,
+        # od 0.2.1d novy profil moze dostat hlas k svojim slovam
+        # (test_021d_hlas_podla_hlasok.py) - tu to nehra rolu
+        _hlas_k_hlaskam=lambda slots: False,
         log=lambda *x: None)
     app_mod.DandurfApp.create_profile(a, "Novy")
     novy = next(p for p in a.profiles if p["name"] == "Novy")

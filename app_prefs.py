@@ -46,7 +46,8 @@ from settings_model import (DEFAULT_AUDIO, DEFAULT_BREATH_EXHALE_S,
                             DEFAULT_EDGE_VOICE, DEFAULT_MONITOR_TARGET,
                             ENGINE_EDGE, ENGINE_SAPI, clamp_int, default_hud_config,
                             default_overlay_configs, default_slots, doplnit_kategorie,
-                            engine_labels, migrate_slot_text, normalize_breath_seconds,
+                            engine_labels, jazyky_hlasok, migrate_slot_text,
+                            normalize_breath_seconds,
                             normalize_dashboard_stats, normalize_hud_config,
                             normalize_monitor_target, normalize_overlay_config,
                             normalize_slot, suggested_voice)
@@ -69,10 +70,9 @@ class PrefsMixin:
             return
         self.lang = code
         set_lang(code)
-        # Ak si uzivatel hlas nikdy sam nezmenil, pri prepnuti na jazyk s
-        # inym pismom (ja/zh/ru/bg) mu rovno ponukneme hlas toho jazyka -
-        # viz settings_model.VOICE_HINTS.
-        self.edge_voice_id = suggested_voice(code, self.edge_voice_id)
+        # Hlas jazyka (ja/zh/ru/bg) len ked su hlasky aktivneho profilu
+        # naozaj v tom jazyku - prepnutie ich neprelozi, viz `_hlas_k_hlaskam`.
+        self._hlas_k_hlaskam(self.slot_dicts())
         self.save_settings()
         was_listening = self.listening
         # Zmena jazyka meni TEXTY, takze sa (na rozdiel od zmeny temy) musi
@@ -101,6 +101,36 @@ class PrefsMixin:
         # Pregeneracia Edge TTS nie je UI - az po odmrazeni okna.
         if self.engine == ENGINE_EDGE:
             self.pregenerate()
+
+    def _hlas_k_hlaskam(self, slots):
+        """Predvoleny Edge hlas -> hlas jazyka appky, ak su v nom hlasky `slots`.
+
+        VOICE_HINTS je tu kvoli hlaskam v inom pisme nez latinka (ja/zh/ru/
+        bg): anglicky hlas by ich nevyslovil. Do 0.2.1d sa hlas menil podla
+        jazyka ROZHRANIA - lenze prepnutie jazyka texty existujucich profilov
+        neprelozi (vstavane slova sa beru pri zalozeni profilu, pre sk/cs
+        anglicke). Po prepnuti na japoncinu tak japonsky hlas cital anglicke
+        "Grounded" a mohol ho skomolit alebo mlcat - presne to, com mal
+        VOICE_HINTS zabranit.
+
+        Teraz rozhoduje jazyk TEXTOV (`jazyky_hlasok`): hlas sa zmeni, len ked
+        su hovoriace hlasky vstavanymi slovami jazyka appky - po prepnuti
+        jazyka (profil zalozeny v tom jazyku) aj pri novom profile (jeho
+        slova su v jazyku appky). Vlastne ci zmiesane texty -> hlas ostava.
+        Hlas iny nez predvoleny sa nemeni nikdy (`suggested_voice`), ani
+        spat: appka nevie, ci ho hrac vybral sam.
+
+        Vracia True, ked sa hlas zmenil - volajuci obnovi vyber hlasu a
+        pripravu hlasok (`schedule_pregenerate` / `pregenerate`).
+        """
+        if self.lang not in jazyky_hlasok(slots):
+            return False
+        novy = suggested_voice(self.lang, self.edge_voice_id)
+        if novy == self.edge_voice_id:
+            return False
+        self.edge_voice_id = novy
+        app_log.info("hlas %s k hlaskam v jazyku %s", novy, self.lang)
+        return True
 
     # ---------- prepinanie sveta (hra / praca) ----------
 

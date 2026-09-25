@@ -11,7 +11,7 @@ import uuid
 
 import theme as theme_mod
 import sfx_assets
-from i18n import tr
+from i18n import LANGUAGES, tr, tr_lang
 
 # --------------------------------------------------------------------------
 # Rezimy slotu (hlas / SFX / kombinacia) a TTS motory
@@ -377,8 +377,12 @@ EDGE_FALLBACK_VOICES = [
 ]
 DEFAULT_EDGE_VOICE = "en-GB-SoniaNeural"
 
-# Hlas, ktory appka navrhne k jazyku rozhrania - pri prvom starte (jazyk
-# Windowsu) aj pri prepnuti jazyka, ale len kym ma hrac predvoleny hlas.
+# Hlas, ktory appka navrhne k jazyku HLASOK - len kym ma hrac predvoleny
+# hlas: pri prvom starte (jazyk Windowsu, hlasky su v nom), pri novom
+# profile (jeho slova su v jazyku appky) a pri prepnuti jazyka len vtedy,
+# ked su hlasky aktivneho profilu naozaj v novom jazyku (`jazyky_hlasok`,
+# `app_prefs._hlas_k_hlaskam`). Samotne prepnutie jazyka texty profilov
+# neprelozi - japonsky hlas by inak cital anglicke "Grounded".
 #
 # Len jazyky s inym pismom nez latinka: ich predvolene hlasky slotov
 # (`slot.default.*`) su v tom pisme a anglicky hlas Sonia by ich
@@ -403,6 +407,46 @@ def suggested_voice(lang, current=DEFAULT_EDGE_VOICE):
     if current == DEFAULT_EDGE_VOICE and lang in VOICE_HINTS:
         return VOICE_HINTS[lang]
     return current
+
+
+# Kluce vstavanych slov styroch kategorii v poradi slotov (0 tazisko,
+# 1 celust, 2 uvolnenie, 3 dych) - to iste poradie ako `default_slots`.
+_KLUCE_PREDVOLENYCH_SLOV = ("slot.default.grounding", "slot.default.jaw",
+                            "slot.default.release", "slot.default.breath")
+
+
+def jazyky_hlasok(slots):
+    """Jazyky, v ktorych su napisane hlasky, ktore cita spolocny Edge hlas.
+
+    Treba to vediet kvoli VOICE_HINTS: jazyk rozhrania o jazyku hlasok nic
+    nehovori - prepnutie jazyka texty profilov neprelozi (pre sk/cs su
+    anglicke). `slots` su dicty slotov profilu (pozicia = kategoria).
+
+    Rataju sa len hlasky, ktore ten hlas naozaj cita: jedna zo styroch
+    kategorii, zapnuta, v rezime hlas/kombinacia, s textom a bez vlastneho
+    hlasu slotu (`voice_edge` - ten spolocny hlas nepouziva).
+
+    Jazyk sa z textu NEUHADUJE: vrati sa mnozina jazykov, ktorych vstavane
+    slova (`slot.default.*`) na tych istych poziciach sa zhoduju so VSETKYMI
+    takymi textami. Mnozina preto, lebo anglicke slova maju sk/en/cs
+    spolocne a 呼吸 ja aj zh. Vlastne slovo hraca (hoc len jedno), zmiesane
+    jazyky alebo ziadna hovoriaca hlaska -> prazdna mnozina a appka hlas
+    necha tak - radsej nic nez hadat.
+    """
+    texty = []
+    for index, slot in enumerate(slots or []):
+        if not je_kategoria(index) or not isinstance(slot, dict):
+            continue
+        text = str(slot.get("text") or "").strip()
+        if (text and slot.get("enabled", True)
+                and slot.get("mode", MODE_TTS) in (MODE_TTS, MODE_COMBO)
+                and not slot.get("voice_edge")):
+            texty.append((index, text.casefold()))
+    if not texty:
+        return set()
+    return {jazyk for jazyk in LANGUAGES
+            if all(tr_lang(jazyk, _KLUCE_PREDVOLENYCH_SLOV[index]).strip().casefold() == text
+                   for index, text in texty)}
 
 # Hlasy, ktore znejú vyrazne prirodzenejsie - v popisku dostanu
 # "najprirodzenejsi" (voice.most_natural).

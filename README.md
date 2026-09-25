@@ -155,10 +155,16 @@ and breathe.
   profile is created (English ones for Slovak and Czech); switching the
   language later doesn't translate them. With the natural voice, spoken
   reminders keep the default English voice until you pick another. The
-  exceptions are Japanese, Chinese, Russian and Bulgarian, which switch to a
-  voice of their own while you're still on the default. The app is written in
-  Slovak; the other languages are AI-assisted translations not yet checked by
-  a native speaker.
+  exception is reminders in Japanese, Chinese, Russian or Bulgarian, which
+  get a voice of that language while you're still on the default voice: on a
+  first start in that language, when a profile is created in it, or when you
+  switch to it and the reminders that speak in the profile you're in use its
+  built-in words (not reworded ones). The voice follows the words, not the
+  menu: switching the language with English words keeps the English voice,
+  and switching back doesn't undo a change. One voice reads all your
+  profiles, except reminders given a voice of their own. The app is written
+  in Slovak; the other languages are AI-assisted translations not yet
+  checked by a native speaker.
 - **In-game HUD & pictures.** An optional in-game heart-rate panel (the HUD,
   which also shows your load; off by default) and the in-game pictures every
   cue uses (on by default; a reminder whose picture you switch off never

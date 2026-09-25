@@ -7,6 +7,9 @@ pravdepodobne nevyslovi. Japoncina mala navrh hlasu len pri prepnuti jazyka,
 nie pri prvom starte. Teraz jazyky s inym pismom nez latinka (ja/zh/ru/bg)
 dostanu hlas svojho jazyka pri prvom starte aj pri prepnuti - ale len kym
 ma hrac predvoleny hlas. Hlas, ktory si vybral sam, sa nemeni.
+
+0.2.1d: pri prepnuti jazyka len ked su hlasky aktivneho profilu naozaj v
+novom jazyku (prepnutie ich neprelozi) - tests/test_021d_hlas_podla_hlasok.py.
 """
 import json
 import os
@@ -55,9 +58,15 @@ def test_vlastny_hlas_hraca_ostava():
 
 
 def test_prepnutie_jazyka_pouziva_navrh():
-    """Staticky (bez Tk): prepinac jazyka ide cez `suggested_voice`."""
+    """Staticky (bez Tk): prepinac jazyka ide cez `suggested_voice` - od
+    0.2.1d cez `_hlas_k_hlaskam`, ktory navrh pusti len ked su hlasky
+    aktivneho profilu v novom jazyku (tests/test_021d_hlas_podla_hlasok.py).
+    Priame `suggested_voice(code, ...)` podla jazyka rozhrania je prec."""
     blok = zdroj_metody("on_lang_switch")
-    assert "suggested_voice(code, self.edge_voice_id)" in blok
+    assert "self._hlas_k_hlaskam(self.slot_dicts())" in blok
+    assert "suggested_voice(" not in blok
+    assert "suggested_voice(self.lang, self.edge_voice_id)" in zdroj_metody(
+        "_hlas_k_hlaskam")
 
 
 @pytest.fixture

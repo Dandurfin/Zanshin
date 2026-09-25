@@ -75,6 +75,9 @@ def _atrapa(monkeypatch, slots):
     a._prune_cache = lambda *_x: None
     a._sync_active_profile_slots = lambda: None
     a.refresh_profile_switch = lambda: None
+    # Hlas k slovam noveho profilu (0.2.1d) tu nehra rolu - overuje ho
+    # tests/test_021d_hlas_podla_hlasok.py.
+    a._hlas_k_hlaskam = lambda slots: False
     # `rebuild_slots` stavia karty z dict-ov profilu; tu staci ich obsah
     a.rebuild_slots = lambda data: setattr(a, "slots", [
         _slot(i, d["text"], d["mode"], d["enabled"], d["voice_path"])
