@@ -93,19 +93,21 @@ except Exception as exc:  # pragma: no cover - sanity guard pre chybajucu zavisl
     sys.exit(1)
 
 
-def main():
-    from app import DandurfApp
+def _install_crash_hooks():
+    """Nastavi zapis neosetrenych vynimok do crash.log (hlavne vlakno aj
+    vlastne vlakna) a vrati `log_crash` pre Tk callbacky.
+
+    logging_setup je lahky (len stdlib + paths), takze ho mozeme natiahnut
+    skor nez app bez spomalenia startu. Import paths pri tom urci DATA_DIR
+    (v builde %APPDATA%\\Zanshin) a spravi migraciu starych dat - presne to,
+    co by inak spravil az import app. Priecinok logs/ vznikne az pri prvom
+    zapise do logu, teda az PO migracii - ta sa riadi tym, ci cielovy
+    priecinok uz existuje, takze logs/ ju nesmie predbehnut.
+    """
     from logging_setup import log_crash
 
-    # Neosetrene vynimky VNUTRI Tk callbackov (napr. command= na tlacidle)
-    # nezastavia mainloop a nepropaguju sa hore ako normalna Python
-    # vynimka - Tk ich len vypise na stderr cez report_callback_exception.
-    # Prepiseme ho, aby sa zapisali aj do crash.log.
-    def _tk_callback_exception(exc_type, exc_value, exc_tb):
-        log_crash(exc_type, exc_value, exc_tb)
-
-    # Vynimky MIMO Tk na HLAVNOM vlakne (napr. este pred vytvorenim root-u)
-    # zachyti sys.excepthook.
+    # Vynimky MIMO Tk na HLAVNOM vlakne (napr. import app, este pred
+    # vytvorenim root-u) zachyti sys.excepthook.
     def _sys_excepthook(exc_type, exc_value, exc_tb):
         log_crash(exc_type, exc_value, exc_tb)
         sys.__excepthook__(exc_type, exc_value, exc_tb)
@@ -124,15 +126,35 @@ def main():
         log_crash(args.exc_type, args.exc_value, args.exc_traceback)
 
     threading.excepthook = _thread_excepthook
+    return log_crash
+
+
+def main():
+    # Hooky PRED importom app. Import app nataha desiatky modulov (audio,
+    # siet, ovladac, TTS...) a chyba v ktoromkolvek z nich - chybajuca
+    # zavislost, preklep - je presne ta, ktoru appka bez konzoly nikde
+    # neulozi: pythonw ju zahodi, zabaleny .exe (console=False) ju ukaze
+    # len v okne PyInstalleru, ktore po zatvoreni zmizne. Kym bol import
+    # app prvy riadok main(), takyto pad nezanechal ani crash.log.
+    log_crash = _install_crash_hooks()
+    from app import DandurfApp
+
+    # Neosetrene vynimky VNUTRI Tk callbackov (napr. command= na tlacidle)
+    # nezastavia mainloop a nepropaguju sa hore ako normalna Python
+    # vynimka - Tk ich len vypise na stderr cez report_callback_exception.
+    # Prepiseme ho, aby sa zapisali aj do crash.log.
+    def _tk_callback_exception(exc_type, exc_value, exc_tb):
+        log_crash(exc_type, exc_value, exc_tb)
 
     root = ctk.CTk()
     root.report_callback_exception = _tk_callback_exception
-    try:
-        DandurfApp(root)
-        root.mainloop()
-    except Exception:
-        log_crash(*sys.exc_info())
-        raise
+    # Pad v konstruktore ci v mainloop-e zapise do crash.log sys.excepthook
+    # (nastaveny vyssie, pred importom app; volaju ho Python aj bootloader
+    # PyInstalleru). Do 0.2.1 tu bol este try/except s vlastnym log_crash,
+    # takze jeden pad bol v crash.log dvakrat - ako keby appka spadla dva
+    # razy.
+    DandurfApp(root)
+    root.mainloop()
 
 
 if __name__ == "__main__":

@@ -1976,6 +1976,10 @@ class SlotCard:
     def on_enabled_change(self):
         self.enabled_value = bool(self.enabled_var.get())
         self.app.save_settings()
+        # Pripravuju sa len zapnute hlasky (`_slot_na_pripravu` v
+        # app_audio.py): zapnutu treba pripravit (mimo hry hned, inak po
+        # hre), vypnutej sa zvysok rozbehnutej pripravy uz neposle.
+        self.app.schedule_pregenerate(200)
 
     def on_text_change(self):
         self.text_value = self.text_var.get()
@@ -2033,6 +2037,9 @@ class SlotCard:
                 self.mode = MODE_SFX
                 self.mode_var.set(mode_labels()[self.mode])
                 self.refresh_mode_widgets()
+                # Hlaska uz nehovori - rovnako ako `on_mode_change`: zvysok
+                # rozbehnutej pripravy jej text uz Microsoftu neposle.
+                self.app.schedule_pregenerate()
             self.app.save_settings()
             self.app.log(tr("log.slot_sfx_set", n=self.index + 1,
                             name=os.path.basename(self.audio_path)))
@@ -2051,6 +2058,9 @@ class SlotCard:
                 self.mode = MODE_SFX
                 self.mode_var.set(mode_labels()[self.mode])
                 self.refresh_mode_widgets()
+                # Vlastna nahravka namiesto hlasu: text sa uz nepripravuje a
+                # zvysok rozbehnutej pripravy ho neposle (PRIVACY to slubuje).
+                self.app.schedule_pregenerate()
             self.app.save_settings()
             self.app.log(tr("log.slot_recorded", n=self.index + 1,
                             name=os.path.basename(dialog.saved_path)))

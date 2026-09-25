@@ -213,15 +213,25 @@ def test_zoznam_edge_hlasov_je_lokalny_a_v_jazyku_rozhrania(monkeypatch, jazyk):
 def _atrapa_hlasu(app_mod, styl="voice", svet="play"):
     from settings_model import MODE_COMBO, MODE_SFX, MODE_TTS
     D = app_mod.DandurfApp
+
+    # Sloty nesu vsetko, na co sa `_slot_na_pripravu` pyta (pozicia,
+    # vypinac, vlastna nahravka) - od 0.2.1 sa pripravuju len zapnute
+    # kategorie bez nahravky (test_021b_pregen_len_co_zaznie.py).
+    def slot(index, mode, text, voice_edge=""):
+        return types.SimpleNamespace(index=index, mode=mode, text_value=text,
+                                     voice_edge=voice_edge, enabled_value=True,
+                                     voice_path="")
+
     a = types.SimpleNamespace(
         cue_style=styl, world=svet, edge_voice_id="en-GB-SoniaNeural",
-        slots=[types.SimpleNamespace(mode=MODE_COMBO, text_value="Breathe", voice_edge=""),
-               types.SimpleNamespace(mode=MODE_TTS, text_value="Jaw", voice_edge="x-Y"),
-               types.SimpleNamespace(mode=MODE_SFX, text_value="nic", voice_edge="")],
+        slots=[slot(0, MODE_COMBO, "Breathe"),
+               slot(1, MODE_TTS, "Jaw", "x-Y"),
+               slot(2, MODE_SFX, "nic")],
         engine=app_mod.ENGINE_EDGE, rate_value=0, _pregen_job=None, _pregen_seq=0,
         pal={"success": "g", "warn": "y", "danger": "r"}, stavy=[], posielane=[])
-    a._hlasky_hovoria = types.MethodType(D._hlasky_hovoria, a)
-    a.pregen_jobs = types.MethodType(D.pregen_jobs, a)
+    for meno in ("_hlasky_hovoria", "pregen_jobs", "_slot_na_pripravu",
+                 "_slot_voice_clip", "_zrus_rozbehnutu_pripravu"):
+        setattr(a, meno, types.MethodType(getattr(D, meno), a))
     a.set_edge_status = lambda text, color=None: a.stavy.append(text)
     a.edge_cache = types.SimpleNamespace(
         has=lambda *_: False, ensure=lambda *x, **_k: a.posielane.append(x))
@@ -261,6 +271,9 @@ def test_chybajuca_hlaska_pocas_hry_nejde_na_siet(monkeypatch):
             logy=[], ui=[], hovorene=[], pripravy=[])
         a._hlasky_hovoria = lambda: hovoria
         a._slot_voice_clip = lambda slot: None
+        # zapnuta kategoria s hlasom - taku Edge v hre povie, takze sa
+        # pripravuje (vypnutu a slot z 0.1 strazi test_021b_pregen_*)
+        a._slot_na_pripravu = lambda slot: True
         a.log_threadsafe = a.logy.append
         a.ui_call = a.ui.append
         a.pregenerate = lambda *_: None

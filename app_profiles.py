@@ -95,6 +95,10 @@ class ProfilesMixin:
         self.rebuild_slots(new_slots)
         self.refresh_profile_switch()
         self.save_settings()
+        # Novy profil = ine aktivne hlasky, rovnako ako prepnutie profilu
+        # (`switch_profile`): priprava hlasok predosleho profilu konci hned
+        # (uz nepatria k aktivnym) a zapnute hlasky noveho sa pripravia.
+        self.schedule_pregenerate(200)
         self.log(tr("log.profile_created", name=name))
 
     def delete_current_profile(self):

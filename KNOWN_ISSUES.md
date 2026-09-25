@@ -24,10 +24,26 @@ before publishing. What 0.1 got wrong in the app itself is written down below.
 didn't do what the README says. None of it was harmful as far as I know. It
 adds one thing: "Not now" is also in the tray icon's menu.
 
+### The online voice
+
+- **The natural voice also sent lines it would never speak in a game**: the
+  wording of switched-off reminders, of ones that play your own recording,
+  and of extra reminders kept from 0.1, which the app never fires by itself. **0.2.1:**
+  only the four reminders are sent, and of those only the ones switched on,
+  set to speak and without your own recording. Switching one on, or removing
+  its recording, prepares it then.
+- **Switching to the Windows voice didn't stop preparing that was already
+  running**, so its remaining lines still went to Microsoft. The same after
+  switching to the sound or picture-only style or to Work, switching a
+  reminder off or creating a profile. **0.2.1:** preparing stops at once;
+  only a line already on its way is finished. A new profile's lines are now
+  prepared right away too; before, a line not yet in the cache played in the
+  Windows voice until something else started preparing.
+
 ### Cues and what the app learns
 
-- **A cue could be drawn after only a few seconds of strain above the
-  threshold.** When your strain kept briefly crossing the threshold, the time
+- **A cue could be drawn after only a few seconds of load above the
+  threshold.** When your load kept briefly crossing the threshold, the time
   just under it counted towards the hold time (45 s by default). In a test
   with 1 s above and 19 s below, a cue was drawn after a minute with only four
   readings above. **0.2.1:** a short dip below the threshold (under 20 s)
@@ -38,14 +54,14 @@ adds one thing: "Not now" is also in the tray icon's menu.
   too. **0.2.1:** it counts only time above the threshold, up to the last
   reading above it: the same number the app uses to decide when to draw.
   Sessions saved before 0.2.1 keep their old, sometimes larger figure.
-- **A few short sessions could lower your high heart-rate line.** In a test,
+- **A few short sessions could lower your high heart-rate limit.** In a test,
   three 2-minute pairing sessions at rest moved it from 110 to 80 BPM, and a
-  lower line makes your strain read higher and more of your play count as
-  Peak. **0.2.1:** the high-HR line, like the strain threshold, learns only
-  from play sessions of five minutes or more. The resting baseline still uses
-  the short ones.
+  lower limit makes your load read higher and more of your play count as
+  Peak. **0.2.1:** the high heart-rate limit, like the load threshold, learns
+  only from play sessions of five minutes or more. The resting baseline still
+  uses the short ones.
 - **"Three sessions of about ten minutes are enough" was true only with an
-  almost perfect signal.** The strain threshold needed heart rate for about
+  almost perfect signal.** The load threshold needed heart rate for about
   91% of those minutes. **0.2.1:** three ten-minute sessions are enough from
   about 82%; three of five minutes still aren't.
 - **The README said a session stays in the world it started in**, but your
@@ -74,6 +90,13 @@ adds one thing: "Not now" is also in the tray icon's menu.
   silence the app pings the other side and closes the connection only if
   nothing answers within another minute, so a quiet but connected watch
   isn't dropped. A single message over 64 KB is refused.
+- **If another program held UDP port 4455, heart rate over UDP or OSC (the
+  iPhone route) never arrived, and nothing said why**: the status stayed at
+  "Connecting...". **0.2.1:** Zanshin keeps listening on TCP, so the Android
+  route still works. It says so in its log and shows *Listening on TCP only —
+  UDP didn’t open* next to the switch until something connects. It doesn't
+  retry UDP: close the other program, then switch *Listen for heart rate
+  from the watch* off and on.
 - **The log file kept the first 40 raw messages from the watch every time the
   sensor started.** **0.2.1:** 5, which is enough to see what the companion
   sends when pairing doesn't work.
@@ -96,6 +119,19 @@ adds one thing: "Not now" is also in the tray icon's menu.
   was read whole into memory before its checksum was checked. **0.2.1:** it
   stops above 256 KB. This only happens if one of the bundled sounds is
   missing.
+
+### Smaller fixes
+
+- **The line under the language picker said switching the language also
+  changes the sample phrases.** It doesn't: reminders you already have keep
+  their wording. **0.2.1:** the line says so.
+- **If Zanshin failed while starting, before its window opened, `crash.log`
+  recorded nothing**, and a crash while the main window was being built was
+  written to it twice. **0.2.1:** both are recorded, each once (in
+  `%APPDATA%\Zanshin\logs` for the built app).
+- **For people who build from source:** on a Windows PC without internet,
+  `check_sources.py` reported every study link as dead. **0.2.1:** it says
+  you're offline and checks nothing.
 
 ## What 0.1 got wrong, and what 0.2 changed
 
@@ -190,7 +226,7 @@ adds one thing: "Not now" is also in the tray icon's menu.
 - **"Never mid-fight" was more than the app could know.** Its "break" was just
   2.5 s without input, whatever your pulse was doing. **0.2:** the voice also
   waits until your load stops climbing and never speaks in the Peak zone (your
-  pulse at or above your own high heart-rate limit).
+  pulse at or above your high heart-rate limit).
   The README now says a still moment mid-fight can still count as a pause.
 - **"Not now" (Ctrl+Alt+Z) ended the whole session**, could pop up the
   questionnaire mid-game and stopped recording heart rate for 30 minutes.
@@ -227,8 +263,8 @@ adds one thing: "Not now" is also in the tray icon's menu.
   no source or GPL text, though About said the source came with it, and the
   README reserved the look and layout for me, although they are GPL code and the
   GPL doesn't allow that. **0.2:** About links to the repository, the licence is
-  installed, and all code is plain GPLv3; only the icon and the dojo picture stay
-  mine.
+  installed, and all code is under GPLv3 or later; only the icon and the dojo
+  picture stay mine.
 
 ### Heart-rate sources and pairing
 
@@ -298,9 +334,10 @@ about, and a few will stay.
   without a password** (only your firewall limits who can reach it), so anything
   that reaches it could send a fake heart rate, or keep all its connections
   busy so your watch can't get in. Allow it on your home network only.
-- **Ctrl+Alt+Z is reserved.** While Zanshin runs, the game doesn't receive that
-  one key combination. In 0.1 the start-up log line said input is read with
-  "no blocking"; in 0.2 it names the shortcut as the one exception.
+- **Ctrl+Alt+Z is reserved.** While Zanshin runs, even in the tray, a game
+  that uses that one key combination may not receive it. In 0.1 the start-up
+  log line said input is read with "no blocking"; in 0.2 it names the
+  shortcut as the one exception.
 - **Zanshin isn't code-signed, so there's no installer.** You build it yourself
   from the source (see the README). With Smart App Control on, Windows can
   block unsigned programs outright, with no "Run anyway" button. The README
@@ -308,13 +345,18 @@ about, and a few will stay.
 - **Not a medical device.** Load, recovery and HRPI (one number for how high your
   pulse ran and for how long) are rough trends from a consumer watch, not
   diagnoses, and nothing is clinically validated. This stays.
-- **Your data:** imported history never feeds calibration (by design), and
-  walking isn't filtered out yet.
+- **Your data:** imported history never feeds calibration (by design).
+  Steps from the watch only keep cues quiet: time you spend walking still
+  counts in your saved sessions and in what the app learns from them
+  (resting baseline, load threshold, high heart-rate limit).
 - **Languages:** no translation has been checked by a native speaker, and
   SAFETY.md is Slovak-only. *In-game language* (what the HUD and captions show;
   English by default, on purpose) is separate from the app language and sits in
   the panel about which screen to draw on, so the two are easy to mix up.
 - **The iPhone / Apple Watch route** is still untested.
+- **A reminder whose in-game picture you've switched off** still has its
+  line prepared by the natural voice (so its wording goes to Microsoft),
+  although the app never fires it by itself.
 - **The voice-versus-picture comparison isn't shown yet**, though some cues stay
   silent on purpose to collect it (about one in four in the first 15 sessions,
   then one in ten). When it comes, it will compare voice plus picture with
@@ -342,4 +384,4 @@ signing, anti-cheat or heart-rate data.
 Please don't post heart-rate files or logs publicly: heart-rate files are health
 data, and logs can name your devices and files. Describe what you saw instead.
 
-— **Dandurfin** · GPLv3
+— **Dandurfin** · GPLv3 or later

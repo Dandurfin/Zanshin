@@ -101,6 +101,9 @@ def test_novy_profil_ma_styri_kategorie():
         profiles=[{"name": "Default", "slots": []}], active_profile_name="Default",
         _sync_active_profile_slots=lambda: None, rebuild_slots=lambda s: None,
         refresh_profile_switch=lambda: None, save_settings=lambda: None,
+        # od 0.2.1 novy profil spusti pripravu hlasok ako prepnutie profilu
+        # (test_021b_pregen_novy_profil.py)
+        schedule_pregenerate=lambda *_: None,
         log=lambda *x: None)
     app_mod.DandurfApp.create_profile(a, "Novy")
     novy = next(p for p in a.profiles if p["name"] == "Novy")

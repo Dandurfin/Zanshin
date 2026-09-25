@@ -28,7 +28,16 @@ konkrétny anti-cheat nezablokuje, však môže dať len jeho výrobca.
 Repozitár obsahuje aj vývojárske testovacie skripty na ručné testovanie okna
 (`gui_harness_auto.py`, `gui_harness_onboarding.py`, `gui_screenshots.py`).
 Prvé dva ovládajú skutočnú myš (pohyb, klik, ťahanie, koliesko) a stláčajú
-Escape; všetky tri fotia okná a obrázky appky s malým okrajom okolo. Nie sú súčasťou appky ani
+Escape; všetky tri fotia okná a obrázky appky s malým okrajom okolo. Počas
+behu menia dáta Zanshinu spusteného zo zdrojákov vedľa `main.py` (nie dáta
+postavenej appky v `%APPDATA%\Zanshin`) a na konci vrátia pôvodné súbory.
+`gui_harness_onboarding.py` nastavenia (`dandurf_settings.json`) na čas behu
+zmaže. `gui_harness_auto.py` ich dočasne upraví (zálohu dá do
+`logs\gui_harness\`) a históriu tepu (`hr_sessions.json`,
+`hr_insights.json`) na časť behu odloží bokom. Tú drží len v pamäti, takže
+keby si beh v tej chvíli prerušil (zavretím okna alebo procesu), história sa
+nevráti. `gui_screenshots.py` nastavenia aj históriu tepu prepíše (syntetická
+história, iná téma) a vráti ich aj po páde. Nie sú súčasťou appky ani
 inštalátora: build balí `main.py`, moduly, ktoré importuje, a priečinok
 `assets`, a tieto skripty neimportuje nič.
 

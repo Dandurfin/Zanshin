@@ -4389,16 +4389,21 @@ STRINGS.update({
         'fr': 'Language',
         'pt': 'Language',
     },
+    # Do 0.2.1 tu stalo "Meni sa aj jazyk ukazkovych hlasok" - nepravda.
+    # Prepnutie jazyka texty hlasok v existujucich profiloch neprepise:
+    # zabudovane slova sa beru v jazyku appky len pri zalozeni profilu
+    # (`settings_model.default_slots`, pre sk/cs anglicke). Veta preto
+    # hovori, co sa naozaj stane.
     'settings.language_sub': {
-        'sk': 'Mení sa aj jazyk ukážkových hlások.',
-        'en': 'Also changes the language of the sample phrases.',
-        'ja': 'Also changes the language of the sample phrases.',
-        'zh': 'Also changes the language of the sample phrases.',
-        'ru': 'Also changes the language of the sample phrases.',
-        'es': 'Also changes the language of the sample phrases.',
-        'de': 'Also changes the language of the sample phrases.',
-        'fr': 'Also changes the language of the sample phrases.',
-        'pt': 'Also changes the language of the sample phrases.',
+        'sk': 'Texty hlášok, ktoré už máš, sa nezmenia.',
+        'en': 'Cues you already have keep their wording.',
+        'ja': 'Cues you already have keep their wording.',
+        'zh': 'Cues you already have keep their wording.',
+        'ru': 'Cues you already have keep their wording.',
+        'es': 'Cues you already have keep their wording.',
+        'de': 'Cues you already have keep their wording.',
+        'fr': 'Cues you already have keep their wording.',
+        'pt': 'Cues you already have keep their wording.',
     },
     'settings.behaviour_title': {
         'sk': 'Správanie',
@@ -6513,7 +6518,7 @@ _tr7('settings.audio_reset', '推奨値に戻す', '恢复推荐值', 'Верн�
 _tr7('settings.audio_reset_btn', '戻す', '恢复', 'Вернуть', 'Restaurar', 'Zurücksetzen', 'Rétablir', 'Restaurar')
 _tr7('settings.look_title', '見た目と言語', '外观与语言', 'Вид и язык', 'Aspecto e idioma', 'Aussehen und Sprache', 'Apparence et langue', 'Aparência e idioma')
 _tr7('settings.language', '言語', '语言', 'Язык', 'Idioma', 'Sprache', 'Langue', 'Idioma')
-_tr7('settings.language_sub', 'サンプルのセリフの言語も変わる。', '示例台词的语言也会一起改变。', 'Меняется и язык образцовых фраз.', 'También cambia el idioma de las frases de ejemplo.', 'Ändert auch die Sprache der Beispielsätze.', 'Change aussi la langue des phrases d’exemple.', 'Muda também o idioma das frases de exemplo.')
+_tr7('settings.language_sub', 'すでにある合図の文言は変わりません。', '已有提示的文字不会改变。', 'Уже созданные подсказки сохранят свой текст.', 'Los avisos que ya tienes conservan su texto.', 'Hinweise, die du schon hast, behalten ihren Wortlaut.', 'Les rappels que tu as déjà gardent leur texte.', 'Os avisos que você já tem continuam com o mesmo texto.')
 _tr7('settings.behaviour_title', 'ふるまい', '行为', 'Поведение', 'Comportamiento', 'Verhalten', 'Comportement', 'Comportamento')
 _tr7('settings.guide_title', 'ガイド', '指南', 'Справочник', 'Guía', 'Leitfaden', 'Guide', 'Guia')
 _tr7('settings.guide_row', 'なぜ顎、重心、呼吸なのか', '为什么是下巴、重心和呼吸', 'Почему челюсть, центр тяжести и дыхание', 'Por qué mandíbula, centro y respiración', 'Warum Kiefer, Schwerpunkt und Atem', 'Pourquoi mâchoire, ancrage et souffle', 'Por que mandíbula, centro e respiração')
@@ -7476,6 +7481,35 @@ STRINGS.update({
 })
 _tr7('tray.snooze', '今はいい（{minutes} 分）', '现在不要（{minutes} 分钟）', 'Не сейчас ({minutes} мин)', 'Ahora no ({minutes} min)', 'Jetzt nicht ({minutes} Min.)', 'Pas maintenant ({minutes} min)', 'Agora não ({minutes} min)')
 _tr7('log.hotkey_failed_tray', 'ショートカット {combo} は別のアプリが使っているため、使えません。「今はいい」はトレイアイコンのメニュー（右クリック）にもあります。監視は止まりません。', '快捷键 {combo} 被其他应用占用了，所以用不了。“现在不要”也在托盘图标的菜单里（右键）。这不会停止监听。', 'Сочетание {combo} занято другим приложением, так что оно не сработает. «Не сейчас» есть и в меню значка в трее (правый клик). Слушать при этом не перестаю.', 'Otra aplicación está usando el atajo {combo}, así que no funcionará. «Ahora no» también está en el menú del icono de la bandeja (clic derecho). La escucha sigue en marcha.', 'Das Tastenkürzel {combo} ist von einer anderen Anwendung belegt und funktioniert deshalb nicht. „Jetzt nicht“ gibt es auch im Menü des Symbols in der Taskleiste (Rechtsklick). Das Zuhören läuft trotzdem weiter.', 'Une autre application occupe le raccourci {combo}, il ne marchera donc pas. « Pas maintenant » se trouve aussi dans le menu de l’icône de la barre système (clic droit). Ça n’arrête pas l’écoute.', 'Outro aplicativo está usando o atalho {combo}, então ele não vai funcionar. “Agora não” também está no menu do ícone da bandeja (clique com o botão direito). Isso não para a escuta.')
+
+
+# --- 0.2.1: UDP na porte tepu sa neotvorilo ----------------------------------
+# Kym `heart_rate._udp_loop` pri zlyhani vazby ticho skoncil, appka posielajuca
+# len UDP/OSC (iPhone) nemala ako prist a hrac nevidel preco. TCP (appky pre
+# OBS) pritom bezi dalej - preto riadok v denniku hovori aj to, co funguje, a
+# stitok pri prepinaci "len cez TCP" (`_hr_status_display`), nie "obsadeny
+# port" ako pri TCP. SK/EN rucne, 7 jazykov pod nimi, cs/bg v `i18n_cs_bg.py`.
+STRINGS.update({
+    'log.hr_udp_busy': _sk_en(
+        'UDP port {port} drží iný program, takže tep cez UDP/OSC (napr. '
+        'z iPhonu) nepríde. Appky pre OBS (TCP) fungujú ďalej. Zavri ten '
+        'program a „Počúvať tep z hodiniek“ vypni a zapni.',
+        'Another program holds UDP port {port}, so heart rate over UDP/OSC '
+        '(e.g. from an iPhone) won’t arrive. Apps for OBS (TCP) keep working. '
+        'Close that program, then turn “Listen for heart rate from the watch” '
+        'off and on.'),
+    'log.hr_udp_error': _sk_en(
+        'UDP na porte {port} sa nepodarilo otvoriť ({err}), takže tep cez '
+        'UDP/OSC (napr. z iPhonu) nepríde. Appky pre OBS (TCP) fungujú ďalej.',
+        'Couldn’t open UDP on port {port} ({err}), so heart rate over UDP/OSC '
+        '(e.g. from an iPhone) won’t arrive. Apps for OBS (TCP) keep working.'),
+    'settings.hr_status_udp_off': _sk_en(
+        'Počúvam len cez TCP — UDP sa neotvorilo',
+        'Listening on TCP only — UDP didn’t open'),
+})
+_tr7('log.hr_udp_busy', 'UDP ポート {port} は別のプログラムが使用中のため、UDP/OSC の心拍（例：iPhone から）は届きません。OBS 用アプリ（TCP）はそのまま動きます。そのプログラムを閉じてから、「時計から心拍を受け取る」をオフにして再びオンにしてください。', 'UDP 端口 {port} 被其他程序占用，因此通过 UDP/OSC 发送的心率（例如来自 iPhone）收不到。OBS 用的应用（TCP）照常工作。关闭那个程序，然后把“接收手表的心率”关掉再打开。', 'UDP-порт {port} занят другой программой, поэтому пульс по UDP/OSC (например, с iPhone) не придёт. Приложения для OBS (TCP) работают дальше. Закрой ту программу, затем выключи и снова включи «Слушать пульс с часов».', 'Otro programa tiene el puerto UDP {port}, así que el pulso por UDP/OSC (p. ej., desde un iPhone) no llegará. Las apps para OBS (TCP) siguen funcionando. Cierra ese programa y luego desactiva y vuelve a activar «Escuchar el pulso del reloj».', 'Ein anderes Programm belegt den UDP-Port {port}, daher kommt der Puls über UDP/OSC (z. B. vom iPhone) nicht an. Apps für OBS (TCP) funktionieren weiter. Schließe dieses Programm und schalte dann „Puls von der Uhr empfangen“ aus und wieder ein.', 'Un autre programme occupe le port UDP {port}, donc le pouls via UDP/OSC (par ex. depuis un iPhone) n’arrivera pas. Les apps pour OBS (TCP) continuent de fonctionner. Ferme ce programme, puis désactive et réactive « Écouter le pouls de la montre ».', 'Outro programa está usando a porta UDP {port}, então o pulso via UDP/OSC (por ex., de um iPhone) não vai chegar. Os apps para OBS (TCP) continuam funcionando. Feche esse programa e depois desligue e ligue de novo “Ouvir o pulso do relógio”.')
+_tr7('log.hr_udp_error', 'ポート {port} の UDP を開けませんでした（{err}）。UDP/OSC の心拍（例：iPhone から）は届きません。OBS 用アプリ（TCP）はそのまま動きます。', '无法打开端口 {port} 上的 UDP（{err}），因此通过 UDP/OSC 发送的心率（例如来自 iPhone）收不到。OBS 用的应用（TCP）照常工作。', 'Не удалось открыть UDP на порту {port} ({err}), поэтому пульс по UDP/OSC (например, с iPhone) не придёт. Приложения для OBS (TCP) работают дальше.', 'No se pudo abrir UDP en el puerto {port} ({err}), así que el pulso por UDP/OSC (p. ej., desde un iPhone) no llegará. Las apps para OBS (TCP) siguen funcionando.', 'UDP auf Port {port} konnte nicht geöffnet werden ({err}), daher kommt der Puls über UDP/OSC (z. B. vom iPhone) nicht an. Apps für OBS (TCP) funktionieren weiter.', 'Impossible d’ouvrir l’UDP sur le port {port} ({err}), donc le pouls via UDP/OSC (par ex. depuis un iPhone) n’arrivera pas. Les apps pour OBS (TCP) continuent de fonctionner.', 'Não foi possível abrir o UDP na porta {port} ({err}), então o pulso via UDP/OSC (por ex., de um iPhone) não vai chegar. Os apps para OBS (TCP) continuam funcionando.')
+_tr7('settings.hr_status_udp_off', 'TCP のみで待ち受け中 — UDP を開けませんでした', '仅通过 TCP 监听 — UDP 未能打开', 'Слушаю только по TCP — UDP не открылся', 'Escuchando solo por TCP — UDP no se abrió', 'Nur über TCP — UDP ließ sich nicht öffnen', 'À l’écoute en TCP seulement — l’UDP ne s’est pas ouvert', 'Ouvindo só por TCP — o UDP não abriu')
 
 
 # ==========================================================================

@@ -25,7 +25,7 @@ Zanshin is a subtle companion against both. It's meant to keep you from burning 
 
 ## What it is
 
-A **local-first heart-rate companion for gamers.** It runs on your own machine. It listens to your heartbeat, shows a quiet heads-up readout, and offers gentle cues — *take a breath, unclench your jaw, feel the ground*. The voice waits for a **short pause in your input** — about 2.5 seconds with no key, mouse or controller — once your load has stopped climbing, and never while your pulse is in the Peak zone (at or above your own high heart-rate limit). The app can't see the game, so a still moment in the middle of a fight can count as a pause too. If no pause comes, at most a small silent picture appears, under the same rules.
+A **local-first heart-rate companion for gamers.** It runs on your own machine. It listens to your heartbeat, shows a quiet heads-up readout, and offers gentle cues — *take a breath, unclench your jaw, feel the ground*. The voice waits for a **short pause in your input** — about 2.5 seconds with no key, mouse or controller — once your load has stopped climbing, and never while your pulse is in the Peak zone (at or above your high heart-rate limit — 110 BPM until the app has learned yours). The app can't see the game, so a still moment in the middle of a fight can count as a pause too. If no pause comes, at most a small silent picture appears, under the same rules.
 
 The heart is the honest signal. The cue is just a door, delivered at the right moment.
 
@@ -53,7 +53,7 @@ Zanshin is neither clenched fear nor reckless abandon. It is relaxed, present re
 Ship it true, not perfect. Say out loud what it can't do. If a line of text promises more than the code delivers, the line is the bug — fix the words until they're true, and name plainly whatever can't be fixed yet. Truth without varnish.
 
 **4. Open — freely inherited, freely passed on.**
-The code is free and open under the GPLv3. Nothing this app does was invented here — the breathing, the focus, the unclenched jaw, the research behind it, the tools it's built with. It stands on the shoulders of giants who left their work in the open, and it stays open so the next person can read it, change it, and carry it on. What is passed on this way can never be closed. Only two pictures stay the author's own — the app icon and the dojo artwork (see LICENSE-DESIGN.md). Whoever carries the code on names their version as their own, never as the original.
+The code is free and open under the GPLv3 or later. Nothing this app does was invented here — the breathing, the focus, the unclenched jaw, the research behind it, the tools it's built with. It stands on the shoulders of giants who left their work in the open, and it stays open so the next person can read it, change it, and carry it on. What is passed on this way can never be closed. Only two pictures stay the author's own — the app icon and the dojo artwork (see LICENSE-DESIGN.md). Whoever carries the code on names their version as their own, never as the original.
 
 **5. Whisper, don't shout.**
 A companion, not a coach barking over your shoulder. Subtle by design. It shows up small, in the corner of the eye, and lets you keep playing.

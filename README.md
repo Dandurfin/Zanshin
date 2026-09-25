@@ -14,14 +14,14 @@ and breathe.
 > computer. There is no telemetry, no analytics, and no account. The one thing
 > that normally reaches the internet is the online TTS voice, which is **on by
 > default**: to turn your reminders into speech, it sends Microsoft the wording
-> of those in your current profile that are set to speak, including ones you've
-> switched off or replaced with your own recording, with the voice and speed
-> you picked (like any connection, it also shows Microsoft your IP address).
+> of those in your current profile that are switched on and set to speak
+> (not ones that play your own recording), with the voice and speed you
+> picked (like any connection, it also shows Microsoft your IP address).
 > It sends nothing new while Zanshin is listening (the state you switch with
 > Start / Stop; it has nothing to do with the microphone), and a line already
 > on its way when listening starts is finished. Switch to the
-> offline Windows voice (Settings → Sound) to keep even that local; lines
-> already being prepared at that moment are still sent.
+> offline Windows voice (Settings → Sound) to keep even that local; that stops
+> any preparing at once, except a line already on its way.
 > Everything that can use the network is listed in **[PRIVACY.md](PRIVACY.md)**.
 > That includes the heart-rate port (`4455` by default). It stays closed until
 > you open the watch pairing guide or switch on *Listen for heart rate from the
@@ -113,23 +113,30 @@ and breathe.
   limit learn from. Skip the question and it stays where it started.
 - **Two TTS engines.** The *natural voice (Edge)* is the default: neural
   voices, prepared ahead of time into a local cache, so in-game nothing waits
-  on the network. Preparing sends a line's wording to Microsoft, only for
-  lines not yet in the cache. That happens the first time, and again after you
-  change a line (while you type, a pause of about 0.7 s is enough, so a
-  half-typed line can go too) or switch it to speak, or change the voice, the
-  speed, the profile or the language (when that changes the voice), and after
-  you switch back to the voice style, to Play or to the natural voice. Testing
-  a line that isn't ready, or *Prepare voice lines* in the Ctrl+K palette,
-  sends the missing ones too. It happens only in the voice style and the Play
-  world (not in the sound or picture-only style, not in Work), and it still
-  happens while the app has quietened itself to picture only or a pause.
-  **Nothing new is prepared while Zanshin is listening** (a line already on
-  its way when listening starts is finished): a line that isn't ready then
-  plays in the Windows voice, and preparing waits until listening stops. On
-  the very first start Zanshin begins listening by itself right after the
-  introduction, so most lines are prepared only after you stop listening for
-  the first time, or at the next start if you quit while listening. The
-  *Windows voice (SAPI5)* works fully offline.
+  on the network. Preparing sends Microsoft a reminder's wording only if it is
+  one of the four, switched on, set to speak and not playing your own
+  recording, and only if its line isn't in the cache yet. That happens at
+  every start (the first time for all of them), and again after you change a
+  line (while you type, a pause of about 0.7 s is enough, so a half-typed line
+  can go too), switch it on, switch it to speak or remove its own recording,
+  change the voice, the speed, the profile (or create one) or the language
+  (when that changes the voice), import a profile, and after you switch back
+  to the voice style, to Play or to the natural voice. Testing a line that isn't ready, or *Prepare voice lines* in the
+  Ctrl+K palette, sends the missing ones too; testing a switched-off reminder,
+  or an extra one kept from 0.1, plays the Windows voice and sends nothing. It
+  happens only in the voice style and the Play world (not in the sound or
+  picture-only style, not in Work), and it still happens while the app has
+  quietened itself to picture only or a pause. Switching a reminder off,
+  giving it your own recording, changing or creating a profile, or switching
+  to the sound or picture-only style, to Work or to the Windows voice stops
+  any preparing already running at once; only a line already on its way is
+  finished. **Nothing new is prepared while Zanshin is listening** (a line
+  already on its way when listening starts is finished): a line that isn't
+  ready then plays in the Windows voice, and preparing waits until listening
+  stops. On the very first start Zanshin begins listening by itself right
+  after the introduction, so most lines are prepared only after you stop
+  listening for the first time, or at the next start if you quit while
+  listening. The *Windows voice (SAPI5)* works fully offline.
 - **Built-in SFX library.** Eight short sounds in two sets of four, *Zen* and
   *Modern*, shipped with the app. Play cues use the Zen set unless you pick
   another sound for a reminder; Work cues make no sound. If a sound file goes
@@ -284,6 +291,13 @@ can reach that port could send it a heart-rate value. Only your firewall
 decides who can: allow Zanshin on your home network only, not on public Wi-Fi
 (details in [PRIVACY.md](PRIVACY.md)).
 
+If another program already holds UDP port `4455` (or Windows won't open it),
+Zanshin keeps listening on TCP, so the Android route below still works. It
+says so in its log, and next to the switch it shows *Listening on TCP only —
+UDP didn’t open* until something connects. OSC and plain-UDP companions,
+PulseOSC included, can't reach it then. It doesn't retry UDP by itself: close
+that program, then switch *Listen for heart rate from the watch* off and on.
+
 That app is a **third‑party companion you install on your phone or watch — made by someone else, not part of Zanshin.** It reads
 your heart rate there and sends it to Zanshin on this PC. The QR codes
 shown in Zanshin are just **download links** to those companion apps (they open
@@ -406,7 +420,10 @@ is part of the built app:
   Bulgarian is still the English text).
 - `check_sources.py` — opens the three study links shown in the Guide and
   reports the dead ones; it doesn't check the longer list in `ZDROJE.md`. It
-  needs the internet and contacts each linked site.
+  needs the internet and contacts each linked site. If no site answers and
+  every link fails on the network (name lookup, unreachable network or a
+  timeout), it says you're offline, checks nothing and exits with 0 instead of
+  reporting the links as dead.
 - `simulate.py` — plays synthetic evenings through the app's own heart-rate,
   activity, trigger and measurement code and says what the cues would have
   done. It checks the mechanism, not whether the thresholds fit your body. Its
@@ -474,7 +491,7 @@ Author: **Dandurfin** — [Twitch](https://www.twitch.tv/dandurfin) ·
 | `app_hud.py` | Part of the main window (a mixin of `DandurfApp`): the in-game heart-rate panel (HUD) and its row of 4 icons, the language of what the app draws into the game, choosing the monitor, the heart-rate indicator in the sidebar, pairing the watch, and setting up and testing the in-game visuals |
 | `app_prefs.py` | Part of the main window (a mixin of `DandurfApp`): switching language, world (play / work) and theme; loading and saving your settings, volume and balance |
 | `app_profiles.py` | Part of the main window (a mixin of `DandurfApp`): the cue slots of the active profile, game profiles (switching, creating, deleting) and the auto-profile (switching to a game's profile while that game runs) |
-| `app_session.py` | Part of the main window (a mixin of `DandurfApp`): the heart-rate sensor (its settings, turning it on and off, receiving heart rate, steps and connection state, dropouts, a busy port, hiding this PC's IP on screen), opening a measuring session with its thresholds, and the regular ticks: four times a second whether you're at the keyboard (which also drives the cue trigger), once a second the "last cue" line |
+| `app_session.py` | Part of the main window (a mixin of `DandurfApp`): the heart-rate sensor (its settings, turning it on and off, receiving heart rate, steps and connection state, dropouts, a busy port (TCP is retried, a UDP port that won't open is reported), hiding this PC's IP on screen), opening a measuring session with its thresholds, and the regular ticks: four times a second whether you're at the keyboard (which also drives the cue trigger), once a second the "last cue" line |
 | `app_spolocne.py` | Names shared by `app.py` and its mixins (the app logger, language names for the switch, the "not now" shortcut defaults, PIL's `ImageTk`) |
 | `app_today.py` | Part of the main window (a mixin of `DandurfApp`): the "Today" page — drawing its animated centre, the live heart-rate, load and session block, delivering the automatic cue, and the "My stats" cards (choosing them, their values, swapping them by dragging) |
 | `paths.py` | Where data lives (`%APPDATA%\Zanshin` for the built app, next to `main.py` from source); the built app also copies data over from older versions |

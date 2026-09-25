@@ -394,6 +394,24 @@ class SessionMixin:
             self.log(tr("log.hr_bind_fallback",
                         ip=netinfo.ip_for_screen(payload, self.show_ip)))
             return
+        if kind in ("udp_busy", "udp_error"):
+            # UDP SA NEOTVORILO, TCP BEZI. Nie "busy"/"error" nizsie: tie
+            # zatvaraju relaciu a vypinaju senzor, lenze appky pre OBS (TCP)
+            # tu funguju dalej a nesmu o tep prist. Staci riadok do dennika
+            # a vlastny text pri prepinaci (`_hr_status_display`).
+            # Priznak nesie generaciu behu: RAZ za beh, a novy beh (restart,
+            # iny port, dalsi pokus po obsadenom TCP) ho zahodi sam - netreba
+            # ho rucne nulovat na kazdom mieste, kde sa vola `start()`.
+            if getattr(self, "_hr_udp_off_gen", None) == self._hr_generation:
+                return
+            self._hr_udp_off_gen = self._hr_generation
+            if kind == "udp_busy":
+                self.log(tr("log.hr_udp_busy", port=payload))
+            else:
+                port, err = payload
+                self.log(tr("log.hr_udp_error", port=port, err=err))
+            self.refresh_hr_status_label()
+            return
         if kind == "client":
             # hodinky drzia spojenie - to este NEznamena, ze posielaju tep
             self._cancel_no_client_check()      # klient prisiel (B2)
@@ -560,7 +578,10 @@ class SessionMixin:
         self.log(tr("log.hr_overlay_disabled"))
 
     def _retry_hr_bind(self):
-        """Skusi znova otvorit UDP prijem po obsadenom porte.
+        """Skusi znova otvorit prijem po obsadenom TCP porte ("busy").
+
+        Obsadeny UDP port sem NEVEDIE - ten ma vlastnu vetvu v
+        `_apply_hr_status` ("udp_busy") a neopakuje sa, TCP bezi dalej.
 
         Nevola `on_hr_toggle` - prepinac je stale zapnuty a nesmie sa hybat.
         Otvara priamo novy socket, rovnako ako `_open_hr_session` pri starte.
@@ -585,7 +606,7 @@ class SessionMixin:
             self._open_hr_session(prepoj=False, meria=self.listening)
             self._schedule_no_client_check()   # čerstvých 20 s na klienta (B2)
         except Exception:
-            app_log.exception("opakovana vazba na UDP port zlyhala")
+            app_log.exception("opakovana vazba na port tepu zlyhala")
 
     def _hr_status_display(self):
         pal = self.pal
@@ -603,6 +624,14 @@ class SessionMixin:
         if self._hr_state == "busy_gave_up":
             # Pokusy vycerpane - uz to neskusa, tak to ani netvrdi (B3).
             return tr("settings.hr_status_busy_gave_up"), pal["danger"]
+        if (self._hr_state in ("connecting", "no_client") and self._hr_generation
+                and getattr(self, "_hr_udp_off_gen", None) == self._hr_generation):
+            # UDP sa v tomto behu neotvorilo. Kym sa nikto nepripojil, je to
+            # najpravdepodobnejsi dovod pre appky, ktore posielaju len UDP/OSC
+            # (iPhone) - bez toho by hrac videl len "Pripaja sa...". Ked uz
+            # hodinky drzia TCP spojenie alebo chodi tep, UDP nechyba nikomu
+            # a stitok ukazuje skutocny stav spojenia.
+            return tr("settings.hr_status_udp_off"), pal["warn"]
         if self._hr_state == "connecting":
             return tr("settings.hr_status_connecting"), pal["text_dim"]
         if self._hr_state == "no_client":

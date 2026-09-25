@@ -176,7 +176,9 @@ class HeartRateMonitor:
 
     `on_bpm(bpm, generation)` sa vola pri kazdej prijatej platnej hodnote,
     `on_status((kind, payload), generation)` pri zmene stavu pripojenia -
-    kind je "connecting" | "disconnected" | "error" | "bound_any".
+    kind je "connecting" | "disconnected" | "error" | "busy" | "bound_any"
+    | "client" | "client_gone" | "udp_busy" | "udp_error". Posledne dva
+    znamenaju "UDP sa neotvorilo, TCP bezi dalej" - beh nekonci.
     Oba callbacky pridu z pozadoveho vlakna, volajuci si ich musi sam
     preplanovat do GUI vlakna (viz DandurfApp.ui_call) a mal by zahodit
     tie, ktorych `generation` uz nie je aktualna."""
@@ -416,10 +418,34 @@ class HeartRateMonitor:
 
     def _udp_loop(self, host, port, run):
         """Zaloha pre appky, ktore posielaju obycajne UDP datagramy."""
+        # UZ ZASTAVENY BEH PORT NEBERIE. `_serve` spusta toto vlakno az po
+        # `_notify("connecting")`, ktore z cudzieho vlakna caka na GUI - a
+        # medzitym moze byt beh zastaveny a novy uz otvara ten isty port.
+        # Keby stary beh port chytil (a hned pustil), novy by dostal "port
+        # drzi iny program", hoci ho drzal na chvilu len Zanshin sam.
+        if run.stop_event.is_set():
+            return
         try:
             sock, _ = self._bind(socket.SOCK_DGRAM, host, port)
-        except OSError:
-            return              # UDP je bonus, jeho zlyhanie beh nezhodi
+        except OSError as exc:
+            if run.stop_event.is_set():
+                return      # zastaveny beh nehlasi nic, ani do app.log
+            # UDP je bonus - jeho zlyhanie beh NEZHODI, TCP (appky pre OBS)
+            # bezi dalej. Ale uz nie potichu: doteraz tu bol holy `return`,
+            # takze hrac s appkou, ktora posiela len UDP/OSC (napr. z iPhonu),
+            # pozeral na "Pripaja sa..." bez jedinej stopy preco. Preto
+            # vlastne druhy "udp_busy"/"udp_error" - nie "busy"/"error", tie
+            # by appka pochopila ako padnuty TCP a zhodila cely prijem.
+            # Hlasi sa RAZ za beh: vazba sa v jednom behu skusa len tu.
+            # Do suboru len port a chyba - adresa PC do app.log nejde
+            # (strazi to tests/test_ip_skryta.py).
+            log.warning("HR/UDP: port %d sa nepodarilo otvorit (%s), "
+                        "prijem ide len cez TCP", port, exc)
+            if _err_no(exc) in _PORT_BUSY_ERRNOS:
+                self._notify(self.on_status, ("udp_busy", port), run)
+            else:
+                self._notify(self.on_status, ("udp_error", (port, str(exc))), run)
+            return
         if not run.add(sock):
             sock.close()
             return

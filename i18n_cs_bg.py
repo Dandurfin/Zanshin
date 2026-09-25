@@ -393,7 +393,7 @@ CS = {
     'overlay.fine_tune': 'Doladit velikost a polohu vizuálů…',
     'settings.look_title': 'Vzhled a jazyk',
     'settings.language': 'Jazyk',
-    'settings.language_sub': 'Mění se i jazyk ukázkových hlášek.',
+    'settings.language_sub': 'Texty hlášek, které už máš, se nezmění.',
     'settings.behaviour_title': 'Chování',
     'settings.strict_global_lock_short': 'Naráz jen jedna připomínka',
     'settings.strict_global_lock_sub': 'Dokud jedna hraje, ostatní spouštěče mlčí — jinak se v husté přestřelce překrývají.',
@@ -966,6 +966,10 @@ CS = {
     # 0.2.1: "teraz nie" aj v ponuke ikony v liste (i18n.py, koniec suboru)
     'tray.snooze': 'Teď ne ({minutes} min)',
     'log.hotkey_failed_tray': 'Zkratku {combo} drží jiná aplikace, takže nepůjde. „Teď ne“ najdeš i v nabídce ikony na liště (pravé kliknutí). Poslouchání to nezastaví.',
+    # 0.2.1: UDP na porte tepu sa neotvorilo (i18n.py, koniec suboru)
+    'log.hr_udp_busy': 'UDP port {port} drží jiný program, takže tep přes UDP/OSC (např. z iPhonu) nepřijde. Appky pro OBS (TCP) fungují dál. Zavři ten program a „Poslouchat tep z hodinek“ vypni a zapni.',
+    'log.hr_udp_error': 'UDP na portu {port} se nepodařilo otevřít ({err}), takže tep přes UDP/OSC (např. z iPhonu) nepřijde. Appky pro OBS (TCP) fungují dál.',
+    'settings.hr_status_udp_off': 'Poslouchám jen přes TCP — UDP se neotevřelo',
 }
 
 BG = {
@@ -1348,7 +1352,7 @@ BG = {
     'overlay.fine_tune': 'Нагласи размера и позицията на визуалите…',
     'settings.look_title': 'Облик и език',
     'settings.language': 'Език',
-    'settings.language_sub': 'Сменя се и езикът на примерните подсказки.',
+    'settings.language_sub': 'Подсказките, които вече имаш, запазват текста си.',
     'settings.behaviour_title': 'Поведение',
     'settings.strict_global_lock_short': 'Само едно напомняне наведнъж',
     'settings.strict_global_lock_sub': 'Докато едно звучи, другите тригери мълчат — иначе в гъста престрелка се застъпват.',
@@ -1921,4 +1925,8 @@ BG = {
     # 0.2.1: "teraz nie" aj v ponuke ikony v liste (i18n.py, koniec suboru)
     'tray.snooze': 'Не сега ({minutes} мин)',
     'log.hotkey_failed_tray': 'Комбинацията {combo} е заета от друго приложение, така че няма да работи. „Не сега“ има и в менюто на иконата в трея (десен клик). Слушането не спира.',
+    # 0.2.1: UDP na porte tepu sa neotvorilo (i18n.py, koniec suboru)
+    'log.hr_udp_busy': 'UDP портът {port} е зает от друга програма, така че пулсът по UDP/OSC (напр. от iPhone) няма да пристига. Приложенията за OBS (TCP) продължават да работят. Затвори тази програма и после изключи и включи отново „Слушай пулса от часовника“.',
+    'log.hr_udp_error': 'UDP на порт {port} не можа да се отвори ({err}), така че пулсът по UDP/OSC (напр. от iPhone) няма да пристига. Приложенията за OBS (TCP) продължават да работят.',
+    'settings.hr_status_udp_off': 'Слушам само по TCP — UDP не се отвори',
 }

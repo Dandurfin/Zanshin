@@ -130,7 +130,8 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
     # (to je faza 3) - toto je jediny vypinac a da sa v dev vrstve otocit.
     KEY_SLOTS_ENABLED = False
 
-    # Obsadeny UDP port: kolkokrat a po akom case sa skusi vazba znova.
+    # Obsadeny TCP port: kolkokrat a po akom case sa skusi vazba znova.
+    # (Obsadeny UDP sa neopakuje - TCP bezi dalej, viz "udp_busy".)
     # Tri pokusy po 8 s prekleni beznu pricinu - druha instancia appky, ktora
     # sa prave zatvara. Dlhsie uz nie je docasne.
     HR_BIND_RETRIES = 3

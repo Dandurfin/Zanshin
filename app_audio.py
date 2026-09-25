@@ -11,8 +11,9 @@ Pat sekcii presunutych z app.py bez zmeny:
     hlasu; sekcia nesie aj `_apply_diagnostics` (ktore sloty zapnut podla
     diagnostiky z onboardingu), ktora v nej bola uz v app.py,
   * hlasy - zoznamy hlasov SAPI / Edge, vyber motora, hlasu a rychlosti,
-  * predgenerovanie Edge hlasok - priprava hlasok do cache dopredu (pocas
-    pocuvania sa odklada na po hre),
+  * predgenerovanie Edge hlasok - priprava hlasok do cache dopredu (len
+    tych, ktore v hre naozaj povie prirodzeny hlas; pocas pocuvania sa
+    odklada na po hre),
   * rozhodovanie o SFX subore - ktory zvuk slot zahra a samotne prehratie
     slotu (`_emit`, `_speak_text`, vlastna nahravka hlasu).
 
@@ -38,7 +39,7 @@ from i18n import tr
 from paths import APP_NAME
 from settings_model import (DEFAULT_EDGE_VOICE, ENGINE_EDGE, ENGINE_SAPI,
                             MODE_COMBO, MODE_SFX, MODE_TTS,
-                            engine_labels, label_to_engine)
+                            engine_labels, je_kategoria, label_to_engine)
 
 
 class AudioMixin:
@@ -228,6 +229,9 @@ class AudioMixin:
                 self._load_edge_voices(pregen=False)
             self.pregenerate()
         else:
+            # Kto prepol na hlas z Windows, nechce nic posielat Microsoftu -
+            # ani zvysok pripravy, ktora prave bezi. Doteraz dobehla cela.
+            self._zrus_rozbehnutu_pripravu()
             self.set_edge_status("")
 
     def on_voice_change(self):
@@ -276,8 +280,30 @@ class AudioMixin:
         return (styl == rebrik.STYL_HLAS
                 and rebrik.vrchol(getattr(self, "world", None), styl) == rebrik.HLAS)
 
+    def _slot_na_pripravu(self, slot):
+        """Moze text tejto hlasky v hre naozaj povedat prirodzeny hlas?
+
+        Len vtedy sa smie poslat Microsoftu na pripravu. Doteraz sa posielali
+        texty vsetkych slotov s hlasom, aj tych, ktore Edge nikdy nevyslovi:
+          * vypnutej hlasky - `_dalsi_cue_slot` ju v hre preskakuje,
+          * hlasky s vlastnou nahravkou - `_speak_text` prehra nahravku,
+            nie TTS (ta ista podmienka ako tam, `_slot_voice_clip`),
+          * slotu navyse z 0.1 (index 4+, "+ Pridat spustac") - nema
+            kategoriu ani obrazok a appka ho sama nespusta
+            (`settings_model.je_kategoria`).
+        Ked sa hlaska neskor zapne alebo sa jej zmaze nahravka, pripravu
+        znova spusti ta zmena (`schedule_pregenerate`).
+        """
+        return bool(
+            je_kategoria(slot.index)
+            and slot.enabled_value
+            and slot.mode in (MODE_TTS, MODE_COMBO)
+            and slot.text_value.strip()
+            and not self._slot_voice_clip(slot))
+
     def pregen_jobs(self):
-        """[(text, hlas)] pre vsetky TTS/kombinovane sloty - respektuje hlas kazdeho slotu.
+        """[(text, hlas)] pre hlasky, ktore v hre povie prirodzeny hlas
+        (`_slot_na_pripravu`) - respektuje hlas kazdeho slotu.
 
         Prazdne, ked hlasky v hre nehovoria (`_hlasky_hovoria`): hracovi,
         ktory zvolil len obrazok alebo zvuk bez slov, alebo je vo svete
@@ -287,7 +313,7 @@ class AudioMixin:
             return []
         jobs = []
         for slot in self.slots:
-            if slot.mode not in (MODE_TTS, MODE_COMBO) or not slot.text_value.strip():
+            if not self._slot_na_pripravu(slot):
                 continue
             voice = slot.voice_edge or self.edge_voice_id
             pair = (slot.text_value, voice)
@@ -295,7 +321,24 @@ class AudioMixin:
                 jobs.append(pair)
         return jobs
 
+    def _zrus_rozbehnutu_pripravu(self):
+        """Zvysok rozbehnutej pripravy uz na siet nepojde.
+
+        Vlakno pripravy (`work` v `pregenerate`) sa na svoje `seq` pyta pred
+        kazdou dalsou hlaskou aj tesne pred odoslanim (`abort` po ziskani
+        zamku cache). Hlaska, ktora uz leti, dobehne - dalsia sa nezacne.
+        Rovnako ako ked sa zapne pocuvanie.
+        """
+        self._pregen_seq += 1
+
     def schedule_pregenerate(self, delay_ms=700):
+        # Kazda zmena, ktora pripravu planuje (hlaska vypnuta, styl bez slov,
+        # svet Praca, iny text/hlas/rychlost...), meni aj to, co sa smie
+        # poslat. Stara priprava preto konci HNED, nie az po `delay_ms` -
+        # za ten cas by mohla zacat posielat hlasku, ktora uz nezaznie.
+        # Nova priprava si po odklade zisti, co este chyba (hotove hlasky
+        # su v cache a na siet nejdu).
+        self._zrus_rozbehnutu_pripravu()
         if self.engine != ENGINE_EDGE:
             return
         if self._pregen_job is not None:
@@ -307,6 +350,12 @@ class AudioMixin:
 
     def pregenerate(self, force=False):
         self._pregen_job = None
+        # Kazde volanie zacina odznova - aj ked vyjde, ze netreba nic (iny
+        # motor, styl bez slov, Praca, vsetky hlasky vypnute). Doteraz sa
+        # `seq` zvysoval az pri neprazdnom zozname, takze priprava rozbehnuta
+        # predtym dobehla cela, hoci jej hlasky uz nemali zazniet.
+        self._zrus_rozbehnutu_pripravu()
+        seq = self._pregen_seq
         if self.engine != ENGINE_EDGE or not audio_engine.EDGE_AVAILABLE:
             return
         rate = self.rate_value
@@ -315,8 +364,6 @@ class AudioMixin:
             self.set_edge_status("")
             return
 
-        self._pregen_seq += 1
-        seq = self._pregen_seq
         if not force and all(self.edge_cache.has(t, v, rate) for t, v in jobs):
             self.set_edge_status(tr("edge.ready"), self.pal["success"])
             self._prune_cache(jobs, rate)
@@ -455,9 +502,11 @@ class AudioMixin:
                 else:
                     self.audio.play_tts(path)
                 return
-            if not self._hlasky_hovoria():
-                # Styl bez slov / svet Praca: hlasky v hre nehovoria, takze sa
-                # nic nepripravuje (`pregen_jobs`) - ukazka zaznie cez SAPI.
+            if not self._hlasky_hovoria() or not self._slot_na_pripravu(slot):
+                # Styl bez slov / svet Praca, alebo hlaska, ktoru v hre Edge
+                # nepovie (vypnuta, slot navyse z 0.1): nic sa pre nu
+                # nepripravuje (`pregen_jobs`) - Test/ukazka zaznie cez SAPI
+                # a dennik neslubuje pripravu, ktora nepride.
                 pass
             elif getattr(self, "listening", False):
                 # Pocas hry sa na Microsoft nechodi: hlaska zaznie hlasom
