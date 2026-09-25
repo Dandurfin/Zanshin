@@ -3951,15 +3951,15 @@ STRINGS.update({
         # "alfa 0.2", nie "2.1": cislovanie 2.x bolo z casov, ked appka
         # mierila na Steam ako pokracovanie predchodcu. Na GitHub ide ako
         # to, cim naozaj je - prva verejna alfa.
-        'sk': 'alfa 0.2',
-        'en': 'alpha 0.2',
-        'ja': 'alpha 0.2',
-        'zh': 'alpha 0.2',
-        'ru': 'alpha 0.2',
-        'es': 'alpha 0.2',
-        'de': 'alpha 0.2',
-        'fr': 'alpha 0.2',
-        'pt': 'alpha 0.2',
+        'sk': 'alfa 0.2.1',
+        'en': 'alpha 0.2.1',
+        'ja': 'alpha 0.2.1',
+        'zh': 'alpha 0.2.1',
+        'ru': 'alpha 0.2.1',
+        'es': 'alpha 0.2.1',
+        'de': 'alpha 0.2.1',
+        'fr': 'alpha 0.2.1',
+        'pt': 'alpha 0.2.1',
     },
     'nav.dnes': {
         'sk': 'Dnes',
@@ -5906,7 +5906,10 @@ STRINGS.update({
     'log.hotkey_on': _sk_en('Klávesová skratka {combo} je pripravená — stíši ma na pol hodiny', 'Hotkey {combo} is ready — it will quiet me for half an hour'),
     # 24. 9.: "teraz nie" uz nie je zastavenie - spinac v pase a ikona v
     # lište zastavia aj meranie, tak to veta hovori narovinu.
-    'log.hotkey_failed': _sk_en('Skratku {combo} drží iná aplikácia, takže „teraz nie“ nepôjde. Umlčať ma vieš zastavením v páse hore alebo cez ikonu v lište — tým však prestanem aj merať.', 'Another app holds {combo}, so “not now” won’t work. You can still stop me in the top bar or from the tray icon — but then I stop measuring too.'),
+    # 0.2.1: tato veta ide do dennika uz len BEZ ikony v liste (chyba
+    # pystray/PIL) - s listou ide `log.hotkey_failed_tray`. Ikonu v liste
+    # preto nemenuje: tam, kde sa ukaze, ziadna nie je.
+    'log.hotkey_failed': _sk_en('Skratku {combo} drží iná aplikácia, takže „teraz nie“ nepôjde. Umlčať ma vieš zastavením v páse hore — tým však prestanem aj merať.', 'Another app holds {combo}, so “not now” won’t work. You can still stop me in the top bar — but then I stop measuring too.'),
     'log.snooze_started': _sk_en('Teraz nie: {minutes} minút sa neozvem. Počúvanie to nezastaví.', 'Not now: I won’t speak up for {minutes} minutes. It doesn’t stop listening.'),
     'log.snooze_ended': _sk_en('Stíšenie skončilo', 'Snooze ended'),
     'log.snooze_cancelled': _sk_en('Stíšenie zrušené', 'Snooze cancelled'),
@@ -6247,7 +6250,7 @@ def _tr7(key, ja, zh, ru, es, de, fr, pt):
 # --- davka 1: navigacia, dok, onboarding, spustace ------------------------
 # „alpha" sa nechava v anglickom tvare aj v ostatnych jazykoch - je to
 # zauzivane oznacenie stadia, nie slovo na prekladanie.
-_tr7('app.version_short', 'alpha 0.2', 'alpha 0.2', 'alpha 0.2', 'alpha 0.2', 'Alpha 0.2', 'alpha 0.2', 'alpha 0.2')
+_tr7('app.version_short', 'alpha 0.2.1', 'alpha 0.2.1', 'alpha 0.2.1', 'alpha 0.2.1', 'Alpha 0.2.1', 'alpha 0.2.1', 'alpha 0.2.1')
 _tr7('common.open', '開く', '打开', 'Открыть', 'Abrir', 'Öffnen', 'Ouvrir', 'Abrir')
 _tr7('dialog.timing_title', 'タイミング', '时机', 'Тайминг', 'Tiempos', 'Timing', 'Rythme', 'Tempo')
 _tr7('dock.pulse_live_tip', '心拍を受信中', '正在接收心率', 'Пульс поступает', 'Pulso en directo', 'Puls kommt an', 'Le pouls arrive', 'Pulso ao vivo')
@@ -6974,8 +6977,8 @@ for _k, _langs in _DOPLNENE_PREKLADY.items():
     STRINGS.setdefault(_k, {}).update(_langs)
 
 STRINGS.setdefault("app.version_short", {}).update({
-    "ja": "アルファ 0.2", "zh": "Alpha 0.2", "ru": "альфа 0.2",
-    "es": "alfa 0.2", "pt": "alfa 0.2",
+    "ja": "アルファ 0.2.1", "zh": "Alpha 0.2.1", "ru": "альфа 0.2.1",
+    "es": "alfa 0.2.1", "pt": "alfa 0.2.1",
 })
 
 # --- 0.2 B3-worlds: dva svety, jedno telo ----------------------------------
@@ -7351,7 +7354,7 @@ _tr7('hr.ip_show', 'IP を表示', '显示 IP', 'Показать IP', 'Mostrar 
 _tr7('hr.ip_hide', 'IP を隠す', '隐藏 IP', 'Скрыть IP', 'Ocultar IP', 'IP verbergen', 'Masquer l’IP', 'Ocultar IP')
 _tr7('hr.ip_hidden_note', '配信やスクリーンショットに映らないよう、アドレスは隠しています。電話に入力するときは「IP を表示」をクリックしてください。', '我把地址隐藏起来，免得它出现在直播或截图里。点击“显示 IP”后，再把它抄到手机里。', 'Адрес я скрываю, чтобы его не было видно на стриме или скриншоте. В телефон его перепишешь, нажав «Показать IP».', 'Oculto la dirección para que no se vea en el stream ni en una captura de pantalla. Para escribirla en el móvil, pulsa «Mostrar IP».', 'Die Adresse verberge ich, damit sie weder im Stream noch auf einem Screenshot zu sehen ist. Ins Handy überträgst du sie nach einem Klick auf „IP zeigen“.', 'Je masque l’adresse pour qu’on ne la voie ni sur un stream ni sur une capture d’écran. Pour la recopier dans le téléphone, clique sur « Afficher l’IP ».', 'Escondo o endereço para que ele não apareça na stream nem em screenshots. Para digitá-lo no celular, clique em “Mostrar IP”.')
 _tr7('hud.trigger_row.sub', '心拍パネルの下に、4つの合図のアイコンを表示します。見るためだけのもので、ゲーム中のビジュアルの代わりにはなりません — 合図には、ゲーム中のビジュアルが少なくともひとつオンになっている必要があります。', '心率面板下方会显示你四种提示的图标。它们只是用来看的，不能代替游戏中的视觉效果——提示至少需要打开其中一个视觉效果。', 'Под панелью с пульсом появятся значки твоих четырёх подсказок. Они только для вида и не заменяют визуалы в игре — для подсказки должен быть включён хотя бы один из них.', 'Bajo el panel de pulso aparecen los iconos de tus cuatro avisos. Son solo para verlos y no sustituyen a los visuales en el juego — un aviso necesita al menos uno de ellos activado.', 'Unter dem Puls-Panel erscheinen die Symbole deiner vier Hinweise. Sie sind nur zum Anschauen und ersetzen die Visuals im Spiel nicht — ein Hinweis braucht mindestens eins davon eingeschaltet.', 'Sous le panneau de pouls s’affichent les icônes de tes quatre rappels. Elles sont juste là pour l’œil et ne remplacent pas les visuels en jeu — un rappel a besoin qu’au moins l’un d’eux soit activé.', 'Embaixo do painel de pulso aparecem os ícones dos seus quatro avisos. Servem só para ver e não substituem os visuais no jogo — o aviso precisa de pelo menos um deles ativado.')
-_tr7('log.hotkey_failed', 'ショートカット {combo} は別のアプリが使っているため、「今はいい」は使えません。私を黙らせるには、上のバーで停止するか、トレイアイコンから止めてください — ただしそうすると、計測も止まります。', '快捷键 {combo} 被其他应用占用了，所以“现在不要”用不了。你仍然可以在顶部横条或托盘图标里停止我来让我安静——不过那样我也会停止测量。', 'Сочетание {combo} занято другим приложением, так что «не сейчас» не сработает. Заставить меня замолчать можно остановкой в полосе вверху или через значок в трее — но тогда я перестану и измерять.', 'Otra aplicación está usando el atajo {combo}, así que «ahora no» no funcionará. Puedes silenciarme deteniéndome en la barra de arriba o desde el icono de la bandeja — pero entonces también dejo de medir.', 'Das Tastenkürzel {combo} ist von einer anderen Anwendung belegt, deshalb steht „Jetzt nicht“ nicht zur Verfügung. Stumm schalten kannst du mich, indem du mich in der Leiste oben oder über das Symbol in der Taskleiste stoppst — dann höre ich aber auch auf zu messen.', 'Une autre application occupe le raccourci {combo}, donc « pas maintenant » ne marchera pas. Tu peux me faire taire en m’arrêtant dans la barre en haut ou via l’icône de la barre système — mais alors j’arrête aussi de mesurer.', 'Outro aplicativo está usando o atalho {combo}, então o “agora não” não vai funcionar. Para me silenciar, você pode me parar na barra lá em cima ou pelo ícone da bandeja — mas aí eu paro de medir também.')
+_tr7('log.hotkey_failed', 'ショートカット {combo} は別のアプリが使っているため、「今はいい」は使えません。私を黙らせるには、上のバーで停止してください — ただしそうすると、計測も止まります。', '快捷键 {combo} 被其他应用占用了，所以“现在不要”用不了。你仍然可以在顶部横条里停止我来让我安静——不过那样我也会停止测量。', 'Сочетание {combo} занято другим приложением, так что «не сейчас» не сработает. Заставить меня замолчать можно остановкой в полосе вверху — но тогда я перестану и измерять.', 'Otra aplicación está usando el atajo {combo}, así que «ahora no» no funcionará. Puedes silenciarme deteniéndome en la barra de arriba — pero entonces también dejo de medir.', 'Das Tastenkürzel {combo} ist von einer anderen Anwendung belegt, deshalb steht „Jetzt nicht“ nicht zur Verfügung. Stumm schalten kannst du mich, indem du mich in der Leiste oben stoppst — dann höre ich aber auch auf zu messen.', 'Une autre application occupe le raccourci {combo}, donc « pas maintenant » ne marchera pas. Tu peux me faire taire en m’arrêtant dans la barre en haut — mais alors j’arrête aussi de mesurer.', 'Outro aplicativo está usando o atalho {combo}, então o “agora não” não vai funcionar. Para me silenciar, você pode me parar na barra lá em cima — mas aí eu paro de medir também.')
 _tr7('log.snooze_started', '今はいい：{minutes} 分間、声をかけません。監視は止まりません。', '现在不要：{minutes} 分钟内我不会出声。这不会停止监听。', 'Не сейчас: {minutes} мин я не подам голос. Слушать при этом не перестаю.', 'Ahora no: durante {minutes} minutos no aviso. La escucha sigue en marcha.', 'Jetzt nicht: {minutes} Minuten lang melde ich mich nicht. Das Zuhören läuft trotzdem weiter.', 'Pas maintenant : je ne me manifeste pas pendant {minutes} minutes. Ça n’arrête pas l’écoute.', 'Agora não: por {minutes} minutos não vou avisar. Isso não para a escuta.')
 _tr7('dnes.trace_meta', '{time} · 合図 {n} 回', '{time} · 提示 {n} 次', '{time} · подсказки {n}×', '{time} · avisos {n}×', '{time} · Hinweise {n}×', '{time} · rappels {n}×', '{time} · avisos {n}×')
 _tr7('log.edge_not_cached_later', 'Edge のセリフはまだ準備できていません — 今回は Windows の音声で話します。プレイ中は準備せず、監視を止めたときに準備します。', 'Edge 语音还没准备好——这次我先用 Windows 语音说。游戏过程中我不会准备它；等你停止监听时我再准备。', 'Фраза Edge ещё не готова — в этот раз говорю голосом Windows. Во время игры я её не готовлю; подготовлю, когда ты остановишь прослушивание.', 'La frase de Edge aún no está lista — esta vez hablo con la voz de Windows. Durante el juego no la preparo; la prepararé cuando detengas la escucha.', 'Die Edge-Zeile ist noch nicht bereit — diesmal spreche ich mit der Windows-Stimme. Während des Spiels bereite ich sie nicht vor; das mache ich, wenn du das Zuhören stoppst.', 'La réplique Edge n’est pas encore prête — cette fois, je parle avec la voix Windows. Je ne la prépare pas pendant le jeu ; je la préparerai quand tu arrêteras l’écoute.', 'A fala do Edge ainda não está pronta — desta vez falo com a voz do Windows. Durante o jogo eu não a preparo; vou prepará-la quando você parar a escuta.')
@@ -7450,6 +7453,29 @@ _tr7('palette.cat.profiles', 'プロファイル', '配置文件', 'Профил
 _tr7('edge.after_game', '監視を止めたら、セリフを準備します。', '等你停止监听后，我再准备语音条目。', 'Подготовлю фразы, когда ты остановишь прослушивание.', 'Prepararé las frases cuando detengas la escucha.', 'Ich bereite die Sprachzeilen vor, wenn du das Zuhören stoppst.', 'Je préparerai les répliques quand tu arrêteras l’écoute.', 'Vou preparar as falas quando você parar a escuta.')
 _tr7('ob.cue.online_note', '自然な音声はオンラインです：合図の文面（心拍は決して送りません）を、音声に変換するために Microsoft に送ります。Windows の音声は何も送りません — 「設定」→「サウンド」で切り替えられます。', '自然语音需要联网：提示的文字（绝不包括心率）会发送给 Microsoft 的服务转换成语音。Windows 语音不会发送任何东西——可以在“设置 → 声音”里切换。', 'Естественный голос работает онлайн: текст подсказок (но никогда не пульс) отправляется сервису Microsoft для преобразования в речь. Голос Windows ничего не отправляет — переключиться на него можно в «Настройки → Звук».', 'La voz natural funciona en línea: el texto de los avisos (nunca tu pulso) se envía al servicio de Microsoft para convertirlo en voz. La voz de Windows no envía nada — puedes cambiar a ella en Ajustes → Sonido.', 'Die natürliche Stimme ist online: Der Text der Hinweise (nie dein Puls) geht an Microsoft und wird dort in Sprache umgewandelt. Die Windows-Stimme schickt nichts — du wechselst zu ihr unter Einstellungen → Ton.', 'La voix naturelle passe par internet : le texte des rappels (jamais ton pouls) est envoyé au service Microsoft pour être converti en parole. La voix Windows n’envoie rien — tu peux la choisir dans Paramètres → Son.', 'A voz natural é online: o texto dos avisos (nunca o seu pulso) é enviado ao serviço da Microsoft para ser convertido em fala. A voz do Windows não envia nada — você pode trocar para ela em Configurações → Som.')
 _tr7('settings.language_note', 'アプリはスロバキア語で書かれています。ほかの言語は AI の助けを借りた翻訳で、まだネイティブスピーカーの確認を受けていません — 間違いを見つけたら教えてください。', '本应用以斯洛伐克语编写。其他语言是借助 AI 翻译的，尚未经过母语者校对——如果你发现错误，请告诉我。', 'Приложение написано на словацком. Остальные языки — переводы с помощью ИИ, и носитель языка их ещё не проверял; если заметишь ошибку, дай знать.', 'La app está escrita en eslovaco. Los demás idiomas son traducciones hechas con ayuda de IA que todavía no ha revisado ningún hablante nativo — si ves un error, avísame.', 'Die App ist auf Slowakisch geschrieben. Die anderen Sprachen sind KI-gestützte Übersetzungen, die noch nicht von Muttersprachlern geprüft wurden — wenn du einen Fehler siehst, sag Bescheid.', 'L’app est écrite en slovaque. Les autres langues sont des traductions faites avec l’aide de l’IA, pas encore relues par un locuteur natif — si tu vois une erreur, dis-le-moi.', 'O app foi escrito em eslovaco. Os outros idiomas são traduções feitas com ajuda de IA e ainda não foram revisados por um falante nativo — se encontrar um erro, avise.')
+
+
+# --- 0.2.1: "teraz nie" aj v ponuke ikony v liste --------------------------
+# Ked skratku (Ctrl+Alt+Z) drzi ina appka, `RegisterHotKey` zlyha a hlasky
+# sa dali stisit jedine zastavenim pocuvania - co zastavi aj meranie. Od
+# 0.2.1 je "teraz nie" aj polozka v ponuke ikony v liste (`setup_tray`) a
+# riadok v denniku pri zlyhani skratky hraca posle tam (`start_snooze_hotkey`).
+# Veta o zlyhani slubuje len to, co plati vzdy ("pocuvanie to nezastavi"),
+# nie meranie - stisenie sa da zapnut aj v zastavenej appke, a vtedy sa
+# nemeria (rovnako ako `log.snooze_started`). SK/EN rucne, 7 jazykov hned
+# pod nimi, cestina a bulharcina v `i18n_cs_bg.py`.
+STRINGS.update({
+    'tray.snooze': _sk_en('Teraz nie ({minutes} min)', 'Not now ({minutes} min)'),
+    'log.hotkey_failed_tray': _sk_en(
+        'Skratku {combo} drží iná aplikácia, takže nepôjde. „Teraz nie“ '
+        'nájdeš aj v ponuke ikony v lište (pravý klik). Počúvanie to '
+        'nezastaví.',
+        'Another app holds {combo}, so the shortcut won’t work. “Not now” is '
+        'also in the tray icon’s menu (right-click). It doesn’t stop '
+        'listening.'),
+})
+_tr7('tray.snooze', '今はいい（{minutes} 分）', '现在不要（{minutes} 分钟）', 'Не сейчас ({minutes} мин)', 'Ahora no ({minutes} min)', 'Jetzt nicht ({minutes} Min.)', 'Pas maintenant ({minutes} min)', 'Agora não ({minutes} min)')
+_tr7('log.hotkey_failed_tray', 'ショートカット {combo} は別のアプリが使っているため、使えません。「今はいい」はトレイアイコンのメニュー（右クリック）にもあります。監視は止まりません。', '快捷键 {combo} 被其他应用占用了，所以用不了。“现在不要”也在托盘图标的菜单里（右键）。这不会停止监听。', 'Сочетание {combo} занято другим приложением, так что оно не сработает. «Не сейчас» есть и в меню значка в трее (правый клик). Слушать при этом не перестаю.', 'Otra aplicación está usando el atajo {combo}, así que no funcionará. «Ahora no» también está en el menú del icono de la bandeja (clic derecho). La escucha sigue en marcha.', 'Das Tastenkürzel {combo} ist von einer anderen Anwendung belegt und funktioniert deshalb nicht. „Jetzt nicht“ gibt es auch im Menü des Symbols in der Taskleiste (Rechtsklick). Das Zuhören läuft trotzdem weiter.', 'Une autre application occupe le raccourci {combo}, il ne marchera donc pas. « Pas maintenant » se trouve aussi dans le menu de l’icône de la barre système (clic droit). Ça n’arrête pas l’écoute.', 'Outro aplicativo está usando o atalho {combo}, então ele não vai funcionar. “Agora não” também está no menu do ícone da bandeja (clique com o botão direito). Isso não para a escuta.')
 
 
 # ==========================================================================

@@ -989,7 +989,11 @@ def test_kratky_prepad_beh_nerozbije():
         h.posun(1.0)
     assert t.behov_nad == 1, t.behov_nad
     assert t.zrusenych_prepadom == 0
-    assert t.najdlhsi_nad_s >= 60.0, t.najdlhsi_nad_s
+    # Jeden úsek (viac než ktorýkoľvek z dvoch kusov po 30 s), ale bez troch
+    # sekúnd prepadu: od 0.2.1 sa čas pod prahom do úseku nepočíta. Predtým
+    # tu stálo `>= 60` a prešlo len vďaka tomu, že nástenné hodiny (62 s)
+    # započítali aj prepad.
+    assert 58.0 <= t.najdlhsi_nad_s <= 60.0, t.najdlhsi_nad_s
 
 
 def test_pocitadla_sa_novou_relaciou_vynuluju():

@@ -26,6 +26,8 @@ DOLE, o jeden stupen za relaciu, ked:
     dalej (`app._start_snooze`), takze `snooze_then_s` je skutocny cas,
     ktory relacia po nom este bezala, a signal sa naozaj moze prejavit.
 HORE pomaly: o stupen po `NAVRAT_RELACII` relaciach s hlaskou bez signalu.
+Hlaska = DORUCENA (obraz sa naozaj ukazal, viz `_hlasok`); nedorucena sa
+nerata ani na navrat, ani ako relacia s hlaskou pri verdikte.
 PAUZA trva `PAUZA_RELACII` relacii aspon `PAUZA_MIN_TRVANIE_S` (alebo
 skonci verdiktom "ano, mala") a potom sa skusi obrazok.
 
@@ -99,7 +101,24 @@ def _cislo(hodnota):
 
 
 def _hlasok(session):
-    return int(_cislo(session.get("auto_triggers")) or 0)
+    """Kolko hlasok hrac v relacii naozaj DOSTAL (obraz sa vykreslil).
+
+    RATA SA LEN DORUCENA HLASKA. `auto_triggers` rata aj hlasku, ktorej
+    obraz zlyhal (`note_trigger(delivered=False)`) - hrac z nej nic nevidel
+    a dotaznik mu povedal "neozvala som sa", takze sa ani nemal ako
+    stazovat. Rebrik by taku relaciu ratal ako "s hlaskou a bez vyhrad" a
+    stupal k hlasu z ticha. `cues_delivered` (od 0.2.1, `_close_hr_session`)
+    ma rovnake pravidlo ako dotaznik a "teraz nie" po hlaske
+    (`hr_stats.last_auto_cue_ts`): tiche rameno sa rata - obraz ukazalo.
+    Starsie relacie ho nemaju a ostava im `auto_triggers`."""
+    pocet = _cislo(session.get("cues_delivered"))
+    if pocet is None:
+        pocet = _cislo(session.get("auto_triggers"))
+    try:
+        return max(0, int(pocet or 0))
+    except (ValueError, OverflowError):
+        # NaN / nekonecno z rucne upraveneho suboru - rebrik nesmie spadnut.
+        return 0
 
 
 def signal_dole(session):

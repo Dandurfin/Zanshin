@@ -66,8 +66,9 @@ update-checker** anywhere in the app.
    the app; on first launch the installed app copies them into its data folder.
    Only if one is missing (for example a damaged install) does the app replace
    it: two small CC0 sounds are fetched from GitHub
-   (`raw.githubusercontent.com`, checksum-verified — like any download, GitHub
-   sees your IP address, and the request names the app), the rest are
+   (`raw.githubusercontent.com`, checksum-verified, and the download stops if
+   it grows past 256 KB — like any download, GitHub sees your IP address, and
+   the request names the app), the rest are
    synthesised locally. If that download fails, those two are synthesised too.
 
 3. **Opening links.** Clicking a creator link, the link to the source code on

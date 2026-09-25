@@ -10,12 +10,17 @@ Kazde z tych styroch miest vidi iny clovek:
   app.version_short v i18n.py     hrac, v titulnej liste
   MyAppVersion v Dandurf.iss      samostatny instalator
   version_info.txt                Windows -> Vlastnosti -> Podrobnosti
-  "*Alpha X.Y" v README.md        kazdy na GitHube, este pred appkou
+  "*Alpha X.Y.Z" v README.md      kazdy na GitHube, este pred appkou
 
 Raz sa uz rozisli: popis buildu hlasil "0.5 - alpha", kym titulna lista aj
 instalator hovorili 1.0. Nikto si toho nevsimol, lebo kazde z tych miest
 vidi niekto iny a nikdy nie naraz. (Piate miesto, popis Steam buildu,
 zaniklo s celym Steam buildom - Zanshin nema ziadnu integraciu so Steamom.)
+
+TRI CISLA (0.2.1). Verzia uz nemusi byt len "X.Y". Test predtym bral z
+retazca prve "X.Y" - z "alpha 0.2.1" by vytiahol "0.2" a jazyk, ktory by
+ostal na "alpha 0.2", by presiel (podretazec), kym instalator a exe by
+hlasili 0.2.1. Verzia sa preto berie cela a porovnava sa presne.
 
 Test je staticky (cita zdrojak), aby bezal bez Tk aj bez buildu.
 """
@@ -29,26 +34,50 @@ import i18n  # noqa: E402
 
 ROOT = os.path.join(os.path.dirname(__file__), "..")
 
+# Cela verzia: 2 az 4 cisla oddelene bodkou ("0.2", "0.2.1").
+_VERZIA = r"\d+(?:\.\d+){1,3}"
+
 
 def _read(*parts):
     with open(os.path.join(ROOT, *parts), encoding="utf-8") as fh:
         return fh.read()
 
 
+def _cela_verzia(text):
+    """Napr. 'alpha 0.2.1' -> '0.2.1' (nie '0.2')."""
+    m = re.search(_VERZIA, text)
+    return m.group(0) if m else None
+
+
 def _verzia_z_i18n():
-    """Napr. 'version 2.0' -> '2.0'."""
     hodnota = i18n.STRINGS["app.version_short"]["en"]
-    m = re.search(r"(\d+\.\d+)", hodnota)
-    assert m, f"app.version_short/en neobsahuje cislo verzie: {hodnota!r}"
-    return m.group(1)
+    verzia = _cela_verzia(hodnota)
+    assert verzia, f"app.version_short/en neobsahuje cislo verzie: {hodnota!r}"
+    return verzia
+
+
+def _styri_cisla(verzia):
+    """Windows chce v VERSIONINFO 4 cisla - chybajuce su nuly."""
+    cisla = [int(x) for x in verzia.split(".")]
+    return cisla + [0] * (4 - len(cisla))
+
+
+def test_cela_verzia_sa_neoreze():
+    """Regresia 0.2.1: z trojciselnej verzie sa nesmie vziat len "X.Y"."""
+    assert _cela_verzia("alpha 0.2.1") == "0.2.1"
+    assert _cela_verzia("アルファ 0.2.1") == "0.2.1"
+    assert _cela_verzia("alfa 0.2") == "0.2"
+    assert _styri_cisla("0.2.1") == [0, 2, 1, 0]
+    assert _styri_cisla("0.2") == [0, 2, 0, 0]
 
 
 def test_i18n_ma_verziu_vo_vsetkych_jazykoch():
-    """Titulna lista nesmie v jednom jazyku hlasit inu verziu nez v inom."""
+    """Titulna lista nesmie v jednom jazyku hlasit inu verziu nez v inom -
+    ani kratsiu ("alpha 0.2" popri "alpha 0.2.1")."""
     verzia = _verzia_z_i18n()
     for kod in i18n.LANGUAGES:
         hodnota = i18n.STRINGS["app.version_short"][kod]
-        assert verzia in hodnota, (
+        assert _cela_verzia(hodnota) == verzia, (
             f"app.version_short/{kod} = {hodnota!r}, cakala sa verzia {verzia}")
 
 
@@ -63,9 +92,9 @@ def test_metadata_exe_sedia_s_titulnou_listou():
     """filevers/prodvers su 4 cisla, FileVersion/ProductVersion retazce -
     vsetky styri musia vychadzat z tej istej verzie."""
     src = _read("version_info.txt")
-    verzia = _verzia_z_i18n()
-    hlavna, vedlajsia = verzia.split(".")
-    ntica = f"({hlavna}, {vedlajsia}, 0, 0)"
+    cisla = _styri_cisla(_verzia_z_i18n())
+    ntica = "(" + ", ".join(str(c) for c in cisla) + ")"
+    retazec = ".".join(str(c) for c in cisla)
 
     for pole in ("filevers", "prodvers"):
         m = re.search(rf"{pole}=\(([^)]*)\)", src)
@@ -76,15 +105,25 @@ def test_metadata_exe_sedia_s_titulnou_listou():
     for pole in ("FileVersion", "ProductVersion"):
         m = re.search(rf"StringStruct\('{pole}',\s*'([^']+)'\)", src)
         assert m, f"version_info.txt neobsahuje {pole}"
-        assert m.group(1) == f"{verzia}.0.0", (
-            f"version_info.txt {pole}={m.group(1)}, cakalo sa {verzia}.0.0")
+        assert m.group(1) == retazec, (
+            f"version_info.txt {pole}={m.group(1)}, cakalo sa {retazec}")
 
 
 def test_readme_sedi_s_titulnou_listou():
     """README vidi kazdy na GitHube este skor nez appku. Test ho doteraz
     nestrazil, a tak po zdvihnuti na 0.2 ostalo v hlavicke "Alpha 0.1", kym
     lista, instalator aj exe hlasili 0.2."""
-    m = re.search(r"^\*Alpha (\d+\.\d+) ·", _read("README.md"), re.M)
-    assert m, "README.md nema v hlavicke riadok '*Alpha X.Y · ...'"
+    m = re.search(rf"^\*Alpha ({_VERZIA}) ·", _read("README.md"), re.M)
+    assert m, "README.md nema v hlavicke riadok '*Alpha X.Y.Z · ...'"
     assert m.group(1) == _verzia_z_i18n(), (
         f"README.md hlasi {m.group(1)}, i18n {_verzia_z_i18n()}")
+
+
+def test_known_issues_nesie_aktualnu_verziu():
+    """KNOWN_ISSUES.md je zoznam k TEJTO verzii - nadpis ju musi menovat,
+    inak by citatel nevedel, ci zoznam plati pre to, co ma v ruke."""
+    prvy = _read("KNOWN_ISSUES.md").splitlines()[0]
+    m = re.search(rf"alpha ({_VERZIA})\s*$", prvy)
+    assert m, f"KNOWN_ISSUES.md: nadpis nekonci 'alpha X.Y.Z': {prvy!r}"
+    assert m.group(1) == _verzia_z_i18n(), (
+        f"KNOWN_ISSUES.md hlasi {m.group(1)}, i18n {_verzia_z_i18n()}")

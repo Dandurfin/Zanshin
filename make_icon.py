@@ -23,7 +23,6 @@ Windows vezme spravnu kresbu pre dany kontext.
 
 Spustenie:  python make_icon.py
 """
-import os
 import sys
 
 from PIL import Image, ImageDraw

@@ -12,7 +12,11 @@
   * Dandurf.iss: verzia v Podrobnostiach setup.exe a [InstallDelete] len
     pre súbory z 0.1 v {app}.
   * LICENSE-DESIGN.md: CC0 zvuky sú pribalené, nie sťahované.
+  * 0.2.1: tabuľka modulov v README pokrýva všetko, čo build balí, vývojárske
+    skripty sú opísané, a čísla v README / SAFETY / PRIVACY / KNOWN_ISSUES
+    (stropy, časové limity, rozsah dátumov) sú tie z kódu.
 """
+import ast
 import hashlib
 import math
 import os
@@ -200,7 +204,7 @@ def test_setup_exe_ma_verziu_v_podrobnostiach():
     iss = _read("Dandurf.iss")
     setup = iss[iss.index("\n[Setup]\n"):iss.index("\n[Languages]\n")]
     assert re.search(r"^VersionInfoVersion=\{#MyAppVersion\}$", setup, re.M)
-    # Inno doplní chýbajúce čísla nulami: "0.2" -> 0.2.0.0, to isté ako
+    # Inno doplní chýbajúce čísla nulami: "0.2.1" -> 0.2.1.0, to isté ako
     # filevers vo version_info.txt.
     verzia = re.search(r'#define\s+MyAppVersion\s+"([^"]+)"', iss).group(1)
     assert re.fullmatch(r"\d+(\.\d+){0,3}", verzia), verzia
@@ -240,3 +244,143 @@ def test_cc0_zvuky_su_pribalene():
         cesta = os.path.join(ROOT, "assets", "sounds", "modern", info["file"])
         with open(cesta, "rb") as fh:
             assert hashlib.sha256(fh.read()).hexdigest() == info["sha256"], kluc
+
+
+# --------------------------------------------------------------------------
+# 0.2.1: README opisuje celý projekt, čísla v dokumentoch sú z kódu
+# --------------------------------------------------------------------------
+
+def _lokalne_moduly():
+    return {f[:-3] for f in os.listdir(ROOT) if f.endswith(".py")}
+
+
+def _moduly_z_main():
+    """Moduly projektu, ktoré main.py naťahuje (aj cez ďalšie moduly) - to
+    isté, čo PyInstaller zabalí do buildu."""
+    lokalne = _lokalne_moduly()
+    videne, fronta = set(), ["main"]
+    while fronta:
+        meno = fronta.pop()
+        if meno in videne:
+            continue
+        videne.add(meno)
+        for uzol in ast.walk(ast.parse(_read(meno + ".py"))):
+            if isinstance(uzol, ast.Import):
+                mena = [a.name.split(".")[0] for a in uzol.names]
+            elif isinstance(uzol, ast.ImportFrom) and uzol.module and not uzol.level:
+                mena = [uzol.module.split(".")[0]]
+            else:
+                continue
+            fronta.extend(m for m in mena if m in lokalne and m not in videne)
+    return videne
+
+
+def _sekcia(text, nadpis):
+    zaciatok = text.index("\n## " + nadpis)
+    koniec = text.find("\n## ", zaciatok + 1)
+    return text[zaciatok:koniec if koniec != -1 else len(text)]
+
+
+def test_readme_tabulka_modulov_pokryva_build():
+    """Review 0.2.1: tabuľke „Project structure“ chýbalo ~14 modulov, ktoré
+    appka naozaj používa (display, ui_kit, hotkey, obs_websocket, ...)."""
+    tabulka = _sekcia(_read("README.md"), "Project structure")
+    moduly = _moduly_z_main()
+    assert {"app", "display", "ui_kit", "hotkey", "obs_websocket",
+            "netinfo", "make_icon"} <= moduly     # poistka: prechod nieco nasiel
+    chyba = sorted(m for m in moduly if "`%s.py`" % m not in tabulka)
+    assert not chyba, "README 'Project structure' nemá: %s" % chyba
+
+
+def test_readme_opisuje_vyvojarske_skripty_a_zavislosti():
+    """Každý .py v koreni, ktorý appka nenaťahuje, je vývojársky skript -
+    README ho musí menovať. Testy potrebujú requirements-dev.txt."""
+    readme = _read("README.md")
+    skripty = sorted(_lokalne_moduly() - _moduly_z_main())
+    assert {"simulate", "prepocitaj_okna", "check_sources"} <= set(skripty)
+    for meno in skripty:
+        assert "`%s.py`" % meno in readme, meno
+    testy = _sekcia(readme, "Tests")
+    assert "pip install -r requirements-dev.txt" in testy
+    with open(os.path.join(ROOT, "requirements-dev.txt"), encoding="utf-8") as fh:
+        dev = fh.read().split()
+    for balik in dev:
+        assert balik in testy, balik
+    # prepocitaj_okna.py prepisuje ulozene data - README to musi povedat
+    assert "It rewrites the saved" in " ".join(testy.split())
+    assert "os.replace(tmp, cesta)" in _read("prepocitaj_okna.py")
+
+
+def test_readme_build_hovori_co_skript_robi():
+    """build_all.ps1 spustí check_before_run.py a zatvorí bežiaci Zanshin -
+    README to hovorí, a skript to naozaj robí."""
+    build = " ".join(_sekcia(_read("README.md"), "Build the installer").split())
+    skript = _read("build_all.ps1")
+    assert "Invoke-Py 'check_before_run.py'" in skript
+    assert "Stop-Process -Force" in skript
+    assert "`check_before_run.py`" in build
+    assert "force-closes a running Zanshin" in build
+
+
+def test_readme_svet_relacie_urci_dotaznik():
+    """Odpoveď v dotazníku reláciu presunie do iného sveta (hr_stats) - README
+    už netvrdí len, že relácia ostane vo svete, kde začala."""
+    import i18n
+    otazka = i18n.STRINGS["session.context.activity_question"]["en"]
+    readme = _plain("README.md")
+    assert "*%s*" % otazka in readme
+    assert "Skip the question and it stays where it started" in readme
+
+
+def test_log_bez_listy_nemenuje_listu():
+    """0.2.1: `log.hotkey_failed` ide do denníka len vtedy, keď ikona v lište
+    nie je (bez pystray/PIL) - veta ju preto nesmie ponúkať."""
+    import i18n
+    s = i18n.STRINGS["log.hotkey_failed"]
+    assert "lišt" not in s["sk"] and "tray" not in s["en"]
+    assert "lišt" not in s["cs"] and "трея" not in s["bg"]
+    src = _read("app.py")
+    telo = src[src.index("    def start_snooze_hotkey"):]
+    telo = telo[:telo.index("\n    def ", 5)]
+    assert telo.index("elif TRAY_AVAILABLE") < telo.index('"log.hotkey_failed"')
+
+
+def test_cisla_v_dokumentoch_su_z_kodu():
+    """Stropy a limity, ktoré 0.2.1 pridalo a dokumenty menujú."""
+    import data_io
+    import heart_rate
+    import obs_websocket
+    import trigger
+    from datetime import datetime, timezone
+
+    safety = _plain("SAFETY.md")
+    assert heart_rate._MAX_LIVE_SOCKETS == 16 and "najviac 16 socketov" in safety
+    assert obs_websocket.HANDSHAKE_TIMEOUT_S == 10.0 and "do 10 s nedokončí" in safety
+    assert obs_websocket.NECINNOST_S == 60.0 and "po minúte ticha" in safety
+    assert obs_websocket._MAX_RAMEC == 64 * 1024 and "najviac 64 kB" in safety
+    assert heart_rate.HeartRateMonitor.RECV_BUFFER_BYTES == 4096
+    assert "väčší než 4 kB" in safety
+
+    assert sfx_assets.MAX_STIAHNUTIE_BAJTOV == 256 * 1024
+    assert "256 KB" in _plain("PRIVACY.md")
+
+    k = _plain("KNOWN_ISSUES.md")
+    assert data_io.MAX_IMPORT_BAJTOV == 50 * 1024 * 1024 and "over 50 MB" in k
+    roky = [datetime.fromtimestamp(t, timezone.utc).year
+            for t in (data_io.MIN_CAS, data_io.MAX_CAS)]
+    assert roky == [2000, 2100] and "before 2000 or after 2100" in k
+    p = trigger.default_params()
+    assert p["stress_hold_s"] == 45.0 and "(45 s by default)" in k
+    assert p["dip_grace_s"] == 20.0 and "(under 20 s)" in k
+    assert heart_rate.HeartRateMonitor.STALE_AFTER_S == 12.0
+    assert "gap of 12 s or more" in k
+
+
+def test_known_issues_021_je_navrchu_a_teraz_nie_je_v_liste():
+    k = _read("KNOWN_ISSUES.md")
+    assert k.index("## What 0.2.1 fixes") < k.index("## What 0.1 got wrong")
+    otvorene = " ".join(_sekcia(k, "Still open").split())
+    assert "hard to find" not in otvorene
+    assert "tray icon's menu" in otvorene
+    import i18n
+    assert i18n.STRINGS["tray.snooze"]["en"].startswith("Not now")

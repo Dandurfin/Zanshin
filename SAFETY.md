@@ -103,7 +103,12 @@ mechanizmus, aký používajú systémové tooltipy a Windows Ink.
 5. **Tep zo siete** — appka *počúva* na porte 4455 (TCP aj UDP), predvolene
    na všetkých sieťových rozhraniach a bez hesla; sama nikam nepripája. Pred
    cudzími sieťami ju chráni firewall (viď `PRIVACY.md`). Z hodiniek chodí
-   približne jedno číslo za sekundu.
+   približne jedno číslo za sekundu. Naraz má otvorených najviac 16 socketov
+   (plný strop odmietne len nové spojenie, príjem beží ďalej). Spojenie,
+   ktoré do 10 s nedokončí WebSocket handshake, zavrie; po minúte ticha
+   pošle do spojenia ping, a keď nepríde odpoveď ani za ďalšiu minútu,
+   spojenie zavrie. Z jednej WebSocket správy prijme najviac 64 kB; UDP
+   paket väčší než 4 kB zahodí.
 5b. **Kroky a rýchlosť z hodiniek** — ak ich appka na hodinkách posiela
    (prémiová verzia), Zanshin ich prečíta z toho istého spojenia ako tep.
    Slúžia na jedinú vec: **keď sa hýbeš, appka mlčí**. Chôdza dvihne tep
@@ -144,7 +149,8 @@ až vtedy, keď ju niekto stlačí. Žiadny prúd vstupu cez ňu netečie — o
 Keď je kombinácia obsadená inou aplikáciou, registrácia jednoducho zlyhá a
 appka beží ďalej bez nej. Admin práva to nepotrebuje. Vypnúť sa dá — prázdny
 `"snooze_hotkey"` v súbore `dandurf_settings.json` (v appke na to prepínač
-zatiaľ nie je).
+zatiaľ nie je). „Teraz nie“ je od 0.2.1 aj v ponuke ikony v lište (pravý
+klik), takže ide aj bez skratky.
 
 Kód je v `hotkey.py` a `tests/test_hotkey.py` stráži aj to, že sa v ňom
 neobjaví `SetWindowsHookEx`, `WH_KEYBOARD`, `GetAsyncKeyState` ani

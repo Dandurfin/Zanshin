@@ -45,6 +45,10 @@ log = logging_setup.get_logger("hr")
 
 # Strop sucasnych socketov (listener + UDP + klienti). Bez neho by hocikto
 # z LAN mohol otvorit lubovolne vela TCP spojeni a nafukovat vlakna (DoS).
+# Pri plnom strope sa zahodi len NOVE spojenie a prijem bezi dalej (viz
+# `_serve`); tiche a mrtve spojenia miesto uvolnia samy (casove limity v
+# `obs_websocket`). Proti niekomu v LAN, kto spojenia aktivne drzi, strop
+# nepomoze - port je bez hesla zamerne, viz README.
 _MAX_LIVE_SOCKETS = 16
 
 # Fyziologicky mozny rozsah tepu. Na sieti sa okrem samotneho BPM daju
@@ -96,17 +100,35 @@ class _Run:
         self._sockets = set()
         self.last_data = None
         self.stale_reported = False
-        # Kolko surovych sprav este zapisat do denniku.
+        # Kolko surovych sprav este zapisat do denniku - na zistenie, co
+        # hodinky pri parovani naozaj posielaju.
         #
-        # 12 bolo primalo: pri dvoch spravach za sekundu je to sest sekund
-        # prevadzky, z ktorych sa striedavy vzor (raz tep, raz nieco ine)
-        # precitat neda. 40 pokryje asi pol minuty, co uz staci, a firehose
-        # z toho nebude - je to raz za spustenie prijmu.
-        self.log_left = 40
+        # 40 -> 5 V 0.2.1. Kazdy riadok nesie meno zdroja ("[Kroky] '1045'"),
+        # takze aj striedavy vzor (raz tep, raz nieco ine) je vidno uz z
+        # piatich sprav. 40 surovych hodnot tepu pri kazdom spusteni prijmu
+        # bolo o pol minuty zdravotnych dat v denniku viac, nez ladenie
+        # parovania potrebuje.
+        self.log_left = 5
         # Mena zdrojov, ktore v tomto behu uz nieco poslali. Podla toho sa
         # rozhoduje, ci sa smie z holeho cisla z NEZNAMEHO zdroja hadat tep
         # (viz `parse_metrics`). `None` je tiez zaznam - je to UDP kanal.
+        # Viac nez dve sa nepamata (viz `note_source`).
         self.zdroje = set()
+        # Strop spojeni sa do denniku hlasi raz za beh, nie pri kazdom odmietnuti.
+        self.plno_hlasene = False
+        # Kolko klientov obs-websocket prave drzi spojenie po handshake -
+        # "client_gone" sa hlasi az ked odide POSLEDNY (viz `_websocket_client`).
+        self.klienti = 0
+
+    def client_linked(self):
+        with self._lock:
+            self.klienti += 1
+
+    def client_left(self):
+        """Vrati True, ak prave odisiel posledny pripojeny klient."""
+        with self._lock:
+            self.klienti -= 1
+            return self.klienti <= 0
 
     def add(self, sock):
         with self._lock:
@@ -132,9 +154,15 @@ class _Run:
                 pass
 
     def note_source(self, zdroj):
-        """Zaznamena zdroj a vrati True, ak je v tomto behu zatial jediny."""
+        """Zaznamena zdroj a vrati True, ak je v tomto behu zatial jediny.
+
+        Odpoved zavisi len od toho, ci su zdroje ASPON DVA - viac mien si
+        preto pamatat netreba. Doteraz sa pridavalo kazde meno, ktore klient
+        poslal, az do restartu senzora: stale nove mena z LAN = pamat bez
+        stropu (meno si voli klient)."""
         with self._lock:
-            self.zdroje.add(zdroj)
+            if len(self.zdroje) < 2:
+                self.zdroje.add(zdroj)
             return len(self.zdroje) <= 1
 
     def mark_data(self):
@@ -274,8 +302,9 @@ class HeartRateMonitor:
                 ukazka = data.decode("utf-8", errors="replace")[:200]
             except Exception:
                 ukazka = repr(data[:120])
+            # meno zdroja si voli klient - do denniku len jeho zaciatok
             log.info("z hodiniek prislo [%s]: %r -> %s",
-                     zdroj or "bez mena", ukazka, metriky)
+                     (zdroj or "bez mena")[:80], ukazka, metriky)
         self._emit_bpm(metriky["bpm"], run)
         if self.on_metrics is not None and (metriky["steps"] is not None
                                             or metriky["speed"] is not None):
@@ -320,7 +349,20 @@ class HeartRateMonitor:
                 break
             if not run.add(conn):
                 conn.close()
-                break
+                if run.stop_event.is_set():
+                    break
+                # PLNO: zahodi sa len TOTO nove spojenie, prijem bezi dalej.
+                #
+                # Doteraz tu bol `break`, takze strop, ktory mal chranit pred
+                # zaplavenim spojeniami, sam zastavil CELY prijem az do
+                # restartu senzora - aj ked sa miesta medzitym uvolnili.
+                # `run.add` vracia False aj pri zastavovani; to rozlisuje
+                # `stop_event` vyssie.
+                if not run.plno_hlasene:
+                    run.plno_hlasene = True
+                    log.warning("HR: strop %d spojeni, nove spojenie odmietnute "
+                                "(dalsie sa uz nevypisu)", _MAX_LIVE_SOCKETS)
+                continue
             threading.Thread(target=self._websocket_client, args=(conn, run),
                              daemon=True).start()
         run.discard(listener)
@@ -333,11 +375,17 @@ class HeartRateMonitor:
         """Jeden pripojeny klient obs-websocket (appka na hodinkach)."""
         linked = False
         try:
-            conn.settimeout(None)   # stop() socket zavrie, timeout netreba
+            # CASOVE LIMITY SI NASTAVUJE `serve_connection` (handshake 10 s,
+            # potom ping po minute ticha). Doteraz tu bolo `settimeout(None)`:
+            # spojenie, ktore nic neposlalo, drzalo jedno miesto pod
+            # `_MAX_LIVE_SOCKETS` navzdy. Mrtve spojenie teraz skonci ako
+            # kazde ine odpojenie (`finally` nizsie). stop() socket zavrie
+            # hned a citanie sa tym odblokuje samo, na limit necaka.
 
             def on_connected():
                 nonlocal linked
                 linked = True
+                run.client_linked()
                 self._notify(self.on_status, ("client", None), run)
 
             obs_websocket.serve_connection(
@@ -354,7 +402,16 @@ class HeartRateMonitor:
                 conn.close()
             except Exception:
                 pass
-            if linked:
+            # "client_gone" AZ KED ODIDE POSLEDNY KLIENT.
+            #
+            # Hodinky sa po vypadku Wi-Fi pripoja NOVYM spojenim a stare na
+            # nasej strane visi polootvorene. Kym nebol limit necinnosti,
+            # viselo navzdy a nic nehlasilo; teraz ho limit do dvoch minut
+            # zavrie - a keby to hlasilo "client_gone", appka by uprostred
+            # ziveho tepu z noveho spojenia zahodila odpocet spustaca a
+            # zapisala vypadok, ktory nebol. Tep, ktory naozaj prestal chodit,
+            # aj tak nahlasi `_stale_watchdog` po STALE_AFTER_S.
+            if linked and run.client_left():
                 self._notify(self.on_status, ("client_gone", None), run)
 
     def _udp_loop(self, host, port, run):

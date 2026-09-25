@@ -307,10 +307,36 @@ def default_sound_for_slot_index(pack, index):
     return order[index] if 0 <= index < len(order) else ""
 
 
+# Strop stahovaneho suboru. Oba zvuky z GitHubu maju 1,7 kB a 49,6 kB;
+# 256 kB je s rezervou nad nimi. SHA-256 sa overuje az po stiahnuti - bez
+# stropu by `resp.read()` natiahol do pamate cokolvek, co na tej adrese
+# lezi (zmeneny alebo podvrhnuty obsah), a zahodil by to az potom.
+MAX_STIAHNUTIE_BAJTOV = 256 * 1024
+_KUS_BAJTOV = 16 * 1024
+
+
+def _citaj_so_stropom(resp, strop=MAX_STIAHNUTIE_BAJTOV):
+    """Obsah odpovede po kusoch; nad `strop` bajtov ValueError.
+
+    Cita sa, kym nieco prichadza, a skonci sa hned, ako sucet prekroci
+    strop - nespolieha sa na to, ze jedno `read(n)` vrati vsetko naraz.
+    V pamati tak nikdy nie je viac nez strop plus jeden kus."""
+    kusy, spolu = [], 0
+    while True:
+        kus = resp.read(_KUS_BAJTOV)
+        if not kus:
+            break
+        spolu += len(kus)
+        if spolu > strop:
+            raise ValueError(f"subor je vacsi nez {strop} B - nie je to nas zvuk")
+        kusy.append(kus)
+    return b"".join(kusy)
+
+
 def _try_download(url, path, expected_sha256=None, timeout=4.0):
     req = urllib.request.Request(url, headers={"User-Agent": "Zanshin/0.2"})
     with urllib.request.urlopen(req, timeout=timeout) as resp:
-        data = resp.read()
+        data = _citaj_so_stropom(resp)
     if len(data) < 200 or data[:4] != b"RIFF":
         raise ValueError("neplatný WAV obsah")
     if expected_sha256:

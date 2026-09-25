@@ -309,6 +309,9 @@ class CueTrigger:
         self.state = DORMANT
         self._above_since = None     # odkedy zataz drzi nad prahom
         self._below_since = None     # odkedy je pod nim (kvoli tolerancii)
+        # Sucet skoncenych tolerovanych prepadov v tomto useku. Do drzania sa
+        # NERATAJU - viz `_nad_v_behu`. Nuluje sa vsade s `_above_since`.
+        self._prepady_s = 0.0
         self._armed_at = None
         self._arm = None             # vylosovane rameno, uz pri natiahnuti
         self._cooldown_until = 0.0
@@ -332,7 +335,10 @@ class CueTrigger:
         self._nad_okno = []
         self._posledny_load_ts = None
         self._posledny_nad_koniec = None
-        self.najdlhsi_nad_s = 0.0    # najdlhsi SUVISLY usek nad prahom
+        # Najdlhsi usek nad prahom - LEN cas naozaj nad prahom, tolerovane
+        # prepady sa nerataju (0.2.1, `_nad_v_behu`). Veta po relacii ho
+        # porovnava so `stress_hold_s`, takze musi merat to iste co spustac.
+        self.najdlhsi_nad_s = 0.0
         self.behov_nad = 0           # kolkokrat sa taky usek zacal
         self.zrusenych_prepadom = 0  # ... a skoncil poklesom pod prah
         # ... alebo vypadkom tepu: medzera >= DIERA_S, alebo
@@ -398,7 +404,7 @@ class CueTrigger:
             # Rozbehnuty usek nad prahom konci uspanim, nie poklesom. Je to
             # ina pricina a musi sa dat odlisit - viz `reset`.
             self.najdlhsi_nad_s = max(self.najdlhsi_nad_s,
-                                      now - self._above_since)
+                                      self._nad_v_behu())
             # Za vypadok sa rata LEN vypadok tepu. "Teraz nie" (snooze) je
             # rozhodnutie hraca, nie chyba hodiniek - inak by mu appka po
             # vecere napisala "Tep 3x vypadol, daj hodinky blizsie", hoci
@@ -407,6 +413,7 @@ class CueTrigger:
                 self.zrusenych_vypadkom += 1
         self._above_since = None
         self._below_since = None
+        self._prepady_s = 0.0
         # NAZBIERANÝ ČAS NAD PRAHOM SA MUSÍ ZAHODIŤ AJ TU.
         #
         # `note_load` má poistku proti diere v dátach, ale tá sa spustí len
@@ -459,6 +466,7 @@ class CueTrigger:
         self.state = COOLDOWN if now < self._cooldown_until else IDLE
         self._above_since = None
         self._below_since = None
+        self._prepady_s = 0.0
         return None
 
     # ---------- vstupy ----------
@@ -499,6 +507,7 @@ class CueTrigger:
             # prirastok za celu kalibraciu.
             self._above_since = None
             self._below_since = None
+            self._prepady_s = 0.0
             self._nad_okno = []
             self._posledny_load_ts = None
             if self.state == RISING:
@@ -510,6 +519,7 @@ class CueTrigger:
             self.state = IDLE
             self._above_since = None
             self._below_since = None
+            self._prepady_s = 0.0
 
         prah = self.params["stress_threshold"]
         drzanie = self.params["stress_hold_s"]
@@ -551,16 +561,19 @@ class CueTrigger:
         # RIDSIA KADENCIA ALE DIERA NIE JE. Medzera kratsia nez `DIERA_S`
         # usek nerusi a okno nemaze; do okna z nej ide najviac `MAX_KROK_S`.
         # POCTIVO: to plati len pre okno (`nazbierane`). Suvisla cesta nizsie
-        # (`now - self._above_since`) meria nastenne hodiny, takze ticho
-        # kratsie nez `DIERA_S` v nej zaratane JE - rovnako, ako ho appka
-        # inde povazuje za "pripojene" a HUD vtedy ukazuje posledny tep.
+        # (`_nad_v_behu`) meria nastenne hodiny, takze ticho kratsie nez
+        # `DIERA_S` po vzorke NAD prahom v nej zaratane JE - rovnako, ako ho
+        # appka inde povazuje za "pripojene" a HUD vtedy ukazuje posledny
+        # tep. Cas POD prahom (tolerovany prepad) sa v nej ale nerata.
         if diera and self._above_since is not None:
+            # K poslednej vzorke nad prahom, nie po `now` - dieru nikto
+            # nemeral (`_nad_v_behu`).
             self.najdlhsi_nad_s = max(self.najdlhsi_nad_s,
-                                      self._posledny_nad_koniec - self._above_since
-                                      if self._posledny_nad_koniec else 0.0)
+                                      self._nad_v_behu())
             self.zrusenych_vypadkom += 1
             self._above_since = None
             self._below_since = None
+            self._prepady_s = 0.0
             self._nad_okno = []
             if self.state == RISING:
                 self.state = IDLE
@@ -574,6 +587,10 @@ class CueTrigger:
         nazbierane = sum(d for _, d in self._nad_okno)
 
         if stress >= prah:
+            if self._below_since is not None:
+                # Tolerovany prepad sa skoncil. Usek zije dalej, ale cas pod
+                # prahom sa do drzania nepripise (`_nad_v_behu`).
+                self._prepady_s += now - self._below_since
             self._below_since = None
             if self._above_since is None:
                 self._above_since = now
@@ -581,9 +598,11 @@ class CueTrigger:
                 self.state = RISING
             else:
                 self.najdlhsi_nad_s = max(self.najdlhsi_nad_s,
-                                          now - self._above_since)
+                                          self._nad_v_behu())
+            # `_nad_v_behu()` je tu cas k `now` - tato vzorka je posledna
+            # nad prahom (`_posledny_nad_koniec = now` vyssie).
             if (self._above_since is not None
-                    and (now - self._above_since >= drzanie
+                    and (self._nad_v_behu() >= drzanie
                          or nazbierane >= drzanie)):
                 if (self._hodina_plna(now)
                         or not self.params.get("cues_enabled", True)):
@@ -594,6 +613,7 @@ class CueTrigger:
                     # Pocita sa odznova, takze sa to skusi o dalsich 90 s,
                     # nie pri kazdej vzorke.
                     self._above_since = now
+                    self._prepady_s = 0.0
                     self._nad_okno = []
                     return None
                 return self._arm_now(now)
@@ -606,10 +626,11 @@ class CueTrigger:
             self._below_since = now
         elif now - self._below_since > self.params["dip_grace_s"]:
             self.najdlhsi_nad_s = max(self.najdlhsi_nad_s,
-                                      self._below_since - self._above_since)
+                                      self._nad_v_behu())
             self.zrusenych_prepadom += 1
             self._above_since = None
             self._below_since = None
+            self._prepady_s = 0.0
             self.state = IDLE
         return None
 
@@ -641,6 +662,7 @@ class CueTrigger:
             self.state = IDLE
             self._above_since = None
             self._below_since = None
+            self._prepady_s = 0.0
             return None
         if self.state != ARMED:
             return None
@@ -678,6 +700,37 @@ class CueTrigger:
         return None
 
     # ---------- vnutro ----------
+
+    def _nad_v_behu(self):
+        """Kolko sekund rozbehnuteho useku bolo naozaj NAD prahom - k
+        poslednej vzorke nad nim.
+
+        TOLEROVANY PREPAD NIE JE DRZANIE (0.2.1). `dip_grace_s` len drzi usek
+        nazive, aby ho respawn nerozbil na tri kratke. Suvisla cesta sa ale
+        predtym pocitala ako `now - _above_since`, teda nastennymi hodinami
+        VRATANE prepadov: vzorec "1 s nad prahom, 19 s pod nim" natiahol
+        hlasku po minute, hoci nad prahom boli styri vzorky. README slubuje
+        hlasku, ked zataz nad hranicou "stravi dost casu" - a appka ma radsej
+        mlcat, nez sa ozvat naplano.
+
+        Prepad trva od prvej vzorky pod prahom po prvu nad nim (`_prepady_s`).
+        Kratke ticho PO VZORKE NAD prahom sa rata ako nad, ked usek pokracuje
+        dalsou vzorkou nad prahom - viz POCTIVO v `note_load`.
+
+        PRECO K POSLEDNEJ VZORKE NAD PRAHOM, a nie k `now`. Presne toto
+        cislo vidi podmienka natiahnutia a z neho ide `najdlhsi_nad_s` do
+        vety "najdlhsie X s, treba Y s". Keby sa pri konci useku pripocital
+        aj cas po poslednej vzorke nad prahom - rozbehnuty prepad, alebo 12 s
+        bez dat pred `suspend(A_TEP_VYPADOL)` - veta by o useku, ktory sa
+        nenatiahol, tvrdila "najdlhsie 46 s, treba 45 s".
+
+        `is None`, nie pravdivost: cas 0.0 je platny cas (hodiny sa daju
+        podstrcit), nie "chyba".
+        """
+        if self._above_since is None or self._posledny_nad_koniec is None:
+            return 0.0
+        return max(0.0, self._posledny_nad_koniec - self._above_since
+                   - self._prepady_s)
 
     def _prekazka(self, now):
         """Co z tela brani hlaske PRAVE TERAZ, alebo None.
@@ -737,6 +790,7 @@ class CueTrigger:
         self._armed_at = now
         self._above_since = None
         self._below_since = None
+        self._prepady_s = 0.0
         # Nazbierany cas sa spotreboval na TOTO natiahnutie. Bez vycistenia
         # by hned po cooldowne stacila jedna vzorka nad prahom a okno by
         # bolo plne uz od minula.
@@ -781,6 +835,7 @@ class CueTrigger:
         self._arm = None
         self._above_since = None
         self._below_since = None
+        self._prepady_s = 0.0
         if reason in self.zadrzane:
             self.zadrzane[reason] += 1
         return {"typ": E_ABORT, "ts": now, "reason": reason, "arm": arm,

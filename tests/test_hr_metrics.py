@@ -579,12 +579,16 @@ def test_pokazena_relacia_sa_pozna_podla_nemoznych_skokov():
 
 
 def test_podozriva_relacia_neurcuje_zakladnu_ani_hranicu():
+    # `duration_s` od 0.2.1: kriticky tep sa uci len z relacii aspon 5 min
+    # (`je_dost_dlha`) - bez neho by obe strany padli na zalohu a rovnost
+    # nizsie by nic nemerala.
     zdrave = [{"curve": [78, 80, 79, 82, 81, 80, 79, 83, 82, 80] * 30,
-               "baseline_bpm": 78} for _ in range(4)]
+               "baseline_bpm": 78, "duration_s": 1800.0} for _ in range(4)]
     pokazena = {"curve": [135, 69, 135, 145, 79, 145, 182, 91, 222, 111] * 30,
-                "baseline_bpm": 135}
+                "baseline_bpm": 135, "duration_s": 1800.0}
     assert hr_stats.dlhodoba_zakladna(zdrave + [pokazena]) == \
         hr_stats.dlhodoba_zakladna(zdrave)
+    assert hr_stats.dynamicky_kriticky(zdrave) != hr_stats.KRITICKY_ZALOHA
     assert hr_stats.dynamicky_kriticky(zdrave + [pokazena]) == \
         hr_stats.dynamicky_kriticky(zdrave)
 
@@ -603,8 +607,12 @@ def test_kriticky_tep_nesmie_sadnut_na_zakladnu():
     tesne nad základňu, záťaž by sa vyškálovala na pár úderoch a appka by
     reagovala na šum.
     """
-    pokojne = [{"curve": [70] * 120, "baseline_bpm": 69} for _ in range(4)]
+    # `duration_s` od 0.2.1 (relacia aspon 5 min) - inak zaloha 110 a test
+    # by presiel bez toho, aby poistku vobec skusil.
+    pokojne = [{"curve": [70] * 120, "baseline_bpm": 69, "duration_s": 600.0}
+               for _ in range(4)]
     h = hr_stats.dynamicky_kriticky(pokojne, baseline=69)
+    assert h != hr_stats.KRITICKY_ZALOHA
     assert h >= 69 + hr_stats.KRITICKY_MIN_NAD_ZAKLADNOU
 
 

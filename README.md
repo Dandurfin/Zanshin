@@ -1,6 +1,6 @@
 # 残 Zanshin
 
-*Alpha 0.2 · Windows · GPLv3*
+*Alpha 0.2.1 · Windows · GPLv3*
 
 **Calm-reminders for gamers, triggered by your body — not a keystroke.**
 Zanshin watches your **heart rate from a smartwatch** and, when strain stays
@@ -32,9 +32,10 @@ jaw, drop your shoulders, and breathe.
 > Outside its own window the app hears only one key combination: the
 > "not now" shortcut, which silences its cues for half an hour while it keeps
 > measuring your heart rate (Ctrl+Alt+Z by default; press it again to end it
-> sooner). Stopping listening altogether is a separate switch. Windows tells
-> it when that one combination is pressed, and about no other key. Details in
-> **[SAFETY.md](SAFETY.md)** (in Slovak for now).
+> sooner). "Not now" is also in the tray icon's menu (right-click), in case
+> another app holds the shortcut. Stopping listening altogether is a separate
+> switch. Windows tells it when that one combination is pressed, and about no
+> other key. Details in **[SAFETY.md](SAFETY.md)** (in Slovak for now).
 
 ## Features
 
@@ -56,7 +57,8 @@ jaw, drop your shoulders, and breathe.
   of a cue and keep playing for at least two more minutes, unless you then
   answer that it landed — and the next session drops one step: voice →
   picture only → no cues for a few sessions, then the picture again. It
-  climbs back slowly, after three sessions with a cue and no complaint.
+  climbs back slowly, after three sessions with a cue that was actually shown
+  and no complaint (a cue whose picture failed to draw doesn't count).
   History says in one quiet line where it is and why. How loud it may ever
   get is your call: voice, a sound and the picture without words, or the
   picture only. You can pick it during onboarding or any time under
@@ -66,11 +68,13 @@ jaw, drop your shoulders, and breathe.
   high-HR line are all computed from *your own* sessions, each from at least
   three of them. Until then the threshold and the high-HR line use
   average-player numbers, and your calm is taken from the current session
-  only. The strain threshold needs the most: three play sessions of five
-  minutes or more that add up to roughly half an hour of heart rate — three of
-  about ten minutes are enough, three of five are not. Imported sessions,
-  sessions with implausible readings and sessions you marked afterwards as
-  affected by illness, alcohol or exercise just before playing don't count.
+  only. The threshold and the high-HR line learn only from play sessions of
+  five minutes or more, and the strain threshold needs the most: three play
+  sessions of five minutes or more that add up to roughly half an hour of
+  heart rate — three of about ten minutes are enough, three of five are not.
+  Imported sessions, sessions with implausible readings and sessions you
+  marked afterwards as affected by illness, alcohol or exercise just before
+  playing don't count.
 - **Silent while you move.** As long as steps are coming from the watch, the app
   stays quiet — walking raises heart rate just like stress, and the two can't be
   told apart from BPM alone.
@@ -79,7 +83,11 @@ jaw, drop your shoulders, and breathe.
   play, *Aizome* (indigo) for work — and switches without a restart. At work,
   cues are visual only: no voice, no sound. The resting baseline is shared; the
   strain threshold and high-HR line are learned from play sessions only. A
-  running session stays in the world it started in.
+  running session stays in the world it started in, even if you flip the
+  switch meanwhile. At the end, your answer to *Were you playing or working?*
+  has the last word: pick the other world and the session moves there — in
+  History, and in what the strain threshold and high-HR line learn from. Skip
+  the question and it stays where it started.
 - **Two TTS engines.** The *natural voice (Edge)* is the default: neural
   voices, prepared ahead of time into a local cache, so there's no latency
   in-game. Preparing a line sends its wording to Microsoft — after the first
@@ -114,7 +122,7 @@ Each release lists the installer's SHA-256. A copy from anywhere else is not
 from me.
 
 Download `Zanshin-<version>-setup.exe` (for this version
-`Zanshin-0.2-setup.exe`) from the release and run it. The
+`Zanshin-0.2.1-setup.exe`) from the release and run it. The
 installer asks for a language (11 available, English default) and installs
 **without administrator rights** (no UAC) into `%LOCALAPPDATA%\Programs\Zanshin`.
 Your data (settings, recordings, generated speech and SFX) always goes to
@@ -207,16 +215,48 @@ Easiest: double-click `build.bat` (runs `build_all.ps1`). Or directly:
 powershell -ExecutionPolicy Bypass -File "build_all.ps1"
 ```
 
-The script (1) checks/installs Python deps and PyInstaller, (2) packages the app
-into `dist\` (onedir, no admin manifest, UPX off), and (3) assembles the
-installer with Inno Setup 6 into `installer\` (if Inno Setup 6 is installed;
-otherwise you can run the `.exe` straight from `dist\`).
+The script (1) checks/installs Python deps and PyInstaller, draws
+`Dandurf.ico` if it's missing, and runs `check_before_run.py` — if that finds
+a problem, nothing is built; (2) force-closes a running Zanshin without asking
+(Windows locks a running `.exe`), deletes the old `dist\Zanshin\` and packages
+the app into `dist\` (onedir, no admin manifest, UPX off); and (3) assembles
+the installer with Inno Setup 6 into `installer\` (if Inno Setup 6 is
+installed; otherwise you can run the `.exe` straight from `dist\`).
 
 ## Tests
 
+With the app's dependencies installed (see above), install the developer
+tools first — `requirements-dev.txt` holds pytest and pyflakes — then run the
+tests:
+
 ```bash
+pip install -r requirements-dev.txt
 python -m pytest tests/
 ```
+
+Other developer scripts, run by hand from the repository folder. None of them
+is part of the app or the installer:
+
+- `check_before_run.py` — checks what can be checked without opening a
+  window: every module compiles, no undefined names (with pyflakes), the
+  translations are complete, the main window calls no method or colour token
+  that doesn't exist, and no keyboard hook or Steam code has come back.
+  `build_all.ps1` runs it before every build.
+- `check_translations.py` — missing languages, mismatched `{placeholders}` and
+  empty strings in the translations; exits with an error if it finds any.
+- `make_translation_todo.py` — writes `preklad_TODO.csv`, the strings still
+  waiting for a translation.
+- `check_sources.py` — opens every study link in the Guide and reports the
+  dead ones. It needs the internet and contacts each linked site.
+- `simulate.py` — plays synthetic evenings through the app's own heart-rate,
+  activity, trigger and measurement code and says what the cues would have
+  done. It checks the mechanism, not whether the thresholds fit your body.
+- `prepocitaj_okna.py` — re-checks measurement windows that were already
+  saved against today's validity rules. **It rewrites the saved
+  `hr_windows.json`** next to `main.py` (the data of Zanshin run from source,
+  not of the installed app); a backup copy goes next to it first, and
+  `--nahlad` only previews. Nothing is deleted: a window that no longer
+  passes is marked invalid, with the reason.
 
 The repository also holds three developer scripts for testing the window by
 hand: `gui_harness_auto.py`, `gui_harness_onboarding.py` and
@@ -258,16 +298,30 @@ Author: **Dandurfin** — [Twitch](https://www.twitch.tv/dandurfin) ·
 | `i18n.py` | UI translations (11 languages; Czech and Bulgarian in `i18n_cs_bg.py`) |
 | `sfx_assets.py` | Built-in SFX library — copies the bundled sounds; download or synthesis only if one is missing |
 | `heart_rate.py` | Local-network receiver for BPM/steps from a companion app |
+| `obs_websocket.py` | Minimal obs-websocket v5 server — what *HeartRateOnStream for OBS* writes your heart rate to |
+| `netinfo.py` | This PC's local IP addresses for pairing, hidden on screen until *Show IP* |
 | `activity.py` | Whether the player is active (`GetLastInputInfo`, **no hook**) |
+| `gamepad.py` | Controller activity through SDL (`pygame`) — only "the player is active"; which button is never stored |
+| `hotkey.py` | The one global shortcut, "not now" (`RegisterHotKey`, not a hook) |
+| `game_profiles.py` | Auto-profile — compares running process names with the known games (only while that switch is on) |
 | `trigger.py` | Reminder state machine — draw, defer to a break, silent arm |
 | `rebrik.py` | Cue ladder — voice → picture → pause, set per session from your feedback |
 | `measure.py` | Measurement windows around a reminder and their validity |
 | `hr_stats.py` | Resting baseline, strain index, session summaries & history |
-| `data_io.py` | Export / import / delete — strict parser, no pickle |
+| `hr_insights.py` | Patterns across sessions — hedged notes, not diagnoses |
+| `data_io.py` | Export / import / delete — strict parser (50 MB cap, UTF-8 only, NaN/Infinity rejected, every field checked), no pickle |
 | `overlay.py`, `hud.py`, `hud_paint.py` | In-game visuals and HUD (PIL rendering) |
+| `layer_window.py` | The click-through, see-through window (`UpdateLayeredWindow`) every in-game visual is drawn in |
+| `display.py` | Monitors, DPI awareness, and which screen to draw on |
 | `ui_shell.py`, `ui_dialogs.py` | Main-window shell, dialogs, onboarding |
+| `ui_kit.py` | Building blocks of the main window — the breathing band, keycaps, stat cards, charts |
+| `theme_recolor.py` | Recolours the open window when the theme changes, without rebuilding it |
+| `color_picker.py` | The app's own colour picker (no eyedropper — it would have to capture the screen) |
+| `guided_tour.py` | The guided tour of the window after onboarding |
 | `guide_content.py`, `guide_panel.py` | The Guide — per-cue notes, philosophy and source list |
 | `background.py` | The dojo backdrop and the "Today" hero |
+| `make_icon.py` | Draws the ensō — the `Dandurf.ico` icon, and the tray mark while the app runs |
+| `logging_setup.py` | Local log files (`app.log`, `crash.log`) — no remote crash reporting |
 | `Dandurf.spec`, `build.bat`, `build_all.ps1`, `Dandurf.iss` | PyInstaller + Inno Setup build |
 
 See also **[SAFETY.md](SAFETY.md)** (anti-cheat / no-injection, in Slovak) and

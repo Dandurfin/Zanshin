@@ -1,9 +1,10 @@
-# Known issues — Zanshin alpha 0.2
+# Known issues — Zanshin alpha 0.2.1
 
 Zanshin 0.1 was my first public release. In places it promised more than it could
 keep, and some things didn't work the way it said they did. Here are the main
-points of what I've found so far: what 0.2 fixes, and what's still open. The
-seven problems named in the 0.1 version of this file are all below.
+points of what I've found so far: what 0.2 fixes, what 0.2.1 fixes after a
+review of the 0.2 code, and what's still open. The seven problems named in the
+0.1 version of this file are all below.
 
 I'm not a programmer. I build Zanshin with AI and learn as I go. If you spot
 something, or know a better way, I'd be glad to hear it. **0.2, partly** means
@@ -16,6 +17,85 @@ terrible, but not meant to be there. So I set the repository up again: 0.1 is
 in the history as it was, only without those things, and 0.2 follows it. That
 was the lesson: work stays work, private stays private, and I check every file
 before publishing. What 0.1 got wrong in the app itself is written down below.
+
+## What 0.2.1 fixes
+
+0.2.1 is a bug-fix release after a review of the 0.2 code: in a few places it
+didn't do what the README says. None of it was harmful as far as I know. It
+adds one thing: "Not now" is also in the tray icon's menu.
+
+### Cues and what the app learns
+
+- **A cue could be drawn after only a few seconds of strain above the
+  threshold.** When your strain kept briefly crossing the threshold, the time
+  just under it counted towards the hold time (45 s by default). In a test
+  with 1 s above and 19 s below, a cue was drawn after a minute with only four
+  readings above. **0.2.1:** a short dip below the threshold (under 20 s)
+  still doesn't restart the count, but only the time actually above it counts.
+- **The "longest stretch" after a session could say you reached the time a
+  cue needs, in a session with no cue**, for example after the watch
+  disconnected, because the seconds before the dropout was noticed counted
+  too. **0.2.1:** it counts only time above the threshold, up to the last
+  reading above it: the same number the app uses to decide when to draw.
+  Sessions saved before 0.2.1 keep their old, sometimes larger figure.
+- **A few short sessions could lower your high heart-rate line.** In a test,
+  three 2-minute pairing sessions at rest moved it from 110 to 80 BPM, and a
+  lower line makes your strain read higher and more of your play count as
+  Peak. **0.2.1:** the high-HR line, like the strain threshold, learns only
+  from play sessions of five minutes or more. The resting baseline still uses
+  the short ones.
+- **"Three sessions of about ten minutes are enough" was true only with an
+  almost perfect signal.** The strain threshold needed heart rate for about
+  91% of those minutes. **0.2.1:** three ten-minute sessions are enough from
+  about 82%; three of five minutes still aren't.
+- **The README said a session stays in the world it started in**, but your
+  answer to *Were you playing or working?* at the end moves it, on purpose.
+  **0.2.1:** the code is the same; the README now says so.
+- **The cue ladder counted a cue whose picture failed to draw as one you had
+  seen**, so after such sessions it could climb back towards the voice.
+  **0.2.1:** only cues that actually showed count (a silent picture-only cue
+  does).
+
+### "Not now"
+
+- **If another app held Ctrl+Alt+Z, the only way to quiet the cues was to
+  stop listening**, which also stops measuring. **0.2.1:** "Not now" is also
+  in the tray icon's menu (right-click), and the start-up log line points
+  there.
+
+### The heart-rate port
+
+- **Port 4455 could stop taking heart rate until you restarted the sensor.**
+  Once its connection limit was full (a port scanner, or a watch that kept
+  reconnecting over bad Wi-Fi and left dead connections behind), it stopped
+  accepting new ones, even after the old ones closed. **0.2.1:** only the
+  extra connection is refused, and heart rate keeps coming in. Silent
+  connections are closed: 10 s to finish connecting, and after a minute of
+  silence the app pings the other side and closes the connection only if
+  nothing answers within another minute, so a quiet but connected watch
+  isn't dropped. A single message over 64 KB is refused.
+- **The log file kept the first 40 raw messages from the watch every time the
+  sensor started.** **0.2.1:** 5, which is enough to see what the companion
+  sends when pairing doesn't work.
+
+### Your data
+
+- **Import was less strict than the README said.** Only each record's start
+  time and length were checked. Other fields were copied unchecked, and one
+  wrong value could break the History chart or the CSV export for good.
+  NaN/Infinity and impossible dates got through, a file not saved as UTF-8
+  ended in a raw error, and there was no size limit. **0.2.1:** files over 50 MB are
+  refused, and a file not in UTF-8 gets the "not a valid JSON file" message.
+  Every field is checked: a bad field is dropped and the record kept. Records
+  with an unusable start time (NaN/Infinity, or a date before 2000 or after
+  2100) are skipped and counted. Text the app couldn't save back (broken
+  Unicode) is dropped too, so an import can no longer fail halfway through,
+  after the backup was taken. The message after an import counts skipped
+  records, not dropped fields.
+- **Replacing a missing sound from GitHub had no size limit**: the download
+  was read whole into memory before its checksum was checked. **0.2.1:** it
+  stops above 256 KB. This only happens if one of the bundled sounds is
+  missing.
 
 ## What 0.1 got wrong, and what 0.2 changed
 
@@ -216,8 +296,8 @@ about, and a few will stay.
   seen %" export column. Use Borderless.
 - **Port 4455 accepts connections from every network your PC is connected to,
   without a password** (only your firewall limits who can reach it), so anything
-  that reaches it could send a fake heart rate. Allow it on your home network
-  only.
+  that reaches it could send a fake heart rate, or keep all its connections
+  busy so your watch can't get in. Allow it on your home network only.
 - **Ctrl+Alt+Z is reserved.** While Zanshin runs, the game doesn't receive that
   one key combination. In 0.1 the start-up log line said input is read with
   "no blocking"; in 0.2 it names the shortcut as the one exception.
@@ -241,10 +321,15 @@ about, and a few will stay.
   picture only, not a cue with no cue.
 - **Numbers and labels:** the cue chart colours a pulse drop as good, some notes
   are simpler than the math or name the wrong time span or unit, and the CSV
-  export is half-translated.
+  export is half-translated. A cue whose picture failed to draw (rare; the log
+  says so) is counted two ways: History, the CSV "breathing" column, insights
+  and the cue card on *Today* count it, while the questionnaire, the cue
+  ladder and "not now" treat it as not shown, even if its voice played.
 - **Texts and controls:** a few explanations and settings texts claim a bit more
   than the code does, onboarding misdescribes where the pictures sit, and the
-  "not now" shortcut is hard to find and can't be changed in the app.
+  "not now" shortcut can't be changed in the app (since 0.2.1, "Not now" is
+  also in the tray icon's menu). If Windows is slow at start-up, the log can
+  say another app holds the shortcut even though it works a moment later.
 
 ## How to help
 

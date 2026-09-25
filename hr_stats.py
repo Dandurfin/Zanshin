@@ -335,14 +335,23 @@ def dynamicky_kriticky(sessions, baseline=None):
 
     CO SA RATA
     90. percentil zo zlucenych krivok poslednych `KRITICKY_Z_RELACII` CISTYCH
-    relacii - teda "tep, nad ktory sa dostanes v hornej desatine hrania".
+    relacii dlhych aspon `PRAH_MIN_TRVANIE_S` - teda "tep, nad ktory sa
+    dostanes v hornej desatine hrania".
     Na testovacich datach to dava napr. 105 pri zakladni 77: headroom 28 a pasmo
     kriticka pokryva 10 % casu.
 
     Vracia `KRITICKY_ZALOHA`, kym nie je z coho ratat. `baseline` je len
     poistka, aby vysledok neskoncil tesne nad zakladnou.
     """
-    ciste = ciste_relacie(sessions)[-KRITICKY_Z_RELACII:]
+    # MINIMUM 5 MINUT NA RELACIU (0.2.1) - to iste pravidlo ako pri prahu
+    # zataze (`je_dost_dlha`). Doteraz stacilo 300 bodov krivky SPOLU, takze
+    # tri dvojminutove relacie pri parovani hodiniek (sedis, tep pri pokoji)
+    # nahradili zalohu 110 hranicou tesne nad zakladnou. Nizsia hranica =
+    # mensi headroom = vyssia zataz a viac "Spicky" - appka by volala vlka
+    # z dat, ktore o hrani nic nehovoria. Kratka relacia sa NEMAZE, len sa z
+    # nej hranica neuci; zakladna (`dlhodoba_zakladna`) ju berie dalej.
+    ciste = [r for r in ciste_relacie(sessions)
+             if je_dost_dlha(r)][-KRITICKY_Z_RELACII:]
     if len(ciste) < KRITICKY_MIN_RELACII:
         return KRITICKY_ZALOHA
     body = []
@@ -371,10 +380,44 @@ def dynamicky_kriticky(sessions, baseline=None):
 
 PRAH_PERCENTIL = 0.80          # nad prahom ma byt ~20 % casu hrania
 PRAH_MIN_RELACII = 3
-PRAH_MIN_BODOV = 1000
+# Kolko bodov zataze musia relacie dat SPOLU. Bod = krok 1,5 s prehravania
+# (`load_z_krivky`), prehrava sa len cas so signalom (`duration_s * pokrytie`)
+# a prvych 29 krokov kazdej relacie je kalibracia (`HeartStats` chce 30
+# vzoriek), ktora sa nerata. Relacia teda da `int(signal_s / 1.5) - 29` bodov.
+#
+# 1000 -> 900 (0.2.1). README slubuje "tri relacie po zhruba desat minut
+# staci, tri po pat nie". Pri 1000 to platilo len pri pokryti nad ~91 %:
+# 3 x 10 min dava pri 100 % 3 x 371 = 1113, pri 90 % 3 x 331 = 993 a pri
+# 85 % 3 x 311 = 933 - cize bezny vecer s par dierami v signale by pod
+# prahom ostal. 900 prejde 3 x 10 min az po pokrytie ~82 %, a stale
+# nepusti 3 x 5 min (3 x 171 = 513 ani pri plnom pokryti) ani 3 x 8 min
+# pri plnom pokryti (873). Spolu s kalibraciou je to pri troch relaciach
+# (900 + 3 x 29) x 1,5 s = ~25 minut tepu - "zhruba pol hodiny" z README.
+PRAH_MIN_BODOV = 900
 PRAH_Z_RELACII = 20
 PRAH_MIN_TRVANIE_S = 300.0
 PRAH_ROZSAH = (35.0, 85.0)
+
+
+def je_dost_dlha(session):
+    """True, ked relacia trva aspon `PRAH_MIN_TRVANIE_S` (5 minut).
+
+    Jedno pravidlo pre prah zataze aj kriticky tep: z kratsej relacie sa
+    ziadna vlastna hranica neuci. Pokazene alebo chybajuce `duration_s` sa
+    sprava ako nula - relacia sa neuci, ale ani nezhodi cely vypocet
+    (v `app._open_hr_session` by vynimka zahodila aj dlhodobu zakladnu).
+    Porovnanie zhora chyta NaN a nekonecno z pokazeneho suboru, rovnako ako
+    v `pokrytie_signalu`.
+
+    Vety v nastaveniach "spocitane z n relacii" (`app._kriticky_popis`,
+    `_prah_z_relacii`) musia n ratat TYMTO pravidlom - inak by pri troch
+    kratkych relaciach tvrdili vypocitanu hranicu, kym plati zaloha.
+    """
+    try:
+        trvanie = float(session.get("duration_s") or 0)
+    except (TypeError, ValueError, AttributeError):
+        return False
+    return PRAH_MIN_TRVANIE_S <= trvanie < float("inf")
 
 
 def load_z_krivky(session, baseline, critical, krok_s=1.5):
@@ -442,8 +485,7 @@ def dynamicky_prah_zataze(sessions, baseline=None, critical=None):
     priemerneho hraca z `trigger.default_params()`.
     """
     pouzitelne = [r for r in ciste_relacie(sessions)
-                  if float(r.get("duration_s") or 0) >= PRAH_MIN_TRVANIE_S
-                  and r.get("curve")][-PRAH_Z_RELACII:]
+                  if je_dost_dlha(r) and r.get("curve")][-PRAH_Z_RELACII:]
     if len(pouzitelne) < PRAH_MIN_RELACII:
         return None
     body = []
@@ -2024,6 +2066,16 @@ def normalize_activity(raw):
 # `activity` ostava tym, cim bolo: odpovedou hraca v dotazniku. Uklada sa
 # len ked na nu naozaj klikol, takze sa neskor da poctivo rozlisit "prislo
 # z prepinaca" od "hrac to potvrdil". Ked odpovedal, jeho slovo vyhrava.
+#
+# ZAMERNE aj pre ucenie, nie len pre historiu (overene pri 0.2.1). Otazka
+# znie "Hral si, alebo pracoval?" - to je OPRAVA sveta, nie poznamka. Kto
+# zabudol pred hrou prepnut z Prace, odpovie "Hral som" a vecer sa presunie
+# do Hry VRATANE kritickeho tepu a prahu zataze (`sessions_in_world` v
+# `app._open_hr_session`); naopak relacia zacata v Hre a odpovedana
+# "Pracoval som" z nich vypadne.
+# Pecat zo startu by tu klamala o tom, co hrac robil - a on to vie lepsie.
+# "Bezuca relacia ostava vo svete, v ktorom zacala" plati do dotaznika:
+# prepinac uprostred ju neprestitkuje, az hracova odpoved po konci.
 #
 # Relacie bez stitku (starsie verzie appky, preskoceny dotaznik) patria do
 # Hry PEVNYM pravidlom - nie podla "hlavneho sveta", inak by sa pri jeho

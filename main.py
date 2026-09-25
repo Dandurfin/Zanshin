@@ -5,7 +5,7 @@ Toto je len vstupny bod - overi zavislosti a spusti hlavnu appku
 (DandurfApp v app.py). Cela architektura je rozdelena na moduly:
 
   paths.py           - cesty k datam (%APPDATA%), migracia zo starsich verzii
-  theme.py           - farebne tokeny pre Zen / Modern rezim
+  theme.py           - farebne tokeny vzhladov Sumi (hra) / Aizome (praca)
   i18n.py            - preklady rozhrania (11 jazykov; cs/bg v i18n_cs_bg.py)
   settings_model.py  - datovy model slotov/nastaveni (predvolene hodnoty,
                         normalizacia, popisky)
@@ -33,8 +33,9 @@ Dva TTS motory:
               komunikacia ani latencia pocas hrania.
   * "sapi"  - klasicke offline Windows SAPI5 hlasy.
 
-Rozhranie ma dva vizualne rezimy (Zen / Modern), ktore sa daju prepnut
-kedykolvek bez restartu - farebne tokeny su v theme.py. Zabudovana SFX
+Rozhranie ma dva vzhlady a idu so svetom: Sumi pre hru, Aizome pre pracu
+(kluce `zen` / `modern`, viz `theme.WORLD_THEME`). Prepnutie sveta ich
+prefarbi kedykolvek bez restartu - farebne tokeny su v theme.py. Zabudovana SFX
 kniznica (stiahnuta alebo lokalne vygenerovana) je v sfx_assets.py.
 """
 

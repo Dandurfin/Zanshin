@@ -15,13 +15,19 @@ import data_io  # noqa: E402
 import hr_stats  # noqa: E402
 
 
-def relacia(started=1000.0, **kw):
+# Cas v rozsahu, ktory import prijme (`data_io.MIN_CAS`..`MAX_CAS`). Predtym
+# tu bolo 1000.0 (rok 1970) - taky zaznam import od 0.2.1 zahodi, lebo vo
+# Windows zhodi graf Historie.
+T0 = 1700000000.0
+
+
+def relacia(started=T0, **kw):
     z = {"started": started, "duration_s": 3600.0, "avg_bpm": 80}
     z.update(kw)
     return z
 
 
-def okno(ts=1000.0, **kw):
+def okno(ts=T0, **kw):
     z = {"ts": ts, "cue_id": "slot3", "arm": "voice", "valid": True}
     z.update(kw)
     return z
@@ -145,8 +151,8 @@ def test_importovane_su_oznacene(tmp_path):
 
 
 def test_zlucenie_nezdvoji_to_iste(tmp_path):
-    moje = [relacia(started=1000.0)]
-    bundle = data_io.build_bundle([relacia(started=1000.0), relacia(started=2000.0)], [])
+    moje = [relacia(started=T0)]
+    bundle = data_io.build_bundle([relacia(started=T0), relacia(started=T0 + 1000.0)], [])
     cudzie, _, _ = data_io.parse_bundle(zapis(tmp_path, bundle))
     spolu = data_io.merge_sessions(moje, cudzie)
     assert len(spolu) == 2
@@ -156,8 +162,8 @@ def test_pri_zluceni_vyhrava_vlastny_zaznam(tmp_path):
     """Import vlastného exportu nesmie prepísať vlastné relácie ich kópiou
     s príznakom `imported` — inak by si človek jedným kliknutím vyradil
     vlastné dáta z výpočtu účinnosti."""
-    moje = [relacia(started=1000.0)]
-    bundle = data_io.build_bundle([relacia(started=1000.0)], [])
+    moje = [relacia(started=T0)]
+    bundle = data_io.build_bundle([relacia(started=T0)], [])
     cudzie, _, _ = data_io.parse_bundle(zapis(tmp_path, bundle))
     spolu = data_io.merge_sessions(moje, cudzie)
     assert len(spolu) == 1

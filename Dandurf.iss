@@ -31,7 +31,7 @@
 ; musi byt na jednom riadku.
 
 #define MyAppName "Zanshin"
-#define MyAppVersion "0.2"
+#define MyAppVersion "0.2.1"
 #define MyAppPublisher "Dandurfin"
 #define MyAppExeName "Zanshin.exe"
 ; Odkial brat onedir build; da sa prepisat z prikazoveho riadku
@@ -47,7 +47,7 @@ AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppVerName={#MyAppName} {#MyAppVersion}
 ; Verzia v Podrobnostiach samotneho setup.exe - bez nej tam Inno Setup
-; napise 0.0.0.0. Chybajuce cisla doplni nulami, takze "0.2" da 0.2.0.0
+; napise 0.0.0.0. Chybajuce cisla doplni nulami, takze "0.2.1" da 0.2.1.0
 ; (to iste ako filevers vo version_info.txt) a verzia sa nedrzi na dvoch
 ; miestach. VersionInfoProductVersion ma Inno predvolene rovnaku.
 VersionInfoVersion={#MyAppVersion}

@@ -354,7 +354,7 @@ CS = {
     'log.monitor_target': 'Vizuály a HUD se budou kreslit na: {target}.',
     'log.exclusive_fullscreen': 'Okno v popředí zabírá celou obrazovku. Pokud je to hra a vizuály v ní nevidíš, běží asi v exkluzivním fullscreenu – Windows v něm cizí překryvy nevykreslí. Přepni ji na „Bez okrajů / Borderless“.',
     'log.hr_session_saved': 'Relace uložena – průměr {avg} BPM, maximum {max} BPM, špička zátěže {peak}.',
-    'app.version_short': 'alfa 0.2',
+    'app.version_short': 'alfa 0.2.1',
     'nav.dnes': 'Dnes',
     'nav.spustace': 'Spouštěče',
     'nav.vhre': 'Hodinky a ve hře',
@@ -661,7 +661,7 @@ CS = {
     'hud.snooze.60min': '60 minut',
     'hud.snooze.cancel': 'Zrušit ztišení',
     'log.hotkey_on': 'Klávesová zkratka {combo} je připravená — ztiší mě na půl hodiny',
-    'log.hotkey_failed': 'Zkratku {combo} drží jiná aplikace, takže „teď ne“ nepůjde. Umlčet mě můžeš zastavením v pruhu nahoře nebo přes ikonu na liště — tím ale přestanu i měřit.',
+    'log.hotkey_failed': 'Zkratku {combo} drží jiná aplikace, takže „teď ne“ nepůjde. Umlčet mě můžeš zastavením v pruhu nahoře — tím ale přestanu i měřit.',
     'log.snooze_started': 'Teď ne: {minutes} minut se neozvu. Poslouchání to nezastaví.',
     'log.snooze_ended': 'Ztišení skončilo',
     'log.snooze_cancelled': 'Ztišení zrušeno',
@@ -963,6 +963,9 @@ CS = {
     'edge.after_game': 'Hlášky připravím, až zastavíš poslouchání.',
     'ob.cue.online_note': 'Přirozený hlas je online: texty hlášek (nikdy ne tep) se pošlou službě Microsoft na převod do řeči. Hlas z Windows neposílá nic — přepneš na něj v Nastavení → Zvuk.',
     'settings.language_note': 'Appka je psaná ve slovenštině. Ostatní jazyky jsou překlady s pomocí AI a rodilý mluvčí je ještě nekontroloval — pokud vidíš chybu, dej vědět.',
+    # 0.2.1: "teraz nie" aj v ponuke ikony v liste (i18n.py, koniec suboru)
+    'tray.snooze': 'Teď ne ({minutes} min)',
+    'log.hotkey_failed_tray': 'Zkratku {combo} drží jiná aplikace, takže nepůjde. „Teď ne“ najdeš i v nabídce ikony na liště (pravé kliknutí). Poslouchání to nezastaví.',
 }
 
 BG = {
@@ -1306,7 +1309,7 @@ BG = {
     'log.monitor_target': 'Визуалите и HUD ще се рисуват на: {target}.',
     'log.exclusive_fullscreen': 'Прозорецът на преден план заема целия екран. Ако това е игра и не виждаш визуалите в нея, вероятно върви в ексклузивен цял екран – в него Windows не рисува чужди оувърлеи. Превключи я на „Без рамка / Borderless“.',
     'log.hr_session_saved': 'Сесията е запазена – средно {avg} BPM, максимум {max} BPM, пик на натоварването {peak}.',
-    'app.version_short': 'алфа 0.2',
+    'app.version_short': 'алфа 0.2.1',
     'nav.dnes': 'Днес',
     'nav.spustace': 'Тригери',
     'nav.vhre': 'Часовник и игра',
@@ -1613,7 +1616,7 @@ BG = {
     'hud.snooze.60min': '60 минути',
     'hud.snooze.cancel': 'Отмени заглушаването',
     'log.hotkey_on': 'Клавишната комбинация {combo} е готова — заглушава ме за половин час',
-    'log.hotkey_failed': 'Комбинацията {combo} е заета от друго приложение, така че „не сега“ няма да работи. Можеш да ме заглушиш, като ме спреш от лентата горе или през иконата в трея — но тогава спирам и да меря.',
+    'log.hotkey_failed': 'Комбинацията {combo} е заета от друго приложение, така че „не сега“ няма да работи. Можеш да ме заглушиш, като ме спреш от лентата горе — но тогава спирам и да меря.',
     'log.snooze_started': 'Не сега: {minutes} минути няма да се обаждам. Слушането не спира.',
     'log.snooze_ended': 'Заглушаването приключи',
     'log.snooze_cancelled': 'Заглушаването е отменено',
@@ -1915,4 +1918,7 @@ BG = {
     'edge.after_game': 'Ще подготвя репликите, когато спреш слушането.',
     'ob.cue.online_note': 'Естественият глас е онлайн: текстът на подсказките (никога пулсът) се изпраща на услугата на Microsoft за превръщане в реч. Гласът от Windows не изпраща нищо — превключваш на него в Настройки → Звук.',
     'settings.language_note': 'Приложението е написано на словашки. Останалите езици са преводи с помощта на AI и все още не са проверени от носител на езика — ако видиш грешка, дай знак.',
+    # 0.2.1: "teraz nie" aj v ponuke ikony v liste (i18n.py, koniec suboru)
+    'tray.snooze': 'Не сега ({minutes} мин)',
+    'log.hotkey_failed_tray': 'Комбинацията {combo} е заета от друго приложение, така че няма да работи. „Не сега“ има и в менюто на иконата в трея (десен клик). Слушането не спира.',
 }

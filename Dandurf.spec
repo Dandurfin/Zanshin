@@ -113,11 +113,7 @@ coll = COLLECT(
     a.binaries,
     a.datas,
     strip=False,
-    # UPX VYPNUTY: komprimovany .exe sa pri spusteni sam rozbaluje v
-    # pamati, co je signatura baleneho malveru - Defender/SmartScreen
-    # na to reaguju heuristikou, ktora sa meni s kazdou aktualizaciou
-    # definicii (preto build, ktory najprv isiel, zacne zrazu padat do
-    # karanteny bez jedinej zmeny v kode). Uspora miesta za to nestoji.
+    # UPX VYPNUTY aj tu - dovod je pri `upx=False` v EXE vyssie.
     upx=False,
     name='Zanshin',
 )

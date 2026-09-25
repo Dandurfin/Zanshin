@@ -18,7 +18,6 @@ import base64
 import json
 import os
 import math
-import random
 import threading
 import time
 import tkinter as tk
@@ -903,7 +902,8 @@ class DandurfApp:
         #   (Ctrl+Alt+Z, `start_snooze_hotkey`), ktora funguje aj v hre, a
         #   tam ju hrac potrebuje. Je casovo ohranicene a samo vyprsi, cize
         #   to nie je vypinac. Ze prave bezi, ukazuje bodka stavu v rade
-        #   (`_refresh_snooze_indicator`).
+        #   (`_refresh_snooze_indicator`). Od 0.2.1 je aj v ponuke ikony v
+        #   liste (`setup_tray`) - skratku moze drzat ina appka.
         #
         #   PROFIL je dosiahnutelny cez ozubene koliesko (Nastavenia ->
         #   Spustace) a cez paletu Ctrl+K.
@@ -3220,9 +3220,15 @@ class DandurfApp:
         """Veta pod polickami senzora - co si appka spocitala a z coho.
 
         Z coho = z HERNYCH relacii (B3-worlds), rovnako ako samotny vypocet
-        v `_open_hr_session`; pracovne vecery sa do `n` nerataju."""
-        n = len(hr_stats.ciste_relacie(hr_stats.sessions_in_world(
-            self._history_sessions(), self.ALGORITMUS_SVET)))
+        v `_open_hr_session`; pracovne vecery sa do `n` nerataju.
+
+        KRATKE RELACIE SA NERATAJU (0.2.1) - `dynamicky_kriticky` sa uci len
+        z relacii dlhych aspon 5 minut (`hr_stats.je_dost_dlha`). Bez toho
+        by po troch kratkych relaciach veta tvrdila "spocitane z 3 relacii",
+        kym v skutocnosti plati zaloha 110."""
+        n = len([r for r in hr_stats.ciste_relacie(hr_stats.sessions_in_world(
+            self._history_sessions(), self.ALGORITMUS_SVET))
+            if hr_stats.je_dost_dlha(r)])
         if n < hr_stats.KRITICKY_MIN_RELACII:
             return tr("settings.hr_critical_learning",
                       bpm=int(self.hr_critical_bpm),
@@ -3379,9 +3385,10 @@ class DandurfApp:
 
         Ked je kombinacia obsadena inou appkou, registracia zlyha a appka
         bezi dalej bez nej - `hotkey.GlobalHotkey` to zaloguje. Tlacidlo v
-        doku uz nie je, takze "teraz nie" potom nejde vobec; zostava len
-        zastavit pocuvanie (pas, lista), co zastavi aj meranie - presne to
-        hovori `log.hotkey_failed`.
+        doku uz nie je; od 0.2.1 je "teraz nie" aj v ponuke ikony v liste
+        (`setup_tray`) a riadok v denniku (`log.hotkey_failed_tray`) hraca
+        posle tam. Bez listy (chyba pystray/PIL) zostava len zastavit
+        pocuvanie, co zastavi aj meranie - to hovori `log.hotkey_failed`.
         """
         self.stop_snooze_hotkey()
         if not self.snooze_hotkey:
@@ -3404,6 +3411,11 @@ class DandurfApp:
             return False
         if ok:
             self.log(tr("log.hotkey_on",
+                        combo=hotkey.format_combo(self.snooze_hotkey)))
+        elif TRAY_AVAILABLE:
+            # Zlyhanie sa hlasi RAZ - `start_snooze_hotkey` sa vola raz pri
+            # starte - a veta ukaze na polozku v liste, nie na zastavenie.
+            self.log(tr("log.hotkey_failed_tray",
                         combo=hotkey.format_combo(self.snooze_hotkey)))
         else:
             self.log(tr("log.hotkey_failed",
@@ -3431,6 +3443,9 @@ class DandurfApp:
         Hrac sa ku klavesnici v hre casto nedostane rychlo a nechat ho
         cakat 30 minut na nieco, co si omylom zapol, by bolo horsie nez
         samotne hlasky.
+
+        Vola ho aj polozka "Teraz nie" v ponuke listy (`setup_tray`, 0.2.1) -
+        ta ista vec, len bez klavesu, ked skratku drzi ina appka.
         """
         if getattr(self, "_snooze_job", None) is not None:
             self._cancel_snooze()
@@ -3575,6 +3590,15 @@ class DandurfApp:
         stranky Dnes musi povedat, ze sa neozve (`_kamae_state_text`) -
         "cakam na spravnu chvilu" by klamalo."""
         self._refresh_dnes_state_text()
+        # Fajka pri "Teraz nie" v ponuke listy (`setup_tray`). Pystray menu
+        # postavi znova len pri `update_menu` - a klik v liste prepina az cez
+        # `ui_call`, teda PO jeho vlastnom prestaveni; skratka ho nevola vobec.
+        ikona = getattr(self, "tray_icon", None)
+        if ikona is not None:
+            try:
+                ikona.update_menu()
+            except Exception:
+                app_log.exception("lista: menu sa nepodarilo obnovit")
         bodka = getattr(getattr(self, "sidebar", None), "state_dot", None)
         if bodka is None:
             return
@@ -4244,9 +4268,12 @@ class DandurfApp:
             self._prah_z_dat = hr_stats.dynamicky_prah_zataze(
                 herna, baseline=self.hr_stats.long_baseline,
                 critical=self.hr_critical_bpm)
+            # To iste pravidlo ako vypocet (`je_dost_dlha`): pokazene
+            # `duration_s` tu nesmie vyhodit vynimku, inak by `except` nizsie
+            # zahodil aj dlhodobu zakladnu.
             self._prah_z_relacii = len([
                 r for r in hr_stats.ciste_relacie(herna)
-                if float(r.get("duration_s") or 0) >= hr_stats.PRAH_MIN_TRVANIE_S])
+                if hr_stats.je_dost_dlha(r)])
         except Exception:
             self.hr_stats.long_baseline = None
             app_log.exception("dlhodoba zakladna / kriticky tep zlyhali")
@@ -7173,6 +7200,14 @@ class DandurfApp:
             # relacia po nom este bezala (`_zapis_snooze_po_hlaske`).
             summary["cue_rung"] = getattr(self, "_cue_rung", rebrik.HLAS)
             summary["cue_style"] = getattr(self, "_cue_style_rel", rebrik.STYL_HLAS)
+            # Kolko automatickych hlasok sa naozaj UKAZALO (0.2.1). Rebrik
+            # rata relaciu "s hlaskou" podla tohto, nie podla `auto_triggers`
+            # - to zapocita aj hlasku so zlyhanym obrazom, z ktorej hrac nic
+            # nevidel (viz `rebrik._hlasok`). Rovnake pravidlo ako dotaznik
+            # (`_ask_session_context`) a `hr_stats.last_auto_cue_ts`.
+            summary["cues_delivered"] = sum(
+                1 for c in getattr(self.hr_stats, "cues", ())
+                if c.get("source") == "auto" and c.get("delivered", True))
             snooze = getattr(self, "_snooze_po_hlaske", None)
             if snooze is not None:
                 summary["snooze_after_cue_s"] = snooze[0]
@@ -8355,8 +8390,15 @@ class DandurfApp:
                                     if slot.audio_path else mode_labels()[slot.mode])
         self.log_threadsafe(f"Slot {slot.index + 1} ({source}): \"{label}\"")
         if source == "trigger" and 0 <= slot.index < 4:
-            self.session_counts[slot.index] = self.session_counts.get(slot.index, 0) + 1
-            self.ui_call(self.update_session_label)
+            # POCITADLO PATRI TK VLAKNU. `_deliver` bezi na vlastnom vlakne a
+            # `start_listening` medzitym `session_counts` vymiena za novy
+            # slovnik - prirastok odtialto by mohol skoncit v starom slovniku
+            # alebo sa pobit s prekreslenim riadku. Preto cez `ui_call`,
+            # rovnako ako `_note_cue` vo `fire_slot`.
+            def zarataj(index=slot.index):
+                self.session_counts[index] = self.session_counts.get(index, 0) + 1
+                self.update_session_label()
+            self.ui_call(zarataj)
 
     # ---------- rozhodovanie o SFX subore ----------
 
@@ -8681,6 +8723,16 @@ class DandurfApp:
             pystray.MenuItem(lambda _item: tr("tray.show"), self.show_window, default=True),
             pystray.MenuItem(lambda _item: tr("tray.toggle"), lambda *_: self.ui_call(
                 self.toggle_listening)),
+            # "TERAZ NIE" AJ BEZ SKRATKY (0.2.1). Ked Ctrl+Alt+Z drzi ina
+            # appka, `RegisterHotKey` zlyha - a hlasky sa potom dali stisit
+            # jedine zastavenim pocuvania, co zastavi aj meranie. Polozka
+            # robi presne to, co skratka: prepinac na `SNOOZE_HOTKEY_MINUTES`
+            # minut, fajka hovori, ci prave plati. Klik prichadza na vlakne
+            # listy, takze ide cez `ui_call` rovnako ako stlacenie skratky.
+            pystray.MenuItem(
+                lambda _item: tr("tray.snooze", minutes=SNOOZE_HOTKEY_MINUTES),
+                lambda *_: self.ui_call(self._toggle_snooze_from_hotkey),
+                checked=lambda _item: getattr(self, "_snooze_job", None) is not None),
             pystray.MenuItem(lambda _item: tr("tray.quit"), self.quit_app),
         )
         self.tray_icon = pystray.Icon(APP_NAME, self.make_tray_image(), APP_NAME, menu)

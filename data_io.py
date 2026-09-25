@@ -14,8 +14,12 @@ IMPORT je jediný z tých troch, ktorý vie uškodiť, a robí to POTICHU. Cudzi
 dáta otrávia základňu aj model a nikde sa to neprejaví - appka len začne
 byť horšia. Preto:
 
-  * prísny parser, žiadny `pickle`, žiadny `eval`. Len `json.load` a potom
-    kontrola typu každého poľa. Čo neprejde, zahodí sa a spočíta.
+  * prisny parser, ziadny `pickle`, ziadny `eval`. Subor najviac
+    `MAX_IMPORT_BAJTOV`, len UTF-8, len `json.loads` a potom kontrola typu
+    kazdeho pola (`clean_session`, `clean_window`) - NaN ani nekonecno
+    neprejdu nikde. Relacia bez pouzitelneho `started`/`duration_s` a okno
+    bez `ts` sa zahodia cele a spocitaju; pole zleho typu sa zahodi samo a
+    zaznam ostane, ako keby bol zo starsej verzie appky.
   * importované záznamy dostanú `imported: True` a appka sa z nich neučí:
     základňa, hranice a prah (`hr_stats.ciste_relacie`), rebrík hlášky,
     postrehy, účinnosť (`measure`) aj karta poslednej relácie ich
@@ -30,6 +34,7 @@ takže sa celý dá otestovať v tmp priečinku.
 
 import glob
 import json
+import math
 import os
 from datetime import datetime
 import shutil
@@ -210,7 +215,9 @@ def s_casom(rows, kluc="ts"):
         try:
             z["kedy"] = datetime.fromtimestamp(float(r[kluc])).strftime(
                 "%d.%m.%Y %H:%M:%S")
-        except (KeyError, TypeError, ValueError):
+        # OverflowError/OSError: cas mimo rozsahu (vo Windows uz rok 3001)
+        # - v okne naimportovanom pred 0.2.1 sa take cislo mohlo ocitnut.
+        except (KeyError, TypeError, ValueError, OverflowError, OSError):
             pass
         von.append(z)
     return von
@@ -246,10 +253,60 @@ class ImportError_(Exception):
     """Súbor sa nedá použiť. Text je pre hráča, nie traceback."""
 
 
-def _cislo(hodnota, minimum=None, maximum=None):
+# Najvacsi subor, ktory import vobec otvori. Plny export (400 relacii s
+# krivkou, 5000 okien s parametrami, poznamky na doraz) ma okolo 12,5 MB,
+# takze 50 MB je asi styrnasobok. Vacsi subor export zo Zanshinu byt nemoze
+# - a `json.loads` by z neho v pamati spravil este niekolkonasobne viac.
+MAX_IMPORT_BAJTOV = 50 * 1024 * 1024
+
+# Rozumny rozsah casovej znacky (`started`, `ts`): 1. 1. 2000 az 1. 1. 2100.
+# Znacka mimo neho nie je z tejto appky - a graf Historie
+# (`aggregate_by_period`) na nej vo Windows padne (OSError): za rokom 2100
+# uz `datetime.fromtimestamp`, v roku 1970 zaokruhlenie na zaciatok dna,
+# mesiaca ci roka, ktory v miestnom case (napr. UTC+1) vyjde pred 1970. Zly
+# zaznam by tak zhodil stranku pri kazdom otvoreni, nie raz. Preto spodna
+# hranica NIE JE nula.
+MIN_CAS = 946684800.0
+MAX_CAS = 4102444800.0
+
+# Stropy pre JEDNO pole. Vlastne data su hlboko pod nimi (poznamka ma
+# `hr_stats.NOTE_MAX` = 280 znakov, krivka `hr_stats.CURVE_POINTS` = 600
+# bodov, vnorenie jedna uroven: `zone_seconds`, `params`). Su tu, aby jeden
+# cudzi zaznam nenafukol historiu tak, ze sa Historia kresli minuty.
+MAX_TEXT = 2000
+MAX_POLOZIEK = 100000
+MAX_HLBKA = 4
+
+
+_NIE_CISLO = object()
+
+
+def _nie_cislo(_text):
+    """`parse_constant` pre `json.loads`: NaN, Infinity a -Infinity.
+
+    `json.loads` ich bez toho ticho prijme ako float - a jedno NaN v priemere
+    spravi NaN z celeho grafu. Vrati sa objekt, ktory neprejde ziadnou
+    kontrolou typu nizsie: pole s nim sa zahodi, zaznam s nim v `started`
+    alebo `ts` tiez (a spocita sa)."""
+    return _NIE_CISLO
+
+
+def _konecne(hodnota):
+    """Obycajne konecne cislo? bool, NaN ani nekonecno nie.
+
+    `1e999` da z `json.loads` nekonecno aj bez `parse_constant`. Cele cislo
+    nad rozsah floatu (10**400) `math.isfinite` neprevedie - OverflowError,
+    teda tiez nie."""
     if isinstance(hodnota, bool) or not isinstance(hodnota, (int, float)):
-        return None
-    if hodnota != hodnota:                      # NaN
+        return False
+    try:
+        return math.isfinite(hodnota)
+    except OverflowError:
+        return False
+
+
+def _cislo(hodnota, minimum=None, maximum=None):
+    if not _konecne(hodnota):
         return None
     if minimum is not None and hodnota < minimum:
         return None
@@ -258,21 +315,151 @@ def _cislo(hodnota, minimum=None, maximum=None):
     return hodnota
 
 
-def clean_session(raw):
-    """Jedna relácia z cudzieho súboru, alebo None.
+# --- kontrola typu jedneho pola -------------------------------------------
+#
+# PRECO NESTACI `started` A `ts`
+# Import zapisuje priamo do hr_sessions.json a hr_windows.json - a odtial to
+# cita Historia, grafy aj CSV export. Pole zleho typu sa predtym prenieslo
+# bez kontroly a ostalo v historii natrvalo: `"baseline_bpm": "abc"` zhodi
+# graf Historie (`float` v `aggregate_by_period`), `"context": 5` alebo
+# `"zone_seconds": "x"` CSV export (`session_row`), `"cue_id": [..]` dalsi
+# import (nehashovatelny kluc v `merge_windows`). Znamym poliam sa preto
+# kontroluje typ, v akom ich appka zapisuje; nezname (ina verzia appky)
+# musia byt aspon obycajne JSON data s konecnymi cislami. Co neprejde,
+# zahodi sa - zaznam ostane, ako keby bol zo starsej verzie, ktora to pole
+# este nemala. None prejde vzdy: appka ho sama zapisuje ako "nevieme".
 
-    Kontroluje sa len to, na čom appka naozaj stojí. Neznáme polia sa
-    prenesú - iná verzia appky môže ukladať viac a zahadzovať to by bola
-    strata. Ale `started` a `duration_s` musia dávať zmysel, inak sa zo
-    záznamu nedá nič spočítať.
+def _je_text(hodnota):
+    """Text, ktory sa da aj ZAPISAT. `json.loads` prijme aj osamely surrogate
+    (`"\\ud800"`), `zapis_zoznam` (UTF-8) na nom ale padne - az PO zalohe a
+    pripadne s polovicou importu na disku (relacie zapisane, okna nie)."""
+    if not isinstance(hodnota, str) or len(hodnota) > MAX_TEXT:
+        return False
+    try:
+        hodnota.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    return True
+
+
+def _je_bool(hodnota):
+    return isinstance(hodnota, bool)
+
+
+def _je_skalar(hodnota):
+    """Text, cislo, bool alebo None - da sa pouzit aj ako kluc v mnozine
+    (`merge_windows` pari okna podla `(ts, cue_id)`)."""
+    return (hodnota is None or isinstance(hodnota, bool)
+            or _konecne(hodnota) or _je_text(hodnota))
+
+
+def _je_cisla(hodnota):
+    """Krivka: zoznam cisel. None je diera (`activity_trace`)."""
+    return (isinstance(hodnota, list) and len(hodnota) <= MAX_POLOZIEK
+            and all(x is None or _konecne(x) for x in hodnota))
+
+
+def _je_texty(hodnota):
+    return (isinstance(hodnota, list) and len(hodnota) <= MAX_POLOZIEK
+            and all(_je_text(x) for x in hodnota))
+
+
+def _je_cisla_podla(hodnota):
+    """{"calm": 1200.5, ...} - `zone_seconds`, `cues_withheld`."""
+    return (isinstance(hodnota, dict) and len(hodnota) <= MAX_POLOZIEK
+            and all(_je_text(k) and (v is None or _konecne(v))
+                    for k, v in hodnota.items()))
+
+
+def _je_obycajne(hodnota, hlbka=MAX_HLBKA):
+    """Obycajne JSON data: skalar, alebo zoznam/slovnik z nich, najviac
+    `hlbka` urovni. Kontrola NEZNAMEHO pola."""
+    if _je_skalar(hodnota):
+        return True
+    if hlbka <= 0:
+        return False
+    if isinstance(hodnota, list):
+        return (len(hodnota) <= MAX_POLOZIEK
+                and all(_je_obycajne(x, hlbka - 1) for x in hodnota))
+    if isinstance(hodnota, dict):
+        return (len(hodnota) <= MAX_POLOZIEK
+                and all(_je_text(k) and _je_obycajne(v, hlbka - 1)
+                        for k, v in hodnota.items()))
+    return False
+
+
+def _je_slovnik(hodnota):
+    """`params` okna: slovnik obycajnych hodnot (cisla, texty, bool)."""
+    return isinstance(hodnota, dict) and _je_obycajne(hodnota)
+
+
+# Polia, ktore appka do relacie zapisuje, a typ, v akom ich cita. Zdroj:
+# `hr_stats.HeartStats.summary` (+ `kadencia_vzoriek`), `app._close_hr_session`
+# a `hr_stats.attach_context`. Nove pole, ktore tu chyba, nie je chyba -
+# prejde kontrolou neznameho pola (`_je_obycajne`).
+_TYPY_RELACIE = {
+    **dict.fromkeys((
+        "min_bpm", "avg_bpm", "max_bpm", "time_over_s", "time_high_s",
+        "peak_stress", "triggers", "auto_triggers", "critical_bpm", "samples",
+        "sample_dt_median_s", "sample_dt_p90_s", "sample_gaps_over_5s",
+        "dropouts", "blind_s", "baseline_bpm", "hrr_bpm", "hrr_events", "hrpi",
+        "longest_above_s", "above_runs", "runs_cancelled_dip",
+        "runs_cancelled_gap", "stress_hold_s", "stress_threshold",
+        "pause_episodes", "snooze_after_cue_s", "snooze_then_s",
+        "long_baseline_bpm", "snoozed_s", "hud_visible_s", "hud_visible_frac",
+        "felt_load", "valence"), _konecne),
+    **dict.fromkeys(("world", "activity", "note", "sleep", "cue_verdict",
+                     "cue_rung", "cue_style"), _je_text),
+    **dict.fromkeys(("curve", "activity_curve", "trigger_offsets_s"), _je_cisla),
+    **dict.fromkeys(("context", "body_peak"), _je_texty),
+    **dict.fromkeys(("zone_seconds", "cues_withheld"), _je_cisla_podla),
+    **dict.fromkeys(("zen_graduation", "imported"), _je_bool),
+}
+
+# To iste pre meracie okno: `measure.build_window` a
+# `app._save_measure_windows`.
+_TYPY_OKNA = {
+    **dict.fromkeys((
+        "pre_bpm", "post_bpm", "durability_bpm", "pre_load", "post_load",
+        "pre_activity", "post_activity", "load_at", "load_peak",
+        "snooze_after_s", "session_started", "offset_s", "natiahnuti"),
+        _konecne),
+    **dict.fromkeys(("arm", "source", "category", "delivery", "rung",
+                     "zone_at", "game", "world"), _je_text),
+    **dict.fromkeys(("valid", "audible", "imported"), _je_bool),
+    "cue_id": _je_skalar,
+    "reasons": _je_texty,
+    "params": _je_slovnik,
+}
+
+
+def _ocistene_polia(raw, typy):
+    """Kopia zaznamu bez poli, ktore neprejdu kontrolou typu (viz vyssie)."""
+    out = {}
+    for kluc, hodnota in raw.items():
+        if not _je_text(kluc):
+            continue
+        if hodnota is None or typy.get(kluc, _je_obycajne)(hodnota):
+            out[kluc] = hodnota
+    return out
+
+
+def clean_session(raw):
+    """Jedna relacia z cudzieho suboru, alebo None.
+
+    `started` a `duration_s` musia davat zmysel, inak sa zo zaznamu neda
+    nic spocitat - bez nich sa zahodi cely (a spocita). Ostatne polia
+    prejdu kontrolou typu (`_ocistene_polia`): nezname sa prenesu, ak su to
+    obycajne data - ina verzia appky moze ukladat viac a zahadzovat to by
+    bola strata -, pole zleho typu sa zahodi samo.
     """
     if not isinstance(raw, dict):
         return None
-    started = _cislo(raw.get("started"), minimum=0)
+    started = _cislo(raw.get("started"), minimum=MIN_CAS, maximum=MAX_CAS)
     duration = _cislo(raw.get("duration_s"), minimum=0, maximum=60 * 60 * 24)
     if started is None or duration is None:
         return None
-    out = dict(raw)
+    out = _ocistene_polia(raw, _TYPY_RELACIE)
     out["started"] = float(started)
     out["duration_s"] = float(duration)
     out["imported"] = True
@@ -280,30 +467,51 @@ def clean_session(raw):
 
 
 def clean_window(raw):
-    """Jedno meracie okno z cudzieho súboru, alebo None."""
+    """Jedno meracie okno z cudzieho suboru, alebo None. Pravidla ako pri
+    `clean_session`; bez pouzitelneho `ts` sa okno zahodi cele."""
     if not isinstance(raw, dict):
         return None
-    ts = _cislo(raw.get("ts"), minimum=0)
+    ts = _cislo(raw.get("ts"), minimum=MIN_CAS, maximum=MAX_CAS)
     if ts is None:
         return None
-    out = dict(raw)
+    out = _ocistene_polia(raw, _TYPY_OKNA)
     out["ts"] = float(ts)
     out["imported"] = True
     return out
 
 
-def parse_bundle(path):
-    """Načíta a overí cudzí súbor. Vracia (sessions, windows, sprava).
+def _nacitaj_json(path):
+    """Obsah cudzieho suboru ako JSON, alebo `ImportError_`.
 
-    Vyhodí `ImportError_` s vetou pre hráča, keď sa súbor použiť nedá.
+    Velkost sa overi PRED citanim a citanie je aj tak zastropovane (subor
+    moze medzitym narast). Kodovanie je len UTF-8 (tak pise `write_bundle`),
+    BOM sa znesie - Notepad ho vie pridat. Ine kodovanie, rozbity JSON,
+    cislo s tisickami cifier (ValueError) aj vnorenie nad strop rekurzie
+    su "toto nie je platny JSON", nie traceback.
     """
     try:
-        with open(path, "r", encoding="utf-8") as fh:
-            raw = json.load(fh)
-    except json.JSONDecodeError:
-        raise ImportError_("data.import.not_json")
+        if os.path.getsize(path) > MAX_IMPORT_BAJTOV:
+            raise ImportError_("data.import.foreign")
+        with open(path, "rb") as fh:
+            obsah = fh.read(MAX_IMPORT_BAJTOV + 1)
     except OSError:
         raise ImportError_("data.import.unreadable")
+    if len(obsah) > MAX_IMPORT_BAJTOV:
+        raise ImportError_("data.import.foreign")
+    try:
+        return json.loads(obsah.decode("utf-8-sig"), parse_constant=_nie_cislo)
+    except (ValueError, RecursionError):
+        # UnicodeDecodeError aj JSONDecodeError su podtriedy ValueError.
+        raise ImportError_("data.import.not_json")
+
+
+def parse_bundle(path):
+    """Načíta a overí cudzí súbor. Vracia (sessions, windows, zahodene).
+
+    Vyhodí `ImportError_` s vetou pre hráča, keď sa súbor použiť nedá.
+    Privelky subor je "foreign": export zo Zanshinu taky byt nemoze.
+    """
+    raw = _nacitaj_json(path)
 
     if not isinstance(raw, dict) or raw.get("format") != "zanshin-dojosync":
         raise ImportError_("data.import.foreign")

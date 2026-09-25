@@ -37,7 +37,9 @@ Ziadna externa kniznica - WebSocket handshake aj ramce su par riadkov stdlib.
 import base64
 import hashlib
 import json
+import socket
 import struct
+import time
 
 import logging_setup
 
@@ -68,6 +70,41 @@ ZDROJE = (
     ("Rychlost", "3f4e5d6c-7b8a-4902-9129-3c4d5e6f7081"),
 )
 
+# CASOVE LIMITY SPOJENIA (0.2.1).
+#
+# Doteraz ziadne neboli. Kto otvoril TCP spojenie a nic neposlal, drzal jedno
+# zo 16 miest (`heart_rate._MAX_LIVE_SOCKETS`) navzdy - skener portov, alebo
+# hodinky, ktore odisli z Wi-Fi bez rozlucenia (spojenie na nasej strane
+# potom visi polootvorene a ziadny paket ho uz nezavrie). Styrnast takych a
+# skutocne hodinky sa uz nepripojili.
+#
+# Handshake: skutocny klient posle HTTP upgrade hned po pripojeni. 10 s je
+# CELKOVY limit (nie na jeden `recv`), aj pomala Wi-Fi to zvladne s rezervou.
+HANDSHAKE_TIMEOUT_S = 10.0
+# Po handshake: hodinky pisu kazdych ~1 az ~3 s. Az po NECINNOST_S uplneho
+# ticha posleme ping - kazda WebSocket kniznica nan podla RFC 6455 odpovie
+# SAMA, takze zive, len tiche hodinky (pauza merania) spojenie NESTRATIA. Az
+# ked nepride nic ani za dalsich NECINNOST_S, spojenie je mrtve a zavrie sa
+# ako kazde ine odpojenie. Mrtve spojenie tak zmizne najneskor za 2 minuty.
+#
+# Preco nie kratsie: falosne "hodinky odpojene" (a s nim zahodeny odpocet v
+# spustaci) je horsie nez minuta cakania na uvolnenie miesta. Tep aj tak
+# vypadok hlasi sam po 12 s (`HeartRateMonitor.STALE_AFTER_S`), tento limit
+# sluzi len na upratanie socketu, nie na detekciu vypadku.
+NECINNOST_S = 60.0
+
+# Najvacsi ramec, ktory prijmeme. Skutocne spravy maju stovky bajtov (zapis
+# tepu ~150 B, davka niekolkych poziadaviek par kB) - 64 kB je vyse
+# stonasobok zapisu tepu, aj davke nechava viac nez desatnasobnu rezervu, a
+# je to rovnaky strop ako pre HTTP hlavicku v `handshake`.
+# Doteraz to bol 1 MB: megabajt pamate a CPU na kazdy nafuknuty ramec od
+# hocikoho v LAN, pritom ziadna skutocna sprava sa k tomu ani nepriblizi.
+_MAX_RAMEC = 64 * 1024
+
+# Ramec sa nezacal: vyprsal limit socketu medzi ramcami. NIE je to koniec
+# spojenia - viz `NECINNOST_S`. Platny opcode je 0..15, takze sa nepomyli.
+TICHO = -1
+
 
 # --------------------------------------------------------------------------
 # WebSocket vrstva
@@ -84,10 +121,22 @@ def _recv_exact(conn, count):
 
 
 def handshake(conn):
-    """Dokonci HTTP upgrade na WebSocket. True ak sa to podarilo."""
+    """Dokonci HTTP upgrade na WebSocket. True ak sa to podarilo.
+
+    Cely handshake musi stihnut HANDSHAKE_TIMEOUT_S - limit sa pred kazdym
+    `recv` skrati o uz minuty cas, inak by ho klient posielajuci po bajte
+    natahoval donekonecna."""
+    koniec = time.monotonic() + HANDSHAKE_TIMEOUT_S
     raw = b""
     while b"\r\n\r\n" not in raw:
-        chunk = conn.recv(4096)
+        zostava = koniec - time.monotonic()
+        if zostava <= 0:
+            return False
+        try:
+            conn.settimeout(zostava)
+            chunk = conn.recv(4096)
+        except OSError:                   # vratane vyprsania limitu
+            return False
         if not chunk:
             return False
         raw += chunk
@@ -126,25 +175,53 @@ def handshake(conn):
     return True
 
 
+def _odmaskuj(payload, mask):
+    """XOR s opakovanou 4-bajtovou maskou (RFC 6455, 5.3) naraz, cez cele
+    cislo. Doteraz sa to robilo po bajte v Pythone: pri starom strope 1 MB
+    ~40 ms CPU (a GIL, ktory potrebuje aj GUI vlakno) na KAZDY ramec, takze
+    hocico v LAN posielajuce ramec za ramcom zamestnalo appku. Cez cele
+    cislo je to vyse 10x rychlejsie, a strop je navyse 16x nizsi."""
+    n = len(payload)
+    if not n:
+        return b""
+    kluc = (mask * (n // 4 + 1))[:n]
+    return (int.from_bytes(payload, "big")
+            ^ int.from_bytes(kluc, "big")).to_bytes(n, "big")
+
+
 def read_frame(conn):
-    """(opcode, payload) alebo (None, None) ked spojenie skoncilo."""
+    """(opcode, payload) alebo (None, None) ked spojenie skoncilo.
+
+    `(TICHO, None)`, ked medzi ramcami vyprsal limit socketu a neprisiel ani
+    bajt - spojenie moze byt zive, len tiche (viz `NECINNOST_S`). Prvy bajt
+    sa preto cita zvlast: keby limit vyprsal po jednom z dvoch bajtov
+    hlavicky, ten jeden by sa stratil a zvysok spojenia by sa cital posunuty.
+    """
     try:
-        first, second = _recv_exact(conn, 2)
+        first = _recv_exact(conn, 1)[0]
+    except socket.timeout:
+        return TICHO, None
     except (ConnectionError, OSError):
         return None, None
-    opcode = first & 0x0F
-    masked = bool(second & 0x80)
-    length = second & 0x7F
-    if length == 126:
-        length = struct.unpack(">H", _recv_exact(conn, 2))[0]
-    elif length == 127:
-        length = struct.unpack(">Q", _recv_exact(conn, 8))[0]
-    if length > 1 << 20:                  # 1 MB je uz zjavne nezmysel
+    try:
+        second = _recv_exact(conn, 1)[0]
+        opcode = first & 0x0F
+        masked = bool(second & 0x80)
+        length = second & 0x7F
+        if length == 126:
+            length = struct.unpack(">H", _recv_exact(conn, 2))[0]
+        elif length == 127:
+            length = struct.unpack(">Q", _recv_exact(conn, 8))[0]
+        if length > _MAX_RAMEC:
+            return None, None
+        mask = _recv_exact(conn, 4) if masked else None
+        payload = _recv_exact(conn, length) if length else b""
+    except (ConnectionError, OSError):
+        # Vratane vyprsania limitu UPROSTRED ramca: rozumny klient sa v
+        # polovici ramca na minutu nezasekne, takze spojenie konci.
         return None, None
-    mask = _recv_exact(conn, 4) if masked else None
-    payload = _recv_exact(conn, length) if length else b""
     if mask:
-        payload = bytes(byte ^ mask[i % 4] for i, byte in enumerate(payload))
+        payload = _odmaskuj(payload, mask)
     return opcode, payload
 
 
@@ -168,6 +245,36 @@ def send_frame(conn, payload, opcode=_OP_TEXT):
 # Cokolvek ine sa zapise do dennika - viz vetva `op 8` nizsie.
 _TICHE_OP = frozenset((0, 2, 5, 7, 9))
 
+# STROPY NA TO, CO SI KLIENT V JEDNOM SPOJENI ZVOLI (0.2.1).
+#
+# Kazde `inputName` z poziadavky sa pridalo do zoznamu zdrojov bez limitu, a
+# kazda odpoved na GetInputList/GetSceneItemList posielala cely zoznam - klient
+# posielajuci stale nove mena tak nafukoval pamat aj kazdu dalsiu odpoved.
+# Skutocna appka pise do niekolkych zdrojov (tep, kroky, rychlost, obcas ten
+# isty dvakrat); 32 mien je rezerva aj pre hraca, ktory si ich pomenuje sam.
+# Meno dlhsie nez 256 znakov si v OBS nikto nedava. Co sa nezmesti, sa len
+# NEZAPAMATA: zapis s takym menom ide dalej normalne, meno sa len neobjavi
+# v zozname zdrojov.
+_MAX_VLASTNYCH = 32
+_MAX_DLZKA_MENA = 256
+# Neznamych druhov poziadaviek a opkodov sa do dennika zapise najviac tolko za
+# spojenie, a z kazdeho len prvych 80 znakov. `requestType` si voli klient -
+# doteraz mohol jednym ramcom zapisat do dennika megabajt a stale novymi
+# druhmi ho zaplavit (dennik rotuje po 1 MB, takze by vytlacil vsetko uzitocne).
+_MAX_NEPOZNANYCH = 16
+_MAX_ZNAKOV_DO_DENNIKA = 80
+
+
+def _do_dennika(hodnota):
+    """Klientom zvolena hodnota skratena pre dennik (`%s`, nie `%r`)."""
+    if isinstance(hodnota, str):
+        # repr celeho megabajtu netreba, staci o znak viac nez sa zapise
+        hodnota = hodnota[:_MAX_ZNAKOV_DO_DENNIKA + 1]
+    text = repr(hodnota)
+    if len(text) > _MAX_ZNAKOV_DO_DENNIKA:
+        return text[:_MAX_ZNAKOV_DO_DENNIKA] + "..."
+    return text
+
 
 def _odbav(data, on_text, vlastne, nepoznane, zapis_ok=True):
     """Jedna poziadavka (samostatna aj z davky) -> telo odpovede.
@@ -185,7 +292,8 @@ def _odbav(data, on_text, vlastne, nepoznane, zapis_ok=True):
     if not isinstance(request_data, dict):
         request_data = {}
     meno = request_data.get("inputName")
-    if isinstance(meno, str) and meno:
+    if (isinstance(meno, str) and meno and len(meno) <= _MAX_DLZKA_MENA
+            and len(vlastne) < _MAX_VLASTNYCH):
         vlastne.add(meno)              # nech ho GetInputList uz pozna
     if request_type == "SetInputSettings":
         zdroj, text = _extract_write(request_data, vlastne)
@@ -194,15 +302,16 @@ def _odbav(data, on_text, vlastne, nepoznane, zapis_ok=True):
         elif text is not None and "_zapis_pred_identify" not in nepoznane:
             nepoznane.add("_zapis_pred_identify")
             log.warning("OBS: zápis tepu pred Identify odmietnutý")
-    elif request_type not in _ZNAME and request_type not in nepoznane:
+    elif (request_type not in _ZNAME and request_type not in nepoznane
+          and len(nepoznane) < _MAX_NEPOZNANYCH):
         # NEZNAMA POZIADAVKA DO DENNIKA, kazdy druh raz za spojenie.
         #
         # Prazdna odpoved je pre niektore appky rovnako zla ako ziadna:
         # cakaju na konkretne pole, nedockaju sa a po 10 sekundach hlasia
         # "timeout". Bez tohto zapisu sa neda zistit, na com.
         nepoznane.add(request_type)
-        log.info("OBS: neznama poziadavka %r - odpovedam prazdnym objektom",
-                 request_type)
+        log.info("OBS: neznama poziadavka %s - odpovedam prazdnym objektom",
+                 _do_dennika(request_type))
     return {
         "requestType": request_type,
         "requestId": data.get("requestId"),
@@ -352,9 +461,14 @@ def serve_connection(conn, on_text, should_stop, on_connected=None):
     `on_connected()` hned po uspesnom handshake - vdaka tomu vie UI
     rozlisit "este sa nikto nepripojil" od "hodinky su pripojene, ale
     neposielaju tep", co su uplne ine problemy.
-    `should_stop()` sa pyta medzi ramcami, ci uz mame skoncit."""
+    `should_stop()` sa pyta medzi ramcami, ci uz mame skoncit.
+
+    Casove limity socketu si nastavuje sama (viz `HANDSHAKE_TIMEOUT_S` a
+    `NECINNOST_S`); `stop()` prijimaca socket aj tak zavrie hned a citanie sa
+    tym odblokuje okamzite, nie az po limite."""
     if not handshake(conn):
         return
+    conn.settimeout(NECINNOST_S)
     if on_connected is not None:
         on_connected()
 
@@ -372,9 +486,18 @@ def serve_connection(conn, on_text, should_stop, on_connected=None):
     # Skutočné hodinky to robia (protokol to vyžaduje); toto len zavrie dvere
     # pred čímkoľvek v LAN, čo by chcelo zapísať tep bez identifikácie (B6).
     identified = False
+    # Po prvom tichu sme poslali ping a cakame na cokolvek (pong, tep...).
+    ping_poslany = False
 
     while not should_stop():
         opcode, payload = read_frame(conn)
+        if opcode == TICHO:
+            if ping_poslany or should_stop():
+                return                  # ani na ping nic - spojenie je mrtve
+            ping_poslany = True
+            send_frame(conn, b"", opcode=_OP_PING)
+            continue
+        ping_poslany = False
         if opcode is None or opcode == _OP_CLOSE:
             return
         if opcode == _OP_PING:
@@ -422,5 +545,6 @@ def serve_connection(conn, on_text, should_stop, on_connected=None):
         elif op not in _TICHE_OP and op not in nepoznane:
             # Vsetko ostatne aspon do dennika - prave ticho okolo `op 8`
             # stalo tri dni hladania.
-            nepoznane.add(op)
-            log.info("OBS: neznamy op %r - neodpovedam", op)
+            if len(nepoznane) < _MAX_NEPOZNANYCH:
+                nepoznane.add(op)
+                log.info("OBS: neznamy op %s - neodpovedam", _do_dennika(op))
