@@ -335,6 +335,36 @@ Author: **Dandurfin** — [Twitch](https://www.twitch.tv/dandurfin) ·
 | `logging_setup.py` | Local log files (`app.log`, `crash.log`) — no remote crash reporting |
 | `Dandurf.spec`, `build.bat`, `build_all.ps1`, `Dandurf.iss` | PyInstaller + Inno Setup build |
 
+### How the main window is split (for developers)
+
+Up to 0.2.1 the whole main window was one class in one file of almost 9,000
+lines. It is now split by topic, and nothing about how the app behaves has
+changed. `DandurfApp` is still a single class, but most of its methods live in
+the `app_*.py` modules above as *mixins* that `DandurfApp` inherits. A few
+rules keep it that way:
+
+- **State lives on `DandurfApp`.** Everything is set up in `DandurfApp.__init__`
+  in `app.py`. A mixin has no `__init__` and keeps no data of its own; its
+  methods use `self` exactly as they did in the single file.
+- **Imports go one way.** `app.py` imports the `app_*.py` modules; an
+  `app_*.py` never imports `app`, because that would be a circular import.
+  Names that `app.py` and the mixins both need live in `app_spolocne.py` and
+  stay importable from `app` too.
+- **Each method exists once.** A new method goes into the module whose topic
+  it belongs to (shared helpers stay in `app.py`). Two mixins must never
+  define the same name, because one would silently hide the other.
+- **Tests read the app's source through `tests/_zdroj_appky.py`.** Some tests
+  read the code as text, for example "there is no keyboard hook" or "the IP
+  address is masked in the log". This helper gives them `app.py` together with
+  every `app_*.py`, so a new module is covered automatically and such a check
+  can't pass just because the code moved to another file. The helper joins the
+  files into one source, so an `app_*.py` must not use
+  `from __future__ import ...`.
+- **A test that replaces a module-level name must replace it in the module
+  where the method now lives.** For example, a test that swaps out
+  `threading` for a method in `app_today.py` has to patch `app_today`, not
+  only `app`.
+
 See also **[SAFETY.md](SAFETY.md)** (anti-cheat / no-injection, in Slovak) and
 **[PRIVACY.md](PRIVACY.md)** (what is local vs. networked).
 
