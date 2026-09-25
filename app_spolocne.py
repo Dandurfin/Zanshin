@@ -13,6 +13,15 @@ from i18n import (LANG_BG, LANG_CS, LANG_DE, LANG_EN, LANG_ES, LANG_FR,
                   LANG_JA, LANG_PT, LANG_RU, LANG_SK, LANG_ZH)
 from logging_setup import get_logger
 
+# Pre kreslenie stredu Dnes (app_today) aj ikonu okna (app.py).
+# Stred stranky Dnes je tk.Canvas: enso je priehladne PNG (`create_image`),
+# preto tu treba `ImageTk`. PIL nie je tvrda zavislost - bez neho appka bezi
+# dalej (canvas ostane v jednofarebnom pozadi temy).
+try:
+    from PIL import ImageTk as _ImageTk
+except Exception:               # pragma: no cover - PIL je bezne pritomny
+    _ImageTk = None
+
 app_log = get_logger("app")
 
 # Natívne nazvy jazykov pre prepinac (Nastavenia) - VZDY vo vlastnom

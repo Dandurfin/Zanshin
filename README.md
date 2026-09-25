@@ -293,11 +293,14 @@ Author: **Dandurfin** — [Twitch](https://www.twitch.tv/dandurfin) ·
 | `app.py` | Main window, wiring for the whole app |
 | `app_audio.py` | Part of the main window (a mixin of `DandurfApp`): preparing the built-in sound library, volume and the SFX / voice balance, choosing the voice engine and voice, preparing Edge voice lines ahead of time, and playing a cue's sound, voice or your own recording |
 | `app_controls.py` | Part of the main window (a mixin of `DandurfApp`): the command palette (Ctrl+K), "not now" (pausing cues from the shortcut or the tray menu), the collapsible log, gamepad activity and the manual Test cue |
+| `app_cues.py` | Part of the main window (a mixin of `DandurfApp`): the automatic cue's state shown in the breathing band and on "Today", the "last cue" line, the share of silent cues and the cue ladder step for a new session, and choosing how the app speaks up (cue style) |
 | `app_data.py` | Part of the main window (a mixin of `DandurfApp`): export / import / delete of your data, what is saved when a session ends, sharing a profile as a code |
 | `app_hud.py` | Part of the main window (a mixin of `DandurfApp`): the in-game heart-rate panel (HUD) and its row of 4 icons, the language of what the app draws into the game, choosing the monitor, the heart-rate indicator in the sidebar, pairing the watch, and setting up and testing the in-game visuals |
 | `app_prefs.py` | Part of the main window (a mixin of `DandurfApp`): switching language, world (play / work) and theme; loading and saving your settings, volume and balance |
-| `app_spolocne.py` | Names shared by `app.py` and its mixins (the app logger, language names for the switch, the "not now" shortcut defaults) |
-| `app_today.py` | Part of the main window (a mixin of `DandurfApp`): the "Today" page — its animated centre and live heart-rate, load and session block, delivering the automatic cue, and the "My stats" cards (choosing them, their values, swapping them by dragging) |
+| `app_profiles.py` | Part of the main window (a mixin of `DandurfApp`): the cue slots of the active profile, game profiles (switching, creating, deleting) and the auto-profile (switching to a game's profile while that game runs) |
+| `app_session.py` | Part of the main window (a mixin of `DandurfApp`): the heart-rate sensor (its settings, turning it on and off, receiving heart rate, steps and connection state, dropouts, a busy port) and opening a measuring session with its thresholds |
+| `app_spolocne.py` | Names shared by `app.py` and its mixins (the app logger, language names for the switch, the "not now" shortcut defaults, PIL's `ImageTk`) |
+| `app_today.py` | Part of the main window (a mixin of `DandurfApp`): the "Today" page — drawing its animated centre, the live heart-rate, load and session block, delivering the automatic cue, and the "My stats" cards (choosing them, their values, swapping them by dragging) |
 | `paths.py` | Data paths (`%APPDATA%`), migration from older versions |
 | `settings_model.py` | Slot/settings data model — defaults, normalisation |
 | `audio_engine.py` | TTS (Edge Natural + SAPI5) and SFX/recording playback |

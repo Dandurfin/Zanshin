@@ -90,6 +90,7 @@ def _appka(monkeypatch, hodiny=None):
     import app as app_mod
     import app_controls
     import app_data
+    import app_session
     import app_today
     if hodiny is not None:
         monkeypatch.setattr(app_mod, "time", hodiny)
@@ -102,6 +103,9 @@ def _appka(monkeypatch, hodiny=None):
         # Spustac hlasky (`_tick_cue_trigger`) byva v mixine app_today
         # (TodayMixin) - rovnako.
         monkeypatch.setattr(app_today, "time", hodiny)
+        # Prijem tepu (`_apply_hr_bpm`) byva v mixine app_session
+        # (SessionMixin) - rovnako.
+        monkeypatch.setattr(app_session, "time", hodiny)
     a = app_mod.DandurfApp.__new__(app_mod.DandurfApp)
     a.root = _Root()
     a.denn = []

@@ -49,6 +49,15 @@ def _app():
     return app_mod
 
 
+def _profily():
+    """Modul, z ktoreho `_start_game_watcher` cita `GameProcessWatcher` a
+    `PSUTIL_AVAILABLE`. Metoda byva v mixine app_profiles (ProfilesMixin),
+    nie v app.py - falosny watcher treba podstrcit tam."""
+    _app()
+    import app_profiles
+    return app_profiles
+
+
 @pytest.fixture
 def jazyk():
     povodny = i18n._lang["code"]
@@ -90,8 +99,8 @@ def _atrapa_auto_profilu(app_mod, zapnute):
 
 def test_vypnuty_auto_profil_zastavi_citanie_procesov(monkeypatch):
     app_mod = _app()
-    monkeypatch.setattr(app_mod, "GameProcessWatcher", _FalosnyWatcher)
-    monkeypatch.setattr(app_mod, "PSUTIL_AVAILABLE", True)
+    monkeypatch.setattr(_profily(), "GameProcessWatcher", _FalosnyWatcher)
+    monkeypatch.setattr(_profily(), "PSUTIL_AVAILABLE", True)
     _FalosnyWatcher.vsetky = []
     a = _atrapa_auto_profilu(app_mod, zapnute=True)
 
@@ -114,8 +123,8 @@ def test_vypnuty_auto_profil_zastavi_citanie_procesov(monkeypatch):
 
 def test_zapnutie_dvakrat_nespusti_druhy_watcher(monkeypatch):
     app_mod = _app()
-    monkeypatch.setattr(app_mod, "GameProcessWatcher", _FalosnyWatcher)
-    monkeypatch.setattr(app_mod, "PSUTIL_AVAILABLE", True)
+    monkeypatch.setattr(_profily(), "GameProcessWatcher", _FalosnyWatcher)
+    monkeypatch.setattr(_profily(), "PSUTIL_AVAILABLE", True)
     _FalosnyWatcher.vsetky = []
     a = _atrapa_auto_profilu(app_mod, zapnute=True)
     a._start_game_watcher()
@@ -125,8 +134,8 @@ def test_zapnutie_dvakrat_nespusti_druhy_watcher(monkeypatch):
 
 def test_bez_psutil_sa_watcher_nespusti(monkeypatch):
     app_mod = _app()
-    monkeypatch.setattr(app_mod, "GameProcessWatcher", _FalosnyWatcher)
-    monkeypatch.setattr(app_mod, "PSUTIL_AVAILABLE", False)
+    monkeypatch.setattr(_profily(), "GameProcessWatcher", _FalosnyWatcher)
+    monkeypatch.setattr(_profily(), "PSUTIL_AVAILABLE", False)
     _FalosnyWatcher.vsetky = []
     a = _atrapa_auto_profilu(app_mod, zapnute=True)
     a._start_game_watcher()

@@ -6,7 +6,7 @@ relacie, karty "Moje statistiky" a ich poradie) zije na DandurfApp. Tu su
 len metody, ktore s nim pracuju cez `self` - mixin nema __init__ ani
 vlastne atributy.
 
-Dve sekcie presunute z app.py bez zmeny:
+Presunute z app.py bez zmeny:
   * zive dojo (hero prazdneho stavu) - animacia stredu Dnes (enso a dojo
     za nim), veta pod znackou, zivy blok tepu, zataze, stopy relacie a
     pasiem; sekcia nesie aj dorucenie automatickej hlasky
@@ -14,11 +14,15 @@ Dve sekcie presunute z app.py bez zmeny:
     `_dalsi_cue_slot`, `_fire_somatic_cue`), prstenec "natiahnute" na
     ense a odznaky v bocnom menu, ktore v nej boli uz v app.py,
   * volitelne statistiky na Dnes ("Moje statistiky") - katalog a hodnoty
-    kariet, mriezka, vyber kariet a presun karty potiahnutim.
+    kariet, mriezka, vyber kariet a presun karty potiahnutim,
+  * stred stranky Dnes na platne - kreslenie dojo, ensa a textu na
+    `dnes_canvas`, klik na enso a na kredit. V app.py stal bez vlastnej
+    znacky v sekcii "styl hlasky (onboarding krok 5, Nastavenia -> Zvuk)"
+    (jej prva cast je v app_cues.py), preto tu ma novu znacku.
 
-Konstanty `HERO_PERIOD_S` a `DASHBOARD_DRAG_PX` ostali v triede DandurfApp
-medzi ostatnymi konstantami triedy - `_dashboard_drag` cita
-`DASHBOARD_DRAG_PX` cez `self`.
+Konstanty `HERO_PERIOD_S`, `DASHBOARD_DRAG_PX` a `BACKDROP_DEBOUNCE_MS`
+ostali v triede DandurfApp medzi ostatnymi konstantami triedy -
+`_dashboard_drag` a `_naplanuj_backdrop` ich citaju cez `self`.
 
 Pozor v testoch: `_tick_cue_trigger`, `_refresh_session_trace`,
 `_history_cached` a `_dashboard_stat_value` citaju `time` z tohto modulu a
@@ -27,12 +31,16 @@ podstrcit aj tu (`app_today.time`, `app_today.threading`), nie len na
 module app.
 """
 
+import math
 import threading
 import time
 import tkinter as tk
+import webbrowser
+from tkinter import font as tkfont
 
 import customtkinter as ctk
 
+import background
 import hr_stats
 import measure
 import rebrik
@@ -43,7 +51,7 @@ from i18n import tr
 from settings_model import (dashboard_stat_clickable, swap_dashboard_stats,
                             toggle_dashboard_stat)
 
-from app_spolocne import app_log
+from app_spolocne import _ImageTk, app_log
 
 
 class TodayMixin:
@@ -937,3 +945,352 @@ class TodayMixin:
     # dlzka aj pocet su o kusok vedla v pravom paneli tejto istej stranky,
     # takze pas ich len opakoval, a pas ma niest stav, nie skore.
     # `self._listen_started` sa pouziva dalej (dlzka relacie v paneli).
+
+    # ---------- stred stranky Dnes na platne (dojo, enso, text) ----------
+
+    def _build_dnes_backdrop(self, parent, pal):
+        """Zavesi prekreslenie stredu na zmenu velkosti.
+
+        Uz nestavia widget - dojo, enso aj text kresli `_paint_dnes_canvas` na
+        `self.dnes_canvas` (postaveny v `_build_dnes_page`). Tu sa len ulozi
+        farba zavoja a zavesi `<Configure>`. Fotka je v `background.py`; ked nie
+        je, `background.hero/load` vrati None a ostane pozadie temy.
+        """
+        self._backdrop_size = (0, 0)
+        self._dnes_dojo_tk = None
+        parent.bind("<Configure>", self._naplanuj_backdrop, add="+")
+
+    def _naplanuj_backdrop(self, _event=None):
+        """Prepocita pozadie az ked sa rozmer na chvilu ustali.
+
+        Nie je to kozmetika: pri plynulom tahani okna medzi obrazovkami by
+        sa inak fotka preskalovala pri kazdom medzikroku, a z tych sa
+        pouzije jediny - ten posledny.
+        """
+        job = getattr(self, "_backdrop_job", None)
+        if job is not None:
+            try:
+                self.root.after_cancel(job)
+            except Exception:
+                pass
+        try:
+            self._backdrop_job = self.root.after(
+                self.BACKDROP_DEBOUNCE_MS, self._refresh_dnes_backdrop)
+        except Exception:
+            # Okno sa zatvara - prekreslovat uz nie je co.
+            self._backdrop_job = None
+
+    def _refresh_dnes_backdrop(self, _event=None, force=False):
+        """Prekresli stred stranky Dnes (dojo + enso + text) na `dnes_canvas`.
+
+        Dva rezimy dojo: v ZASTAVENOM stave DOJO HERO, ktore dycha (lampiony,
+        mesiac, odlesk stupaju a klesaju v tempe nadychu, viz `_tick_dnes`).
+        Ked appka pocuva, tlmena fotka. Drahy LANCZOS sa robi len ked sa zmeni
+        rozmer/dych/tema (kluc `_backdrop_size`); enso a text sa prekreslia
+        vzdy (su lacne). Volaju sem: `<Configure>` (debounced), animacny tik,
+        zmena stavu, `_EnsoHero._emit()` (set_live/armed/graduate/set_pal)."""
+        canvas = getattr(self, "dnes_canvas", None)
+        stred = getattr(self, "dnes_stred", None)
+        if canvas is None or stred is None:
+            return
+        try:
+            w, h = stred.winfo_width(), stred.winfo_height()
+        except Exception:
+            return
+        if w < 40 or h < 40:
+            return
+        # --- 1) DOJO obrazok (drahy LANCZOS) - cachovany podla rozmeru/dychu/temy ---
+        hero_on = bool(getattr(self, "_dnes_hero_on", False))
+        faza = getattr(self, "_dnes_breath_phase", 0.0)
+        breath = round(((1.0 - math.cos(2.0 * math.pi * faza)) / 2.0) * 8) / 8.0
+        scrim = self.pal["bg"]
+        kluc = (w, h, hero_on, breath if hero_on else 0, scrim)
+        if force or _ImageTk is None or kluc != getattr(self, "_backdrop_size", None):
+            self._backdrop_size = kluc
+            self._dnes_dojo_tk = self._build_dojo_photo(w, h, hero_on, breath, scrim)
+        # --- 2) prekresli canvas: dojo + enso + text (lacne) ---
+        # POZOR: tu sa NESMIE volat `_ensure_dnes_tick()`. Prekreslenie bezi aj
+        # zvnutra `_tick_dnes`, a ked `_tick_dnes` na zaciatku vynuluje job,
+        # `_ensure_dnes_tick` by ho videl ako "nebezi" a rozbehol dalsi retazec
+        # (alebo priamo zarekurzoval). Tik rozbieha len zmena stavu (nizsie).
+        try:
+            self._paint_dnes_canvas(canvas, w, h, getattr(self, "_dnes_dojo_tk", None))
+        except Exception:
+            app_log.exception("Dnes canvas: prekreslenie zlyhalo")
+
+    def _build_dojo_photo(self, w, h, hero_on, breath, scrim):
+        """PIL -> ImageTk dojo pre Canvas. Canvas pouziva FYZICKE pixely 1:1
+        (na rozdiel od `CTkImage`, ktory si logicke sam nasobi), takze stavame
+        rovno na (w, h) z `winfo_*` a kreslime bez prepoctu mierky."""
+        if _ImageTk is None:
+            return None
+        try:
+            peak = self.DNES_SCRIM_PEAK
+            if hero_on:
+                img = background.hero(w, h, breath=breath, scrim=scrim,
+                                      scrim_peak=peak, blur=True,
+                                      log=self.log_threadsafe)
+            else:
+                img = background.load(w, h, self.background_opacity,
+                                      log=self.log_threadsafe)
+                if img is not None and scrim:
+                    try:
+                        img = background._pridaj_scrim(img.convert("RGBA"),
+                                                       scrim, peak)
+                    except Exception:
+                        pass
+            if img is None:
+                return None
+            return _ImageTk.PhotoImage(img)
+        except Exception:
+            app_log.exception("Dnes dojo: obrazok zlyhal")
+            return None
+
+    def _cvfont(self, size, weight="normal", underline=False):
+        """Tk font pre kreslenie na Canvas vo FYZICKYCH pixeloch.
+
+        `create_text` nie je CTk widget, takze si mierku DPI musime dorobit
+        sami: logicka velkost * mierka = fyzicke px (zaporny size = px, ktore
+        `tk scaling` uz nenasobi). Fonty cachujeme - stavat ich 8x/s netreba."""
+        mierka = getattr(self, "_dnes_mierka", 1.0)
+        kluc = (size, weight, underline, round(mierka, 2))
+        f = self._dnes_fonts.get(kluc)
+        if f is None:
+            f = tkfont.Font(family="Segoe UI", size=-max(1, int(round(size * mierka))),
+                            weight=weight, underline=underline)
+            self._dnes_fonts[kluc] = f
+        return f
+
+    def _paint_dnes_canvas(self, canvas, w, h, dojo):
+        """Zlozi dojo + enso + text na jednu plochu - bez boxu a BEZ BLIKANIA.
+
+        Proti blikaniu su dva kluce:
+          (1) ak sa vizualne NIC nezmenilo, prekreslenie sa cele PRESKOCI -
+              inak sa zastaveny stav prekresloval 8x/s (kazdy tik novy
+              `PhotoImage`, aj ked je snimka rovnaka) a okno blikalo;
+          (2) obrazkove polozky (dojo, enso) su TRVALE - meni sa im len obsah
+              cez `itemconfigure`, nikdy sa nemazu (`delete`), takze ani
+              animacia ensa neblikne. Textovy blok sa prestavia len pri zmene
+              textu/rozmeru/temy (`_layout_dnes_items`).
+        `render()` vracia cachovanu snimku (rovnaky objekt = rovnaka snimka),
+        takze na porovnanie staci `id()`."""
+        pal = self.pal
+        try:
+            mierka = (ctk.ScalingTracker.get_widget_scaling(self.dnes_stred)
+                      or 1.0)
+        except Exception:
+            mierka = 1.0
+        self._dnes_mierka = mierka
+        enso = getattr(self, "enso", None)
+        enso_px = max(48, int(self.ENSO_SIZE * mierka))
+        pil = None
+        if enso is not None:
+            try:
+                pil = enso.render(enso_px)
+            except Exception:
+                pil = None
+        titul = getattr(self, "_dnes_titul", "") or ""
+        veta = getattr(self, "_dnes_veta", "") or ""
+        last = getattr(self, "_dnes_lastcue_text", "") or ""
+        # Tichy riadok "ziadna pauza vo vstupe" ide pod neho, rovnako tlmeny.
+        nonstop = getattr(self, "_dnes_nonstop_text", "") or ""
+        if nonstop:
+            last = f"{last}\n{nonstop}" if last else nonstop
+
+        # (1) PRESKOC identicke prekreslenie.
+        frame_sig = (w, h, round(mierka, 2), id(dojo), id(pil),
+                     titul, veta, last, pal["bg"])
+        if frame_sig == getattr(self, "_dnes_frame_sig", None):
+            return
+        self._dnes_frame_sig = frame_sig
+
+        try:
+            canvas.configure(bg=pal["bg"])
+        except Exception:
+            pass
+
+        # (2) textovy blok + polohy prestavame len pri zmene textu/rozmeru/temy.
+        text_sig = (w, h, round(mierka, 2), titul, veta, last, enso_px,
+                    pal["text"], pal["text_dim"], pal["text_faint"])
+        if (getattr(self, "_dnes_items", None) is None
+                or text_sig != getattr(self, "_dnes_text_sig", None)):
+            self._layout_dnes_items(canvas, w, h, mierka, enso_px,
+                                    titul, veta, last, pal)
+            self._dnes_text_sig = text_sig
+
+        items = self._dnes_items or {}
+        # dojo (trvala polozka vzadu) - vymen obrazok LEN ked sa naozaj zmenil.
+        di = items.get("dojo")
+        if di is not None:
+            if dojo is not None:
+                if dojo is not getattr(self, "_dnes_cur_dojo", None):
+                    try:
+                        canvas.itemconfigure(di, image=dojo, state="normal")
+                        canvas.coords(di, w // 2, h // 2)
+                    except Exception:
+                        pass
+                    self._dnes_tk_imgs["dojo"] = dojo
+                    self._dnes_cur_dojo = dojo
+            else:
+                try:
+                    canvas.itemconfigure(di, state="hidden")
+                except Exception:
+                    pass
+                self._dnes_cur_dojo = None
+        # enso (trvala polozka) - novy PhotoImage a vymena LEN ked sa snimka
+        # naozaj zmenila (`render()` vracia cachovany objekt; rovnake id =
+        # rovnaka snimka). Bez tejto strazy sa enso prehadzovalo pri KAZDOM
+        # prekresleni (aj ked stalo) a okno blikalo.
+        ei = items.get("enso")
+        if (ei is not None and pil is not None and _ImageTk is not None
+                and pil is not getattr(self, "_dnes_cur_pil", None)):
+            try:
+                tkimg = _ImageTk.PhotoImage(pil)
+                self._dnes_tk_imgs["enso"] = tkimg
+                canvas.itemconfigure(ei, image=tkimg)
+            except Exception:
+                pass
+            self._dnes_cur_pil = pil
+
+    def _layout_dnes_items(self, canvas, w, h, mierka, enso_px, titul, veta,
+                           last, pal):
+        """(Pre)stavia trvale obrazkove polozky (dojo, enso) + textovy blok a
+        vycentruje cely blok zvisle. Vola sa LEN pri zmene textu/rozmeru/temy,
+        nie kazdy tik - preto si moze dovolit merat a posuvat. Enso ma tag
+        "block" (centruje sa s textom), ale NIE "dtext" (prestavba textu ho
+        nesmie zmazat, je to trvala polozka menena cez `itemconfigure`)."""
+        self._dnes_hit = {}
+        # Polozky sa mohli prave vytvorit - vynuluj "co je na canvase", nech
+        # `_paint` znova aplikuje dojo aj enso obrazok.
+        self._dnes_cur_dojo = None
+        self._dnes_cur_pil = None
+        items = getattr(self, "_dnes_items", None)
+        if items is None:
+            items = self._dnes_items = {}
+        # dojo - trvala polozka celkom vzadu
+        if items.get("dojo") is None:
+            items["dojo"] = canvas.create_image(w // 2, h // 2, anchor="center")
+        try:
+            canvas.tag_lower(items["dojo"])
+        except Exception:
+            pass
+        # enso - trvala polozka
+        if items.get("enso") is None:
+            items["enso"] = canvas.create_image(w // 2, 0, anchor="n",
+                                                tags=("block", "enso"))
+        canvas.coords(items["enso"], w // 2, 0)
+
+        canvas.delete("dtext")          # len textovy blok; obrazky ostavaju
+        cx = w // 2
+        gap = max(4, int(10 * mierka))
+        wrap = min(int(360 * mierka), max(140, w - int(48 * mierka)))
+        y = enso_px + gap
+        if titul:
+            y = self._canvas_text(canvas, cx, y, titul, self._cvfont(19, "bold"),
+                                  pal["text"], wrap=wrap, shadow=True) + gap
+        if veta:
+            y = self._canvas_text(canvas, cx, y, veta, self._cvfont(12),
+                                  pal["text_dim"], wrap=wrap, shadow=True) + int(gap * 1.4)
+        y = self._canvas_credit(canvas, cx, y, pal) + gap
+        if last:
+            y = self._canvas_text(canvas, cx, y, last, self._cvfont(10),
+                                  pal["text_faint"], wrap=wrap) + gap
+
+        # Blok = enso (hore, vyska enso_px) + text pod nim (spodok `y`).
+        # POZOR: bbox("block") NEZAHRNA enso, lebo jeho obrazok sa nastavuje az
+        # v `_paint_dnes_canvas` (tu je polozka este bez obrazka -> bbox ~ bod).
+        # Preto centrujeme podla ZNAMEJ vysky bloku [0, y], nie podla bbox -
+        # inak enso "vypadlo" z merania a cely blok sedel privysoko.
+        dy = int(h / 2 - y / 2)
+        if dy:
+            canvas.move("block", 0, dy)
+        # Klikacia zona ensa - tiez zo znamej geometrie (bbox("enso") je None,
+        # kym polozka nema obrazok), inak by enso bolo NEKLIKATELNE.
+        ex0 = w // 2 - enso_px // 2
+        ey0 = dy
+        self._dnes_hit["enso"] = (ex0, ey0, ex0 + enso_px, ey0 + enso_px)
+        self._record_dnes_hits(canvas)   # kredit cez bbox (ma text); enso ostane
+
+    def _canvas_text(self, canvas, cx, y_top, text, font, fill, wrap=0, shadow=False):
+        """Vycentrovany (viacriadkovy) text od `y_top` nadol; vrati spodok.
+        `shadow` prida tmavy tienik +1px pre citatelnost bez boxu."""
+        kw = dict(anchor="n", justify="center", font=font)
+        if wrap:
+            kw["width"] = wrap
+        if shadow:
+            canvas.create_text(cx + 1, y_top + 1, text=text, fill="#0b0b0f",
+                               tags=("block", "dtext"), **kw)
+        item = canvas.create_text(cx, y_top, text=text, fill=fill,
+                                  tags=("block", "dtext"), **kw)
+        bb = canvas.bbox(item)
+        return bb[3] if bb else y_top
+
+    def _canvas_credit(self, canvas, cx, y_top, pal):
+        """Riadok "© 2026 Dandurfin · GPLv3" vycentrovany; meno podciarknute a
+        klikatelne (Twitch). Kresli sa po castiach vedla seba."""
+        f = self._cvfont(10)
+        fu = self._cvfont(10, underline=True)
+        pre, meno, post = "© 2026 ", "Dandurfin", "  ·  GPLv3"
+        try:
+            wpre, wmeno, wpost = f.measure(pre), fu.measure(meno), f.measure(post)
+        except Exception:
+            wpre = wmeno = wpost = 0
+        x = cx - (wpre + wmeno + wpost) / 2
+        canvas.create_text(x + 1, y_top + 1, text=pre, anchor="nw", font=f,
+                           fill="#0b0b0f", tags=("block", "dtext"))
+        canvas.create_text(x, y_top, text=pre, anchor="nw", font=f,
+                           fill=pal["text_faint"], tags=("block", "dtext"))
+        x += wpre
+        canvas.create_text(x, y_top, text=meno, anchor="nw", font=fu,
+                           fill=pal["text_dim"], tags=("block", "dtext", "credit"))
+        x += wmeno
+        canvas.create_text(x, y_top, text=post, anchor="nw", font=f,
+                           fill=pal["text_faint"], tags=("block", "dtext"))
+        bb = canvas.bbox("credit")
+        return bb[3] if bb else y_top
+
+    def _record_dnes_hits(self, canvas):
+        """Zapamata bboxy klikacich zon (enso, kredit) PO vycentrovani."""
+        for tag in ("enso", "credit"):
+            try:
+                bb = canvas.bbox(tag)
+            except Exception:
+                bb = None
+            if bb:
+                self._dnes_hit[tag] = bb
+
+    def _dnes_set_cursor(self, cur):
+        if cur == getattr(self, "_dnes_cursor", ""):
+            return
+        self._dnes_cursor = cur
+        try:
+            self.dnes_canvas.configure(cursor=cur)
+        except Exception:
+            pass
+
+    @staticmethod
+    def _in_bbox(x, y, bb):
+        return bb is not None and bb[0] <= x <= bb[2] and bb[1] <= y <= bb[3]
+
+    def _dnes_canvas_motion(self, event):
+        hit = getattr(self, "_dnes_hit", {})
+        over = (self._in_bbox(event.x, event.y, hit.get("enso"))
+                or self._in_bbox(event.x, event.y, hit.get("credit")))
+        self._dnes_set_cursor("hand2" if over else "")
+
+    def _dnes_canvas_click(self, event):
+        hit = getattr(self, "_dnes_hit", {})
+        if self._in_bbox(event.x, event.y, hit.get("credit")):
+            tw = getattr(self, "_dnes_twitch", None)
+            if tw:
+                try:
+                    webbrowser.open(tw)
+                except Exception:
+                    app_log.exception("kredit: otvorenie Twitchu zlyhalo")
+            return
+        if self._in_bbox(event.x, event.y, hit.get("enso")):
+            # Klik na znacku = spinac pocuvania (rovnako, ako mal widget).
+            try:
+                self.toggle_listening()
+            except Exception:
+                app_log.exception("enso klik: prepnutie zlyhalo")

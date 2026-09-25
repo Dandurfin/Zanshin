@@ -29,16 +29,23 @@ Toto je len vstupny bod - overi zavislosti a spusti hlavnu appku
                         hlasy, priprava Edge hlasok, prehratie slotu
   app_controls.py     - ControlsMixin (cast DandurfApp): paleta prikazov,
                         "teraz nie", dennik, ovladac a rucna hlaska (Test)
+  app_cues.py         - CuesMixin (cast DandurfApp): stav spustaca hlasky,
+                        stupen rebrika pre relaciu, styl hlasky
   app_data.py         - DataMixin (cast DandurfApp): export/import/mazanie
                         dat, ulozenie relacie, zdielanie profilov kodom
   app_hud.py          - HudMixin (cast DandurfApp): HUD v hre a riadok ikon,
                         jazyk hry, monitor, kontrolka tepu, in-game vizualy
   app_prefs.py        - PrefsMixin (cast DandurfApp): prepinanie jazyka,
                         sveta a temy, nacitanie/ulozenie nastaveni
+  app_profiles.py     - ProfilesMixin (cast DandurfApp): sloty, profily hier
+                        a auto-profil (rozpoznanie beziacej hry)
+  app_session.py      - SessionMixin (cast DandurfApp): senzor tepu, prijem
+                        tepu a stavu spojenia, otvorenie meracej relacie
   app_spolocne.py     - mena spolocne pre app.py a jej mixiny (app_log,
-                        nazvy jazykov, skratka "Teraz nie")
-  app_today.py        - TodayMixin (cast DandurfApp): stred a zivy blok
-                        stranky Dnes, dorucenie hlasky, "Moje statistiky"
+                        nazvy jazykov, skratka "Teraz nie", ImageTk)
+  app_today.py        - TodayMixin (cast DandurfApp): stred (kreslenie) a
+                        zivy blok stranky Dnes, dorucenie hlasky,
+                        "Moje statistiky"
 
 Dva TTS motory:
   * "edge"  - Microsoft Edge Natural (neuronove hlasy). Hlasky sa
