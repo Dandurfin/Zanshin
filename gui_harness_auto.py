@@ -1152,10 +1152,12 @@ def s_history_filled_check():
 
 @step(300, )
 def s_history_link():
-    import app as app_mod
+    # Stranka Historia byva v mixine app_history - `webbrowser` sa podstrci
+    # priamo na zdielanom module (ten isty objekt, co predtym `app.webbrowser`).
+    import webbrowser
     state["opened"] = []
-    state["_wb"] = app_mod.webbrowser.open
-    app_mod.webbrowser.open = lambda u, *a, **k: state["opened"].append(u) or True
+    state["_wb"] = webbrowser.open
+    webbrowser.open = lambda u, *a, **k: state["opened"].append(u) or True
     link, url = app.history_source_links[0]
     state["link_url"] = url
     root.update_idletasks()
@@ -1172,10 +1174,10 @@ def s_history_link_click():
 
 @step(400, )
 def s_history_link_check():
-    import app as app_mod
+    import webbrowser
     rec("history: REAL click on '↗ source' opens the study URL in the browser",
         state["opened"] == [state["link_url"]], str(state["opened"]))
-    app_mod.webbrowser.open = state["_wb"]
+    webbrowser.open = state["_wb"]
     # analyza na pozadi: spomalena analyza nesmie zablokovat UI
     import hr_insights as hi
     state["_analyze"] = hi.analyze

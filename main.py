@@ -33,6 +33,9 @@ Toto je len vstupny bod - overi zavislosti a spusti hlavnu appku
                         stupen rebrika pre relaciu, styl hlasky
   app_data.py         - DataMixin (cast DandurfApp): export/import/mazanie
                         dat, ulozenie relacie, zdielanie profilov kodom
+  app_history.py      - HistoryMixin (cast DandurfApp): stranka Historia
+                        (trend, tabulka, detail relacie, export do CSV) a
+                        analyza historie na pozadi
   app_hud.py          - HudMixin (cast DandurfApp): HUD v hre a riadok ikon,
                         jazyk hry, monitor, kontrolka tepu, in-game vizualy
   app_prefs.py        - PrefsMixin (cast DandurfApp): prepinanie jazyka,
