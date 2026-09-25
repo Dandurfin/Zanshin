@@ -49,18 +49,22 @@ def test_readme_hovori_to_iste_co_license_design():
     for zle in ("feature arrangement", "written consent", "all rights reserved",
                 "dual-licensed"):
         assert zle not in readme, zle
-    # Od 0.2.1 sa nevydava instalacka ani .exe (bez podpisoveho certifikatu) -
-    # oficialny je len zdrojak v repozitari a hrac si appku postavi sam.
-    # Hotova kopia odinakial preto nie je od autora - README to musi povedat.
+    # Od 0.2.1: instalacka sa nevydava (bez podpisoveho certifikatu). Oficialny
+    # je len repozitar - zdrojak a hotovy ZIP v jeho Releases s odtlackom
+    # SHA-256, aby si hrac overil, ze ma pravy subor. Kopia odinakial nie je
+    # od autora - README aj LICENSE-DESIGN.md to musia povedat rovnako.
+    plain = " ".join(readme.split())
     assert "Official source:** only <https://" + REPO + ">" in readme
-    assert "ready-made Zanshin `.exe` or installer, it isn't from me" in (
-        " ".join(readme.split()))
+    assert ("ready-made Zanshin `.exe` or installer anywhere else, it isn't "
+            "from me") in plain
+    assert "SHA-256" in readme and "Get-FileHash" in readme
+    assert "There is no installer" in plain
     assert "Each release lists the installer's SHA-256" not in readme
-    # LICENSE-DESIGN.md §4 slubovalo instalacku s odtlackom SHA-256 v Releases -
-    # ziadna nie je. Oficialny je zdrojak, ktory si hrac postavi sam.
     licencia = " ".join(_read("LICENSE-DESIGN.md").split())
     assert "fingerprint of the installer" not in licencia
-    assert "There is no ready-made installer or `.exe`" in licencia
+    assert "ready-made ZIP on its Releases page" in licencia
+    assert "SHA-256 fingerprint" in licencia
+    assert "There is no installer" in licencia
 
 
 def test_soul_neprivlastnuje_vzhlad():

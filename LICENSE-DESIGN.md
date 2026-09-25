@@ -44,9 +44,10 @@ this whole work:
 
 ## 4. Where the official Zanshin is
 
-Only at **<https://github.com/Dandurfin/Zanshin>**, as source code you build
-yourself (see the README). There is no ready-made installer or `.exe`; a copy
-from anywhere else is not from me.
+Only at **<https://github.com/Dandurfin/Zanshin>**: the source code, and a
+ready-made ZIP on its Releases page, listed with its SHA-256 fingerprint so you
+can check that you have the real file. There is no installer. A copy from
+anywhere else is not from me.
 
 ## 5. Contact
 

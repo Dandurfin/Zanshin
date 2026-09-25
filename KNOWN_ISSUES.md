@@ -22,7 +22,9 @@ before publishing. What 0.1 got wrong in the app itself is written down below.
 
 0.2.1 is a bug-fix release after a review of the 0.2 code: in a few places it
 didn't do what the README says. None of it was harmful as far as I know. It
-adds one thing: "Not now" is also in the tray icon's menu.
+adds one thing: "Not now" is also in the tray icon's menu. And it changes how
+you get Zanshin: there is no installer; the release has a ready-made ZIP with
+its SHA-256 fingerprint, or you build the app yourself (see the README).
 
 ### The online voice
 
@@ -350,10 +352,11 @@ about, and a few will stay.
   that uses that one key combination may not receive it. In 0.1 the start-up
   log line said input is read with "no blocking"; in 0.2 it names the
   shortcut as the one exception.
-- **Zanshin isn't code-signed, so there's no installer.** You build it yourself
-  from the source (see the README). With Smart App Control on, Windows can
-  block unsigned programs outright, with no "Run anyway" button. The README
-  says so, but how it treats a Zanshin you built yourself is untested.
+- **Zanshin isn't code-signed.** The ready-made ZIP gets Windows' "unknown
+  publisher" warning (*More info → Run anyway*); building it yourself avoids
+  it. With Smart App Control on, Windows can block unsigned programs
+  outright, with no "Run anyway" button. The README says so, but how it
+  treats the ZIP or a Zanshin you built yourself is untested.
 - **Not a medical device.** Load, recovery and HRPI (one number for how high your
   pulse ran and for how long) are rough trends from a consumer watch, not
   diagnoses, and nothing is clinically validated. This stays.

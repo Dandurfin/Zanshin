@@ -183,23 +183,46 @@ and breathe.
   from practice or tradition. The full source list is [ZDROJE.md](ZDROJE.md)
   (notes in Slovak); none of these studies tested Zanshin.
 
-## Install (build it yourself)
+## Install
 
-**Official source:** only <https://github.com/Dandurfin/Zanshin>. There is no
-ready-made download, neither an installer nor an `.exe`. You build Zanshin on
-your own PC from the source code, so Zanshin's own code is exactly what you can
-read here. The libraries it uses (`requirements.txt`) and PyInstaller, which
-packs it into an `.exe`, come from PyPI, the usual Python package index. The
-build installs the ones that are missing, in whatever version is newest that
-day, and keeps using the ones already installed without updating them, in
-later builds too. If anyone offers you a ready-made Zanshin `.exe` or
-installer, it isn't from me.
+**Official source:** only <https://github.com/Dandurfin/Zanshin>. There are two
+ways to get Zanshin, and both start there. If anyone offers you a ready-made
+Zanshin `.exe` or installer anywhere else, it isn't from me. There is no
+installer: you unpack a ZIP, or you build the app yourself.
 
-**Why no installer:** Windows warns about programs downloaded from an "unknown
-publisher", which is what an app without a code-signing certificate is.
-Zanshin has no such certificate, and an app that asks you to click past a
-warning like that is not a good start. A program you build on your own PC
-wasn't downloaded, so that warning doesn't come up for it.
+**Why no signature:** Windows warns about programs downloaded from an "unknown
+publisher", which is what an app without a code-signing certificate is. A
+certificate Windows trusts would put my legal name into every copy of the file,
+so Zanshin has none. The fingerprint below proves the ZIP is mine and
+unchanged; it doesn't make the warning go away.
+
+### A. Ready-made ZIP (easiest)
+
+1. On the GitHub page open **Releases** and download
+   `Zanshin-<version>-windows.zip` (for this version
+   `Zanshin-0.2.1-windows.zip`). The release lists the file's **SHA-256**
+   fingerprint.
+2. Check it: open PowerShell in the folder with the ZIP and run
+   `Get-FileHash .\Zanshin-0.2.1-windows.zip`. The long hash it prints must be
+   the same as the one in the release. If it isn't, delete the file.
+3. Unpack the ZIP into a folder that OneDrive doesn't back up, for example
+   `C:\Games`, and start `Zanshin\Zanshin.exe`. The first time, Windows shows
+   "Windows protected your PC": choose **More info → Run anyway**, only for a
+   ZIP whose fingerprint matched. Keep the whole `Zanshin` folder together:
+   the `.exe` needs the `_internal` folder next to it.
+
+To update, quit Zanshin, delete the old folder and unpack the new ZIP the same
+way; your data stays (see *Your data* below).
+
+### B. Build it yourself (no warning)
+
+A program you build on your own PC wasn't downloaded, so the "unknown
+publisher" warning doesn't come up for it. Zanshin's own code is then exactly
+what you can read here. The libraries it uses (`requirements.txt`) and
+PyInstaller, which packs it into an `.exe`, come from PyPI, the usual Python
+package index. The build installs the ones that are missing, in whatever
+version is newest that day, and keeps using the ones already installed without
+updating them, in later builds too.
 
 This is how I install it myself. You need an internet connection. On my PC
 the first build downloaded under 100 MB and took about 550 MB on disk, Python
@@ -244,17 +267,19 @@ included.
    port, Windows Firewall may ask whether to allow it; see *Getting your heart
    rate in* below.
 
+### Both ways
+
 **If Windows blocks it:** antivirus programs, Windows Security included,
 sometimes flag programs packed with PyInstaller by mistake. The build is a
 folder rather than one self-unpacking `.exe`, and UPX compression is off; both
 are often blamed for these false alarms, but I can't promise it won't happen.
 And with Smart App Control on (Windows Security → App & browser
 control), Windows can block unsigned programs outright, with no "Run anyway".
-I haven't been able to test how it treats a Zanshin you built yourself. If
-either happens, please don't switch your protection off for Zanshin; open an
+I haven't been able to test how it treats the ZIP or a Zanshin you built
+yourself. If either happens, please don't switch your protection off for Zanshin; open an
 issue instead, so I know.
 
-**Updating:** quit Zanshin first (right-click its tray icon → **Quit**). If it's
+**Updating a Zanshin you built:** quit Zanshin first (right-click its tray icon → **Quit**). If it's
 still running, `build.bat` closes it without asking, and a session in progress
 isn't saved. Then get the new version and build it the same way. Your data
 stays, because it isn't in the build folder. Make a new shortcut to the new
@@ -262,11 +287,11 @@ stays, because it isn't in the build folder. Make a new shortcut to the new
 a new program, so it may ask again.
 
 **Your data** (settings, heart-rate history, recordings, generated speech and
-SFX) lives in `%APPDATA%\Zanshin`, not in the build folder, so rebuilding
-doesn't touch it. **To remove Zanshin,** delete the folder you unpacked (for
-example `C:\Games\Zanshin-0.2.1`) and the shortcut; your data stays in
-`%APPDATA%\Zanshin` until you delete that folder too. Python stays installed:
-if you don't need it for anything else, uninstall *Python 3.x* first and then
+SFX) lives in `%APPDATA%\Zanshin`, not in the app's folder, so neither a new
+ZIP nor rebuilding touches it. **To remove Zanshin,** delete the folder you
+unpacked (for example `C:\Games\Zanshin`) and the shortcut; your data stays in
+`%APPDATA%\Zanshin` until you delete that folder too. If you built it
+yourself, Python stays installed: if you don't need it for anything else, uninstall *Python 3.x* first and then
 *Python install manager*, in Settings → Apps → Installed apps. pip keeps what
 it downloaded for the build in `%LOCALAPPDATA%\pip\cache` (about 45 MB on my
 PC); you can delete that folder, and `%LOCALAPPDATA%\Python` too if it's
@@ -277,8 +302,9 @@ build, not for the app, and don't run Zanshin as administrator. The app draws
 a window over the game, and I don't want an elevated process doing that,
 because anti-cheats (Vanguard, EAC, VAC) may treat it more harshly; only their
 makers know what they actually check. See `SAFETY.md` (in Slovak). The one
-exception is Windows Firewall's own question in step 4: allowing an app there
-takes administrator approval, because it changes a Windows setting.
+exception is Windows Firewall's own question when Zanshin first opens its
+heart-rate port: allowing an app there takes administrator approval, because
+it changes a Windows setting.
 
 Zanshin has no Steam integration — it doesn't load the Steam SDK or talk to
 Steam in any way.
@@ -538,8 +564,8 @@ Author: **Dandurfin** — [Twitch](https://www.twitch.tv/dandurfin) ·
 
 ### How the main window is split (for developers)
 
-Until the `v0.2.1` tag, the whole main window was one class in one file of
-almost 9,000 lines. Since then it is split by topic, and nothing about how the
+Up to version 0.2, the whole main window was one class in one file of
+almost 9,000 lines. Since 0.2.1 it is split by topic, and nothing about how the
 app behaves has changed. `DandurfApp` is still a single class, but most of its
 methods live in the `app_*.py` modules above as *mixins* that `DandurfApp`
 inherits. A few rules keep it that way:

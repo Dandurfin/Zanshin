@@ -102,7 +102,7 @@ def test_novy_profil_ma_styri_kategorie():
         _sync_active_profile_slots=lambda: None, rebuild_slots=lambda s: None,
         refresh_profile_switch=lambda: None, save_settings=lambda: None,
         # od 0.2.1 novy profil spusti pripravu hlasok ako prepnutie profilu
-        # (test_021b_pregen_novy_profil.py)
+        # (test_021b_pregen_profil_a_hra.py)
         schedule_pregenerate=lambda *_: None,
         # od 0.2.1d novy profil moze dostat hlas k svojim slovam
         # (test_021d_hlas_podla_hlasok.py) - tu to nehra rolu
