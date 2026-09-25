@@ -100,8 +100,11 @@ def appka(tmp_path, monkeypatch, hodiny):
     skutocne `save_settings` do docasneho suboru; znacka je skutocne enso.
     """
     import app as app_mod
+    import app_prefs
     import ui_shell
-    monkeypatch.setattr(app_mod, "SETTINGS_PATH",
+    # `load_settings` / `save_settings` byvaju v mixine app_prefs
+    # (PrefsMixin) a citaju SETTINGS_PATH zo svojho modulu.
+    monkeypatch.setattr(app_prefs, "SETTINGS_PATH",
                         str(tmp_path / "dandurf_settings.json"))
     povodny = i18n._lang["code"]
     D = app_mod.DandurfApp

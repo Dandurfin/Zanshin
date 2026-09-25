@@ -27,7 +27,10 @@ Toto je len vstupny bod - overi zavislosti a spusti hlavnu appku
   app.py              - DandurfApp: hlavne okno, prepojenie vsetkeho
   app_data.py         - DataMixin (cast DandurfApp): export/import/mazanie
                         dat, ulozenie relacie, zdielanie profilov kodom
-  app_spolocne.py     - mena spolocne pre app.py a jej mixiny (app_log)
+  app_prefs.py        - PrefsMixin (cast DandurfApp): prepinanie jazyka,
+                        sveta a temy, nacitanie/ulozenie nastaveni
+  app_spolocne.py     - mena spolocne pre app.py a jej mixiny (app_log,
+                        nazvy jazykov, skratka "Teraz nie")
 
 Dva TTS motory:
   * "edge"  - Microsoft Edge Natural (neuronove hlasy). Hlasky sa

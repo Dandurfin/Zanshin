@@ -63,8 +63,11 @@ def test_prepnutie_jazyka_pouziva_navrh():
 @pytest.fixture
 def start(tmp_path, monkeypatch):
     import app as app_mod
+    import app_prefs
     cesta = str(tmp_path / "dandurf_settings.json")
-    monkeypatch.setattr(app_mod, "SETTINGS_PATH", cesta)
+    # `load_settings` byva v mixine app_prefs (PrefsMixin) a cita
+    # SETTINGS_PATH zo svojho modulu - presmerovat ho treba tam.
+    monkeypatch.setattr(app_prefs, "SETTINGS_PATH", cesta)
     povodny = i18n._lang["code"]
 
     def spusti(locale, ulozene=None):

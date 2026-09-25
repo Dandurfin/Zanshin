@@ -51,8 +51,11 @@ def test_tlacidlo_pridat_spustac_je_prec():
 @pytest.fixture
 def nastavenia(tmp_path, monkeypatch):
     import app as app_mod
+    import app_prefs
     cesta = str(tmp_path / "dandurf_settings.json")
-    monkeypatch.setattr(app_mod, "SETTINGS_PATH", cesta)
+    # `load_settings` byva v mixine app_prefs (PrefsMixin) a cita
+    # SETTINGS_PATH zo svojho modulu - presmerovat ho treba tam.
+    monkeypatch.setattr(app_prefs, "SETTINGS_PATH", cesta)
     povodny = i18n._lang["code"]
 
     def nacitaj(obsah):
