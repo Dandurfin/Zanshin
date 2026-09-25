@@ -25,15 +25,18 @@ Co treba vediet
 ---------------
   * HYBE REALNOU MYSOU a posiela klavesy - pocas behu (~2 min) nechaj PC tak.
   * Hlavne okno da docasne `topmost`, inak ho prekryje terminal/IDE.
-  * Nastavenia (dandurf_settings.json) si na zaciatku zalohuje a na konci
-    OBNOVI - hromadne mazanie a drag by ich inak zmenili.
+  * Nastavenia (dandurf_settings.json) a historiu tepu (hr_sessions.json,
+    hr_insights.json) si na zaciatku zalohuje NA DISK vedla originalov
+    (`<subor>.pred-harnessom`) a na konci ich OBNOVI - hromadne mazanie,
+    drag a test historie by ich inak zmenili. Po behu, ktory niekto tvrdo
+    zabil, ich vrati najblizsi beh hned na zaciatku (viz "Zaloha dat").
   * Screenshoty a harness_results.json idu do logs/gui_harness/.
   * messagebox.showinfo/askyesno sa pocas hromadneho mazania nahradia
     zaznamom (inak by modalne okno beh zablokovalo).
 
 Spustenie:  python gui_harness_auto.py   (appka NESMIE bezat vedla)
 """
-import ctypes, json, os, shutil, sys, time, traceback
+import atexit, ctypes, filecmp, json, os, shutil, sys, time, traceback
 from ctypes import wintypes
 
 PROJ = os.path.dirname(os.path.abspath(__file__))
@@ -42,10 +45,124 @@ os.makedirs(OUT, exist_ok=True)
 sys.path.insert(0, PROJ)
 os.chdir(PROJ)
 
+# ---------------------------------------------------------------------------
+# Zaloha dat (nastavenia + historia tepu) - na disku, nie v pamati
+# ---------------------------------------------------------------------------
+# Harness bezi nad datami Zanshinu zo zdrojakov vedla main.py, teda nad
+# ozajstnou historiou tepu. Do 0.2.1c ju odkladal len v PAMATI a posledny
+# `finally` ju ani nevracal: Ctrl+C, zavretie okna ci pad medzi odlozenim a
+# vratenim ju zmazali navzdy. Zaloha nastaveni bola na disku, ale dalsi beh
+# ju prepisal nastaveniami, ktore zmenil preruseny beh. Preto teraz:
+#   * PRED prvym dotykom sa kazdy subor skopiruje vedla seba ako
+#     `<subor>.pred-harnessom`; subor, ktory pred behom nebol, dostane
+#     znacku `<subor>.pred-harnessom-nebol`. Na disku prezije aj zabitie
+#     procesu.
+#   * Vracia sa v `finish()`, vo `finally` okolo mainloop (Ctrl+C, zavrete
+#     okno) aj cez `atexit` (pad este pred mainloop) - kazda cesta von.
+#   * Ked beh zabil niekto tvrdo (Task Manager, zavretie konzoly), zaloha
+#     ostane na disku a vrati ju najblizsi beh SKOR, nez sa cohokolvek
+#     dotkne (`obnov_po_prerusenom_behu`). Novu zalohu cez nevratenu staru
+#     `zaloz_zalohy` nezapise - to bola ta strata nastaveni.
+# Mena `.pred-harnessom*` aj `.pred-obnovou-*` .gitignore uz pokryva
+# (`*.pred-*`; historiu aj `hr_*.json*`), takze na GitHub nejdu. Zalohy
+# historie tepu su surodenci jej suborov, takze ich "Zmazat historiu" zmaze
+# tiez (`data_io._plan_priecinka`); nastavenia ta volba nemaze, ani ich zalohu.
+ZALOHA = ".pred-harnessom"
+NEBOL = ".pred-harnessom-nebol"
+
+
+def _zapis_kopiu(zdroj, ciel):
+    """Kopia cez `.tmp` + `os.replace`: prerusenie uprostred kopirovania
+    nenecha polovicnu zalohu, ktoru by dalsi beh vratil namiesto dat."""
+    tmp = ciel + ".tmp"
+    shutil.copy2(zdroj, tmp)
+    os.replace(tmp, ciel)
+
+
+def obnov_po_prerusenom_behu(cesty, znacka=None):
+    """Vrati zalohy, ktore po sebe nechal preruseny beh. Vola sa ako prve.
+
+    Pravidlo: zaloha spred harnessu je ozajstny stav hraca a vrati sa. Co je
+    na jej mieste teraz, sa vsak naslepo neprepise ani nezmaze - mohol to
+    zapisat preruseny harness (synteticke data), ale aj appka spustena
+    medzitym (nova ozajstna relacia), a to sa rozlisit neda. Ak sa subor od
+    zalohy lisi (alebo pred behom nebol), odlozi sa vedla ako
+    `<subor>.pred-obnovou-<cas>` a vypise sa, kde je. Nestrati sa tak nic;
+    zhodny so zalohou netreba drzat. Vracia zoznam vratenych suborov.
+    """
+    znacka = znacka or time.strftime("%Y%m%d-%H%M%S")
+    vratene = []
+    for p in cesty:
+        zaloha, nebol = p + ZALOHA, p + NEBOL
+        if not (os.path.exists(zaloha) or os.path.exists(nebol)):
+            continue
+        if os.path.exists(p) and not (os.path.exists(zaloha)
+                                      and filecmp.cmp(p, zaloha, shallow=False)):
+            bokom = "%s.pred-obnovou-%s" % (p, znacka)
+            n = 2
+            while os.path.exists(bokom):
+                bokom = "%s.pred-obnovou-%s-%d" % (p, znacka, n)
+                n += 1
+            os.replace(p, bokom)
+            print("harness: %s z preruseneho behu odlozeny ako %s"
+                  % (os.path.basename(p), bokom), flush=True)
+        if os.path.exists(zaloha):
+            os.replace(zaloha, p)
+            print("harness: %s vrateny zo zalohy preruseneho behu"
+                  % os.path.basename(p), flush=True)
+        if os.path.exists(nebol):
+            os.remove(nebol)
+        vratene.append(p)
+    return vratene
+
+
+def zaloz_zalohy(cesty):
+    """Zaloha kazdeho suboru na disk, skor nez sa ho beh dotkne."""
+    for p in cesty:
+        if os.path.exists(p + ZALOHA) or os.path.exists(p + NEBOL):
+            # Zaloha, ktoru `obnov_po_prerusenom_behu` nevratil (napr.
+            # zamknuty subor). Prepisat ju aktualnym suborom by bola presne
+            # ta strata dat, pred ktorou je - beh radsej nezacne.
+            raise SystemExit("harness: %s ma nevratenu zalohu z preruseneho "
+                             "behu - vrat ju rucne a spusti znova" % p)
+    for p in cesty:
+        if os.path.exists(p):
+            _zapis_kopiu(p, p + ZALOHA)
+        else:
+            open(p + NEBOL, "w").close()
+
+
+def vrat_zalohy(cesty, nechat_zalohy=False):
+    """Vrati subory spred behu; co pred behom nebolo, zmaze (zapisal to tento
+    beh). `nechat_zalohy=True` (uprostred behu) vrati kopiu a zalohu necha,
+    lebo appka aj harness do suborov este pisu; na konci sa zaloha vrati
+    presunom a zmizne. Druhe volanie uz nic nenajde - `finish()`, `finally`
+    aj `atexit` ho mozu zavolat po sebe."""
+    for p in cesty:
+        try:
+            if os.path.exists(p + ZALOHA):
+                if nechat_zalohy:
+                    _zapis_kopiu(p + ZALOHA, p)
+                else:
+                    os.replace(p + ZALOHA, p)
+            elif os.path.exists(p + NEBOL):
+                if os.path.exists(p):
+                    os.remove(p)
+                if not nechat_zalohy:
+                    os.remove(p + NEBOL)
+        except Exception as exc:
+            # Zaloha ostava na disku - vrati ju najblizsi beh.
+            print("harness: subor sa nepodarilo vratit", p, exc, flush=True)
+
+
 SETTINGS = os.path.join(PROJ, "dandurf_settings.json")
-SETTINGS_BAK = os.path.join(OUT, "dandurf_settings.pred_harnessom.json")
+HR_SESSIONS = os.path.join(PROJ, "hr_sessions.json")
+HR_INSIGHTS = os.path.join(PROJ, "hr_insights.json")
+ODLOZENE = (SETTINGS, HR_SESSIONS, HR_INSIGHTS)
+obnov_po_prerusenom_behu(ODLOZENE)
+zaloz_zalohy(ODLOZENE)
+atexit.register(vrat_zalohy, ODLOZENE)
 if os.path.exists(SETTINGS):
-    shutil.copy2(SETTINGS, SETTINGS_BAK)
     # Tento harness testuje bezne stranky, nie prvy start. Ak by v
     # nastaveniach chybala tema (= first_run) alebo tour_seen, appka by
     # otvorila onboarding/tour a harness by v modalnom wait_window() visel
@@ -62,11 +179,6 @@ if os.path.exists(SETTINGS):
             print("harness: docasne doplnena tema/tour_seen, aby nebezal onboarding", flush=True)
     except Exception as _exc:
         print("harness: nastavenia sa nepodarilo upravit:", _exc, flush=True)
-
-
-def restore_settings():
-    if os.path.exists(SETTINGS_BAK):
-        shutil.copy2(SETTINGS_BAK, SETTINGS)
 
 import display
 display.enable_dpi_awareness()
@@ -1034,34 +1146,32 @@ def s_dialog_escape_check():
 
 
 # ---------------- 6a. Historia relacii, info panely, zdroje, analyza ----------------
-HR_SESSIONS = os.path.join(PROJ, "hr_sessions.json")
-HR_INSIGHTS = os.path.join(PROJ, "hr_insights.json")
-_hr_backups = {}
+# HR_SESSIONS / HR_INSIGHTS su hore pri zalohe dat - kopia spred behu je na
+# disku od zaciatku (`zaloz_zalohy`), tu sa uz nic do pamate neodklada.
 
 
-def _backup_hr_files():
+def _odloz_historiu_tepu():
+    """Test prazdnej historie: subory na chvilu zmiznu. Maze sa len subor,
+    ktoreho kopia spred behu je na disku (alebo ktory pred behom nebol) -
+    bez nej by prerusenie behu historiu zmazalo navzdy."""
     for p in (HR_SESSIONS, HR_INSIGHTS):
-        if os.path.exists(p):
-            with open(p, "rb") as fh:
-                _hr_backups[p] = fh.read()
+        if not os.path.exists(p):
+            continue
+        if os.path.exists(p + ZALOHA) or os.path.exists(p + NEBOL):
             os.remove(p)
+        else:
+            rec("history: %s left in place - no backup on disk" % os.path.basename(p),
+                False, "backup missing, not deleting real data")
 
 
-def _restore_hr_files():
-    for p in (HR_SESSIONS, HR_INSIGHTS):
-        try:
-            if p in _hr_backups:
-                with open(p, "wb") as fh:
-                    fh.write(_hr_backups[p])
-            elif os.path.exists(p):
-                os.remove(p)
-        except Exception as exc:
-            print("restore hr file failed", p, exc)
+def _vrat_historiu_tepu():
+    """Historia spred behu spat na miesto; zaloha ostava do konca behu."""
+    vrat_zalohy((HR_SESSIONS, HR_INSIGHTS), nechat_zalohy=True)
 
 
 @step(200, )
 def s_history_empty():
-    _backup_hr_files()
+    _odloz_historiu_tepu()
     app.sidebar._select("historia")
     app._refresh_history_page()
 
@@ -1217,7 +1327,7 @@ def s_history_analysis_check():
     keys = [i.get("key") for i in app._hr_insights]
     rec("history: rising synthetic baseline detected as 'resting_up'", "resting_up" in keys, str(keys))
     shot("23_history_insights")
-    _restore_hr_files()
+    _vrat_historiu_tepu()
     app._refresh_history_page()
     app.sidebar._select("dnes")
 
@@ -1688,16 +1798,23 @@ def finish():
         app.hud.stop()
     except Exception:
         pass
-    restore_settings()
-    _restore_hr_files()
-    print("nastavenia obnovene zo zalohy:", SETTINGS_BAK, flush=True)
+
+    def koniec():
+        # Vracia sa az tesne pred koncom procesu: co by appka zapisala v
+        # tych 200 ms, prepise zaloha - nie naopak. `os._exit` preskoci
+        # `finally` aj `atexit`, takze vratit treba tu.
+        vrat_zalohy(ODLOZENE)
+        print("nastavenia a historia tepu vratene zo zaloh", flush=True)
+        os._exit(1 if failed else 0)
     sys.stdout.flush()      # os._exit() buffer nevyprazdni
-    root.after(200, lambda: os._exit(1 if failed else 0))
+    root.after(200, koniec)
 
 
 try:
     root.after(300, run_steps)
     root.mainloop()
 finally:
-    restore_settings()
+    # Ctrl+C, zavrete okno, vynimka z mainloop: vsetko sa vrati aj tu.
+    # Pad este pred mainloop pokryva `atexit`, tvrde zabitie dalsi beh.
+    vrat_zalohy(ODLOZENE)
 os._exit(0)

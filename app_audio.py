@@ -286,17 +286,21 @@ class AudioMixin:
         Len vtedy sa smie poslat Microsoftu na pripravu. Doteraz sa posielali
         texty vsetkych slotov s hlasom, aj tych, ktore Edge nikdy nevyslovi:
           * vypnutej hlasky - `_dalsi_cue_slot` ju v hre preskakuje,
+          * hlasky s vypnutym obrazkom v hre - `_dalsi_cue_slot` ju
+            preskakuje tiez (ta ista podmienka, `_ma_obrazok_v_hre`); jej
+            text isiel Microsoftu, hoci ho v hre nikdy nepovie,
           * hlasky s vlastnou nahravkou - `_speak_text` prehra nahravku,
             nie TTS (ta ista podmienka ako tam, `_slot_voice_clip`),
           * slotu navyse z 0.1 (index 4+, "+ Pridat spustac") - nema
             kategoriu ani obrazok a appka ho sama nespusta
             (`settings_model.je_kategoria`).
-        Ked sa hlaska neskor zapne alebo sa jej zmaze nahravka, pripravu
-        znova spusti ta zmena (`schedule_pregenerate`).
+        Ked sa hlaska alebo jej obrazok neskor zapne, alebo sa jej zmaze
+        nahravka, pripravu znova spusti ta zmena (`schedule_pregenerate`).
         """
         return bool(
             je_kategoria(slot.index)
             and slot.enabled_value
+            and self._ma_obrazok_v_hre(slot)
             and slot.mode in (MODE_TTS, MODE_COMBO)
             and slot.text_value.strip()
             and not self._slot_voice_clip(slot))
@@ -504,7 +508,8 @@ class AudioMixin:
                 return
             if not self._hlasky_hovoria() or not self._slot_na_pripravu(slot):
                 # Styl bez slov / svet Praca, alebo hlaska, ktoru v hre Edge
-                # nepovie (vypnuta, slot navyse z 0.1): nic sa pre nu
+                # nepovie (vypnuta, s vypnutym obrazkom v hre, slot navyse
+                # z 0.1): nic sa pre nu
                 # nepripravuje (`pregen_jobs`) - Test/ukazka zaznie cez SAPI
                 # a dennik neslubuje pripravu, ktora nepride.
                 pass

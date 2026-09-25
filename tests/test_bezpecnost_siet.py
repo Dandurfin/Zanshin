@@ -228,9 +228,11 @@ def _atrapa_hlasu(app_mod, styl="voice", svet="play"):
                slot(1, MODE_TTS, "Jaw", "x-Y"),
                slot(2, MODE_SFX, "nic")],
         engine=app_mod.ENGINE_EDGE, rate_value=0, _pregen_job=None, _pregen_seq=0,
-        pal={"success": "g", "warn": "y", "danger": "r"}, stavy=[], posielane=[])
+        pal={"success": "g", "warn": "y", "danger": "r"}, stavy=[], posielane=[],
+        overlay_configs=[{"enabled": True} for _ in range(4)])
     for meno in ("_hlasky_hovoria", "pregen_jobs", "_slot_na_pripravu",
-                 "_slot_voice_clip", "_zrus_rozbehnutu_pripravu"):
+                 "_slot_voice_clip", "_zrus_rozbehnutu_pripravu",
+                 "_ma_obrazok_v_hre"):
         setattr(a, meno, types.MethodType(getattr(D, meno), a))
     a.set_edge_status = lambda text, color=None: a.stavy.append(text)
     a.edge_cache = types.SimpleNamespace(

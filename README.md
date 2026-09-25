@@ -14,9 +14,10 @@ and breathe.
 > computer. There is no telemetry, no analytics, and no account. The one thing
 > that normally reaches the internet is the online TTS voice, which is **on by
 > default**: to turn your reminders into speech, it sends Microsoft the wording
-> of those in your current profile that are switched on and set to speak
-> (not ones that play your own recording), with the voice and speed you
-> picked (like any connection, it also shows Microsoft your IP address).
+> of those in your current profile that are switched on, with their in-game
+> picture on, and set to speak (not ones that play your own recording), with
+> the voice and speed you picked (like any connection, it also shows Microsoft
+> your IP address).
 > It sends nothing new while Zanshin is listening (the state you switch with
 > Start / Stop; it has nothing to do with the microphone), and a line already
 > on its way when listening starts is finished. Switch to the
@@ -114,19 +115,21 @@ and breathe.
 - **Two TTS engines.** The *natural voice (Edge)* is the default: neural
   voices, prepared ahead of time into a local cache, so in-game nothing waits
   on the network. Preparing sends Microsoft a reminder's wording only if it is
-  one of the four, switched on, set to speak and not playing your own
-  recording, and only if its line isn't in the cache yet. That happens at
-  every start (the first time for all of them), and again after you change a
-  line (while you type, a pause of about 0.7 s is enough, so a half-typed line
-  can go too), switch it on, switch it to speak or remove its own recording,
-  change the voice, the speed, the profile (or create one) or the language
-  (when that changes the voice), import a profile, and after you switch back
-  to the voice style, to Play or to the natural voice. Testing a line that isn't ready, or *Prepare voice lines* in the
-  Ctrl+K palette, sends the missing ones too; testing a switched-off reminder,
-  or an extra one kept from 0.1, plays the Windows voice and sends nothing. It
-  happens only in the voice style and the Play world (not in the sound or
-  picture-only style, not in Work), and it still happens while the app has
-  quietened itself to picture only or a pause. Switching a reminder off,
+  one of the four, switched on with its in-game picture on, set to speak and
+  not playing your own recording, and only if its line isn't in the cache
+  yet. That happens at every start (the first time for all of them), and
+  again after you change a line (while you type, a pause of about 0.7 s is
+  enough, so a half-typed line can go too), switch it or its picture on,
+  switch it to speak or remove its own recording, change the voice, the
+  speed, the profile (or create one) or the language (when that changes the
+  voice), import a profile, and after you switch back to the voice style, to
+  Play or to the natural voice. Testing a line that isn't ready, or *Prepare
+  voice lines* in the Ctrl+K palette, sends the missing ones too; testing a
+  reminder that is switched off or has its picture off, or an extra one kept
+  from 0.1, plays the Windows voice and sends nothing. It happens only in the
+  voice style and the Play world (not in the sound or picture-only style, not
+  in Work), and it still happens while the app has quietened itself to
+  picture only or a pause. Switching a reminder or its picture off,
   giving it your own recording, changing or creating a profile, or switching
   to the sound or picture-only style, to Work or to the Windows voice stops
   any preparing already running at once; only a line already on its way is

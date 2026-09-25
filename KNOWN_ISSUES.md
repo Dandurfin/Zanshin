@@ -27,18 +27,19 @@ adds one thing: "Not now" is also in the tray icon's menu.
 ### The online voice
 
 - **The natural voice also sent lines it would never speak in a game**: the
-  wording of switched-off reminders, of ones that play your own recording,
-  and of extra reminders kept from 0.1, which the app never fires by itself. **0.2.1:**
-  only the four reminders are sent, and of those only the ones switched on,
-  set to speak and without your own recording. Switching one on, or removing
-  its recording, prepares it then.
+  wording of switched-off reminders, of ones whose in-game picture is off, of
+  ones that play your own recording, and of extra reminders kept from 0.1,
+  which the app never fires by itself. **0.2.1:** only the four reminders are
+  sent, and of those only the ones switched on, with their picture on, set to
+  speak and without your own recording. Switching one or its picture on, or
+  removing its recording, prepares it then.
 - **Switching to the Windows voice didn't stop preparing that was already
   running**, so its remaining lines still went to Microsoft. The same after
   switching to the sound or picture-only style or to Work, switching a
-  reminder off or creating a profile. **0.2.1:** preparing stops at once;
-  only a line already on its way is finished. A new profile's lines are now
-  prepared right away too; before, a line not yet in the cache played in the
-  Windows voice until something else started preparing.
+  reminder or its picture off or creating a profile. **0.2.1:** preparing
+  stops at once; only a line already on its way is finished. A new profile's
+  lines are now prepared right away too; before, a line not yet in the cache
+  played in the Windows voice until something else started preparing.
 
 ### Cues and what the app learns
 
@@ -354,9 +355,6 @@ about, and a few will stay.
   English by default, on purpose) is separate from the app language and sits in
   the panel about which screen to draw on, so the two are easy to mix up.
 - **The iPhone / Apple Watch route** is still untested.
-- **A reminder whose in-game picture you've switched off** still has its
-  line prepared by the natural voice (so its wording goes to Microsoft),
-  although the app never fires it by itself.
 - **The voice-versus-picture comparison isn't shown yet**, though some cues stay
   silent on purpose to collect it (about one in four in the first 15 sessions,
   then one in ten). When it comes, it will compare voice plus picture with

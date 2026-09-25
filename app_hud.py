@@ -536,6 +536,14 @@ class HudMixin:
                                        pos=(cfg["pos_x"], cfg["pos_y"]),
                                        color=cfg["color"] or "")
         self.save_settings()
+        if "enabled" in kwargs:
+            # Hlaska s vypnutym obrazkom v hre sa nepripravuje
+            # (`_slot_na_pripravu`) - rovnako ako vypnuta hlaska
+            # (`SlotCard.on_enabled_change`): zapnuty obrazok ju treba
+            # pripravit (mimo hry hned, inak po hre), po vypnuti zvysok
+            # rozbehnutej pripravy jej text uz neposle. Velkost, poloha a
+            # farba na to, co sa posiela, nemaju vplyv - pripravu nerusia.
+            self.schedule_pregenerate(200)
 
     def on_breath_seconds_change(self, inhale=None, exhale=None):
         """Dlzka nadychu/vydychu dychoveho kruhu (v sekundach) - slider v

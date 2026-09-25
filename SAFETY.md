@@ -32,11 +32,14 @@ Escape; všetky tri fotia okná a obrázky appky s malým okrajom okolo. Počas
 behu menia dáta Zanshinu spusteného zo zdrojákov vedľa `main.py` (nie dáta
 postavenej appky v `%APPDATA%\Zanshin`) a na konci vrátia pôvodné súbory.
 `gui_harness_onboarding.py` nastavenia (`dandurf_settings.json`) na čas behu
-zmaže. `gui_harness_auto.py` ich dočasne upraví (zálohu dá do
-`logs\gui_harness\`) a históriu tepu (`hr_sessions.json`,
-`hr_insights.json`) na časť behu odloží bokom. Tú drží len v pamäti, takže
-keby si beh v tej chvíli prerušil (zavretím okna alebo procesu), história sa
-nevráti. `gui_screenshots.py` nastavenia aj históriu tepu prepíše (syntetická
+zmaže. `gui_harness_auto.py` ich dočasne upraví a históriu tepu
+(`hr_sessions.json`, `hr_insights.json`) na časť behu odloží bokom. Všetky tri
+ešte pred prvou zmenou skopíruje na disk vedľa originálu (`*.pred-harnessom`)
+a vráti ich aj po prerušení (Ctrl+C, zavreté okno, pád). Keď proces niekto
+tvrdo zabije, vráti ich najbližší beh hneď na začiatku; súbor, ktorý na ich
+mieste našiel a ktorý sa od zálohy líši, neprepíše, ale nechá vedľa ako
+`*.pred-obnovou-<čas>`.
+`gui_screenshots.py` nastavenia aj históriu tepu prepíše (syntetická
 história, iná téma) a vráti ich aj po páde. Nie sú súčasťou appky ani
 inštalátora: build balí `main.py`, moduly, ktoré importuje, a priečinok
 `assets`, a tieto skripty neimportuje nič.

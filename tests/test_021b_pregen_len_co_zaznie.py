@@ -80,7 +80,10 @@ def _atrapa(monkeypatch, slots, pocuva=False, styl="voice", svet="play"):
         _pregen_po_hre=False, listening=pocuva,
         pal={"success": "g", "warn": "y", "danger": "r", "text_dim": "d"},
         stavy=[], posielane=[], hotove=set(), vlakna=[], ui=[], logy=[],
-        hovorene=[], root=_Root())
+        hovorene=[], root=_Root(),
+        # obrazky v hre zapnute (predvolene) - hlaska s vypnutym obrazkom
+        # sa nepripravuje, to strazi test_021c_pregen_obrazok.py
+        overlay_configs=[{"enabled": True} for _ in range(4)])
 
     def ensure(text, voice, rate, abort=None):
         if text in a.hotove:
@@ -102,7 +105,7 @@ def _atrapa(monkeypatch, slots, pocuva=False, styl="voice", svet="play"):
     a.audio = types.SimpleNamespace(speak=lambda *x: a.hovorene.append(x))
     for meno in ("pregenerate", "schedule_pregenerate", "pregen_jobs",
                  "_dopriprav_hlasky_po_hre", "_slot_na_pripravu",
-                 "_slot_voice_clip", "_hlasky_hovoria",
+                 "_slot_voice_clip", "_hlasky_hovoria", "_ma_obrazok_v_hre",
                  "_zrus_rozbehnutu_pripravu", "on_engine_change"):
         setattr(a, meno, types.MethodType(getattr(D, meno), a))
     # `pregenerate` číta `threading` z modulu app_audio (docstring modulu)

@@ -62,7 +62,10 @@ def _atrapa(monkeypatch, slots):
         pal={"success": "g", "warn": "y", "danger": "r", "text_dim": "d"},
         stavy=[], posielane=[], hotove=set(), vlakna=[], root=_Root(),
         profiles=[{"name": "Default", "slots": []}],
-        active_profile_name="Default")
+        active_profile_name="Default",
+        # obrazky v hre zapnute (predvolene) - `_slot_na_pripravu` aj
+        # `_dalsi_cue_slot` sa na ne pytaju
+        overlay_configs=[{"enabled": True} for _ in range(4)])
     a.edge_cache = types.SimpleNamespace(
         has=lambda text, voice, rate: text in a.hotove)
     a.set_edge_status = lambda text, color=None: a.stavy.append(text)
@@ -79,7 +82,7 @@ def _atrapa(monkeypatch, slots):
     for meno in ("pregenerate", "schedule_pregenerate", "pregen_jobs",
                  "_slot_na_pripravu", "_slot_voice_clip", "_hlasky_hovoria",
                  "_zrus_rozbehnutu_pripravu", "create_profile",
-                 "_dalsi_cue_slot"):
+                 "_dalsi_cue_slot", "_ma_obrazok_v_hre"):
         setattr(a, meno, types.MethodType(getattr(D, meno), a))
     monkeypatch.setattr(app_audio.threading, "Thread",
                         lambda *x, **k: a.vlakna.append(k) or types.SimpleNamespace(

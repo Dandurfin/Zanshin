@@ -2,18 +2,21 @@
 """Dokumenty po opravach 0.2.1 (druha kontrola) hovoria to, co robi kod.
 
   * README / PRIVACY: prirodzeny hlas posiela Microsoftu len hlasky, ktore
-    moze naozaj povedat (jedna zo styroch, zapnuta, s hlasom, bez vlastnej
-    nahravky). Uz netvrdia, ze ide aj vypnuta alebo nahrata hlaska, ani ze
-    po prepnuti na hlas z Windows sa rozbehnuta priprava este dopossle.
-  * PRIVACY a KNOWN_ISSUES poctivo menuju, ze hlaska s vypnutym obrazkom
-    v hre sa pripravuje dalej - kod ju z pripravy nevyhadzuje.
+    moze naozaj povedat (jedna zo styroch, zapnuta, so zapnutym obrazkom v
+    hre, s hlasom, bez vlastnej nahravky). Uz netvrdia, ze ide aj vypnuta
+    alebo nahrata hlaska, ani ze po prepnuti na hlas z Windows sa
+    rozbehnuta priprava este dopossle.
+  * Hlaska s vypnutym obrazkom v hre sa od 0.2.1c nepripravuje - PRIVACY a
+    KNOWN_ISSUES uz nepriznavaju, ze jej text ide Microsoftu.
   * UDP, ktore sa neotvorilo: dokumenty citaju stitok a prepinac presne
     tak, ako ich ukazuje appka; do app.log ide len port a chyba.
   * KNOWN_ISSUES: hra Ctrl+Alt+Z "nemusi dostat", chodza sa z ucenia
     nevyraduje (kroky len stisia hlasky), terminy ako v README, licencia
     "GPLv3 or later".
   * SOUL: hranica vysokeho tepu je do naucenia zaloha 110.
-  * SAFETY: gui_harness_auto.py odklada historiu tepu len v pamati.
+  * SAFETY: gui_harness_auto.py zalohuje nastavenia a historiu tepu na
+    disk vedla originalov a po prerusenom behu ich vrati (od 0.2.1c; do
+    vtedy historiu drzal len v pamati a SAFETY to priznaval).
 
 Kazda veta je naviazana na kod: ked sa kod zmeni, test povie, ktory
 dokument treba prepisat - nie naopak.
@@ -71,10 +74,12 @@ def _metoda_triedy(subor, trieda, metoda):
 # --------------------------------------------------------------------------
 
 def test_priprava_posiela_len_hlasky_ktore_moze_povedat():
-    # Kod: vypnuta hlaska, vlastna nahravka a slot navyse z 0.1 (index 4+)
-    # sa nepripravuju - ani pri Teste (`_speak_text`).
+    # Kod: vypnuta hlaska, hlaska s vypnutym obrazkom v hre (0.2.1c),
+    # vlastna nahravka a slot navyse z 0.1 (index 4+) sa nepripravuju - ani
+    # pri Teste (`_speak_text`).
     telo = zdroj_metody("_slot_na_pripravu")
     for podmienka in ("je_kategoria(slot.index)", "slot.enabled_value",
+                      "self._ma_obrazok_v_hre(slot)",
                       "MODE_TTS", "self._slot_voice_clip(slot)"):
         assert podmienka in telo, podmienka
     assert "self._slot_na_pripravu(slot)" in zdroj_metody("pregen_jobs")
@@ -82,20 +87,25 @@ def test_priprava_posiela_len_hlasky_ktore_moze_povedat():
 
     readme = _plain("README.md")
     assert "including ones you've switched off" not in readme
-    assert ("that are switched on and set to speak (not ones that play your "
-            "own recording)") in readme
-    assert ("one of the four, switched on, set to speak and not playing your "
-            "own recording") in readme
-    assert ("testing a switched-off reminder, or an extra one kept from 0.1, "
-            "plays the Windows voice and sends nothing") in readme
+    assert ("that are switched on, with their in-game picture on, and set to "
+            "speak (not ones that play your own recording)") in readme
+    assert ("one of the four, switched on with its in-game picture on, set to "
+            "speak and not playing your own recording") in readme
+    assert ("testing a reminder that is switched off or has its picture off, "
+            "or an extra one kept from 0.1, plays the Windows voice and sends "
+            "nothing") in readme
 
     privacy = _plain("PRIVACY.md")
     assert "**Which reminders:** only those of the four" in privacy
+    assert ("that are switched on, have their in-game picture on, are set to "
+            "speak and don't play your own recording") in privacy
     assert "extra reminder kept from a 0.1 profile are never sent" in privacy
-    # Co pripravu spusti (zapnutie hlasky, zmazanie nahravky, novy profil).
-    assert "switch it on, switch it to speak or remove its own recording" in readme
-    assert ("switch a reminder on, switch it to speak or remove its own "
-            "recording") in privacy
+    # Co pripravu spusti (zapnutie hlasky ci obrazka, zmazanie nahravky,
+    # novy profil).
+    assert ("switch it or its picture on, switch it to speak or remove its "
+            "own recording") in readme
+    assert ("switch a reminder or its picture on, switch it to speak or "
+            "remove its own recording") in privacy
     for meno, text in (("README.md", readme), ("PRIVACY.md", privacy)):
         assert "profile (or create one)" in text, meno
 
@@ -108,6 +118,9 @@ def test_zapnutie_hlasky_a_novy_profil_pripravu_spustia():
     assert "schedule_pregenerate" in zdroj_metody("create_profile")
     assert "schedule_pregenerate" in _metoda_triedy(
         "ui_dialogs.py", "SlotSettingsDialog", "_commit_voice")
+    # Zapnutie obrazka v hre tiez (0.2.1c) - oba prepinace obrazka idu cez
+    # `on_overlay_config_change` (test_021c_pregen_obrazok.py).
+    assert "self.schedule_pregenerate(200)" in zdroj_metody("on_overlay_config_change")
 
 
 def test_prepnutie_prec_zastavi_rozbehnutu_pripravu():
@@ -134,19 +147,23 @@ def test_prepnutie_prec_zastavi_rozbehnutu_pripravu():
 
 
 def test_hlaska_s_vypnutym_obrazkom_dokumenty_hovoria_pravdu():
-    """`_dalsi_cue_slot` hlasku s vypnutym obrazkom v hre sam nespusti, ale
-    priprava ju nevyraduje - jej text ide Microsoftu. PRIVACY a KNOWN_ISSUES
-    to hovoria. Ked sa podmienka na obrazok do `_slot_na_pripravu` prida,
-    tieto vety musia ist prec (a README nesmie tvrdit opak ani teraz)."""
+    """`_dalsi_cue_slot` hlasku s vypnutym obrazkom v hre sam nespusti. Do
+    0.2.1b ju priprava nevyradovala (jej text isiel Microsoftu) a PRIVACY s
+    KNOWN_ISSUES to poctivo priznavali. Od 0.2.1c ju `_slot_na_pripravu`
+    vyraduje - priznanie je prec a KNOWN_ISSUES to vedie medzi opravami.
+    Keby podmienka na obrazok z kodu zmizla, test povie, ze vety o nej
+    uz nie su pravda."""
     kod = zdroj_metody("_slot_na_pripravu").split('"""')[-1]   # bez docstringu
     vyraduje = "overlay_configs" in kod or "_ma_obrazok" in kod
+    assert vyraduje
     privacy = _plain("PRIVACY.md")
     k = _plain("KNOWN_ISSUES.md")
-    veta_p = "still counts as switched on, so its line is prepared"
-    veta_k = ("**A reminder whose in-game picture you've switched off** still "
-              "has its line prepared")
-    assert (veta_p in privacy) == (not vyraduje)
-    assert (veta_k in k) == (not vyraduje)
+    assert "still counts as switched on, so its line is prepared" not in privacy
+    assert ("**A reminder whose in-game picture you've switched off** still "
+            "has its line prepared") not in k
+    opravy = " ".join(_sekcia(_read("KNOWN_ISSUES.md"), "What 0.2.1 fixes").split())
+    assert "of ones whose in-game picture is off" in opravy
+    assert "Switching one or its picture on" in opravy
 
 
 # --------------------------------------------------------------------------
@@ -250,9 +267,16 @@ def test_safety_harness_odklada_nastavenia_a_historiu_ako_skript():
     for subor in ("hr_sessions.json", "hr_insights.json"):
         assert '"%s"' % subor in skript, subor
         assert "`%s`" % subor in safety, subor
-    assert "def _backup_hr_files" in skript and "def _restore_hr_files" in skript
     assert 'os.path.join(PROJ, "logs", "gui_harness")' in skript
-    assert "(zálohu dá do `logs\\gui_harness\\`)" in safety
-    # Zaloha historie je len v pamati - SAFETY to hovori, kym to tak je.
-    v_pamati = "_hr_backups[p] = fh.read()" in skript
-    assert ("drží len v pamäti" in safety) == v_pamati
+    # Od 0.2.1c je zaloha na disku vedla originalov, nie v pamati ani v
+    # logs\gui_harness\ - a po tvrdom zabiti ju vrati dalsi beh
+    # (test_021c_harness_zaloha.py overuje spravanie).
+    assert "_hr_backups" not in skript
+    assert 'ZALOHA = ".pred-harnessom"' in skript
+    assert "def obnov_po_prerusenom_behu" in skript
+    assert '"%s.pred-obnovou-%s"' in skript
+    assert "drží len v pamäti" not in safety
+    assert "(zálohu dá do `logs\\gui_harness\\`)" not in safety
+    assert "skopíruje na disk vedľa originálu (`*.pred-harnessom`)" in safety
+    assert "vráti ich aj po prerušení (Ctrl+C, zavreté okno, pád)" in safety
+    assert "`*.pred-obnovou-<čas>`" in safety

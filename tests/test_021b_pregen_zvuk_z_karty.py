@@ -68,7 +68,8 @@ def _atrapa(monkeypatch):
         engine=ENGINE_EDGE, rate_value=0, _pregen_job=None, _pregen_seq=0,
         _pregen_po_hre=False, listening=False,
         pal={"success": "g", "warn": "y", "danger": "r", "text_dim": "d"},
-        posielane=[], hotove=set(), vlakna=[], root=_Root())
+        posielane=[], hotove=set(), vlakna=[], root=_Root(),
+        overlay_configs=[{"enabled": True} for _ in range(4)])
     a.slots = [_karta(0, "Breathe"), _karta(1, "Jaw"), _karta(2, "Release")]
     for karta in a.slots:
         karta.app = a
@@ -91,7 +92,7 @@ def _atrapa(monkeypatch):
     a._prune_cache = lambda *_x: None
     for meno in ("pregenerate", "schedule_pregenerate", "pregen_jobs",
                  "_slot_na_pripravu", "_slot_voice_clip", "_hlasky_hovoria",
-                 "_zrus_rozbehnutu_pripravu"):
+                 "_zrus_rozbehnutu_pripravu", "_ma_obrazok_v_hre"):
         setattr(a, meno, types.MethodType(getattr(D, meno), a))
     monkeypatch.setattr(app_audio.threading, "Thread",
                         lambda *x, **k: a.vlakna.append(k) or types.SimpleNamespace(

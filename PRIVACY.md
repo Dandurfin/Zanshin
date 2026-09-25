@@ -39,30 +39,28 @@ update-checker** anywhere in the app.
      built-in ones, or whatever you type yourself. As with any connection,
      Microsoft sees your IP address.
      - **Which reminders:** only those of the four in your current profile
-       that are switched on, set to speak and don't play your own recording.
-       A switched-off reminder, one that plays your own recording and an
-       extra reminder kept from a 0.1 profile are never sent (testing a
-       switched-off or extra one plays the Windows voice). A reminder whose
-       in-game picture you've switched off still counts as switched on, so
-       its line is prepared, although the app never fires it by itself.
+       that are switched on, have their in-game picture on, are set to speak
+       and don't play your own recording. A reminder that is switched off or
+       has its picture off, one that plays your own recording and an extra
+       reminder kept from a 0.1 profile are never sent (testing one that is
+       off, has its picture off or is an extra one plays the Windows voice).
      - **When:** after the first start (the default reminders), and after that
        only for lines that aren't in the cache yet — at every start (for
        example a line still waiting when you quit), after you change a
-       reminder's wording, switch a reminder on, switch it to speak or remove
-       its own recording, change the voice, the speed, the language or the
-       profile (or create one), import a profile, switch back to the voice
-       style, to Play or to the natural voice, when you test a reminder whose
-       line isn't ready, or
-       when you ask for all voices to be prepared again (the *Ctrl+K* command
-       palette).
+       reminder's wording, switch a reminder or its picture on, switch it to
+       speak or remove its own recording, change the voice, the speed, the
+       language or the profile (or create one), import a profile, switch back
+       to the voice style, to Play or to the natural voice, when you test a
+       reminder whose line isn't ready, or when you ask for all voices to be
+       prepared again (the *Ctrl+K* command palette).
      - **Only if your reminders actually speak.** With the *sound* or
        *picture only* style, and in the *Work* world, nothing is prepared and
        nothing is sent. The style you picked decides, so lines are still
        prepared while the app has quietened itself to picture only or a
        pause.
-     - **Switching away stops it.** If you switch a reminder off, give it
-       your own recording, change or create a profile, or switch to the
-       *sound* or *picture only* style, to *Work* or to the Windows voice
+     - **Switching away stops it.** If you switch a reminder or its picture
+       off, give it your own recording, change or create a profile, or switch
+       to the *sound* or *picture only* style, to *Work* or to the Windows voice
        while lines are being prepared, preparing stops at once; only the line
        already on its way is finished.
      - **Never while Zanshin is listening** — whether you started listening
