@@ -15,6 +15,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import hotkey  # noqa: E402
+from _zdroj_appky import strom_appky  # noqa: E402
 
 
 # --------------------------------------------------------------------------
@@ -95,7 +96,7 @@ def test_modul_nesiaha_na_hooky():
 def test_appka_neimportuje_pynput():
     """Poistka proti návratu. Číta sa AST, nie surový text — docstring
     vysvetľuje, prečo tam pynput NIE JE, a test na tom kedysi padal."""
-    strom = ast.parse(_zdroj("app.py"))
+    strom = strom_appky()
     for uzol in ast.walk(strom):
         if isinstance(uzol, ast.Import):
             for meno in uzol.names:
@@ -115,7 +116,11 @@ def test_import_nepadne_bez_win32():
 # --------------------------------------------------------------------------
 
 def _telo(meno_suboru, meno_funkcie):
-    strom = ast.parse(_zdroj(meno_suboru))
+    # "app.py" = cela appka: app.py aj mixiny DandurfApp v app_*.py
+    if meno_suboru == "app.py":
+        strom = strom_appky()
+    else:
+        strom = ast.parse(_zdroj(meno_suboru))
     for uzol in ast.walk(strom):
         if isinstance(uzol, ast.FunctionDef) and uzol.name == meno_funkcie:
             telo = uzol.body

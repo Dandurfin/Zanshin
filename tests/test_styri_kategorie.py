@@ -28,13 +28,7 @@ import hr_stats  # noqa: E402
 import i18n  # noqa: E402
 import rebrik  # noqa: E402
 import trigger  # noqa: E402
-
-KOREN = os.path.join(os.path.dirname(__file__), "..")
-
-
-def _read(meno):
-    with open(os.path.join(KOREN, meno), encoding="utf-8-sig") as fh:
-        return fh.read()
+from _zdroj_appky import zdroj_appky  # noqa: E402
 
 
 # --------------------------------------------------------------------------
@@ -42,7 +36,7 @@ def _read(meno):
 # --------------------------------------------------------------------------
 
 def test_tlacidlo_pridat_spustac_je_prec():
-    src = _read("app.py")
+    src = zdroj_appky()
     assert "def add_slot(self" not in src
     assert 'tr("slots.add")' not in src
     assert "log.slot_added" not in src

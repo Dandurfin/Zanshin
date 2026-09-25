@@ -623,9 +623,8 @@ def test_kriticky_tep_uz_nie_je_nastavenie():
     výsledok (podlaha headroomu 12), takže hráč posúval číslo a nič sa
     nemenilo — a zároveň robilo z pokojného večera 52 % času v červenom.
     """
-    import inspect
-    import app as app_mod
-    zdroj = inspect.getsource(app_mod)
+    from _zdroj_appky import zdroj_appky
+    zdroj = zdroj_appky()
     assert "hr_critical_bpm_var" not in zdroj, "policko sa vratilo"
     assert '"hr_critical_bpm": int(self.hr_critical_bpm)' not in zdroj, \
         "hodnota sa stale uklada ako nastavenie"

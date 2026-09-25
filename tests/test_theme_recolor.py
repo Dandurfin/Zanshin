@@ -17,6 +17,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import theme as theme_mod  # noqa: E402
 import theme_recolor  # noqa: E402
+from _zdroj_appky import subory_appky, zdroj_metody  # noqa: E402
 
 ZEN = theme_mod.tokens(theme_mod.ZEN)
 MODERN = theme_mod.tokens(theme_mod.MODERN)
@@ -98,9 +99,7 @@ def test_hladanie_zvyskov_ignoruje_nemenne_tokeny():
 def test_prepnutie_temy_nestavia_okno_znova():
     """Regresia: `on_theme_switch` sa nesmie vratit k `_build_ui()` ako
     hlavnej ceste - to bolo tych 2,97 s blikania."""
-    src = _read("app.py")
-    start = src.index("def on_theme_switch(self, label):")
-    blok = src[start:src.index("def _recolor_ui", start)]
+    blok = zdroj_metody("on_theme_switch")
     assert "self._recolor_ui(" in blok, "prepnutie temy musi prefarbovat"
     # _build_ui smie zostat LEN ako zachrana v except vetve
     if "self._build_ui()" in blok:
@@ -142,9 +141,7 @@ def test_kazdy_widget_s_vlastnou_paletou_je_aj_v_recolor_ui():
     zdroj = _read("ui_kit.py")
     strom = ast.parse(zdroj)
     # zoznam tried, ktore appka prefarbuje menovite
-    app_src = _read("app.py")
-    i = app_src.index("def _recolor_ui")
-    blok = app_src[i:app_src.index("\n    def ", i + 10)]
+    blok = zdroj_metody("_recolor_ui")
 
     chyba = []
     for uzol in strom.body:
@@ -195,7 +192,8 @@ def test_popupy_maju_poistku_proti_scaling_trackeru():
     # Každé okno, do ktorého sa sypú CTk widgety, cez ňu musí prejsť.
     # guided_tour.py: bublina prehliadky drží CTk widgety a bez tejto
     # poistky padala na zmene DPI (viac monitorov s rôznym rozlíšením).
-    for subor in ("app.py", "ui_shell.py", "ui_dialogs.py", "guided_tour.py"):
+    # appka = app.py aj mixiny DandurfApp v app_*.py
+    for subor in (*subory_appky(), "ui_shell.py", "ui_dialogs.py", "guided_tour.py"):
         zdroj = _read(subor)
         for riadok in zdroj.split("\n"):
             if "tk.Toplevel(" in riadok and "ctk." not in riadok:

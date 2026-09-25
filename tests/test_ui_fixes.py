@@ -11,6 +11,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from _zdroj_appky import zdroj_appky, zdroj_metody  # noqa: E402
+
 
 def _read(name):
     here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -29,10 +31,8 @@ def test_color_hex_roundtrip_a_default():
 
 
 def test_pick_color_pouziva_vlastny_picker_nie_windows():
-    src = _read("app.py")
-    for meno in ("def pick_overlay_color", "def pick_hud_trigger_color"):
-        blok = src[src.index(meno):]
-        blok = blok[:blok.index("\n    def ", 5)]
+    for meno in ("pick_overlay_color", "pick_hud_trigger_color"):
+        blok = zdroj_metody(meno)
         assert "ask_color" in blok, f"{meno} nevola vlastny picker"
         assert "colorchooser" not in blok, f"{meno} stale pouziva Windows dialog"
 
@@ -74,16 +74,14 @@ def test_alpha_blik_sa_nenastavuje_oknu():
 
 
 def test_app_potlaca_alpha_blik():
-    src = _read("app.py")
+    src = zdroj_appky()
     assert "potlac_dpi_alpha_blik(self.root)" in src
 
 
 def test_zmena_jazyka_zmrazi_kreslenie():
     # Prestavba UI pri zmene jazyka (_build_ui) je obalena zmrazenim, aby sa
     # 1300+ widgetov neskladalo pred hracom po castiach.
-    src = _read("app.py")
-    blok = src[src.index("def on_lang_switch"):]
-    blok = blok[:blok.index("\n    def ", 5)]
+    blok = zdroj_metody("on_lang_switch")
     assert "freeze_repaint(self.root, True)" in blok
     assert "freeze_repaint(self.root, False)" in blok
     assert "finally:" in blok, "odmrazenie musi byt vo finally (aj pri chybe)"
@@ -136,9 +134,7 @@ def test_import_profilu_da_cerstve_uid():
     # Spravanie je v settings_model.slot_zo_zdielania (viz aj
     # tests/test_ip_skryta.py - zdielanie profilu kodom).
     from settings_model import slot_zo_zdielania
-    src = _read("app.py")
-    imp = src[src.index("def import_profile_from_code"):]
-    imp = imp[:imp.index("\n    def ", 5)]
+    imp = zdroj_metody("import_profile_from_code")
     assert "slot_zo_zdielania" in imp, "import musi ist cez slot_zo_zdielania"
     cudzi = {"text": "x", "uid": "abc123abc123", "voice_path": "C:/a/voice.wav",
              "audio_path": "C:/a/rec.wav", "sfx_key": ""}
@@ -158,8 +154,7 @@ def test_tiche_zlyhania_teraz_loguju():
 # ---- Dnes: enso vycentrovane A klikatelne (obrazok sa nastavuje az v _paint) ----
 
 def test_enso_ma_klikaciu_zonu_a_centruje_sa_podla_vysky():
-    src = _read("app.py")
-    lay = src[src.index("def _layout_dnes_items"):src.index("def _canvas_text")]
+    lay = zdroj_metody("_layout_dnes_items")
     # Klikacia zona ensa sa odvodi zo ZNAMEJ geometrie - bbox("enso") je None,
     # kym polozka nema obrazok (nastavuje sa az v _paint), inak enso NEKLIKATELNE.
     assert 'self._dnes_hit["enso"] = (' in lay
@@ -198,7 +193,7 @@ def test_edge_zoznam_hlasov_sa_netiahne_zo_siete():
     prepnuti motora. Edge je predvoleny, takze predtym appka pri kazdom
     starte cinkala na Microsoft, len aby orezala katalog na pevny zoznam."""
     assert "edge_tts.list_voices" not in _read("audio_engine.py")
-    src = _read("app.py")
+    src = zdroj_appky()
     assert "_load_edge_voices, daemon=True" not in src, \
         "zoznam hlasov je lokalny - netreba vlakno ani siet"
 
@@ -382,10 +377,7 @@ def test_zahalenie_sa_neopakuje_a_bez_dwm_bezi_start_ako_doteraz(monkeypatch):
 
 
 def test_obe_prve_zobrazenia_su_zahalene_a_odhalenie_naplanovane():
-    src = _read("app.py")
-    init = src[src.index("class DandurfApp"):]
-    init = init[init.index("    def __init__(self, root):"):]
-    init = init[:init.index("\n    def ", 5)]
+    init = zdroj_metody("__init__")
     zobrazenia = re.findall(
         r"self\._zahal_do_dokreslenia\(\)\n\s*self\.root\.deiconify\(\)", init)
     assert len(zobrazenia) == 2, "prvy start (po sprievodcovi) aj bezny start"

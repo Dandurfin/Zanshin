@@ -9,6 +9,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import settings_model as sm  # noqa: E402
+from _zdroj_appky import zdroj_metody  # noqa: E402
 
 
 def _read(name):
@@ -27,8 +28,8 @@ def test_default_slot_ma_voice_path_a_uid():
 # ---- prehravanie: nahravka ma prednost pred TTS a hraje cisto ------------
 
 def test_speak_text_skusa_nahravku_pred_tts():
-    app = _read("app.py")
-    telo = app[app.index("    def _speak_text(self"):app.index("    def _emit(self")]
+    # prehratie (`_speak_text`) aj jeho zrkadlo pre zaznam (`_slot_zaznie`)
+    telo = zdroj_metody("_speak_text") + "\n" + zdroj_metody("_slot_zaznie")
     assert "_slot_voice_clip" in telo, "nahravka sa nekontroluje"
     # nahravka sa musi vyriesit este pred TTS (Edge/SAPI vetvou)
     assert telo.index("_play_voice_file") < telo.index("EDGE_AVAILABLE"), \
@@ -36,9 +37,7 @@ def test_speak_text_skusa_nahravku_pred_tts():
 
 
 def test_vlastny_hlas_hraje_bez_footstep_notch():
-    app = _read("app.py")
-    vn = app[app.index("    def _voice_now_safe(self"):]
-    vn = vn[:vn.index("\n\n")]
+    vn = zdroj_metody("_voice_now_safe")
     assert "notch=False" in vn, "vlastny hlas ma hrat cisto (notch=False)"
 
 
@@ -51,8 +50,7 @@ def test_play_audio_file_ma_prepinac_notch():
 
 
 def test_emit_pusti_hlas_aj_bez_textu_ak_je_nahravka():
-    app = _read("app.py")
-    emit = app[app.index("    def _emit(self"):app.index("    def toggle_listening")]
+    emit = zdroj_metody("_emit")
     # COMBO aj cista TTS vetva sa pytaju na _slot_has_voice, nie len text.strip()
     assert emit.count("_slot_has_voice(slot)") >= 2, \
         "nahravka s prazdnym textom by sa inak neprehrala"

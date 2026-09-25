@@ -26,6 +26,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import hr_stats  # noqa: E402
 import rebrik  # noqa: E402
 import trigger  # noqa: E402
+from _zdroj_appky import strom_appky  # noqa: E402
 
 KOREN = os.path.join(os.path.dirname(__file__), "..")
 
@@ -224,8 +225,7 @@ def test_teraz_nie_po_nedorucenej_hlaske_nie_je_signal(monkeypatch, tmp_path):
 
 
 def test_suhrn_nesie_cues_delivered_pred_ulozenim():
-    with open(os.path.join(KOREN, "app.py"), encoding="utf-8") as fh:
-        strom = ast.parse(fh.read())
+    strom = strom_appky()
     fn = next(u for u in ast.walk(strom)
               if isinstance(u, ast.FunctionDef) and u.name == "_close_hr_session")
     telo = ast.unparse(fn)

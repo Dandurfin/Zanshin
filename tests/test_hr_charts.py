@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import hr_stats
 import theme as theme_mod
+from _zdroj_appky import zdroj_metody
 
 
 def _read(name):
@@ -247,9 +248,7 @@ def test_graf_historie_kresli_popisky_osi():
     inak ciara visi v prazdne bez toho, kedy a kolko."""
     assert "label" in hr_stats.aggregate_by_period(
         [_session(time.time())], hr_stats.PERIOD_DAY)[0]
-    app = _read("app.py")
-    start = app.index("def _refresh_history_trend(")
-    telo = app[start:app.index("def _refresh_history_page(", start)]
+    telo = zdroj_metody("_refresh_history_trend")
     assert "labels=labels" in telo, "graf trendu ma dostat popisky osi x"
     assert "band=band" in telo, "graf trendu ma kreslit bezne rozpatie"
 

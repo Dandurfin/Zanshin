@@ -31,18 +31,13 @@ import hr_stats  # noqa: E402
 import i18n  # noqa: E402
 import theme  # noqa: E402
 import trigger  # noqa: E402
+# Metody `DandurfApp` ako text - aj ked byvaju v mixinoch app_*.py.
+from _zdroj_appky import zdroj_appky, zdroj_metody  # noqa: E402
 
 
 def _read(name):
     with open(os.path.join(ROOT, name), encoding="utf-8-sig") as fh:
         return fh.read()
-
-
-def _metoda(src, nazov):
-    """Telo jednej metody `DandurfApp` ako text (po dalsiu `def`)."""
-    start = src.index(f"    def {nazov}(")
-    koniec = src.find("\n    def ", start + 1)
-    return src[start:koniec if koniec > 0 else len(src)]
 
 
 def _app():
@@ -133,7 +128,7 @@ def test_pracovna_relacia_neposunie_kriticky_tep_hry():
 def test_otvorenie_relacie_rata_kriticky_a_prah_z_hry_zakladnu_zo_vsetkeho():
     D = _app()
     assert D.ALGORITMUS_SVET == "play"
-    telo = _metoda(_read("app.py"), "_open_hr_session")
+    telo = zdroj_metody("_open_hr_session")
     assert "hr_stats.dlhodoba_zakladna(historia)" in telo, "zakladna ma byt zo vsetkeho"
     assert "herna = hr_stats.sessions_in_world(historia, self.ALGORITMUS_SVET)" in telo
     assert "hr_stats.dynamicky_kriticky(\n                herna," in telo
@@ -141,8 +136,8 @@ def test_otvorenie_relacie_rata_kriticky_a_prah_z_hry_zakladnu_zo_vsetkeho():
     assert "hr_stats.ciste_relacie(herna)" in telo, "pocet do vety o prahu"
     # tiche rameno (kalibracia) ostava zo vsetkych svetov - len bez
     # importovanych relacii (cudzie telo neposuva fazu 1/4 -> 1/10)
-    assert "len(data_io.vlastne(self._history_sessions()))" in _metoda(
-        _read("app.py"), "_silent_share_for_next_session")
+    assert "len(data_io.vlastne(self._history_sessions()))" in zdroj_metody(
+        "_silent_share_for_next_session")
 
 
 def test_veta_o_hranici_pocita_len_herne_relacie(sk):
@@ -196,7 +191,7 @@ def test_hlas_sa_urcuje_pri_otvoreni_a_plati_celu_relaciu():
     assert t.voice is False
     t.open_session()
     assert t.voice is True
-    telo = _metoda(_read("app.py"), "_open_hr_session")
+    telo = zdroj_metody("_open_hr_session")
     assert 'voice=self._session_world != "work"' in telo
 
 
@@ -205,18 +200,17 @@ def test_hlas_sa_urcuje_pri_otvoreni_a_plati_celu_relaciu():
 # --------------------------------------------------------------------------
 
 def test_svet_sa_pecati_pri_otvoreni_a_uklada_pri_zatvoreni():
-    src = _read("app.py")
-    otvor = _metoda(src, "_open_hr_session")
+    otvor = zdroj_metody("_open_hr_session")
     assert "self._session_world = self.world" in otvor
     # pecat musi byt az PO zatvoreni predoslej relacie
     assert otvor.index("self._close_hr_session()") < otvor.index(
         "self._session_world = self.world")
-    zatvor = _metoda(src, "_close_hr_session")
+    zatvor = zdroj_metody("_close_hr_session")
     assert 'summary["world"] = getattr(self, "_session_world"' in zatvor
     assert zatvor.index('summary["world"]') < zatvor.index("hr_stats.save_session(")
     assert 'summary["activity"]' not in zatvor, "stroj nesmie pisat odpoved hraca"
     # meracie okna nesu svet priamo
-    assert 'w["world"] = svet' in _metoda(src, "_save_measure_windows")
+    assert 'w["world"] = svet' in zdroj_metody("_save_measure_windows")
 
 
 def _suhrn(**kw):
@@ -258,7 +252,7 @@ def test_dotaznik_zvyrazni_svet_ale_neulozi_ho_bez_kliku():
 
 
 def test_oprava_sveta_v_dotazniku_prepocita_postrehy():
-    telo = _metoda(_read("app.py"), "save_session_context")
+    telo = zdroj_metody("save_session_context")
     assert "zmena_sveta" in telo
     assert "self.history_detail_index = None" in telo
     assert "self.run_hr_analysis()" in telo
@@ -337,12 +331,12 @@ def test_ten_isty_svet_nic_neprekresluje(sk):
 
 
 def test_oba_prepinace_volaju_set_world_a_tema_uz_nie_je_volba():
-    src = _read("app.py")
+    src = zdroj_appky()
     assert "on_world=self._on_world_label" in src, "lista hore"
     assert "command=self._on_world_label" in src, "Nastavenia"
     assert "self.theme_switch" not in src, "samostatny vyber temy by rozbil svet"
     assert "command=self.on_theme_switch" not in src
-    assert "self._sync_world_switches()" in _metoda(src, "_recolor_ui")
+    assert "self._sync_world_switches()" in zdroj_metody("_recolor_ui")
     shell = _read("ui_shell.py")
     lista = shell[shell.index("class TitleBar"):shell.index("def enable_frameless")]
     assert "self.world_switch = ctk.CTkSegmentedButton(" in lista
@@ -363,13 +357,12 @@ def test_harness_prepina_svet_nie_temu():
 # --------------------------------------------------------------------------
 
 def test_pohlady_citaju_svet_export_vsetko():
-    src = _read("app.py")
-    assert "sessions = self._world_sessions()" in _metoda(src, "_refresh_history_trend")
-    assert "sessions = self._world_sessions()" in _metoda(src, "_refresh_history_page")
-    karty = _metoda(src, "_dashboard_stat_value")
+    assert "sessions = self._world_sessions()" in zdroj_metody("_refresh_history_trend")
+    assert "sessions = self._world_sessions()" in zdroj_metody("_refresh_history_page")
+    karty = zdroj_metody("_dashboard_stat_value")
     assert karty.count("hr_stats.sessions_in_world(self._history_cached(), self.world)") == 2
-    assert "sessions = self._history_sessions()" in _metoda(src, "export_sessions_csv")
-    assert "self._history_sessions()," in _metoda(src, "export_all_json")
+    assert "sessions = self._history_sessions()" in zdroj_metody("export_sessions_csv")
+    assert "self._history_sessions()," in zdroj_metody("export_all_json")
 
 
 def test_karta_tyzdna_rata_len_svoj_svet(sk):
@@ -404,9 +397,11 @@ def test_postrehy_si_pamataju_svet(tmp_path):
 
 
 def test_pri_starte_sa_postrehy_ineho_sveta_neukazu():
-    src = _read("app.py")
+    src = zdroj_appky()
     assert 'if _stored.get("world") != self.world:' in src
-    assert src.index("self.world = settings[\"world\"]") < src.index(
+    # oboje je v `__init__` - poradie sa meria v nom
+    init = zdroj_metody("__init__")
+    assert init.index("self.world = settings[\"world\"]") < init.index(
         'if _stored.get("world") != self.world:')
 
 
@@ -475,7 +470,7 @@ def test_odmietnuta_analyza_sa_nestrati():
 
 
 def test_analyza_rata_len_svoj_svet_a_uklada_ho():
-    telo = _metoda(_read("app.py"), "run_hr_analysis")
+    telo = zdroj_metody("run_hr_analysis")
     assert "world = self.world" in telo
     assert "hr_stats.sessions_in_world(\n                    hr_stats.load_sessions(sessions_path), world)" in telo
     assert "world=world)" in telo
@@ -525,7 +520,7 @@ def test_ulozeny_svet_urci_temu(nastavenia):
 
 
 def test_svet_sa_uklada_aj_s_temou():
-    telo = _metoda(_read("app.py"), "save_settings")
+    telo = zdroj_metody("save_settings")
     assert '"world": getattr(self, "world", hr_stats.WORLD_DEFAULT)' in telo
     assert '"theme": self.theme_key' in telo
 
@@ -539,7 +534,7 @@ def test_onboarding_vybera_hlavny_svet():
     krok = ud[ud.index("    def _step4("):ud.index("    def _on_volume_slide(")]
     assert 'theme_mod.WORLD_THEME["play"],\n                   tr("ob.world.play.title")' in krok
     assert 'theme_mod.WORLD_THEME["work"],\n                   tr("ob.world.work.title")' in krok
-    src = _read("app.py")
+    src = zdroj_appky()
     assert src.count("theme_mod.theme_world(wizard.choice)") == 2, \
         "prvy start aj opakovany onboarding"
     # test zvuku hra vzdy zvuky hry - v praci zvuk nie je
@@ -612,7 +607,7 @@ def test_historia_priznava_spolocny_graf_hlasok(sk):
     assert "both worlds" not in i18n.STRINGS["history.world_note"]["en"]
     for jazyk in i18n.LANGUAGES:
         assert "{chart}" in i18n.STRINGS["history.world_note"][jazyk], jazyk
-    telo = _metoda(_read("app.py"), "_refresh_history_page")
+    telo = zdroj_metody("_refresh_history_page")
     assert 'chart=tr("history.effect_title")' in telo
 
 
@@ -631,7 +626,7 @@ def test_karty_filtrovane_svetom_to_hovoria():
     assert "tohto sveta" in i18n.STRINGS["metric.felt_vs_measured.more"]["sk"]
     assert "this world" in i18n.STRINGS["metric.felt_vs_measured.more"]["en"]
     # a kod naozaj filtruje - inak by veta klamala opacnym smerom
-    telo = _metoda(_read("app.py"), "_dashboard_stat_value")
+    telo = zdroj_metody("_dashboard_stat_value")
     assert telo.count("sessions_in_world(") >= 2
 
 

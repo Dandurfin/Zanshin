@@ -29,8 +29,9 @@ import measure  # noqa: E402
 import rebrik  # noqa: E402
 import trigger  # noqa: E402
 from settings_model import MODE_COMBO, MODE_SFX, MODE_TTS  # noqa: E402
+from _zdroj_appky import strom_appky  # noqa: E402
 
-KOREN = os.path.join(os.path.dirname(__file__), "..")
+KOREN =os.path.join(os.path.dirname(__file__), "..")
 
 
 def rel(i, **kw):
@@ -377,7 +378,9 @@ def _zdroj(meno):
 
 
 def _funkcia(meno_suboru, meno):
-    for uzol in ast.walk(ast.parse(_zdroj(meno_suboru))):
+    # "app.py" = cela appka: app.py aj mixiny DandurfApp v app_*.py
+    strom = strom_appky() if meno_suboru == "app.py" else ast.parse(_zdroj(meno_suboru))
+    for uzol in ast.walk(strom):
         if isinstance(uzol, ast.FunctionDef) and uzol.name == meno:
             return uzol
     raise AssertionError(meno)

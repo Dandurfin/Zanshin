@@ -16,13 +16,9 @@ sys.path.insert(0, ROOT)
 
 from settings_model import (DEFAULT_SLOT, ZDIELANE_POLIA_SLOTU,  # noqa: E402
                             normalize_slot, slot_na_zdielanie, slot_zo_zdielania)
+from _zdroj_appky import zdroj_metody  # noqa: E402
 
 CESTA = "C:\\Users\\hrac\\AppData\\Roaming\\Zanshin\\audio\\rec_abc.wav"
-
-
-def _read(name):
-    with open(os.path.join(ROOT, name), encoding="utf-8-sig") as fh:
-        return fh.read()
 
 
 def _moj_slot(**kw):
@@ -74,11 +70,8 @@ def test_import_prevezme_zmysluplne_polia():
 
 
 def test_app_exportuje_a_importuje_cez_zdielanie():
-    src = _read("app.py")
-    exp = src[src.index("    def export_profile_code("):]
-    exp = exp[:exp.index("\n    def ", 5)]
+    exp = zdroj_metody("export_profile_code")
     assert "slot_na_zdielanie(s) for s in profile[\"slots\"]" in exp
     assert '"slots": profile["slots"]' not in exp
-    imp = src[src.index("    def import_profile_from_code("):]
-    imp = imp[:imp.index("\n    def ", 5)]
+    imp = zdroj_metody("import_profile_from_code")
     assert "slot_zo_zdielania(" in imp

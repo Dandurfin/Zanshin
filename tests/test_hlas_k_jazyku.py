@@ -19,6 +19,7 @@ ROOT = os.path.join(os.path.dirname(__file__), "..")
 sys.path.insert(0, ROOT)
 
 import i18n  # noqa: E402
+from _zdroj_appky import zdroj_metody  # noqa: E402
 from settings_model import (DEFAULT_EDGE_VOICE, EDGE_FALLBACK_VOICES,  # noqa: E402
                             VOICE_HINTS, suggested_voice)
 
@@ -55,10 +56,7 @@ def test_vlastny_hlas_hraca_ostava():
 
 def test_prepnutie_jazyka_pouziva_navrh():
     """Staticky (bez Tk): prepinac jazyka ide cez `suggested_voice`."""
-    with open(os.path.join(ROOT, "app.py"), encoding="utf-8") as fh:
-        src = fh.read()
-    blok = src[src.index("def on_lang_switch"):]
-    blok = blok[:blok.index("\n    def ")]
+    blok = zdroj_metody("on_lang_switch")
     assert "suggested_voice(code, self.edge_voice_id)" in blok
 
 

@@ -7,20 +7,15 @@ funkciu Y". Presne to je jadro chyby A1 — obnovený socket bez obnovenej
 relácie.
 """
 import ast
-import os
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+from _zdroj_appky import zdroj_metody
 
 
 def _telo_metody(trieda, metoda):
-    src = open(os.path.join(ROOT, "app.py"), encoding="utf-8-sig").read()
-    strom = ast.parse(src)
-    for uzol in ast.walk(strom):
-        if isinstance(uzol, ast.ClassDef) and uzol.name == trieda:
-            for pod in uzol.body:
-                if isinstance(pod, ast.FunctionDef) and pod.name == metoda:
-                    return ast.get_source_segment(src, pod)
-    raise AssertionError("nenašla sa %s.%s" % (trieda, metoda))
+    # DandurfApp je rozdelena do mixinov (app_*.py) - metoda sa hlada v nej
+    # aj vo vsetkych mixinoch (to iste, co najde Python cez MRO).
+    assert trieda == "DandurfApp", trieda
+    return zdroj_metody(metoda)
 
 
 def _volania(telo):

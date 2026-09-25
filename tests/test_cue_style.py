@@ -26,8 +26,9 @@ import hr_stats  # noqa: E402
 import i18n  # noqa: E402
 import rebrik  # noqa: E402
 import trigger  # noqa: E402
+from _zdroj_appky import strom_appky, zdroj_appky  # noqa: E402
 
-KOREN = os.path.join(os.path.dirname(__file__), "..")
+KOREN =os.path.join(os.path.dirname(__file__), "..")
 
 
 def _read(meno):
@@ -36,7 +37,8 @@ def _read(meno):
 
 
 def _funkcia(subor, meno, trieda=None):
-    koren = ast.parse(_read(subor))
+    # "app.py" = cela appka: app.py aj mixiny DandurfApp v app_*.py
+    koren = strom_appky() if subor == "app.py" else ast.parse(_read(subor))
     if trieda:
         koren = next(u for u in ast.walk(koren)
                      if isinstance(u, ast.ClassDef) and u.name == trieda)
@@ -277,7 +279,7 @@ def test_app_prevezme_styl_z_onboardingu():
     D._prevezmi_styl_z_onboardingu(a, types.SimpleNamespace(cue_style="visual"))
     assert a.cue_style == "visual"
     # prvy start aj opakovany onboarding; pri opakovanom pred ulozenim
-    src = _read("app.py")
+    src = zdroj_appky()
     assert src.count("self._prevezmi_styl_z_onboardingu(wizard)") == 2
     znova = ast.unparse(_funkcia("app.py", "replay_onboarding"))
     assert znova.index("self._prevezmi_styl_z_onboardingu(wizard)") < znova.index(

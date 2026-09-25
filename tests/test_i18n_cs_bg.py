@@ -25,6 +25,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import i18n  # noqa: E402
 import i18n_cs_bg  # noqa: E402
+from _zdroj_appky import zdroj_appky  # noqa: E402
 
 ROOT = os.path.join(os.path.dirname(__file__), "..")
 NOVE = {"cs": i18n_cs_bg.CS, "bg": i18n_cs_bg.BG}
@@ -66,7 +67,7 @@ def test_cestina_a_bulharcina_su_medzi_jazykmi():
 
 def test_prepinac_ukazuje_nativne_nazvy():
     """Prepinac jazyka pise kazdy jazyk jeho vlastnym menom (staticky, bez Tk)."""
-    src = _read("app.py").decode("utf-8")
+    src = zdroj_appky()
     blok = src[src.index("LANG_NATIVE_LABELS = {"):]
     blok = blok[:blok.index("}")]
     assert 'LANG_CS: "Čeština"' in blok

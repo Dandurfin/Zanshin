@@ -28,8 +28,9 @@ import hr_stats  # noqa: E402
 import i18n  # noqa: E402
 import measure  # noqa: E402
 import trigger  # noqa: E402
+from _zdroj_appky import strom_appky  # noqa: E402
 
-KOREN = os.path.join(os.path.dirname(__file__), "..")
+KOREN =os.path.join(os.path.dirname(__file__), "..")
 
 
 class Hodiny:
@@ -342,7 +343,11 @@ def _zdroj(meno):
 
 
 def _telo(meno_suboru, meno_funkcie):
-    strom = ast.parse(_zdroj(meno_suboru))
+    # "app.py" = cela appka: app.py aj mixiny DandurfApp v app_*.py
+    if meno_suboru == "app.py":
+        strom = strom_appky()
+    else:
+        strom = ast.parse(_zdroj(meno_suboru))
     for uzol in ast.walk(strom):
         if isinstance(uzol, ast.FunctionDef) and uzol.name == meno_funkcie:
             telo = uzol.body

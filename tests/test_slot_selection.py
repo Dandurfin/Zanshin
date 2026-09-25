@@ -18,6 +18,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from _zdroj_appky import subory_appky, zdroj_appky, zdroj_metody  # noqa: E402
+
 
 # --------------------------------------------------------------------------
 # Cista logika vyberu - zamerne oddelena od SlotCard, aby sa dala testovat
@@ -117,13 +119,14 @@ def test_klavesovy_hook_sa_nevratil():
     # Hlada sa IMPORT, nie slovo - v komentaroch sa pynput spomina zamerne
     # (vysvetluju, preco tam uz nie je).
     dovoz = re.compile(r"^\s*(?:from\s+pynput|import\s+pynput)", re.M)
-    for subor in ("app.py", "ui_dialogs.py", "ui_kit.py"):
+    # appka = app.py aj mixiny DandurfApp v app_*.py
+    for subor in (*subory_appky(), "ui_dialogs.py", "ui_kit.py"):
         src = _read(subor)
         assert not dovoz.search(src), f"{subor} znova importuje pynput"
         assert "keyboard.Listener(" not in src, f"{subor} znova instaluje hook"
         assert "mouse.Listener(" not in src, f"{subor} znova instaluje hook"
 
-    app_src = _read("app.py")
+    app_src = zdroj_appky()
     for meno in ("def begin_rebind", "def on_press", "def on_click",
                  "def handle_trigger"):
         assert meno not in app_src, f"{meno} sa vratilo do app.py"
@@ -132,8 +135,6 @@ def test_klavesovy_hook_sa_nevratil():
 def test_remove_selected_guards_against_emptying():
     """DandurfApp.remove_selected_slots musi odmietnut zmazanie vsetkych
     slotov - staticka kontrola, ze tam ta poistka je."""
-    src = _read("app.py")
-    block = src[src.index("def remove_selected_slots(self"):]
-    block = block[:block.index("\n    def ", 5)]
+    block = zdroj_metody("remove_selected_slots")
     assert "slot_only_one" in block, \
         "remove_selected_slots musi mat poistku proti zmazaniu vsetkeho"

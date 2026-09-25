@@ -29,21 +29,10 @@ sys.path.insert(0, ROOT)
 import hr_stats  # noqa: E402
 import i18n  # noqa: E402
 import theme  # noqa: E402
+from _zdroj_appky import zdroj_metody  # noqa: E402
 
-DEN = 86400.0
+DEN =86400.0
 T0 = 1_780_000_000.0
-
-
-def _read(name):
-    with open(os.path.join(ROOT, name), encoding="utf-8-sig") as fh:
-        return fh.read()
-
-
-def _metoda(src, nazov):
-    """Telo jednej metody `DandurfApp` ako text (po dalsiu `def`)."""
-    start = src.index(f"    def {nazov}(")
-    koniec = src.find("\n    def ", start + 1)
-    return src[start:koniec if koniec > 0 else len(src)]
 
 
 @pytest.fixture
@@ -277,10 +266,10 @@ def test_takmer_splnena_historia_nespusti_nic(hodiny, appka):
 def test_start_obnovi_zlaty_mesiac_z_flagu():
     """Flag sa nacita v `__init__` pred stavbou okna a `_build_dnes_page`
     hned po vytvoreni ensa zavola `graduate()` (aj po prestavbe okna)."""
-    src = _read("app.py")
-    assert (src.index('self.zanshin_graduated = bool(settings["zanshin_graduated"])')
-            < src.index("self._build_ui()"))
-    telo = _metoda(src, "_build_dnes_page")
+    init = zdroj_metody("__init__")
+    assert (init.index('self.zanshin_graduated = bool(settings["zanshin_graduated"])')
+            < init.index("self._build_ui()"))
+    telo = zdroj_metody("_build_dnes_page")
     i_enso = telo.index("self.enso = ui_shell._EnsoHero(")
     i_flag = telo.index('if getattr(self, "zanshin_graduated", False):')
     i_grad = telo.index("self.enso.graduate()")
@@ -289,7 +278,7 @@ def test_start_obnovi_zlaty_mesiac_z_flagu():
 
 def test_hook_po_praci_mlci():
     """Po pracovnej relacii sa `_maybe_graduate` historie ani nedotkne."""
-    telo = _metoda(_read("app.py"), "_maybe_graduate")
+    telo = zdroj_metody("_maybe_graduate")
     i_svet = telo.index("hr_stats.session_world(summary) != hr_stats.ZEN_SVET")
     assert i_svet < telo.index("hr_stats.load_sessions(")
 

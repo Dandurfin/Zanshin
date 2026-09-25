@@ -23,6 +23,7 @@ sys.path.insert(0, ROOT)
 import hr_stats   # noqa: E402
 import hud_paint  # noqa: E402
 import i18n       # noqa: E402
+from _zdroj_appky import uzol_metody  # noqa: E402
 
 T0 = 1_700_000_000.0
 KROK = 2.8                      # skutočná kadencia hodiniek (C1)
@@ -274,13 +275,8 @@ def test_vypnutie_senzora_vypadok_zhodi_a_suhrn_ho_zarata():
 
 
 def _telo(metoda):
-    src = open(os.path.join(ROOT, "app.py"), encoding="utf-8-sig").read()
-    for uzol in ast.walk(ast.parse(src)):
-        if isinstance(uzol, ast.ClassDef) and uzol.name == "DandurfApp":
-            for pod in uzol.body:
-                if isinstance(pod, ast.FunctionDef) and pod.name == metoda:
-                    return pod
-    raise AssertionError(metoda)
+    # metoda DandurfApp - aj ked byva v mixine v app_*.py
+    return uzol_metody(metoda)
 
 
 def test_nova_relacia_zhodi_vypadok_vzdy_nie_len_pri_prepojeni():

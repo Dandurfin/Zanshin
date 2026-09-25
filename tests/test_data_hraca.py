@@ -26,6 +26,7 @@ sys.path.insert(0, ROOT)
 import data_io  # noqa: E402
 import hr_stats  # noqa: E402
 import i18n  # noqa: E402
+from _zdroj_appky import zdroj_metody  # noqa: E402
 
 
 def _read(name):
@@ -133,9 +134,8 @@ def test_tiche_hlasky_ratame_len_z_vlastnych_relacii():
 def test_import_nema_natvrdo_ano_nie_a_nahradit_je_na_dva_kliky():
     """Systémový askyesnocancel mal „= Áno / = Nie“ natvrdo po slovensky a
     tlačidlá v jazyku Windowsu. NAHRADIŤ bolo na „Nie“ bez potvrdenia."""
-    app_src = _read("app.py")
-    imp = app_src[app_src.index("    def import_all_json("):]
-    imp = imp[:imp.index("\n    def delete_history")]
+    # import = dialog (`import_all_json`) + zapis vysledku (`_zapis_import`)
+    imp = zdroj_metody("import_all_json") + "\n" + zdroj_metody("_zapis_import")
     assert "messagebox.askyesnocancel(" not in imp and "= Áno" not in imp
     assert "ImportDataDialog(" in imp
     assert "data_io.zaloha_pred_importom(" in imp
@@ -224,9 +224,7 @@ def test_dialog_mazania_spomenie_stare_kopie_menom_priecinka(tmp_path):
 
 
 def test_app_posiela_stare_priecinky_do_mazania_aj_dialogu():
-    src = _read("app.py")
-    telo = src[src.index("    def delete_history("):]
-    telo = telo[:telo.index("\n    def ", 5)]
+    telo = zdroj_metody("delete_history")
     assert "legacy_data_dirs()" in telo
     assert "data_io.plan_riadky(plan)" in telo
     assert "legacy_dirs=stare" in telo

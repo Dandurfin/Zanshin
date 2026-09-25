@@ -18,6 +18,7 @@ sys.path.insert(0, ROOT)
 
 import activity  # noqa: E402
 import i18n      # noqa: E402
+from _zdroj_appky import zdroj_metody  # noqa: E402
 
 T0 = 1_700_000_000.0
 MIN20 = 20 * 60
@@ -181,12 +182,11 @@ def _src(nazov):
 
 
 def test_zapojenie_v_appke():
-    src = _src("app.py")
-    tick = src[src.index("    def _tick_activity"):src.index("    def _tick_nonstop_input")]
+    tick = zdroj_metody("_tick_activity")
     assert "self._tick_nonstop_input()" in tick
-    otvor = src[src.index("    def _open_hr_session"):src.index("    def stop_heart_rate_monitor")]
+    otvor = zdroj_metody("_open_hr_session")
     assert "self._nonstop_input.reset()" in otvor, "raz za RELACIU"
-    kresli = src[src.index("    def _paint_dnes_canvas"):src.index("    def _layout_dnes_items")]
+    kresli = zdroj_metody("_paint_dnes_canvas")
     assert "_dnes_nonstop_text" in kresli
 
 

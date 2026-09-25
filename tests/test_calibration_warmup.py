@@ -12,8 +12,9 @@ import hr_stats  # noqa: E402
 import hud_paint  # noqa: E402
 import i18n  # noqa: E402
 import trigger  # noqa: E402
+from _zdroj_appky import zdroj_appky  # noqa: E402
 
-PROJ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PROJ =os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def _feed(stats, values, start=1000.0, step=1.5):
@@ -157,8 +158,7 @@ def test_bez_priznaku_sa_spravanie_nemeni():
 
 
 def test_appka_aj_simulacia_podavaju_kalibraciu_spustacu():
-    with open(os.path.join(PROJ, "app.py"), encoding="utf-8") as fh:
-        app_src = fh.read()
+    app_src = zdroj_appky()
     with open(os.path.join(PROJ, "simulate.py"), encoding="utf-8") as fh:
         sim_src = fh.read()
     assert "calibrating=self.hr_stats.is_calibrating" in app_src

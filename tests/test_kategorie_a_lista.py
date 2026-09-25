@@ -19,6 +19,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import i18n  # noqa: E402
 import settings_model as sm  # noqa: E402
+from _zdroj_appky import uzol_metody  # noqa: E402
 
 KOREN = os.path.join(os.path.dirname(__file__), "..")
 
@@ -29,6 +30,9 @@ def _read(meno):
 
 
 def _funkcia(subor, trieda, meno):
+    if (subor, trieda) == ("app.py", "DandurfApp"):
+        # metoda DandurfApp - aj ked byva v mixine v app_*.py
+        return ast.unparse(uzol_metody(meno))
     strom = ast.parse(_read(subor))
     for uzol in ast.walk(strom):
         if isinstance(uzol, ast.ClassDef) and uzol.name == trieda:

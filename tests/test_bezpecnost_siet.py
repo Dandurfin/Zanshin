@@ -24,8 +24,9 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import i18n  # noqa: E402
+from _zdroj_appky import zdroj_appky, zdroj_metody  # noqa: E402
 
-KOREN = os.path.join(os.path.dirname(__file__), "..")
+KOREN =os.path.join(os.path.dirname(__file__), "..")
 
 
 def _read(meno):
@@ -35,7 +36,8 @@ def _read(meno):
 
 def _telo(subor, meno):
     """Zdrojak funkcie/metody `meno` zo suboru (cez ast, bez importu)."""
-    src = _read(subor)
+    # "app.py" = cela appka: app.py aj mixiny DandurfApp v app_*.py
+    src = zdroj_appky() if subor == "app.py" else _read(subor)
     for uzol in ast.walk(ast.parse(src)):
         if isinstance(uzol, ast.FunctionDef) and uzol.name == meno:
             return ast.get_source_segment(src, uzol)
@@ -132,10 +134,7 @@ def test_bez_psutil_sa_watcher_nespusti(monkeypatch):
 
 
 def test_start_appky_spusti_watcher_len_pri_zapnutom_auto_profile():
-    src = _read("app.py")
-    init = src[src.index("class DandurfApp"):]
-    init = init[init.index("    def __init__(self, root):"):]
-    init = init[:init.index("\n    def ", 5)]
+    init = zdroj_metody("__init__")
     assert "GameProcessWatcher(" not in init, "štart ide len cez _start_game_watcher"
     assert ("if self.auto_profile_enabled:\n"
             "                self._start_game_watcher()") in init.replace("\r\n", "\n")

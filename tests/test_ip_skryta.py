@@ -20,6 +20,7 @@ sys.path.insert(0, ROOT)
 
 import i18n  # noqa: E402
 import netinfo  # noqa: E402
+from _zdroj_appky import subory_appky, zdroj_appky, zdroj_metody  # noqa: E402
 
 IP = "192.168.1.20"
 
@@ -27,12 +28,6 @@ IP = "192.168.1.20"
 def _read(name):
     with open(os.path.join(ROOT, name), encoding="utf-8-sig") as fh:
         return fh.read()
-
-
-def _metoda(src, nazov, trieda_odsadenie="    "):
-    start = src.index(f"{trieda_odsadenie}def {nazov}(")
-    koniec = src.find(f"\n{trieda_odsadenie}def ", start + 1)
-    return src[start:koniec if koniec > 0 else len(src)]
 
 
 def _trieda(src, nazov):
@@ -126,8 +121,7 @@ def test_dennik_pri_prazdnej_ip_ukaze_nuly():
 
 
 def test_fallback_riadok_ide_cez_masku():
-    src = _read("app.py")
-    telo = _metoda(src, "_apply_hr_status")
+    telo = zdroj_metody("_apply_hr_status")
     blok = telo[telo.index('kind == "bound_any"'):]
     blok = blok[:blok.index("return")]
     assert "netinfo.ip_for_screen(payload, self.show_ip)" in blok
@@ -137,9 +131,9 @@ def test_fallback_riadok_ide_cez_masku():
 def test_do_suboru_logu_ip_pc_nejde():
     """Riadky `log.hr_*` idú len do panela v okne (`DandurfApp.log`), nie do
     logs/app.log - a do súboru sa adresa nezapisuje ani inde."""
-    telo = _metoda(_read("app.py"), "log")
+    telo = zdroj_metody("log")
     assert "app_log" not in telo and "get_logger" not in telo
-    for subor in ("app.py", "heart_rate.py", "obs_websocket.py", "netinfo.py"):
+    for subor in (*subory_appky(), "heart_rate.py", "obs_websocket.py", "netinfo.py"):
         src = _read(subor)
         for riadok in src.splitlines():
             if "log." in riadok and ("app_log" in riadok or riadok.strip().startswith("log.")):
@@ -227,12 +221,11 @@ def test_pole_s_nulami_ostava_citatelne():
 
 
 def test_karta_senzora_ma_prepinac_a_ukladanie_sa_nemeni():
-    src = _read("app.py")
-    karta = _metoda(src, "_build_heart_rate_card")
+    karta = zdroj_metody("_build_heart_rate_card")
     assert 'tr("hr.ip_show")' in karta
     assert "self._apply_hr_ip_mask()" in karta
     # hodnota sa ukladá rovnako ako predtým - maska je len kreslenie
-    zmena = _metoda(src, "on_hr_config_change")
+    zmena = zdroj_metody("on_hr_config_change")
     assert "ip = self.hr_ip_var.get().strip() or ANY_INTERFACE" in zmena
 
 
@@ -241,10 +234,10 @@ def test_karta_senzora_ma_prepinac_a_ukladanie_sa_nemeni():
 # --------------------------------------------------------------------------
 
 def test_show_ip_sa_neuklada_do_nastaveni():
-    src = _read("app.py")
+    src = zdroj_appky()
     assert "self.show_ip = False" in src
     for metoda in ("save_settings", "load_settings"):
-        assert "show_ip" not in _metoda(src, metoda), metoda
+        assert "show_ip" not in zdroj_metody(metoda), metoda
 
 
 def test_privacy_md_hovori_o_skrytej_ip():

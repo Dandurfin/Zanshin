@@ -27,6 +27,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import hr_stats  # noqa: E402
 import sfx_assets  # noqa: E402
+from _zdroj_appky import zdroj_metody  # noqa: E402
 
 ROOT = os.path.join(os.path.dirname(__file__), "..")
 
@@ -339,9 +340,7 @@ def test_log_bez_listy_nemenuje_listu():
     s = i18n.STRINGS["log.hotkey_failed"]
     assert "lišt" not in s["sk"] and "tray" not in s["en"]
     assert "lišt" not in s["cs"] and "трея" not in s["bg"]
-    src = _read("app.py")
-    telo = src[src.index("    def start_snooze_hotkey"):]
-    telo = telo[:telo.index("\n    def ", 5)]
+    telo = zdroj_metody("start_snooze_hotkey")
     assert telo.index("elif TRAY_AVAILABLE") < telo.index('"log.hotkey_failed"')
 
 

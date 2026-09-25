@@ -15,7 +15,9 @@ import types
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-KOREN = os.path.join(os.path.dirname(__file__), "..")
+from _zdroj_appky import strom_appky, subory_appky, zdroj_appky  # noqa: E402
+
+KOREN =os.path.join(os.path.dirname(__file__), "..")
 
 
 def _zdroj(meno):
@@ -77,7 +79,7 @@ def test_deliver_test_ani_hud_nerata():
 def test_v_deliver_nie_je_priamy_zapis_pocitadla():
     """Priradenie do `session_counts` smie byť len vo vnorenej funkcii,
     ktorú dostane `ui_call` - nie v tele `_deliver` samom."""
-    fn = next(u for u in ast.walk(ast.parse(_zdroj("app.py")))
+    fn = next(u for u in ast.walk(strom_appky())
               if isinstance(u, ast.FunctionDef) and u.name == "_deliver")
     vnorene = [u for u in ast.walk(fn)
                if isinstance(u, ast.FunctionDef) and u is not fn]
@@ -94,8 +96,10 @@ def test_v_deliver_nie_je_priamy_zapis_pocitadla():
 # --------------------------------------------------------------------------
 
 def test_app_neimportuje_random():
-    assert "random" not in _importy("app.py")
-    assert "random" not in _pouzite_mena("app.py")
+    # cela appka: app.py aj mixiny app_*.py
+    for meno in subory_appky():
+        assert "random" not in _importy(meno), meno
+        assert "random" not in _pouzite_mena(meno), meno
 
 
 def test_make_icon_neimportuje_os():
@@ -106,7 +110,7 @@ def test_make_icon_neimportuje_os():
 def test_note_cue_ostava_lebo_sa_vola():
     """`_note_cue` je zámerný prázdny háčik - volá ho `fire_slot` a stráži ho
     tests/test_measure.py. Upratanie ho preto nechalo tak."""
-    src = _zdroj("app.py")
+    src = zdroj_appky()
     assert "def _note_cue(" in src
     assert "self._note_cue(" in src
 

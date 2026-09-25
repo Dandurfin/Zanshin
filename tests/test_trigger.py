@@ -370,7 +370,12 @@ def _telo(meno_suboru, meno_funkcie):
     číta AST a docstring sa zahodí.
     """
     import ast
-    strom = ast.parse(_zdroj(meno_suboru))
+    if meno_suboru == "app.py":
+        # cela appka: app.py aj mixiny DandurfApp v app_*.py
+        from _zdroj_appky import strom_appky
+        strom = strom_appky()
+    else:
+        strom = ast.parse(_zdroj(meno_suboru))
     for uzol in ast.walk(strom):
         if isinstance(uzol, ast.FunctionDef) and uzol.name == meno_funkcie:
             telo = uzol.body

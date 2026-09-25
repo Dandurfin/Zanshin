@@ -21,13 +21,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import i18n  # noqa: E402
-
-ROOT = os.path.join(os.path.dirname(__file__), "..")
-
-
-def _read(name):
-    with open(os.path.join(ROOT, name), encoding="utf-8") as fh:
-        return fh.read()
+from _zdroj_appky import zdroj_appky, zdroj_metody  # noqa: E402
 
 
 def test_i18n_pozna_jedenast_jazykov():
@@ -40,7 +34,7 @@ def test_i18n_pozna_jedenast_jazykov():
 
 def test_kazdy_ponukany_jazyk_ma_preklady():
     """Prepinac nesmie ponukat jazyk, pre ktory appka nema retazce."""
-    src = _read("app.py")
+    src = zdroj_appky()
     block = src[src.index("LANG_NATIVE_LABELS = {"):]
     block = block[:block.index("}")]
     ponukane = set(re.findall(r"LANG_([A-Z]{2}):", block))
@@ -55,9 +49,7 @@ def test_load_settings_neobmedzuje_jazyk_na_rucny_zoznam():
     Rucne vypisany zoznam konstant je presne to, co sa raz uz rozislo s
     realitou a ticho zahadzovalo volbu hraca.
     """
-    src = _read("app.py")
-    start = src.index("def load_settings(self):")
-    blok = src[start:start + 2000]
+    blok = zdroj_metody("load_settings")[:2000]
 
     assert 'loaded.get("lang") in LANGUAGES' in blok, (
         "load_settings musi porovnavat ulozeny jazyk voci i18n.LANGUAGES")
@@ -71,7 +63,5 @@ def test_load_settings_neobmedzuje_jazyk_na_rucny_zoznam():
 
 def test_ulozeny_jazyk_sa_zapisuje_spat():
     """save_settings musi ukladat self.lang (inak by sa volba nedrzala)."""
-    src = _read("app.py")
-    start = src.index("def save_settings(self):")
-    blok = src[start:start + 2000]
+    blok = zdroj_metody("save_settings")[:2000]
     assert '"lang": self.lang' in blok

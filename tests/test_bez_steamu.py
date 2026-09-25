@@ -7,6 +7,8 @@ strazia, ze sa potichu nevratili - a ze dokumenty hovoria to iste.
 import os
 import re
 
+from _zdroj_appky import zdroj_appky
+
 KOREN = os.path.join(os.path.dirname(__file__), "..")
 
 
@@ -27,7 +29,7 @@ def test_appka_steam_neimportuje_ani_nevola():
     for meno in sorted(os.listdir(KOREN)):
         if meno.endswith(".py"):
             assert not dovoz.search(_read(meno)), meno
-    assert not re.search(r"\bsteam\.\w+\(", _read("app.py"))
+    assert not re.search(r"\bsteam\.\w+\(", zdroj_appky())
 
 
 def test_build_steam_nebali():

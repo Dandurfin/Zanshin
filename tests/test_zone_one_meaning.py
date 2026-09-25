@@ -24,6 +24,7 @@ sys.path.insert(0, ROOT)
 import hr_stats   # noqa: E402
 import hud_paint  # noqa: E402
 import i18n       # noqa: E402
+from _zdroj_appky import zdroj_metody  # noqa: E402
 
 KROK = 1.5
 
@@ -331,9 +332,7 @@ def test_ziadny_kresliaci_kod_nema_vlastne_hranice_pasiem():
     start = ui.index("class SegmentBar(")
     telo = ui[start:ui.index("\nclass ", start + 1)]
     assert "0.35" not in telo and "share" not in telo
-    app = _zdroj("app.py")
-    start = app.index("def _watch_pulse_state(")
-    telo = app[start:app.index("\n    def ", start + 1)]
+    telo = zdroj_metody("_watch_pulse_state")
     assert "stats.zone" in telo and "zone_for" not in telo
 
 

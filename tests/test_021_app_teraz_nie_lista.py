@@ -25,6 +25,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import hr_stats  # noqa: E402
 import i18n  # noqa: E402
 import trigger  # noqa: E402
+from _zdroj_appky import zdroj_appky  # noqa: E402
 
 
 def _nic(*_a, **_k):
@@ -259,9 +260,7 @@ def test_uspesna_skratka_hlasi_len_pripravenost(monkeypatch):
 def test_skratka_sa_registruje_len_raz_pri_starte():
     """„Raz“ z hlásenia stojí na tom, že `start_snooze_hotkey` volá len
     `__init__` - keby ju volalo aj niečo opakované, riadok by sa množil."""
-    with open(os.path.join(os.path.dirname(__file__), "..", "app.py"),
-              encoding="utf-8") as fh:
-        src = fh.read()
+    src = zdroj_appky()
     assert src.count("self.start_snooze_hotkey()") == 1
 
 

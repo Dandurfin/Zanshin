@@ -4,6 +4,7 @@ blokovanie kolieska na slideroch. Bez Tk - testuje sa logika a API kontrakt.
 import os, re, sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import settings_model as sm
+from _zdroj_appky import subory_appky, zdroj_appky, zdroj_metody
 
 
 def test_overlay_config_has_color():
@@ -30,7 +31,8 @@ def _read(name):
 def test_slider_wheel_is_blocked_everywhere():
     """Kazdy CTkSlider musi byt obaleny block_slider_wheel - inak sa da
     hodnota omylom menit kolieskom pri scrollovani stranky."""
-    for f in ("app.py", "ui_dialogs.py"):
+    # appka = app.py aj mixiny DandurfApp v app_*.py
+    for f in (*subory_appky(), "ui_dialogs.py"):
         src = _read(f)
         raw_sliders = len(re.findall(r"ctk\.CTkSlider\(", src))
         wrapped = len(re.findall(r"block_slider_wheel\(ctk\.CTkSlider\(", src))
@@ -144,20 +146,18 @@ def test_guide_je_pod_hlaskami_a_stara_cesta_nezmizla():
     shell = _read("ui_shell.py")
     assert '"guide": "nastavenia"' in shell, "guide musi zostat v GROUPS sidebaru"
 
-    app_src = _read("app.py")
+    app_src = zdroj_appky()
     riadok = app_src[app_src.index("SETTINGS_TABS = ("):].split("\n")[0]
     assert '"guide"' not in riadok, "guide uz nema byt samostatna karta"
 
     assert 'TAB_ALIAS = {"guide": "spustace"}' in app_src, \
         "stara cesta na guide musi niekam viest"
-    nav = app_src[app_src.index("    def _navigate(self, key):"):]
-    nav = nav[:nav.index('\n    def ', 5)]
+    nav = zdroj_metody("_navigate")
     assert "TAB_ALIAS" in nav, "_navigate musi alias naozaj pouzit"
 
     # a obsah sa naozaj vklada pod hlasky
     assert "_build_guide_into" in app_src
-    spustace = app_src[app_src.index("def _build_spustace_page"):]
-    spustace = spustace[:spustace.index("\n    def ", 5)]
+    spustace = zdroj_metody("_build_spustace_page")
     assert "_build_guide_into" in spustace, "vysvetlivky nie su na stranke hlasok"
 
     guide = _read("guide_panel.py")
@@ -210,9 +210,8 @@ def test_karta_hlasky_uz_nenastavuje_casovanie():
     dialog = dialog[:dialog.index('\nclass ', 5)]
     assert "NumberStepper" not in dialog and "timing" not in dialog,         "dialog hlasky ma nastavovat uz len hlas"
 
-    app_src = _read("app.py")
-    dorucenie = app_src[app_src.index("    def fire_slot(self, slot"):]
-    dorucenie = dorucenie[:dorucenie.index("\n    def resolve_sfx_path")]
+    # dorucenie = `fire_slot` + `_note_cue` + `_deliver`
+    dorucenie = "\n".join(zdroj_metody(m) for m in ("fire_slot", "_note_cue", "_deliver"))
     for mrtve in ("slot.every_n", "slot.jitter", "slot.repeat", "slot.delay",
                   "slot.cooldown", "press_count"):
         assert mrtve not in dorucenie, f"{mrtve} sa vratilo do dorucenia"
@@ -228,7 +227,7 @@ def test_ako_casto_sa_ozvem_riadi_algoritmus_nie_prepinac():
     Prvá relacia bezi na cislach pre priemerneho hraca
     (`trigger.default_params()`); vlastny prah pride, az ked je z coho ratat.
     """
-    app_src = _read("app.py")
+    app_src = zdroj_appky()
     assert "cue_sensitivity" not in app_src, "nastavenie sa vratilo"
     assert "self.citlivost_var" not in app_src, "prepinac sa vratil"
 
@@ -236,9 +235,11 @@ def test_ako_casto_sa_ozvem_riadi_algoritmus_nie_prepinac():
     assert "trigger.default_params()" in app_src,         "chybaju cisla pre priemerneho hraca"
 
     # Poradie: priemerny hrac, nad nim vlastny prah, nad nim vyvojarska vrstva.
-    zaklad = app_src.index("self.cue_trigger.params.update(trigger.default_params())")
-    vlastny = app_src.index('self.cue_trigger.params["stress_threshold"] = float(')
-    dev = app_src.index("self.cue_trigger.params.update(self._dev_params)")
+    # Vsetky tri vrstvy su v `_open_hr_session` - poradie sa meria v nej.
+    otvor = zdroj_metody("_open_hr_session")
+    zaklad = otvor.index("self.cue_trigger.params.update(trigger.default_params())")
+    vlastny = otvor.index('self.cue_trigger.params["stress_threshold"] = float(')
+    dev = otvor.index("self.cue_trigger.params.update(self._dev_params)")
     assert zaklad < vlastny < dev, "vrstvy sa prekryvaju v zlom poradi"
 
 

@@ -1,6 +1,7 @@
 """Testy prepracovaneho onboardingu a guided tour - staticke, bez Tk."""
 import os, sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from _zdroj_appky import zdroj_appky, zdroj_metody
 
 def _read(name):
     here=os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -57,7 +58,7 @@ def test_tour_marks_seen_and_is_replayable():
     """Tour po dobehnuti nastavi tour_seen; da sa spustit z Nastaveni."""
     gt=_read("guided_tour.py")
     assert "mark_tour_seen" in gt
-    app=_read("app.py")
+    app=zdroj_appky()
     assert "def start_tour" in app
     assert "def mark_tour_seen" in app
     assert '"tour_seen"' in app, "tour_seen sa musi ukladat do settings"
@@ -75,7 +76,7 @@ def test_first_run_window_reappears_after_wizard():
     """Bezramove okno po withdraw() + jednom deiconify() ostava na Windows
     withdrawn -> hrac po onboardingu nevidel appku. Musi byt update() +
     druhy deiconify()."""
-    app=_read("app.py")
+    app=zdroj_metody("__init__")
     block=app[app.index("wizard = OnboardingWizard(self.root)"):]
     block=block[:block.index("self.monitor_target = settings")]
     assert block.count("self.root.deiconify()") >= 2 and "self.root.update()" in block
@@ -114,5 +115,5 @@ def test_onboarding_uses_dialog_chrome_without_close():
 
 def test_tour_does_not_clash_with_pairing():
     """Tour sa nespusti, ak hrac isiel rovno parovat (aby sa neprekryvali)."""
-    app=_read("app.py")
+    app=zdroj_appky()
     assert "elif settings[\"first_run\"] and not self.tour_seen" in app

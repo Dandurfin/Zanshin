@@ -169,7 +169,12 @@ def test_do_serie_sa_rataju_len_herne_relacie():
 
 def _telo_metody(subor, meno):
     import ast
-    src = open(subor, encoding="utf-8-sig").read()
+    if subor == "app.py":
+        # cela appka: app.py aj mixiny DandurfApp v app_*.py
+        from _zdroj_appky import zdroj_appky
+        src = zdroj_appky()
+    else:
+        src = open(subor, encoding="utf-8-sig").read()
     for u in ast.walk(ast.parse(src)):
         if isinstance(u, ast.FunctionDef) and u.name == meno:
             return ast.unparse(u)

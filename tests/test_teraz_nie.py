@@ -29,8 +29,9 @@ import hr_stats  # noqa: E402
 import i18n  # noqa: E402
 import rebrik  # noqa: E402
 import trigger  # noqa: E402
+from _zdroj_appky import strom_appky  # noqa: E402
 
-KOREN = os.path.join(os.path.dirname(__file__), "..")
+KOREN =os.path.join(os.path.dirname(__file__), "..")
 
 
 def _nic(*_a, **_k):
@@ -533,8 +534,12 @@ def test_zmena_stylu_prepise_vetu_pod_ukazkou(monkeypatch):
 # --------------------------------------------------------------------------
 
 def _funkcia(meno_suboru, meno):
-    with open(os.path.join(KOREN, meno_suboru), encoding="utf-8") as fh:
-        strom = ast.parse(fh.read())
+    if meno_suboru == "app.py":
+        # cela appka: app.py aj mixiny DandurfApp v app_*.py
+        strom = strom_appky()
+    else:
+        with open(os.path.join(KOREN, meno_suboru), encoding="utf-8") as fh:
+            strom = ast.parse(fh.read())
     for uzol in ast.walk(strom):
         if isinstance(uzol, ast.FunctionDef) and uzol.name == meno:
             return uzol

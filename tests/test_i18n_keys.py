@@ -15,6 +15,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import i18n
+from _zdroj_appky import subory_appky
 
 PROJ = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 
@@ -22,9 +23,10 @@ PROJ = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 _VOLANIE = re.compile(r"""\btr\(\s*(['"])([A-Za-z0-9_.]+)\1""")
 
 # Subory, ktore stavaju rozhranie. Harness a testy nie - tie smu experimentovat.
-_MODULY = ("app.py", "ui_kit.py", "ui_shell.py", "ui_dialogs.py", "guide_panel.py",
-           "guide_content.py", "guided_tour.py", "hud.py", "overlay.py",
-           "settings_model.py", "main.py")
+# Appka = app.py aj mixiny DandurfApp v app_*.py.
+_MODULY = (*subory_appky(), "ui_kit.py", "ui_shell.py", "ui_dialogs.py",
+           "guide_panel.py", "guide_content.py", "guided_tour.py", "hud.py",
+           "overlay.py", "settings_model.py", "main.py")
 
 
 def _kluce(nazov):
@@ -49,7 +51,7 @@ def test_vsetky_staticke_kluce_existuju():
 def test_kontrola_naozaj_nieco_najde():
     """Poistka proti tomu, aby test prechadzal len preto, ze regex nic
     nenasiel (napr. po premenovani `tr`)."""
-    assert len(_kluce("app.py")) > 100
+    assert sum(len(_kluce(meno)) for meno in subory_appky()) > 100
 
 
 def test_appka_ma_jedenast_jazykov():

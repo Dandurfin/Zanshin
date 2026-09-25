@@ -20,8 +20,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import guide_content  # noqa: E402
 import i18n  # noqa: E402
 import trigger  # noqa: E402
+from _zdroj_appky import zdroj_appky, zdroj_metody  # noqa: E402
 
-ROOT = os.path.join(os.path.dirname(__file__), "..")
+ROOT =os.path.join(os.path.dirname(__file__), "..")
 
 # Čo appka ukazovala do 0.2 (guide_content.PHILOSOPHY_SOURCES pred
 # sources-soul). Z appky odišlo, z ZDROJE.md nesmie.
@@ -118,9 +119,10 @@ def test_sprievodca_ukazuje_text_autora_a_tie_iste_tri_zdroje():
 
 def test_historia_ukazuje_to_iste():
     """app.py sa v testoch importovať nedá - kontrola zdrojáku panela."""
-    src = _read("app.py")
-    blok = src[src.index("self.history_science_body = "):
-               src.index("def _toggle_history_science")]
+    src = zdroj_appky()
+    # panel je koniec `_build_historia_page` (za nim ide `_toggle_history_science`)
+    blok = zdroj_metody("_build_historia_page")
+    blok = blok[blok.index("self.history_science_body = "):]
     for kluc in ("origin.text", "origin.examples", "origin.full_list"):
         assert f'tr("{kluc}")' in blok, kluc
     assert "origin_sources()" in blok

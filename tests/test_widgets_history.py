@@ -575,8 +575,8 @@ def test_tabulka_historie_ukazuje_to_iste_cislo_hlasok():
     """Stlpec „Hlášky" v tabulke rata ako detail, graf aj CSV - nie stare
     `triggers` (to ratalo aj klavesu a tlacidlo „Test")."""
     import ast
-    with open(os.path.join(ROOT, "app.py"), encoding="utf-8") as fh:
-        strom = ast.parse(fh.read())
+    from _zdroj_appky import strom_appky
+    strom = strom_appky()
     funkcia = next(f for f in ast.walk(strom)
                    if isinstance(f, ast.FunctionDef)
                    and f.name == "_refresh_history_page")

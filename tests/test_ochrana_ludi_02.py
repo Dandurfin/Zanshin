@@ -19,8 +19,9 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import i18n  # noqa: E402
+from _zdroj_appky import strom_appky  # noqa: E402
 
-KOREN = os.path.join(os.path.dirname(__file__), "..")
+KOREN =os.path.join(os.path.dirname(__file__), "..")
 
 
 def _read(meno):
@@ -67,7 +68,7 @@ def test_vedome_vypnute_vizualy_ostanu_vypnute(nastavenia):
 
 def test_znacka_napravy_sa_uklada():
     zdroj = ast.unparse(next(
-        f for f in ast.walk(ast.parse(_read("app.py")))
+        f for f in ast.walk(strom_appky())
         if isinstance(f, ast.FunctionDef) and f.name == "save_settings"))
     assert "'visuals_repaired': True" in zdroj
 
@@ -100,7 +101,7 @@ def test_pozastavene_sa_pise_len_ked_sa_naozaj_zastavilo():
 
 def test_uvod_znova_zacina_na_aktualnom_svete_a_hlasitosti():
     telo = ast.unparse(next(
-        f for f in ast.walk(ast.parse(_read("app.py")))
+        f for f in ast.walk(strom_appky())
         if isinstance(f, ast.FunctionDef) and f.name == "replay_onboarding"))
     assert "choice=self.theme_key" in telo and "volume=self.volume_value" in telo
     init = next(
