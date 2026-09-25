@@ -46,6 +46,53 @@ def check(title):
     print(f"\n{'─' * 66}\n{title}\n{'─' * 66}")
 
 
+# DandurfApp je rozdelena do mixinov v app_*.py (stav ostava na DandurfApp,
+# mixiny nesu len metody). Kontroly appky preto citaju app.py aj vsetky
+# app_*.py - inak by volanie metody z mixinu vyzeralo ako nedefinovane a
+# kod presunuty do mixinu by sa nekontroloval vobec.
+
+def subory_appky():
+    """{meno suboru: zdrojak} pre app.py a vsetky app_*.py."""
+    mena = ["app.py"] + sorted(f for f in os.listdir(HERE)
+                               if f.startswith("app_") and f.endswith(".py"))
+    return {meno: read(meno) for meno in mena}
+
+
+def triedy_appky(subory):
+    """[(subor, uzol triedy)] pre DandurfApp a vsetky jej zaklady (mixiny).
+
+    Zaklad sa hlada ako trieda na urovni modulu v app_*.py, tak ako ju
+    najde Python cez `from app_x import Mixin`. Zaklad, ktory sa nenajde,
+    je chyba - jeho metody by kontrola nevidela."""
+    triedy = {}
+    for meno, src in subory.items():
+        for uzol in ast.parse(src).body:
+            if isinstance(uzol, ast.ClassDef) and (meno != "app.py"
+                                                   or uzol.name == "DandurfApp"):
+                triedy[uzol.name] = (meno, uzol)
+    vysledok, videne, fronta = [], set(), ["DandurfApp"]
+    while fronta:
+        meno = fronta.pop(0)
+        if meno in videne or meno == "object":
+            continue
+        videne.add(meno)
+        if meno not in triedy:
+            raise LookupError(f"trieda {meno} (zaklad DandurfApp) nie je v app.py ani v app_*.py")
+        vysledok.append(triedy[meno])
+        for zaklad in triedy[meno][1].bases:
+            fronta.append(zaklad.attr if isinstance(zaklad, ast.Attribute) else zaklad.id)
+    return vysledok
+
+
+def zdroj_metody_appky(subory, metoda):
+    """Zdrojak metody DandurfApp (aj ked byva v mixine) od `def` po koniec tela."""
+    for meno, trieda in triedy_appky(subory):
+        for uzol in trieda.body:
+            if isinstance(uzol, ast.FunctionDef) and uzol.name == metoda:
+                return ast.get_source_segment(subory[meno], uzol)
+    raise LookupError(f"metoda {metoda} nie je v DandurfApp ani v jej mixinoch")
+
+
 # ==========================================================================
 # 1. Kompilacia vsetkych modulov
 # ==========================================================================
@@ -160,27 +207,31 @@ except Exception as exc:
 
 
 # ==========================================================================
-# 3. app.py - volane metody a tokeny existuju
+# 3. app.py + mixiny app_*.py - volane metody a tokeny existuju
 # ==========================================================================
 
-check("3. app.py - integrita volani")
+check("3. app.py + mixiny app_*.py - integrita volani")
 try:
-    src = read("app.py")
-    tree = ast.parse(src)
-    cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "DandurfApp")
-    methods = [n.name for n in cls.body if isinstance(n, ast.FunctionDef)]
+    subory = subory_appky()
+    src = "\n".join(subory.values())
+    triedy = triedy_appky(subory)
+    # Metody DandurfApp aj vsetkych jej mixinov. Meno v dvoch triedach je
+    # duplicita aj napriec subormi - jedna by ticho zatienila druhu.
+    methods = [n.name for _subor, cls in triedy for n in cls.body
+               if isinstance(n, ast.FunctionDef)]
     defined = set(methods)
     called = set(re.findall(r"self\.([a-z_][a-z0-9_]*)\(", src))
     unknown = sorted(c for c in called if c not in defined)
     if unknown:
-        problems.append(f"app.py vola nedefinovane metody: {unknown}")
+        problems.append(f"app.py / app_*.py vola nedefinovane metody: {unknown}")
         print(f"  PAD  volane bez definicie: {unknown}")
     else:
-        print(f"  OK   {len(defined)} metod, ziadne volanie bez definicie")
+        print(f"  OK   {len(defined)} metod v {len(triedy)} triedach "
+              f"({', '.join(cls.name for _s, cls in triedy)}), ziadne volanie bez definicie")
 
     dupes = sorted({m for m in methods if methods.count(m) > 1})
     if dupes:
-        problems.append(f"app.py duplicitne metody: {dupes}")
+        problems.append(f"DandurfApp + mixiny: duplicitne metody: {dupes}")
         print(f"  PAD  duplicity: {dupes}")
     else:
         print("  OK   ziadne duplicitne metody")
@@ -212,7 +263,7 @@ try:
         else:
             print(f"  OK   tema {key}: vsetkych {len(used)} pouzitych tokenov existuje")
 except Exception as exc:
-    problems.append(f"app.py kontrola padla: {exc}")
+    problems.append(f"app.py / app_*.py kontrola padla: {exc}")
     print(f"  PAD  {exc}")
 
 
@@ -236,7 +287,9 @@ try:
     # navonok vyzeral ako keylogger. Namiesto toho sa stráži, ze sa
     # NEVRATIL. (Keycap sa zatial nemaze: stranka Spustace sa prekresluje
     # az vo faze 5 a kontrola set_text() vyssie ho drzi funkcny.)
-    ap = read("app.py")
+    # Cela appka: app.py aj mixiny DandurfApp v app_*.py.
+    appka = subory_appky()
+    ap = "\n".join(appka.values())
     dovoz =re.compile(r"^\s*(?:from\s+pynput|import\s+pynput)", re.M)
     # Import pynput sa hlada vo VSETKYCH .py (nie len v app.py a
     # ui_dialogs.py) a navyse v zavislostiach a v .spec - hook v inom module
@@ -256,12 +309,11 @@ try:
     if hook_prec:
         print("  OK   klavesovy hook je prec a nevratil sa")
     else:
-        problems.append("v app.py sa vratil klavesovy hook alebo rebind")
-        print("  PAD  klavesovy hook alebo rebind je spat v app.py")
+        problems.append("v app.py / app_*.py sa vratil klavesovy hook alebo rebind")
+        print("  PAD  klavesovy hook alebo rebind je spat v app.py / app_*.py")
 
-    rss = read("app.py")
-    block = rss[rss.index("def remove_selected_slots(self"):]
-    block = block[:block.index("\n    def ", 5)]
+    # metoda moze byvat v mixine (app_*.py) - hlada sa v celej DandurfApp
+    block = zdroj_metody_appky(appka, "remove_selected_slots")
     if "slot_only_one" in block:
         print("  OK   remove_selected_slots ma poistku proti zmazaniu vsetkeho")
     else:

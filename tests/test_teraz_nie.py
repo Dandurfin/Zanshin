@@ -88,8 +88,12 @@ def _zakazane(meno):
 
 def _appka(monkeypatch, hodiny=None):
     import app as app_mod
+    import app_data
     if hodiny is not None:
         monkeypatch.setattr(app_mod, "time", hodiny)
+        # `_close_hr_session` byva v mixine app_data (DataMixin) a cita
+        # `time` zo svojho modulu - hodiny musia ist aj tam.
+        monkeypatch.setattr(app_data, "time", hodiny)
     a = app_mod.DandurfApp.__new__(app_mod.DandurfApp)
     a.root = _Root()
     a.denn = []

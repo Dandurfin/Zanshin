@@ -291,6 +291,8 @@ Author: **Dandurfin** — [Twitch](https://www.twitch.tv/dandurfin) ·
 |---|---|
 | `main.py` | Entry point — checks deps, starts `app.DandurfApp` |
 | `app.py` | Main window, wiring for the whole app |
+| `app_data.py` | Part of the main window (a mixin of `DandurfApp`): export / import / delete of your data, what is saved when a session ends, sharing a profile as a code |
+| `app_spolocne.py` | Names shared by `app.py` and its mixins (the app logger) |
 | `paths.py` | Data paths (`%APPDATA%`), migration from older versions |
 | `settings_model.py` | Slot/settings data model — defaults, normalisation |
 | `audio_engine.py` | TTS (Edge Natural + SAPI5) and SFX/recording playback |
