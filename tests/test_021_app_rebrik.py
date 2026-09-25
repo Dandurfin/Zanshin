@@ -100,7 +100,12 @@ def _appka(monkeypatch, tmp_path, obrazy):
     """Skutočné `_on_cue_event` / `_fire_somatic_cue` / `_close_hr_session`.
     `obrazy` = čo vráti `overlay_manager.trigger` pri každej hláške."""
     import app as app_mod
+    import app_today
     monkeypatch.setattr(app_mod, "threading", types.SimpleNamespace(Thread=_Vlakno))
+    # `_fire_somatic_cue` (vola ho `_on_cue_event`) byva v mixine app_today
+    # (TodayMixin) a cita `threading` zo svojho modulu - synchronne vlakno
+    # treba aj tam.
+    monkeypatch.setattr(app_today, "threading", types.SimpleNamespace(Thread=_Vlakno))
     obrazy = list(obrazy)
     a = app_mod.DandurfApp.__new__(app_mod.DandurfApp)
     a.log = _nic

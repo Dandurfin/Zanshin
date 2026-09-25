@@ -297,6 +297,7 @@ Author: **Dandurfin** — [Twitch](https://www.twitch.tv/dandurfin) ·
 | `app_hud.py` | Part of the main window (a mixin of `DandurfApp`): the in-game heart-rate panel (HUD) and its row of 4 icons, the language of what the app draws into the game, choosing the monitor, the heart-rate indicator in the sidebar, pairing the watch, and setting up and testing the in-game visuals |
 | `app_prefs.py` | Part of the main window (a mixin of `DandurfApp`): switching language, world (play / work) and theme; loading and saving your settings, volume and balance |
 | `app_spolocne.py` | Names shared by `app.py` and its mixins (the app logger, language names for the switch, the "not now" shortcut defaults) |
+| `app_today.py` | Part of the main window (a mixin of `DandurfApp`): the "Today" page — its animated centre and live heart-rate, load and session block, delivering the automatic cue, and the "My stats" cards (choosing them, their values, swapping them by dragging) |
 | `paths.py` | Data paths (`%APPDATA%`), migration from older versions |
 | `settings_model.py` | Slot/settings data model — defaults, normalisation |
 | `audio_engine.py` | TTS (Edge Natural + SAPI5) and SFX/recording playback |

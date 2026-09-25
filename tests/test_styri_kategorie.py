@@ -124,7 +124,11 @@ class _Vlakno:
 
 def _hlaska(monkeypatch, arm, vykreslene=True):
     import app as app_mod
+    import app_today
     monkeypatch.setattr(app_mod, "threading", types.SimpleNamespace(Thread=_Vlakno))
+    # `_fire_somatic_cue` byva v mixine app_today (TodayMixin) a cita
+    # `threading` zo svojho modulu - synchronne vlakno treba aj tam.
+    monkeypatch.setattr(app_today, "threading", types.SimpleNamespace(Thread=_Vlakno))
     obnovene = []
     slot = types.SimpleNamespace(index=1, text_value="Jaw")
     a = types.SimpleNamespace(

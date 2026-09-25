@@ -37,6 +37,8 @@ Toto je len vstupny bod - overi zavislosti a spusti hlavnu appku
                         sveta a temy, nacitanie/ulozenie nastaveni
   app_spolocne.py     - mena spolocne pre app.py a jej mixiny (app_log,
                         nazvy jazykov, skratka "Teraz nie")
+  app_today.py        - TodayMixin (cast DandurfApp): stred a zivy blok
+                        stranky Dnes, dorucenie hlasky, "Moje statistiky"
 
 Dva TTS motory:
   * "edge"  - Microsoft Edge Natural (neuronove hlasy). Hlasky sa

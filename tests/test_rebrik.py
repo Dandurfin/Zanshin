@@ -473,7 +473,11 @@ class _Vlakno:
 
 def _dorucenie(monkeypatch, stupen, styl="voice", hlas=True):
     import app as app_mod
+    import app_today
     monkeypatch.setattr(app_mod, "threading", types.SimpleNamespace(Thread=_Vlakno))
+    # `_fire_somatic_cue` byva v mixine app_today (TodayMixin) a cita
+    # `threading` zo svojho modulu - synchronne vlakno treba aj tam.
+    monkeypatch.setattr(app_today, "threading", types.SimpleNamespace(Thread=_Vlakno))
     spustene = []
     slot = types.SimpleNamespace(index=1, text_value="Teeth")
     a = types.SimpleNamespace(

@@ -118,8 +118,12 @@ def _relacia_so_stylom(monkeypatch, styl, svet="play"):
     doruci jednu hlasku z hlasneho ramena. Vrati (stupen, spustene _emit,
     vykreslene piktogramy, zaznam hlasky)."""
     import app as app_mod
+    import app_today
     D = app_mod.DandurfApp
     monkeypatch.setattr(app_mod, "threading", types.SimpleNamespace(Thread=_Vlakno))
+    # `_fire_somatic_cue` byva v mixine app_today (TodayMixin) a cita
+    # `threading` zo svojho modulu - synchronne vlakno treba aj tam.
+    monkeypatch.setattr(app_today, "threading", types.SimpleNamespace(Thread=_Vlakno))
     spustene, vykreslene = [], []
     slot = types.SimpleNamespace(index=1, text_value="Teeth")
     a = types.SimpleNamespace(
