@@ -10,6 +10,10 @@ Dve sekcie presunute z app.py bez zmeny:
     relacie, meracie okna, dotaznik kontextu, promocia),
   * import / export profilov (zdielanie kodom) - profil ako kod do schranky
     a odstranenie slotov navyse.
+
+Pozor v testoch: `_close_hr_session` a `_maybe_graduate` citaju `time` z
+tohto modulu - falosne hodiny treba podstrcit aj tu (`app_data.time`), nie
+len na module app.
 """
 
 import base64

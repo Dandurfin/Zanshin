@@ -31,7 +31,7 @@ import i18n  # noqa: E402
 import theme  # noqa: E402
 from _zdroj_appky import zdroj_metody  # noqa: E402
 
-DEN =86400.0
+DEN = 86400.0
 T0 = 1_780_000_000.0
 
 

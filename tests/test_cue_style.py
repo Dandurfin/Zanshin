@@ -28,7 +28,7 @@ import rebrik  # noqa: E402
 import trigger  # noqa: E402
 from _zdroj_appky import strom_appky, zdroj_appky  # noqa: E402
 
-KOREN =os.path.join(os.path.dirname(__file__), "..")
+KOREN = os.path.join(os.path.dirname(__file__), "..")
 
 
 def _read(meno):

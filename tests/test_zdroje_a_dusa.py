@@ -22,7 +22,7 @@ import i18n  # noqa: E402
 import trigger  # noqa: E402
 from _zdroj_appky import zdroj_appky, zdroj_metody  # noqa: E402
 
-ROOT =os.path.join(os.path.dirname(__file__), "..")
+ROOT = os.path.join(os.path.dirname(__file__), "..")
 
 # Čo appka ukazovala do 0.2 (guide_content.PHILOSOPHY_SOURCES pred
 # sources-soul). Z appky odišlo, z ZDROJE.md nesmie.

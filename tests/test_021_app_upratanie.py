@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from _zdroj_appky import strom_appky, subory_appky, zdroj_appky  # noqa: E402
 
-KOREN =os.path.join(os.path.dirname(__file__), "..")
+KOREN = os.path.join(os.path.dirname(__file__), "..")
 
 
 def _zdroj(meno):

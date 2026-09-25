@@ -8,8 +8,9 @@ atributy.
 Styri sekcie presunute z app.py bez zmeny:
   * prepinanie jazyka - prestavba okna v novom jazyku,
   * prepinanie sveta (hra / praca) - svet, jeho vzhlad a prepinace
-    (konstanta ALGORITMUS_SVET ostala v DandurfApp - citaju ju len metody
-    v app.py),
+    (konstanta ALGORITMUS_SVET ostala v DandurfApp - tieto metody ju
+    necitaju, cita ju `_kriticky_popis` v app.py a `_open_hr_session` v
+    app_session.py),
   * prepinanie temy - prefarbenie uz postaveneho okna,
   * settings - nacitanie a ulozenie dandurf_settings.json, hlasitost,
     vyvazenie SFX/hlas a lista "Edge TTS chyba".

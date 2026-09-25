@@ -31,7 +31,7 @@ import trigger  # noqa: E402
 from settings_model import MODE_COMBO, MODE_SFX, MODE_TTS  # noqa: E402
 from _zdroj_appky import strom_appky  # noqa: E402
 
-KOREN =os.path.join(os.path.dirname(__file__), "..")
+KOREN = os.path.join(os.path.dirname(__file__), "..")
 
 
 def rel(i, **kw):

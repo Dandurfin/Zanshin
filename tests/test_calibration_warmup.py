@@ -14,7 +14,7 @@ import i18n  # noqa: E402
 import trigger  # noqa: E402
 from _zdroj_appky import zdroj_appky  # noqa: E402
 
-PROJ =os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PROJ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def _feed(stats, values, start=1000.0, step=1.5):

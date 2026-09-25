@@ -13,8 +13,8 @@ OD VERZIE 2.1 TU NIE JE ZIADNY KLAVESOVY HOOK. Hlasku nespusta stlacenie,
 ale telo: `trigger.CueTrigger` sleduje zataz z hodiniek a `activity.py`
 zistuje cez `GetLastInputInfo`, ci je hrac aktivny - to vracia jedine
 pocet milisekund od posledneho vstupu, nie to, co sa stlacilo. Rozhodnutie
-o doruceni ostava tu, lebo je tesne prepojene s UI (ui_call/log_threadsafe)
-a s overlay vrstvou.
+o doruceni ostava v DandurfApp (mixin app_today.TodayMixin), lebo je tesne
+prepojene s UI (ui_call/log_threadsafe) a s overlay vrstvou.
 """
 
 import os
@@ -73,10 +73,11 @@ import hud_paint
 
 # Mixiny DandurfApp (app_*.py) sa importuju az tu, za vsetkymi modulmi
 # vyssie: co potrebuju, je uz nacitane, takze nemenia poradie importov
-# (gamepad pred audio_engine). Vynimky su `background` a `data_io` - app.py
-# ich uz sam nepouziva a nacita ich az mixin (pri importe `background` len
-# nacita PIL a `data_io` len definuje konstanty). Mena spolocne pre app.py
-# aj mixiny (app_log, nazvy jazykov, skratka "Teraz nie", ImageTk) su v
+# (gamepad pred audio_engine). Vynimky su `background`, `data_io` a
+# `theme_recolor` - app.py ich uz sam nepouziva a nacita ich az mixin (pri
+# importe `background` len nacita PIL, `data_io` a `theme_recolor` len
+# definuju konstanty a funkcie). Mena spolocne pre app.py aj mixiny
+# (app_log, nazvy jazykov, skratka "Teraz nie", ImageTk) su v
 # app_spolocne.py - mixin nesmie importovat app (kruhovy import).
 from app_spolocne import (LANG_NATIVE_LABELS, SNOOZE_HOTKEY_MINUTES,
                           _ImageTk, app_log)

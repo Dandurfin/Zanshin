@@ -22,7 +22,8 @@ Presunute z app.py bez zmeny:
 
 Konstanty `HERO_PERIOD_S`, `DASHBOARD_DRAG_PX` a `BACKDROP_DEBOUNCE_MS`
 ostali v triede DandurfApp medzi ostatnymi konstantami triedy -
-`_dashboard_drag` a `_naplanuj_backdrop` ich citaju cez `self`.
+`_dashboard_drag` a `_naplanuj_backdrop` citaju svoju cez `self`
+(`HERO_PERIOD_S` dnes necita nic).
 
 Pozor v testoch: `_tick_cue_trigger`, `_refresh_session_trace`,
 `_history_cached` a `_dashboard_stat_value` citaju `time` z tohto modulu a
