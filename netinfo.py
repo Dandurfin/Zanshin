@@ -29,6 +29,7 @@ pamati a do nastaveni sa nezapisuje.
 """
 
 import ipaddress
+import re
 import socket
 
 # "Pocuvaj na vsetkych sietach" - nie je to adresa tohto PC, takze sa
@@ -118,6 +119,38 @@ def mask_ip(ip):
 def ip_for_screen(ip, show=False):
     """Adresa pre okno aj dennik: cela len ked si ju hrac odkryl."""
     return ip if show else mask_ip(ip)
+
+
+# Kandidati na adresu vo volnom texte. Ci to naozaj adresa je, rozhodne az
+# `ipaddress` - cas "12:34:56" ani verzia "0.2.2" sa tak nezamaskuju.
+# Okolie strazi len dalsie cislo ("1.2.3.4.5" nie je adresa), nie samotnu
+# bodku - adresa na konci vety ("... z 10.0.0.5.") sa musi zamaskovat tiez.
+_IPV4_V_TEXTE = re.compile(r"(?<!\d)(?<!\d\.)(?:\d{1,3}\.){3}\d{1,3}(?!\.?\d)")
+_IPV6_V_TEXTE = re.compile(
+    r"(?<![0-9A-Fa-f:])[0-9A-Fa-f]{0,4}(?::[0-9A-Fa-f]{0,4}){2,7}(?![0-9A-Fa-f:])")
+
+
+def _maskuj_zhodu(zhoda):
+    kus = zhoda.group(0)
+    try:
+        ipaddress.ip_address(kus)
+    except ValueError:
+        return kus
+    return mask_ip(kus)
+
+
+def mask_ips_in_text(text):
+    """Hotovy riadok textu bez adries - pre subor logu.
+
+    Riadky dennika ukazuju adresu cez `ip_for_screen`, cize po "Ukazat IP"
+    v nich je cela. Ked taky riadok musi ist do app.log (dennik v okne uz
+    nie je, viz `DandurfApp.log`), adresa tam nesmie - PRIVACY.md slubuje,
+    ze app.log adresu PC neobsahuje. IPv4 ide prva, aby z "::ffff:a.b.c.d"
+    neostala cast adresy."""
+    if not text:
+        return text
+    text = _IPV4_V_TEXTE.sub(_maskuj_zhodu, str(text))
+    return _IPV6_V_TEXTE.sub(_maskuj_zhodu, text)
 
 
 def pairing_address(ip, port, show=False):

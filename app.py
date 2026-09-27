@@ -38,6 +38,7 @@ import hr_stats
 import rebrik
 import trigger
 import guide_content
+import netinfo
 from heart_rate import HeartRateMonitor
 from hud import StatsHud
 import theme as theme_mod
@@ -2378,14 +2379,36 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         if self.log_text is None:
             print(self._last_log_line)
             return
-        self.log_text.configure(state="normal")
-        self.log_text.insert("end", f"{self._last_log_line}\n")
-        self.log_text.see("end")
-        if int(self.log_text.index("end-1c").split(".")[0]) > 200:
-            self.log_text.delete("1.0", "50.0")
-        self.log_text.configure(state="disabled")
+        # DENNIK UZ NEMUSI EXISTOVAT. Okno zanikne pri `root.destroy()` v
+        # `_quit`, a kod, ktory v tej chvili este bezi, loguje dalej - napr.
+        # `_close_hr_session` po dotazniku (pad v app.log z buildu: TclError
+        # "invalid command name ...!ctktextbox.!text"). Zapis do dennika je
+        # len zobrazenie, nesmie zhodit volajuceho; riadok ide aspon do suboru.
+        try:
+            self.log_text.configure(state="normal")
+            self.log_text.insert("end", f"{self._last_log_line}\n")
+            self.log_text.see("end")
+            if int(self.log_text.index("end-1c").split(".")[0]) > 200:
+                self.log_text.delete("1.0", "50.0")
+            self.log_text.configure(state="disabled")
+        except tk.TclError:
+            self._dennik_bez_okna(message)
+            return
         try:
             self.log_toggle_btn.configure(text=self._log_toggle_text())
+        except Exception:
+            pass
+
+    def _dennik_bez_okna(self, message):
+        """Riadok dennika, ktory uz nema kam ist - do app.log BEZ adries.
+
+        Riadky dennika mozu niest IP adresu PC (po "Ukazat IP" celu), a
+        app.log ju podla PRIVACY.md obsahovat nesmie - preto maska. Samotny
+        `log` zamerne subor nevola vobec (test_ip_skryta): do suboru ide len
+        tento nahradny riadok, ked okno zaniklo."""
+        try:
+            app_log.info("dennik (okno uz nie je): %s",
+                         netinfo.mask_ips_in_text(message))
         except Exception:
             pass
 
@@ -2701,37 +2724,70 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         self.ui_call(self._quit)
 
     def _quit(self):
+        # UKONCENIE NESMIE BEZAT DVAKRAT VNORENE.
+        #
+        # `stop_listening` -> `_close_hr_session` -> `_ask_session_context`
+        # pri zatvarani CAKA na dotaznik (`wait_window`). To je vnorena
+        # slucka Tk a ta vybavi aj dalsie "Ukoncit" z listy. Druhy `_quit`
+        # potom prebehol cely az po `root.destroy()`, dotaznik zanikol s
+        # oknom a prvy `_quit` pokracoval v uz znicenom okne - `log` v
+        # `_close_hr_session` spadol na TclError (pad v app.log z buildu).
+        # Druhe "Ukoncit" teraz len zavrie dotaznik (ako "Preskocit") a
+        # ukoncenie dokonci prvy `_quit`, v poradi nizsie.
+        if getattr(self, "_quit_bezi", False):
+            dotaznik = getattr(self, "_dotaznik_pri_zatvarani", None)
+            if dotaznik is not None:
+                try:
+                    dotaznik.close()
+                except Exception:
+                    app_log.exception("ukoncenie: dotaznik sa nepodarilo zavriet")
+            return
+        self._quit_bezi = True
         # Kym je toto True, `_ask_session_context` na dotaznik pocka.
         self._zatvara_sa = True
-        self.stop_listening()
-        for attr in ("_pregen_job", "_snooze_job", "_activity_job",
-                     "_hr_retry_job"):
-            job = getattr(self, attr, None)
-            if job is not None:
+
+        # KAZDY KROK ZVLAST. Vynimka z jedneho kroku (napr. `stop_listening`)
+        # preskocila vsetko za nim: HUD, vizualy v hre, skratka, port pre
+        # hodinky a ikona v liste bezali dalej a `root.destroy()` neprisiel.
+        def krok(meno, fn):
+            try:
+                fn()
+            except Exception:
+                app_log.exception("ukoncenie: krok %s zlyhal - pokracujem dalsim", meno)
+
+        try:
+            # Relacia sa uklada PRVA (`stop_listening` -> `_close_hr_session`).
+            krok("stop_listening", self.stop_listening)
+            for attr in ("_pregen_job", "_snooze_job", "_activity_job",
+                         "_hr_retry_job"):
+                job = getattr(self, attr, None)
+                if job is not None:
+                    try:
+                        self.root.after_cancel(job)
+                    except Exception:
+                        pass
+                    setattr(self, attr, None)
+            krok("_close_hr_session", self._close_hr_session)
+            krok("hud", lambda: self.hud.stop())
+            krok("vizualy", lambda: self.overlay_manager.stop_all())
+            krok("ovladac", lambda: self.gamepad.stop())
+            # Hotkey drzi vlastne vlakno s `GetMessageW` slucku - bez tohto by
+            # viselo az do konca procesu a kombinacia by ostala zabrata.
+            # Zamerne az TU, nie v `stop_listening` ani `on_close`: "teraz nie"
+            # ma fungovat aj ked appka nepocuva aj ked je minimalizovana v liste.
+            krok("hotkey", self.stop_snooze_hotkey)
+            krok("senzor tepu", lambda: self.heart_rate_monitor.stop())
+            if self.game_watcher is not None:
+                krok("game_watcher", lambda: self.game_watcher.stop())
+            krok("hlas", lambda: self.worker.stop())
+            if self.tray_icon:
                 try:
-                    self.root.after_cancel(job)
+                    self.tray_icon.stop()
                 except Exception:
                     pass
-                setattr(self, attr, None)
-        self._close_hr_session()
-        self.hud.stop()
-        self.overlay_manager.stop_all()
-        self.gamepad.stop()
-        # Hotkey drzi vlastne vlakno s `GetMessageW` slucku - bez tohto by
-        # viselo az do konca procesu a kombinacia by ostala zabrata.
-        # Zamerne az TU, nie v `stop_listening` ani `on_close`: "teraz nie"
-        # ma fungovat aj ked appka nepocuva aj ked je minimalizovana v liste.
-        self.stop_snooze_hotkey()
-        self.heart_rate_monitor.stop()
-        if self.game_watcher is not None:
-            self.game_watcher.stop()
-        self.worker.stop()
-        if self.tray_icon:
-            try:
-                self.tray_icon.stop()
-            except Exception:
-                pass
-        self.root.destroy()
+            krok("root.destroy", self.root.destroy)
+        finally:
+            self._quit_bezi = False
 
     # Registracia globalnej skratky "teraz nie" (zo sekcie rychly dock).
     # Zvysok "teraz nie" (prepinac, odlozenie hlasok, bodka stavu) je v

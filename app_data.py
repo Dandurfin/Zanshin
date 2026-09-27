@@ -301,7 +301,15 @@ class DataMixin:
             # kontext relacie NEDAL vyplnit vobec. A prave vtedy sa vypina
             # najcastejsie - dohral som a idem spat.
             if getattr(self, "_zatvara_sa", False):
-                self.root.wait_window(dialog.top)
+                # Cez tuto referenciu dotaznik zavrie druhe "Ukoncit" z listy
+                # (viz `_quit`). Inak by vo vnorenej slucke `wait_window`
+                # prebehlo cele druhe ukoncenie a tento `_quit` by sa vratil
+                # do zniceneho okna.
+                self._dotaznik_pri_zatvarani = dialog
+                try:
+                    self.root.wait_window(dialog.top)
+                finally:
+                    self._dotaznik_pri_zatvarani = None
         except Exception:
             app_log.exception("dotaznik kontextu sa nepodarilo otvorit")
 
