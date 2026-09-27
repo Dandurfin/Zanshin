@@ -2144,7 +2144,10 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
                      command=self.on_hr_toggle).grid(
             row=7, column=0, columnspan=2, sticky="w", pady=(10, 10))
 
-        self.hr_status_label = ctk.CTkLabel(inner, text="", font=("Segoe UI", 13, "bold"))
+        # Zalomenie ako popis kritickeho tepu vyssie: od 0.2.2 moze za tepom
+        # stat aj veta o dvoch radoch tepu v jednom zdroji.
+        self.hr_status_label = ctk.CTkLabel(inner, text="", font=("Segoe UI", 13, "bold"),
+                                            anchor="w", wraplength=430, justify="left")
         self.hr_status_label.grid(row=8, column=0, columnspan=2, sticky="w")
         self.refresh_hr_status_label()
 

@@ -231,9 +231,12 @@ class StatsHud:
         # Pasmo sa pocita RAZ, v `HeartStats.zone` (tep voci pokoju) - to
         # iste slovo ukazuje Dnes aj kontrolka tepu. `render_hud` ho len
         # nakresli; kalibracia, usadzanie aj odpojenie maju prednost.
+        # Cislo je `display_bpm` (median par sekund), nie posledna surova
+        # vzorka - dva rady tepu v jednom zdroji by ho inak rozskakali.
+        # Krivka, zataz aj pasmo ostavaju na surovych vzorkach.
         image = hud_paint.render_hud(
             self.style,
-            bpm=stats.last_bpm if self.connected else None,
+            bpm=stats.display_bpm if self.connected else None,
             stress=stats.stress,
             zone=stats.zone,
             history=stats.series(90),

@@ -37,6 +37,7 @@ import socket
 import struct
 import threading
 import time
+from collections import deque
 
 import logging_setup
 import obs_websocket
@@ -89,6 +90,108 @@ def _err_no(exc):
     return getattr(exc, "winerror", None) or getattr(exc, "errno", None)
 
 
+# DVA ROZNE TEPY V JEDNOM ZDROJI (0.2.2).
+#
+# Odmerane u zadavatela: appka na hodinkach zapisovala do JEDNEHO zdroja
+# ("Tep") dva rady tepu prepletene - v tej istej sekunde hodnota z vyssieho
+# radu a hned z nizsieho, jeden rad o 5-10 BPM nizsie nez druhy, pri
+# pokojnom tepe sa zliali. Pre
+# meranie je to jeden tep, ktory skace hore-dole, a hrac to sam nezisti.
+# Appka to preto rozpozna a povie (`DvaRadyTepu`, `_Run.note_bpm`) - na
+# meranie nesiaha, oprava je v nastaveniach appky na hodinkach.
+#
+# Vzor sa hlada v poslednych DVA_TEPY_OKNO_S sekundach JEDNEHO zdroja a
+# musia platit VSETKY styri veci naraz - kazda odreze iny falosny poplach.
+# Cisla su overene na umelych radoch (tests/test_022_dva_tepy.py) a na
+# simulacii: ani sumny rad pri 1-3 Hz, ani duplikaty, ani jednorazove spicky,
+# ani davky po zaseknutej Wi-Fi nevyvolali poplach, dva rady 5-10 BPM od seba
+# ano - pri 1 Hz do ~15 s, pri paroch sprav kazde 2-4 s do ~35 s.
+DVA_TEPY_OKNO_S = 60.0
+# 1) SPRAV JE VIAC, NEZ STIHA JEDEN SENZOR: aspon 30 % medzier medzi
+#    spravami je kratsich nez 0,65 s. Senzor sa meni ~1x za sekundu, takze
+#    jeden rad ma take medzery len obcas (jitter Wi-Fi); dva rady ich maju
+#    pri kazdom citani (u zadavatela median medzery 0,51 s).
+DVA_TEPY_BLIZKO_S = 0.65
+DVA_TEPY_MIN_PODIEL_BLIZKYCH = 0.30
+# 2) CIK-CAK: hodnota odskoci od predoslej o aspon 4 BPM a hned sa o aspon
+#    4 BPM vrati opacnym smerom, a aspon jedna z tych dvoch medzier je
+#    kratka (vyssie). Takych miest musi byt aspon 8 - jedna spicka ich
+#    urobi najviac dve. Pod 4 BPM je bezny sum senzora.
+DVA_TEPY_SKOK_BPM = 4
+DVA_TEPY_MIN_CIKCAKOV = 8
+# 3) NIE JEDNA DAVKA: cik-caky su rozlozene aspon na 10 s. Po zaseknutej
+#    Wi-Fi pride naraz kopa starych sprav jedneho radu - ta nesmie stacit.
+DVA_TEPY_MIN_ROZPATIE_S = 10.0
+# 4) KAZDA DRUHA HODNOTA PATRI K SEBE: susedne vzorky sa lisia v sucte aspon
+#    2x viac nez vzorky ob jednu. Pri dvoch radoch skace kazdy krok o rozdiel
+#    radov, ob jednu je to ten isty rad; pri jednom rade (aj sumnom, aj s
+#    duplikatmi) je to naopak alebo nastejno. Toto je hlavna poistka proti
+#    sumu - bez nej velmi sumny rad pri 2 Hz v simulacii obcas vyrobil
+#    poplach.
+DVA_TEPY_POMER = 2.0
+# Pod tolko vzoriek v okne je pomer (4) len nahoda.
+DVA_TEPY_MIN_VZORIEK = 16
+# Pamat: mena zdrojov si voli klient, preto najviac tolkoto zdrojov na beh
+# a v kazdom najviac tolkoto vzoriek (60 s aj pri ~4 spravach za sekundu).
+DVA_TEPY_MAX_ZDROJOV = 4
+DVA_TEPY_MAX_VZORIEK = 256
+# Meno zdroja do dennika a app.log skratene, rovnako ako surova sprava v `_emit`.
+MENO_ZDROJA_MAX = 80
+
+
+def dva_rady_v_okne(vzorky):
+    """True, ked [(cas, bpm)] (stare -> nove) nesie dva prepletene rady tepu.
+
+    Ciste pravidla 1-4 vyssie, bez stavu - testuje sa priamo.
+    """
+    n = len(vzorky)
+    if n < max(3, DVA_TEPY_MIN_VZORIEK):
+        return False
+    blizko = [vzorky[i + 1][0] - vzorky[i][0] < DVA_TEPY_BLIZKO_S
+              for i in range(n - 1)]
+    if sum(blizko) < DVA_TEPY_MIN_PODIEL_BLIZKYCH * (n - 1):
+        return False
+    cikcaky = []
+    susedne = ob_jednu = 0.0
+    for i in range(n - 2):
+        a, b, c = vzorky[i][1], vzorky[i + 1][1], vzorky[i + 2][1]
+        susedne += abs(b - a)
+        ob_jednu += abs(c - a)
+        tam, spat = b - a, c - b
+        if (abs(tam) >= DVA_TEPY_SKOK_BPM and abs(spat) >= DVA_TEPY_SKOK_BPM
+                and (tam > 0) != (spat > 0) and (blizko[i] or blizko[i + 1])):
+            cikcaky.append(vzorky[i + 1][0])
+    if len(cikcaky) < DVA_TEPY_MIN_CIKCAKOV:
+        return False
+    if cikcaky[-1] - cikcaky[0] < DVA_TEPY_MIN_ROZPATIE_S:
+        return False
+    return susedne >= DVA_TEPY_POMER * ob_jednu
+
+
+class DvaRadyTepu:
+    """Klzave okno tepu z JEDNEHO zdroja pre `dva_rady_v_okne`.
+
+    Nie je vlaknovo bezpecne samo - vola ho `_Run.note_bpm` pod zamkom behu.
+    """
+
+    def __init__(self):
+        self._vzorky = deque(maxlen=DVA_TEPY_MAX_VZORIEK)
+
+    def pridaj(self, bpm, cas):
+        """Prida vzorku a vrati True, ked okno prave nesie dva rady."""
+        self._vzorky.append((float(cas), float(bpm)))
+        hranica = float(cas) - DVA_TEPY_OKNO_S
+        while self._vzorky and self._vzorky[0][0] < hranica:
+            self._vzorky.popleft()
+        return dva_rady_v_okne(list(self._vzorky))
+
+
+def meno_zdroja_do_dennika(zdroj):
+    """Meno zdroja pre riadok v denniku: bez zalomeni (klient si ho voli sam
+    a novy riadok by v denniku vyrobil falosny zaznam) a skratene."""
+    return " ".join(str(zdroj).split())[:MENO_ZDROJA_MAX]
+
+
 class _Run:
     """Stav jedneho behu prijimaca (jednej generacie). Drzi si vsetky
     otvorene sockety, aby ich `stop()` vedel okamzite zavriet."""
@@ -119,6 +222,10 @@ class _Run:
         # Kolko klientov obs-websocket prave drzi spojenie po handshake -
         # "client_gone" sa hlasi az ked odide POSLEDNY (viz `_websocket_client`).
         self.klienti = 0
+        # Dva rady tepu v jednom zdroji: okno pre kazdy zdroj zvlast a priznak,
+        # ze sa to v tomto behu uz nahlasilo (RAZ za beh, viz `note_bpm`).
+        self.dva_tepy = {}
+        self.dva_tepy_hlasene = False
 
     def client_linked(self):
         with self._lock:
@@ -170,6 +277,31 @@ class _Run:
             self.last_data = time.monotonic()
             self.stale_reported = False
 
+    def note_bpm(self, zdroj, bpm, cas=None):
+        """Tep z pomenovaneho zdroja do okna `DvaRadyTepu`. Vrati True PRAVE
+        RAZ za beh - ked sa v niektorom zdroji prvy raz ukaze vzor dvoch radov.
+
+        Klucom je len meno zdroja, nie spojenie: dve spojenia, ktore pisu do
+        toho isteho zdroja, rozbiju meranie rovnako. Bez mena (UDP/OSC, klient
+        bez mena zdroja) sa nehlada - hlaska by nemala co pomenovat.
+        """
+        if zdroj is None or bpm is None:
+            return False
+        cas = time.monotonic() if cas is None else cas
+        with self._lock:
+            if self.dva_tepy_hlasene:
+                return False
+            okno = self.dva_tepy.get(zdroj)
+            if okno is None:
+                if len(self.dva_tepy) >= DVA_TEPY_MAX_ZDROJOV:
+                    return False
+                okno = self.dva_tepy[zdroj] = DvaRadyTepu()
+            if not okno.pridaj(bpm, cas):
+                return False
+            self.dva_tepy_hlasene = True
+            self.dva_tepy.clear()           # uz netreba, pamat sa uvolni
+            return True
+
 
 class HeartRateMonitor:
     """Prijimac tepu.
@@ -177,8 +309,10 @@ class HeartRateMonitor:
     `on_bpm(bpm, generation)` sa vola pri kazdej prijatej platnej hodnote,
     `on_status((kind, payload), generation)` pri zmene stavu pripojenia -
     kind je "connecting" | "disconnected" | "error" | "busy" | "bound_any"
-    | "client" | "client_gone" | "udp_busy" | "udp_error". Posledne dva
-    znamenaju "UDP sa neotvorilo, TCP bezi dalej" - beh nekonci.
+    | "client" | "client_gone" | "udp_busy" | "udp_error" | "two_series".
+    "udp_busy"/"udp_error" znamenaju "UDP sa neotvorilo, TCP bezi dalej" -
+    beh nekonci. "two_series" (payload = meno zdroja pre dennik) pride
+    najviac raz za beh: do jedneho zdroja chodia dva rozne rady tepu.
     Oba callbacky pridu z pozadoveho vlakna, volajuci si ich musi sam
     preplanovat do GUI vlakna (viz DandurfApp.ui_call) a mal by zahodit
     tie, ktorych `generation` uz nie je aktualna."""
@@ -308,6 +442,12 @@ class HeartRateMonitor:
             log.info("z hodiniek prislo [%s]: %r -> %s",
                      (zdroj or "bez mena")[:80], ukazka, metriky)
         self._emit_bpm(metriky["bpm"], run)
+        # Dva rady tepu v jednom zdroji: raz za beh riadok do app.log a stav
+        # pre appku. Tep ide von vyssie nezmeneny - toto meranie neopravuje.
+        if run.note_bpm(zdroj, metriky["bpm"]):
+            meno = meno_zdroja_do_dennika(zdroj)
+            log.info("HR: do zdroja [%s] chodia dva rozne rady tepu", meno)
+            self._notify(self.on_status, ("two_series", meno), run)
         if self.on_metrics is not None and (metriky["steps"] is not None
                                             or metriky["speed"] is not None):
             # MENO ZDROJA IDE SPOLU S HODNOTAMI. Bez neho by `hr_stats`

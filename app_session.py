@@ -412,6 +412,19 @@ class SessionMixin:
                 self.log(tr("log.hr_udp_error", port=port, err=err))
             self.refresh_hr_status_label()
             return
+        if kind == "two_series":
+            # DO JEDNEHO ZDROJA CHODIA DVA ROZNE TEPY (0.2.2, rozpoznava
+            # `heart_rate.dva_rady_v_okne`). Na meranie ani spojenie sa
+            # nesiaha - tep chodi dalej a oprava je v appke na hodinkach.
+            # Riadok do dennika a text pri prepinaci (`_hr_status_display`),
+            # RAZ za beh rovnako ako UDP vyssie: priznak nesie generaciu, novy
+            # beh (vypnutie, restart, iny port) ho zahodi sam.
+            if getattr(self, "_hr_dva_tepy_gen", None) == self._hr_generation:
+                return
+            self._hr_dva_tepy_gen = self._hr_generation
+            self.log(tr("log.hr_two_series", source=payload))
+            self.refresh_hr_status_label()
+            return
         if kind == "client":
             # hodinky drzia spojenie - to este NEznamena, ze posielaju tep
             self._cancel_no_client_check()      # klient prisiel (B2)
@@ -611,10 +624,24 @@ class SessionMixin:
     def _hr_status_display(self):
         pal = self.pal
         if self._hr_state == "connected" and self._hr_last_bpm is not None:
+            # CISLO JE VYHLADENE (0.2.2) - to iste ako na HUD-e a na Dnes
+            # (`HeartStats.display_bpm`). O tom, ci sa ukaze, rozhoduje dalej
+            # surovy `_hr_last_bpm`; bez `hr_stats` (atrapy) ostava surove.
+            tep = getattr(getattr(self, "hr_stats", None), "display_bpm", None)
+            if tep is None:
+                tep = self._hr_last_bpm
+            if (self._hr_generation
+                    and getattr(self, "_hr_dva_tepy_gen", None) == self._hr_generation):
+                # Dva rady tepu v jednom zdroji. Az ked tep chodi - bez dat
+                # ma prednost skutocny stav spojenia (a UDP nizsie), lebo ten
+                # je to, co hrac prave potrebuje vediet. Cislo ostava, text
+                # pribudne za nim.
+                return (f"❤️ {tep} BPM · {tr('settings.hr_status_two_series')}",
+                        pal["warn"])
             # farby pasiem, nie success/danger - inak by stav tepu svietil
             # inou zelenou, nez akou appka kresli pokoj (viz theme.ZONE_TOKENS)
-            zone = "critical" if self._hr_last_bpm > self.hr_critical_bpm else "calm"
-            return f"❤️ {self._hr_last_bpm} BPM", theme_mod.zone_color(pal, zone)
+            zone = "critical" if tep > self.hr_critical_bpm else "calm"
+            return f"❤️ {tep} BPM", theme_mod.zone_color(pal, zone)
         if self._hr_state == "linked":
             return tr("settings.hr_status_waiting"), pal["warn"]
         if self._hr_state == "busy":

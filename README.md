@@ -362,6 +362,16 @@ services such as Pulsoid, HypeRate or Stromno (also third‑party):** they route
 your heart rate through their own servers, and Zanshin only takes heart rate
 sent straight to this PC.
 
+*Not released yet (0.2.2):* the heart-rate number on screen (the HUD, *Today*
+and next to the switch) is the median of the last 3 seconds of readings, so it
+doesn't jump with every message; measuring still uses every reading. If the
+companion writes two different heart rates into one source and the readings
+keep jumping between them, Zanshin says so in its log and shows *Two different
+heart rates in one source — check the watch app* next to the switch: in the
+companion's settings, let only the live heart
+rate write into the heart-rate source, or the second one ends up in your
+measurements too.
+
 ## Prior art & related work
 
 Zanshin isn't the only project near this idea. None of the ones below do the

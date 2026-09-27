@@ -47,6 +47,7 @@ Nic z toho nie je HRV a nic z toho nie je diagnoza.
 import json
 import os
 import time
+from collections import deque
 from datetime import datetime, timedelta
 
 HISTORY_SECONDS = 180.0        # co drzime na krivku HUD-u
@@ -77,6 +78,24 @@ ZONE_CRITICAL = "critical"
 # medzi dvoma slovami a farbami; pat je pri kadencii hodiniek (~0,9 az
 # ~2,9 s na vzorku) zhruba 5 az 15 sekund - stale "teraz", ale uz nie sum.
 ZONE_MEDIAN_SAMPLES = 5
+
+# CISLO TEPU NA OBRAZOVKE (0.2.2) je median vzoriek z poslednych tolkych
+# sekund, nie posledna surova hodnota. Len obrazovka - do merania (`add`,
+# zataz, pasma, suhrn relacie) ide kazda vzorka ako doteraz.
+#
+# Preco: appka na hodinkach vie do jedneho zdroja pisat DVA rozne tepy
+# (u zadavatela ~2 spravy za sekundu, jeden rad o 5-10 BPM nizsie nez
+# druhy) a cislo potom v tej istej sekunde skakalo hore-dole o tych 5-10 BPM.
+# Preco 3 s: senzor sa meni zhruba raz za sekundu, takze v okne su ~3
+# citania jedneho radu - median zahodi jednu ujdenu hodnotu. Pri dvoch
+# radoch (~6 hodnot v okne, pol na pol) padne medzi ne a neskace. Za
+# skutocnym nastupom tepu cislo meska zhruba o sekundu (dve z troch citani
+# musia byt nove), menej nez slovo pasma (median 5 vzoriek, 5 az 15 s) -
+# cislo a farba sa teda nerozidu. Dlhsie okno by uz bolo vidno ako
+# oneskorenie pri prudkom nastupe tepu.
+ZOBRAZ_OKNO_S = 3.0
+# Strop vzoriek v okne - 3 s ani pri 10 spravach za sekundu viac nemaju.
+ZOBRAZ_MAX_VZORIEK = 32
 
 
 def zone_for(stress):
@@ -1282,6 +1301,10 @@ class HeartStats:
         self._last_ts = None
         self.last_bpm = None
         self.last_beat_ts = now
+        # [(cas, bpm)] poslednych par sekund LEN pre cislo na obrazovke
+        # (`display_bpm`). Nuluje sa spolu s `last_bpm` - tu a v `clear_live`
+        # - takze po vypadku ci novej relacii nevytiahne staru hodnotu.
+        self._zobraz = deque(maxlen=ZOBRAZ_MAX_VZORIEK)
         # Najnizsia zakladna, aku sme v tejto relacii videli. Viz `baseline`.
         self._baseline_kotva = None
         # [(cas, prirastok krokov)] a [(cas, rychlost)] za poslednych 10 minut
@@ -1453,6 +1476,7 @@ class HeartStats:
 
         self.last_bpm = bpm
         self.last_beat_ts = now
+        self._zobraz.append((now, bpm))
         self.session_count += 1
         self.session_sum += bpm
         self.session_min = bpm if self.session_min is None else min(self.session_min, bpm)
@@ -1594,6 +1618,7 @@ class HeartStats:
         """Senzor sa odpojil - krivka aj zataz idu prec, suhrn relacie ostava."""
         self._samples.clear()
         self.last_bpm = None
+        self._zobraz.clear()
         self.stress = 0.0
         self._raw_stress = 0.0
         self._last_ts = None
@@ -1856,6 +1881,31 @@ class HeartStats:
         otazky, preto dve metody.
         """
         return downsample([b for _, b in self._all], points)
+
+    @property
+    def display_bpm(self):
+        """Cislo tepu pre obrazovku (HUD, Dnes, stitok pri prepinaci) - cele
+        cislo, alebo None, kym appka tep nema.
+
+        Median vzoriek za poslednych `ZOBRAZ_OKNO_S` sekund, vzdy aspon tej
+        poslednej. Okno sa meria od POSLEDNEJ VZORKY, nie od hodin: medzi
+        dvoma spravami cislo stoji a neodplava samo. Meranie toto necita -
+        `last_bpm` aj vsetko ostatne ostava na surovych vzorkach.
+        """
+        if self.last_bpm is None:
+            return None
+        if not self._zobraz:
+            # `last_bpm` bez vzorky v okne (nastavene zvonka) - aspon ono.
+            return int(round(self.last_bpm))
+        posledna = self._zobraz[-1][0]
+        # `0 <=`: keby sa hodiny PC posunuli dozadu, starsie vzorky "z buducnosti"
+        # sa nepocitaju - posledna vzorka v okne ostane vzdy.
+        okno = sorted(b for t, b in self._zobraz
+                      if 0.0 <= posledna - t < ZOBRAZ_OKNO_S)
+        n = len(okno)
+        median = (okno[n // 2] if n % 2
+                  else (okno[n // 2 - 1] + okno[n // 2]) / 2.0)
+        return int(round(median))
 
     def beat_phase(self, now=None):
         """0..1 faza tepu - aby srdce na HUD-e bilo v realnom rytme."""

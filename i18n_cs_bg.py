@@ -970,6 +970,9 @@ CS = {
     'log.hr_udp_busy': 'UDP port {port} drží jiný program, takže tep přes UDP/OSC (např. z iPhonu) nepřijde. Appky pro OBS (TCP) fungují dál. Zavři ten program a „Poslouchat tep z hodinek“ vypni a zapni.',
     'log.hr_udp_error': 'UDP na portu {port} se nepodařilo otevřít ({err}), takže tep přes UDP/OSC (např. z iPhonu) nepřijde. Appky pro OBS (TCP) fungují dál.',
     'settings.hr_status_udp_off': 'Poslouchám jen přes TCP — UDP se neotevřelo',
+    # 0.2.2: dva rozne tepy v jednom zdroji (i18n.py, koniec suboru)
+    'log.hr_two_series': 'Appka na hodinkách posílá do zdroje „{source}“ dva různé tepy, takže hodnoty přeskakují mezi nimi. Číslo na obrazovce je vyhlazené, ale měření bere každou hodnotu: v appce na hodinkách nech do tohoto zdroje zapisovat jen živý tep.',
+    'settings.hr_status_two_series': 'Dva různé tepy v jednom zdroji — zkontroluj appku na hodinkách',
 }
 
 BG = {
@@ -1929,4 +1932,7 @@ BG = {
     'log.hr_udp_busy': 'UDP портът {port} е зает от друга програма, така че пулсът по UDP/OSC (напр. от iPhone) няма да пристига. Приложенията за OBS (TCP) продължават да работят. Затвори тази програма и после изключи и включи отново „Слушай пулса от часовника“.',
     'log.hr_udp_error': 'UDP на порт {port} не можа да се отвори ({err}), така че пулсът по UDP/OSC (напр. от iPhone) няма да пристига. Приложенията за OBS (TCP) продължават да работят.',
     'settings.hr_status_udp_off': 'Слушам само по TCP — UDP не се отвори',
+    # 0.2.2: dva rozne tepy v jednom zdroji (i18n.py, koniec suboru)
+    'log.hr_two_series': 'Приложението на часовника праща в източника „{source}“ два различни пулса, затова стойностите скачат между тях. Числото на екрана е изгладено, но измерването използва всяка стойност: в приложението на часовника остави в този източник да пише само живият пулс.',
+    'settings.hr_status_two_series': 'Два различни пулса в един източник — провери приложението на часовника',
 }

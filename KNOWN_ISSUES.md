@@ -18,6 +18,25 @@ in the history as it was, only without those things, and 0.2 follows it. That
 was the lesson: work stays work, private stays private, and I check every file
 before publishing. What 0.1 got wrong in the app itself is written down below.
 
+## What 0.2.2 changes (not released yet)
+
+These two are in the code here, not in a release yet: the 0.2.1 ZIP doesn't
+have them.
+
+- **The heart-rate number could jump by several BPM within one second.** Some
+  companion setups write two different heart rates into the same source; in
+  mine, one ran 5 to 10 BPM below the other. The number showed whichever came
+  last. **0.2.2:** the HUD, *Today* and the line next to the switch show the
+  median of the last 3 seconds of readings. Measuring doesn't change: load,
+  zones and saved sessions still use every reading.
+- **Nothing told you the companion was sending two heart rates**, and both
+  went into your measurements. **0.2.2:** when the readings in one source keep
+  jumping between two values, Zanshin says so in its log and shows *Two
+  different heart rates in one source — check the watch app* next to the
+  switch while heart rate comes in, until the sensor is switched off or
+  restarted. It doesn't separate the two; the fix is in the companion's
+  settings: only the live heart rate should write into the heart-rate source.
+
 ## What 0.2.1 fixes
 
 0.2.1 is a bug-fix release after a review of the 0.2 code: in a few places it

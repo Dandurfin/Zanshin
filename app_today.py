@@ -443,8 +443,10 @@ class TodayMixin:
         ukaz = connected or lost
         pal = self.pal
         try:
+            # Cislo je vyhladene (`display_bpm`), `connected` vyssie ostava
+            # na surovom `last_bpm` - o stave spojenia to rozhoduje ako doteraz.
             self.dnes_bpm.configure(
-                text=str(int(stats.last_bpm)) if connected else "--",
+                text=str(stats.display_bpm) if connected else "--",
                 text_color=pal["text"] if connected else pal["text_faint"])
             self.dnes_spark.set_series(stats.series(120) if connected else [],
                                        threshold=self.hr_critical_bpm,

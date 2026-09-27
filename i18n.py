@@ -7512,6 +7512,32 @@ _tr7('log.hr_udp_error', 'ポート {port} の UDP を開けませんでした�
 _tr7('settings.hr_status_udp_off', 'TCP のみで待ち受け中 — UDP を開けませんでした', '仅通过 TCP 监听 — UDP 未能打开', 'Слушаю только по TCP — UDP не открылся', 'Escuchando solo por TCP — UDP no se abrió', 'Nur über TCP — UDP ließ sich nicht öffnen', 'À l’écoute en TCP seulement — l’UDP ne s’est pas ouvert', 'Ouvindo só por TCP — o UDP não abriu')
 
 
+# --- 0.2.2: dva rozne tepy v jednom zdroji -----------------------------------
+# Appka na hodinkach vie do jedneho OBS zdroja pisat dva rady tepu naraz a
+# cislo potom skace (`heart_rate.dva_rady_v_okne`). Riadok v denniku raz za
+# beh (meno zdroja, ziadne hodnoty) a text pri prepinaci za cislom tepu
+# (`_hr_status_display`). Veta hovori aj to, co appka s tym robi: cislo na
+# obrazovke vyhladi, meranie berie kazdu hodnotu - preto treba opravit
+# nastavenie na hodinkach. SK/EN rucne, 7 jazykov pod nimi, cs/bg v
+# `i18n_cs_bg.py`.
+STRINGS.update({
+    'log.hr_two_series': _sk_en(
+        'Appka na hodinkách posiela do zdroja „{source}“ dva rôzne tepy, takže '
+        'hodnoty preskakujú medzi nimi. Číslo na obrazovke je vyhladené, no '
+        'meranie berie každú hodnotu: v appke na hodinkách nechaj do tohto '
+        'zdroja zapisovať len živý tep.',
+        'The watch app is sending two different heart rates into the source '
+        '“{source}”, so the readings jump between them. The number on screen '
+        'is smoothed, but measuring uses every reading: in the watch app, let '
+        'only the live heart rate write into this source.'),
+    'settings.hr_status_two_series': _sk_en(
+        'Dva rôzne tepy v jednom zdroji — skontroluj appku na hodinkách',
+        'Two different heart rates in one source — check the watch app'),
+})
+_tr7('log.hr_two_series', '時計アプリがソース「{source}」に異なる心拍を2つ送っているため、値がその間を行き来しています。画面の数値はなめらかにしていますが、計測にはすべての値を使います。時計アプリで、このソースにはリアルタイムの心拍だけを書き込むようにしてください。', '手表应用正在向来源“{source}”发送两个不同的心率，所以数值在两者之间来回跳。屏幕上的数字做了平滑，但测量会用到每一个读数：请在手表应用里只让实时心率写入这个来源。', 'Приложение на часах отправляет в источник «{source}» два разных пульса, поэтому значения прыгают между ними. Число на экране сглажено, но измерение учитывает каждое значение: в приложении на часах оставь для этого источника только живой пульс.', 'La app del reloj envía dos pulsos distintos a la fuente «{source}», así que los valores saltan entre ellos. El número en pantalla está suavizado, pero la medición usa cada lectura: en la app del reloj, deja que en esta fuente solo escriba el pulso en vivo.', 'Die Uhr-App schickt zwei verschiedene Pulswerte in die Quelle „{source}“, deshalb springen die Werte zwischen ihnen hin und her. Die Zahl auf dem Bildschirm ist geglättet, die Messung nutzt aber jeden Wert: Lass in der Uhr-App nur den Live-Puls in diese Quelle schreiben.', 'L’app de la montre envoie deux pouls différents dans la source « {source} », donc les valeurs sautent de l’un à l’autre. Le chiffre à l’écran est lissé, mais la mesure utilise chaque valeur : dans l’app de la montre, laisse seulement le pouls en direct écrire dans cette source.', 'O app do relógio está enviando dois pulsos diferentes para a fonte “{source}”, então os valores pulam entre eles. O número na tela é suavizado, mas a medição usa cada leitura: no app do relógio, deixe só o pulso ao vivo escrever nessa fonte.')
+_tr7('settings.hr_status_two_series', '1つのソースに異なる心拍が2つ — 時計アプリを確認して', '一个来源里有两个不同的心率 — 请检查手表应用', 'Два разных пульса в одном источнике — проверь приложение на часах', 'Dos pulsos distintos en una fuente — revisa la app del reloj', 'Zwei verschiedene Pulswerte in einer Quelle — prüf die Uhr-App', 'Deux pouls différents dans une source — vérifie l’app de la montre', 'Dois pulsos diferentes em uma fonte — confira o app do relógio')
+
+
 # ==========================================================================
 # CESTINA A BULHARCINA (0.2)
 # ==========================================================================
