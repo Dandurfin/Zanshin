@@ -77,7 +77,8 @@ The repository also holds three developer scripts that test the real window:
 You start them by hand, with Zanshin closed. The first two use the real mouse
 (move, click, drag, scroll) and press Escape, so leave the PC alone while they
 run. All three take screenshots of the app's own windows and pictures, with a
-small margin around them, into `logs\` by default. None of them is part of the
+small margin around them (`gui_screenshots.py --okno`: the window alone), into
+`logs\` by default. None of them is part of the
 built app: the build packs `main.py`, the modules it imports and the `assets`
 folder, and nothing imports these scripts.
 
@@ -88,8 +89,9 @@ originals back at the end:
 - `gui_harness_onboarding.py` deletes the settings (`dandurf_settings.json`)
   for the run, so the app starts as on a first start.
 - `gui_harness_auto.py` changes the settings for a while and puts the
-  heart-rate history (`hr_sessions.json`, `hr_insights.json` and the copy of a
-  running session, `hr_session_open.json`) aside for part of the run. Before
+  heart-rate history (`hr_sessions.json`, `hr_insights.json`, the copy of a
+  running session, `hr_session_open.json`, and sessions that couldn't be
+  saved, `hr_session_pending.json`) aside for part of the run. Before
   its first change it copies these files to disk next to the originals
   (`*.pred-harnessom`) and puts them back after an interruption too (Ctrl+C, a
   closed window, a crash). If the process is killed hard, the next run puts
@@ -97,8 +99,33 @@ originals back at the end:
   from the backup isn't overwritten but kept next to it as
   `*.pred-obnovou-<time>`.
 - `gui_screenshots.py` overwrites the settings and the heart-rate history
-  (synthetic history, the other theme) and puts them back, after a crash too.
-  It doesn't touch the mouse or the keyboard.
+  (synthetic history, the other theme) and puts them back, after a crash too,
+  including `hr_session_open.json` and `hr_session_pending.json`, which the
+  app would otherwise add to the history at its start and delete. It doesn't
+  touch the mouse or the keyboard.
+
+`gui_screenshots.py` takes these options:
+
+```bash
+py gui_screenshots.py                    # into logs\gui_screenshots
+py gui_screenshots.py C:\some\folder     # somewhere else
+py gui_screenshots.py --lang en          # the whole run in one app language
+py gui_screenshots.py --okno             # only the app's window, no desktop
+```
+
+`--lang` takes a language code (`sk`, `en`, `ja`, …); the German and Japanese
+steps then return to it instead of to Slovak. `--okno` (or `--window`)
+captures only the app's own window by its handle, so no desktop, taskbar or
+other window ends up in the shot, even one lying on top. It also saves
+`17_relacia_zblizka.png`, the History panel *One session up close* on its
+own. The synthetic sessions start between 18:00 and 23:00, and each one's
+cue count matches the triangles in its curve. The shots carry no metadata.
+The README images come from
+`py gui_screenshots.py --lang en --okno`, run in a copy of the repository:
+`docs/img/today.webp` is `01_dnes.png` saved as WebP, and
+`docs/img/history-session.png` is `17_relacia_zblizka.png`. The script needs
+a settings file where the introduction is already done; without one, the
+app opens the introduction first and waits for it.
 
 ## What build.bat does
 
@@ -128,12 +155,12 @@ Inno Setup the app in `dist\Zanshin\` is ready as it is.
 | `app_audio.py` | Part of the main window (a mixin of `DandurfApp`): preparing the built-in sound library, volume and the sound / voice balance, choosing the voice and its source, preparing the natural voice ahead of time, and playing a cue's sound, voice or your own recording |
 | `app_controls.py` | Part of the main window (a mixin of `DandurfApp`): the command palette (Ctrl+K), "not now" (pausing cues from the shortcut or the tray menu), the collapsible log, gamepad activity, the manual test cue and showing the introduction again |
 | `app_cues.py` | Part of the main window (a mixin of `DandurfApp`): the automatic cue's state shown in the breathing band and on "Today", the "last cue" line, the share of silent cues and the cue ladder step for a new session, and choosing how the app speaks up (cue style) |
-| `app_data.py` | Part of the main window (a mixin of `DandurfApp`): export / import / delete of your data, the Data and About panels, what is saved when a session ends and the questions after it, sharing a profile as a code, and removing extra cue slots (one or several) |
+| `app_data.py` | Part of the main window (a mixin of `DandurfApp`): export / import / delete of your data (the whole history or one session), opening the data folder, the Data and About panels, what is saved when a session ends and the questions after it, setting aside a session that couldn't be saved (`hr_session_pending.json`) and adding it back, sharing a profile as a code, and removing extra cue slots (one or several) |
 | `app_history.py` | Part of the main window (a mixin of `DandurfApp`): the "History" page — the trend chart with its metric and period controls, the sessions table, the days-played grid and the detail of one session, the "which cue works" chart, exporting sessions to a spreadsheet (CSV), and the background analysis behind the insights |
 | `app_hud.py` | Part of the main window (a mixin of `DandurfApp`): the on-screen heart-rate panel (HUD) and its row of 4 icons, the language of what the app draws into the game, choosing the monitor, the heart-rate indicator in the sidebar, pairing the watch, and setting up and showing the in-game pictures |
-| `app_prefs.py` | Part of the main window (a mixin of `DandurfApp`): switching language, world (play / work) and theme; loading and saving your settings (with their backup), volume and balance |
+| `app_prefs.py` | Part of the main window (a mixin of `DandurfApp`): switching language, world (play / work) and theme; loading and saving your settings (with their backup), volume and balance; choosing the "not now" shortcut |
 | `app_profiles.py` | Part of the main window (a mixin of `DandurfApp`): the cue slots of the active profile, game profiles (switching, creating, deleting) and the auto-profile (switching to a game's profile while that game runs) |
-| `app_session.py` | Part of the main window (a mixin of `DandurfApp`): heart-rate receiving (its settings, turning it on and off, receiving heart rate, steps and connection state, dropouts, a busy port (TCP is retried, a UDP port that won't open is reported), hiding this PC's IP on screen), opening a measuring session with its thresholds, and the regular ticks: four times a second whether you're at the keyboard (which also drives the cue trigger), once a second the "last cue" line |
+| `app_session.py` | Part of the main window (a mixin of `DandurfApp`): heart-rate receiving (its settings, turning it on and off, receiving heart rate, steps and connection state, dropouts, a busy port (TCP is retried, a UDP port that won't open is reported), hiding this PC's IP on screen), opening a measuring session with its thresholds, splitting it when the PC slept, and the regular ticks: four times a second whether you're at the keyboard (which also drives the cue trigger), once a second the "last cue" line |
 | `app_spolocne.py` | Names shared by `app.py` and its mixins (the app logger, language names for the switch, the "not now" shortcut defaults, PIL's `ImageTk`) |
 | `app_today.py` | Part of the main window (a mixin of `DandurfApp`): the "Today" page — drawing its animated centre, the live heart-rate, load and session block, delivering the automatic cue, and the "My stats" cards (choosing them, their values, swapping them by dragging) |
 | `paths.py` | Where data lives (`%APPDATA%\Zanshin` for the built app, next to `main.py` from source); the built app also copies data over from older versions |
@@ -144,10 +171,10 @@ Inno Setup the app in `dist\Zanshin\` is ready as it is.
 | `sfx_assets.py` | Built-in sound library — copies the bundled sounds; download or synthesis only if one is missing |
 | `heart_rate.py` | Receiver for heart rate and steps from a companion app — TCP and UDP (OSC included), on port `4455` by default, on every network unless you pick one of this PC's own addresses |
 | `obs_websocket.py` | Minimal obs-websocket v5 server — what *HeartRateOnStream for OBS* writes your heart rate to |
-| `netinfo.py` | This PC's local IP addresses for pairing, hidden on screen until *Show IP* |
+| `netinfo.py` | This PC's local IP addresses for pairing, hidden on screen until *Show IP*; real adapters first, VPN and virtual ones marked |
 | `activity.py` | Whether the player is active (`GetLastInputInfo`, **no hook**) |
 | `gamepad.py` | Controller activity through SDL (`pygame`) — only "the player is active"; which button is never stored |
-| `hotkey.py` | The one global shortcut, "not now" (`RegisterHotKey`, not a hook) |
+| `hotkey.py` | The one global shortcut, "not now" (`RegisterHotKey`, not a hook), its presets and whether one would type a letter on an installed keyboard layout |
 | `game_profiles.py` | Auto-profile — compares running process names with the known games (only while that switch is on) |
 | `trigger.py` | Cue state machine — draw, defer to a pause, silent arm |
 | `rebrik.py` | Cue ladder — voice → picture → pause, set per session from your feedback |
@@ -158,8 +185,8 @@ Inno Setup the app in `dist\Zanshin\` is ready as it is.
 | `overlay.py`, `hud.py`, `hud_paint.py` | In-game pictures and the heart-rate panel (PIL rendering) |
 | `layer_window.py` | The click-through, see-through window (`UpdateLayeredWindow`) every in-game picture is drawn in |
 | `display.py` | Monitors, DPI awareness, which screen to draw on, and fitting the window to the screen |
-| `ui_shell.py`, `ui_dialogs.py` | Main-window shell (sidebar, title bar), dialogs, onboarding |
-| `ui_kit.py` | Building blocks of the main window — switches, buttons, option menus, panels, the in-app confirm dialog, dialog placement, the breathing band, keycaps, stat cards, charts |
+| `ui_shell.py`, `ui_dialogs.py` | Main-window shell (sidebar, title bar, state dot), dialogs, onboarding |
+| `ui_kit.py` | Building blocks of the main window — switches, buttons, sliders, option menus, panels, empty states, the in-app message, confirm and choice dialogs, dialog placement, the main switch and its breathing band, keycaps, stat cards, charts |
 | `theme_recolor.py` | Recolours the open window when the theme changes, without rebuilding it |
 | `color_picker.py` | The app's own colour picker (no eyedropper — it would have to capture the screen) |
 | `guided_tour.py` | The guided tour of the window after onboarding |
@@ -218,7 +245,7 @@ inherits. A few rules keep it that way:
   only a few such checks (its links, the official source, the version line,
   `Get-FileHash`, the untested iPhone route and the key privacy facts); exact
   wording is checked where it lives: [PRIVACY.md](PRIVACY.md),
-  [KNOWN_ISSUES.md](KNOWN_ISSUES.md),
+  [KNOWN_ISSUES.md](KNOWN_ISSUES.md), [CHANGELOG.md](CHANGELOG.md),
   [docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md) and this page.
 - Code comments are in Slovak, without diacritics, and say *why*, not what.
 

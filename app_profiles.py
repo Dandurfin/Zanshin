@@ -18,8 +18,7 @@ Pozor v testoch: `_start_game_watcher` cita `GameProcessWatcher` a
 (`app_profiles.GameProcessWatcher`), nie na modul app.
 """
 
-from tkinter import messagebox
-
+import ui_kit
 from game_profiles import PSUTIL_AVAILABLE, GameProcessWatcher, known_games
 from i18n import tr
 from paths import APP_NAME
@@ -82,7 +81,9 @@ class ProfilesMixin:
         if not name:
             return
         if any(p["name"] == name for p in self.profiles):
-            messagebox.showinfo(APP_NAME, tr("profile.duplicate_name"))
+            # Okno appky, nie systemove (0.2.2, davka 4) - viz `ui_kit.notify`.
+            ui_kit.notify(getattr(self, "root", None), getattr(self, "pal", None),
+                          APP_NAME, tr("profile.duplicate_name"))
             return
         self._sync_active_profile_slots()
         # Novy profil dostane VSETKY STYRI kategorie, rovnako ako profil
@@ -108,11 +109,17 @@ class ProfilesMixin:
         self.log(tr("log.profile_created", name=name))
 
     def delete_current_profile(self):
+        okno = getattr(self, "root", None)
+        pal = getattr(self, "pal", None)
         if len(self.profiles) <= 1:
-            messagebox.showinfo(APP_NAME, tr("profile.cannot_delete_last"))
+            ui_kit.notify(okno, pal, APP_NAME, tr("profile.cannot_delete_last"))
             return
-        if not messagebox.askyesno(APP_NAME,
-                                   tr("profile.confirm_delete", name=self.active_profile_name)):
+        # Potvrdenie v okne appky: tlacidlo nesie sloveso ("Odstranit
+        # profil") a je destruktivne, fokus aj Enter su na "Zrusit".
+        if not ui_kit.confirm(okno, pal, APP_NAME,
+                              tr("profile.confirm_delete", name=self.active_profile_name),
+                              ok_label=tr("profile.delete_btn"),
+                              cancel_label=tr("common.cancel"), danger=True):
             return
         self.profiles = [p for p in self.profiles if p["name"] != self.active_profile_name]
         new_active = self.profiles[0]
@@ -206,9 +213,11 @@ class ProfilesMixin:
             self._stop_game_watcher()
             self._auto_started_listening = False
         self.save_settings()
-        # Veta v pase hovori o tomto nastaveni, takze sa musi prepisat hned -
-        # inak by po vypnuti este stale slubovala start pri hre.
+        # Veta o zastavenej appke (`_kamae_zastavene`, stred Dnes) hovori o
+        # tomto nastaveni, takze sa musi prepisat hned - inak by po vypnuti
+        # este stale slubovala start pri hre. Od 0.2.2 (davka 4) ju nesie
+        # stred stranky, nie pas - pas ma uz len tlacidlo.
         if not self.listening and getattr(self, "kamae", None) is not None:
-            self.kamae.set_texts(tr("kamae.bar_title"), tr("kamae.bar_sub"))
+            self._refresh_kamae_state_text()
         self.log(tr("log.auto_profile_on") if self.auto_profile_enabled
                 else tr("log.auto_profile_off"))

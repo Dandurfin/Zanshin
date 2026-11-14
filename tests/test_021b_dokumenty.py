@@ -24,6 +24,8 @@ dokument treba prepisat - nie naopak.
 0.2.2d: podrobne pravidla pripravy hlasu sa z README presunuli do
 docs/HOW-IT-WORKS.md, vyvojarske skripty a GUI harness do DEVELOPMENT.md;
 straze isli s vetami. Slovo "reminder" je v dokumentoch "cue" ako v appke.
+0.2.2 (davka 4): co ktora verzia opravila, je v CHANGELOG.md (KNOWN_ISSUES
+ma len otvorene veci) - straze na tie vety su tam.
 """
 import ast
 import inspect
@@ -40,6 +42,7 @@ from _zdroj_appky import zdroj_metody  # noqa: E402
 
 ROOT = os.path.join(os.path.dirname(__file__), "..")
 AKO = "docs/HOW-IT-WORKS.md"
+ZMENY = "CHANGELOG.md"
 VYVOJ = "DEVELOPMENT.md"
 
 
@@ -151,7 +154,7 @@ def test_prepnutie_prec_zastavi_rozbehnutu_pripravu():
             "preparing stops at once; only the line already on its way is "
             "finished") in privacy
 
-    k = _plain("KNOWN_ISSUES.md")
+    k = _plain(ZMENY)
     assert "**Switching to the Windows voice didn't stop preparing" in k
 
 
@@ -166,11 +169,11 @@ def test_hlaska_s_vypnutym_obrazkom_dokumenty_hovoria_pravdu():
     vyraduje = "overlay_configs" in kod or "_ma_obrazok" in kod
     assert vyraduje
     privacy = _plain("PRIVACY.md")
-    k = _plain("KNOWN_ISSUES.md")
+    for meno in ("KNOWN_ISSUES.md", ZMENY):
+        assert ("**A reminder whose in-game picture you've switched off** still "
+                "has its line prepared") not in _plain(meno), meno
     assert "still counts as switched on, so its line is prepared" not in privacy
-    assert ("**A reminder whose in-game picture you've switched off** still "
-            "has its line prepared") not in k
-    opravy = " ".join(_sekcia(_read("KNOWN_ISSUES.md"), "What 0.2.1 fixes").split())
+    opravy = " ".join(_sekcia(_read(ZMENY), "What 0.2.1 fixes").split())
     assert "of ones whose in-game picture is off" in opravy
     assert "Switching one or its picture on" in opravy
 
@@ -196,10 +199,10 @@ def test_privacy_port_menuje_ovladanie_ako_appka():
 
 def test_udp_stitok_a_log_v_dokumentoch_ako_v_kode():
     stitok = _en("settings.hr_status_udp_off")
-    for meno in ("README.md", "KNOWN_ISSUES.md"):
+    for meno in ("README.md", ZMENY):
         assert "*%s*" % stitok in _plain(meno), meno
     prepinac = _en("settings.hr_enable_switch")
-    for meno in ("README.md", "KNOWN_ISSUES.md"):
+    for meno in ("README.md", ZMENY):
         assert "switch *%s* off and on" % prepinac in _plain(meno), meno
     assert "**If UDP won't open**" in _plain("PRIVACY.md")
     assert "not your PC's address" in _plain("PRIVACY.md")
@@ -234,17 +237,19 @@ def test_known_issues_bez_rozporov():
     k = _plain("KNOWN_ISSUES.md")
     assert "the game doesn't receive that one key combination" not in k
     assert "a game that uses that one key combination may not receive it" in k
-    assert "walking isn't filtered out yet" not in k
-    for stare in ("high-HR line", "strain threshold", "high heart-rate line",
-                  "plain GPLv3", "your own high heart-rate limit"):
-        assert stare not in k, stare
-    assert _read("KNOWN_ISSUES.md").rstrip().endswith("· GPLv3 or later")
-    opravy = _sekcia(_read("KNOWN_ISSUES.md"), "What 0.2.1 fixes")
+    for meno in ("KNOWN_ISSUES.md", ZMENY):
+        text = _plain(meno)
+        assert "walking isn't filtered out yet" not in text, meno
+        for stare in ("high-HR line", "strain threshold", "high heart-rate line",
+                      "plain GPLv3", "your own high heart-rate limit"):
+            assert stare not in text, (meno, stare)
+        assert _read(meno).rstrip().endswith("· GPLv3 or later"), meno
+    opravy = _sekcia(_read(ZMENY), "What 0.2.1 fixes")
     for nadpis in ("### The online voice", "### Smaller fixes"):
         assert nadpis in opravy, nadpis
     # Jazykovy riadok: KNOWN_ISSUES hovori, ze uz netvrdi preklad hlasok.
     assert _en("settings.language_sub") == "Cues you already have keep their wording."
-    assert "cues you already have keep their wording" in k
+    assert "cues you already have keep their wording" in _plain(ZMENY)
 
 
 def test_chodza_len_stisi_hlasky_ucenie_ju_nevyraduje():

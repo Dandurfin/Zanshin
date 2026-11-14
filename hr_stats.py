@@ -2006,8 +2006,12 @@ class HeartStats:
                 out[zone_of_bpm(b, base, self.critical_bpm)] += d
         return out
 
-    def summary(self):
-        elapsed = max(0.0, time.time() - self.session_start)
+    def summary(self, koniec=None):
+        """Suhrn relacie. `koniec` (cas) = relacia skoncila skor nez teraz -
+        posledny tik pred uspanim PC (`app._rozdel_relaciu_po_medzere`,
+        0.2.2). Bez neho sa trvanie rata po tuto chvilu, ako doteraz."""
+        teraz = time.time() if koniec is None else float(koniec)
+        elapsed = max(0.0, teraz - self.session_start)
         events = self.hrr_events()          # tu vzdy cerstvo, nie z cache
         base = self.session_baseline
         return {
@@ -2030,7 +2034,7 @@ class HeartStats:
             # (viz `note_dropout`). Vypadok, ktory pri zatvoreni este trva,
             # sa zarata az po tuto chvilu.
             "dropouts": self.dropouts,
-            "blind_s": round(self.blind_seconds(), 1),
+            "blind_s": round(self.blind_seconds(now=teraz), 1),
             # nove metriky z cisteho BPM (viz hlavicka modulu)
             "baseline_bpm": int(round(base)) if base else None,
             "zone_seconds": {z: round(s, 1) for z, s in self._zony_do_suhrnu().items()},
@@ -2406,6 +2410,13 @@ def save_session(path, summary, log=None):
                 except OSError:
                     pass
         data.append(summary)
+        if summary.get("recovered"):
+            # DOPLNENA DODATOCNE (kontrolny bod, neulozena relacia z minula -
+            # `obnov_cakajuce`) moze byt STARSIA nez posledna v subore: po
+            # neulozenej relacii sa dalsia ulozi normalne a az za nou sa
+            # doplni ta skorsia. Historia berie poslednu v subore ako
+            # najnovsiu (detail, tabulka), preto ide na miesto podla `started`.
+            _zarad_poslednu(data)
         data = data[-MAX_SESSIONS:]
         tmp = path + ".tmp"
         with open(tmp, "w", encoding="utf-8") as fh:
@@ -2416,6 +2427,26 @@ def save_session(path, summary, log=None):
         if log:
             log(f"HR: session log failed: {exc}")
         return False
+
+
+def _zarad_poslednu(data):
+    """Posledny prvok `data` posunie pred relacie, ktore zacali neskor.
+    Poradie ostatnych sa nemeni; bez pouzitelneho `started` ostava na konci."""
+    try:
+        zaciatok = float(data[-1].get("started"))
+    except (AttributeError, IndexError, TypeError, ValueError):
+        return
+    i = len(data) - 1
+    while i > 0:
+        try:
+            pred = float(data[i - 1].get("started"))
+        except (AttributeError, TypeError, ValueError):
+            break
+        if not pred > zaciatok:          # aj NaN ostava na mieste
+            break
+        i -= 1
+    if i < len(data) - 1:
+        data.insert(i, data.pop())
 
 
 # --------------------------------------------------------------------------
@@ -2538,6 +2569,171 @@ def obnov_rozpracovanu(sessions_path, now=None, log=None):
         return None
     zahod_rozpracovanu(sessions_path)
     return summary
+
+
+# --------------------------------------------------------------------------
+# Neulozena relacia (0.2.2)
+# --------------------------------------------------------------------------
+#
+# PRECO: `save_session` pri chybe zapisu (plny disk, zakazany pristup,
+# zamknuty subor) vratil False a relacia zmizla - v denniku ostal len
+# technicky riadok. Teraz sa jej suhrn odlozi sem (zoznam, moze ich byt
+# viac) a pri dalsom starte alebo po dalsom uspesnom ulozeni sa doplni do
+# historie rovnako ako kontrolny bod - s `recovered: True`, takze sa z nej
+# prahy neucia (`ciste_relacie`). Subor sa maze az PO uspesnom zapise.
+#
+# Ten isty priecinok ako hr_sessions.json - "Zmazat historiu" ho maze tiez
+# (`data_io.MAZATELNE`).
+CAKAJUCA_MENO = "hr_session_pending.json"
+
+
+def cesta_cakajucej(sessions_path):
+    """Neulozene relacie lezia vedla hr_sessions.json (ako kontrolny bod)."""
+    return os.path.join(os.path.dirname(os.path.abspath(sessions_path)),
+                        CAKAJUCA_MENO)
+
+
+def nacitaj_cakajuce(sessions_path):
+    """Zoznam cakajucich suhrnov. Necitatelny subor = prazdny zoznam."""
+    try:
+        with open(cesta_cakajucej(sessions_path), "r", encoding="utf-8") as fh:
+            obsah = json.load(fh)
+    except Exception:
+        return []
+    if isinstance(obsah, dict):
+        obsah = [obsah]
+    if not isinstance(obsah, list):
+        return []
+    return [s for s in obsah if isinstance(s, dict)]
+
+
+def _zapis_cakajuce(sessions_path, zoznam):
+    cesta = cesta_cakajucej(sessions_path)
+    if not zoznam:
+        try:
+            os.remove(cesta)
+        except OSError:
+            pass
+        return True
+    tmp = cesta + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(list(zoznam), fh, ensure_ascii=False)
+    os.replace(tmp, cesta)
+    return True
+
+
+def _odloz_pokazenu_cakajucu(sessions_path):
+    """Subor cakajucich relacii je, ale necitatelny (nie JSON zoznam)?
+
+    Potom sa NEZMAZE ani NEPREPISE - su v nom uplne vecery, ktore inde nie
+    su. Odlozi sa bokom pod `.corrupt-<cas>` ako pokazena historia v
+    `save_session`, nech sa da zachranit; "Zmazat historiu" ho maze tiez
+    (`data_io` maze aj `hr_session_pending.json.*`). Vracia True, ked subor
+    citatelny NIE JE (aj ked ho odlozit neslo) - vtedy sa mazat nesmie."""
+    cesta = cesta_cakajucej(sessions_path)
+    if not os.path.exists(cesta):
+        return False
+    try:
+        with open(cesta, "r", encoding="utf-8") as fh:
+            if isinstance(json.load(fh), (list, dict)):
+                return False
+    except Exception:
+        pass
+    try:
+        os.replace(cesta, "%s.corrupt-%d" % (cesta, int(time.time())))
+    except OSError:
+        pass
+    return True
+
+
+def zapis_cakajucu(sessions_path, summary, log=None):
+    """Odlozi suhrn relacie, ktoru sa nepodarilo ulozit. True pri uspechu.
+
+    Ta ista relacia (rovnaky `started`) sa neodklada dvakrat - novsi suhrn
+    nahradi starsi. Atomicky (.tmp + os.replace). Necitatelny subor z minula
+    sa novym zoznamom neprepise, odlozi sa bokom (`_odloz_pokazenu_cakajucu`)."""
+    if not je_ulozitelna(summary):
+        return False
+    try:
+        _odloz_pokazenu_cakajucu(sessions_path)
+        zoznam = [s for s in nacitaj_cakajuce(sessions_path)
+                  if not _uz_v_historii([s], summary.get("started"))]
+        zoznam.append(summary)
+        return _zapis_cakajuce(sessions_path, zoznam)
+    except Exception as exc:
+        if log:
+            log(f"HR: neuloženú reláciu sa nepodarilo odložiť: {exc}")
+        return False
+
+
+def obnov_cakajuce(sessions_path, now=None, log=None):
+    """Cakajuce relacie do historie. Vracia zoznam naozaj ulozenych suhrnov.
+
+    Kazda dostane `recovered: True` (prahy sa z nej neucia, ako z kontrolneho
+    bodu). Ta, co uz v historii je (rovnaky `started`), alebo nevierohodna
+    (`_preco_neobnovit`), sa zahodi bez zapisu. Ta, ktoru sa ulozit nepodarilo
+    ani teraz, v subore OSTAVA na dalsi pokus; subor zmizne az ked je prazdny."""
+    zoznam = nacitaj_cakajuce(sessions_path)
+    if not zoznam:
+        # Prazdny sa zmaze; necitatelny sa odlozi bokom, nezmaze sa.
+        if (os.path.exists(cesta_cakajucej(sessions_path))
+                and not _odloz_pokazenu_cakajucu(sessions_path)):
+            _zapis_cakajuce(sessions_path, [])
+        return []
+    now = time.time() if now is None else now
+    ulozene, ostava = [], []
+    for summary in zoznam:
+        dovod = _preco_neobnovit(summary, now)
+        if dovod is None and _uz_v_historii(load_sessions(sessions_path),
+                                            summary.get("started")):
+            dovod = "uz je v historii"
+        if dovod is not None:
+            if log:
+                log(f"HR: neuloženú reláciu nedopĺňam ({dovod})")
+            continue
+        summary["recovered"] = True
+        if save_session(sessions_path, summary, log=log):
+            ulozene.append(summary)
+        else:
+            ostava.append(summary)
+    try:
+        _zapis_cakajuce(sessions_path, ostava)
+    except Exception as exc:
+        if log:
+            log(f"HR: zoznam neuložených relácií sa nedal prepísať: {exc}")
+    return ulozene
+
+
+def delete_session(path, started, log=None):
+    """Zmaze z historie JEDNU relaciu (podla `started`). True = zmazana.
+
+    Detail v Historii ("Zmazat tuto relaciu", 0.2.2): napr. 14-hodinova
+    "relacia" cez uspany PC, ktora inak tlaci spankovy tep do pokojovej
+    zakladne. Atomicky (.tmp + os.replace); necitatelny subor sa NEPREPISUJE
+    - radsej nic nez zahodit celu historiu."""
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except Exception as exc:
+        if log:
+            log(f"HR: história sa nedala prečítať: {exc}")
+        return False
+    if not isinstance(data, list):
+        return False
+    ostava = [s for s in data
+              if not (isinstance(s, dict) and _uz_v_historii([s], started))]
+    if len(ostava) == len(data):
+        return False
+    try:
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(ostava, fh, ensure_ascii=False, indent=2)
+        os.replace(tmp, path)
+        return True
+    except Exception as exc:
+        if log:
+            log(f"HR: reláciu sa nepodarilo zmazať: {exc}")
+        return False
 
 
 # --------------------------------------------------------------------------

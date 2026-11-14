@@ -60,6 +60,45 @@ def _senzor_vypla_chyba(app):
         app.hr_enabled_var.set(False)
 
 
+# USPANIE PC (0.2.2, audit 4). Tiky relacie (`_tick_activity`, 4x za
+# sekundu) a vzorky tepu pocas spanku/hibernacie nechodia. Medzera dlhsia
+# nez toto znamena, ze PC spalo (alebo appka visela) - relacia sa uzavrie k
+# poslednemu tiku pred medzerou a po nej sa zacne nova. Bez toho vznikla
+# jedna 14-hodinova "relacia" a spankovy tep vosiel do pokojovej zakladne.
+MEDZERA_SPANKU_S = 120.0
+
+
+def je_medzera_spanku(posledny, teraz, limit=MEDZERA_SPANKU_S):
+    """Bola medzi dvoma tikmi relacie medzera, ked PC spalo? Cista funkcia.
+
+    Hodiny iduce DOZADU (synchronizacia casu, rucna zmena) medzera nie su -
+    rozdiel je zaporny. Pokazene cislo (None, NaN, text) tiez nie."""
+    try:
+        rozdiel = float(teraz) - float(posledny)
+    except (TypeError, ValueError):
+        return False
+    return rozdiel > float(limit)      # NaN je vzdy False
+
+
+def _zrus_pokus_o_vazbu(app):
+    """Zrusi cakajuci pokus o vazbu po obsadenom porte (`_retry_hr_bind`).
+
+    JEDINE miesto, kde sa `_hr_retry_job` zahadzuje (0.2.2). Doteraz ho
+    `_open_hr_session` len prepisal na None: casovac v Tk zil dalej a o par
+    sekund restartoval prijem - aj po vypnuti senzora, po zmene portu ci po
+    zapnuti sledovania. Funkcia modulu, nie metoda: vola sa aj na atrapach
+    (SimpleNamespace) v testoch `_apply_hr_status`."""
+    job = getattr(app, "_hr_retry_job", None)
+    app._hr_retry_job = None
+    if job is None:
+        return False
+    try:
+        app.root.after_cancel(job)
+    except Exception:
+        pass
+    return True
+
+
 class SessionMixin:
     """Senzor tepu a meracia relacia (mixin DandurfApp)."""
 
@@ -116,13 +155,12 @@ class SessionMixin:
         # `after` by ho o par sekund aj tak spustil - restartoval by tento
         # novy prijem (iny port, vypnutie a zapnutie), hodinky by sa odpojili
         # a relacia by sa otvorila nanovo. Novy beh si pokusy zacne sam.
-        job = getattr(self, "_hr_retry_job", None)
-        if job is not None:
-            try:
-                self.root.after_cancel(job)
-            except Exception:
-                pass
-            self._hr_retry_job = None
+        _zrus_pokus_o_vazbu(self)
+        # Novy beh od hraca (zapnutie, iny port) = pokusy po obsadenom porte
+        # sa ratau odznova. `_open_hr_session` ich uz nenuluje - inak by ich
+        # nuloval aj kazdy pokus sam (`_retry_hr_bind`) a appka by sa nevzdala
+        # nikdy (0.2.2).
+        self._hr_bind_retries = 0
         self._open_hr_session(meria=self.listening)
         self._hr_generation = self.heart_rate_monitor.start(self.hr_ip, self.hr_port)
         self.log(tr("log.hr_enabled", ip=self._hr_ip_display(), port=self.hr_port))
@@ -160,8 +198,18 @@ class SessionMixin:
         self._hr_lost_od = None
         self._hr_over_since = None
         self._hr_overlay_warned = False
-        self._hr_retry_job = None
-        self._hr_bind_retries = 0
+        # Exkluzivny fullscreen zbadany v TEJTO relacii (0.2.2 davka 4) - ide
+        # do suhrnu ako `fullscreen` a dotaznik podla neho povie, preco
+        # obrazky nebolo vidno (`_warn_exclusive_fullscreen_once`).
+        self._session_fullscreen = False
+        # CAKAJUCI POKUS O VAZBU SA TU NEZAHADZUJE (0.2.2). Doteraz tu bolo
+        # `_hr_retry_job = None` a `_hr_bind_retries = 0`: casovac v Tk zil
+        # dalej bez odkazu, takze ho uz nezrusilo vypnutie senzora ani zmena
+        # portu, a pocitadlo sa nulovalo pri kazdom pokuse (`_retry_hr_bind`
+        # otvara relaciu) - appka skusala obsadeny port donekonecna. Pokus
+        # je tu potrebny: po obsadenom porte `heart_rate_monitor.running`
+        # ostava True, takze `start_listening` socket sam neobnovi. Rusi ho
+        # `_zrus_pokus_o_vazbu` (novy beh, vypnutie senzora, ukoncenie).
         # Telefon drzi spojenie dalej, ked sa siete nedotykame (`prepoj=False`).
         # Zhodit priznak aj vtedy znamenalo, ze po dalsom vypadku tepu
         # (`disconnected`) by okno, Dnes aj navod tvrdili "odpojene / cakam na
@@ -279,6 +327,16 @@ class SessionMixin:
             self._hud_vis_s = 0.0
             self._hud_active_s = 0.0
             self._hud_tick_t = time.time()
+            # Od tohto casu sa meria medzera medzi tikmi (uspanie PC,
+            # `_hlidaj_medzeru_relacie`).
+            self._posledny_tik_relacie = self._hud_tick_t
+        # Pocas otvorenej relacie je "Zmazat historiu" vypnute (0.2.2).
+        obnov = getattr(self, "_refresh_data_delete_state", None)
+        if callable(obnov):
+            try:
+                obnov()
+            except Exception:
+                app_log.exception("tlacidlo Zmazat historiu sa neobnovilo")
         if prepoj:
             self.hud.set_connected(False)
         self.hud.configure(critical_bpm=self.hr_critical_bpm)
@@ -287,6 +345,11 @@ class SessionMixin:
     def stop_heart_rate_monitor(self):
         self.heart_rate_monitor.stop()
         self._cancel_no_client_check()
+        # Pokus po obsadenom porte by inak o par sekund prijem znova spustil
+        # (`_retry_hr_bind` sa pyta len na `hr_monitoring_enabled`, a to
+        # moze byt medzitym znova zapnute).
+        _zrus_pokus_o_vazbu(self)
+        self._hr_bind_retries = 0
         # generacia 0 = ziadne bezuce vlakno, takze uz odoslane (a este
         # nedorucene) aktualizacie z prave zastaveneho vlakna sa zahodia
         self._hr_generation = 0
@@ -384,8 +447,30 @@ class SessionMixin:
                     prepinac.pack(side="left", padx=(12, 0))
                 elif not ukaz and zobrazeny:
                     prepinac.pack_forget()
+            self._hr_ip_virtual_hint(hodnota)
         except Exception:
             pass            # pole uz neexistuje (prestavba UI)
+
+    def _hr_ip_virtual_hint(self, hodnota, virtualne=None):
+        """Adresa v poli IP patri VPN alebo virtualnemu adapteru (0.2.2)?
+        Potom k vysvetlivke pod polom pribudne veta, ze hodinky sa na nu
+        vacsinou nedostanu. Vracia, ci veta plati. `virtualne` (mnozina IP)
+        sa da vlozit (testy); predvolene sa pyta `netinfo`."""
+        hodnota = str(hodnota or "").strip()
+        if virtualne is None:
+            virtualne = netinfo.virtualne_adresy() if netinfo.entry_mask(hodnota, False) else set()
+        plati = hodnota in virtualne
+        label = getattr(self, "hr_ip_hint_label", None)
+        if label is not None:
+            text = tr("settings.hr_ip_hint")
+            if plati:
+                text += "\n" + tr("settings.hr_ip_virtual_note")
+            try:
+                if label.cget("text") != text:
+                    label.configure(text=text)
+            except Exception:
+                pass
+        return plati
 
     def on_hr_bpm(self, bpm, generation):
         self.ui_call(lambda: self._apply_hr_bpm(bpm, generation))
@@ -393,6 +478,14 @@ class SessionMixin:
     def _apply_hr_bpm(self, bpm, generation=None):
         if generation is not None and generation != self._hr_generation:
             return                      # sprava od uz zastaveneho vlakna
+        # Vzorka po uspani PC patri uz novej relacii (`_hlidaj_medzeru_relacie`).
+        # Atrapy v testoch tu metodu nemaju.
+        hlidac = getattr(self, "_hlidaj_medzeru_relacie", None)
+        if callable(hlidac):
+            try:
+                hlidac()
+            except Exception:
+                app_log.exception("relacia: kontrola medzery po uspani zlyhala")
         self._hr_state = "connected"
         self._hr_bind_retries = 0       # port sa uvolnil, pocitadlo odznova
         self._hr_last_bpm = bpm
@@ -554,6 +647,9 @@ class SessionMixin:
             self._hr_generation = 0
             self._close_hr_session()
             self._hr_bind_retries = getattr(self, "_hr_bind_retries", 0) + 1
+            # Nikdy dva pokusy naraz: stary cakajuci sa zrusi skor, nez sa
+            # naplanuje novy (0.2.2).
+            _zrus_pokus_o_vazbu(self)
             if self._hr_bind_retries <= self.HR_BIND_RETRIES:
                 self.log(tr("log.hr_port_busy_retry", port=payload,
                             n=self._hr_bind_retries, z=self.HR_BIND_RETRIES))
@@ -586,6 +682,9 @@ class SessionMixin:
             # `heart_rate._bind`) NIE JE rozhodnutie hraca - vypnute len v
             # pamati, dalsi start to skusi znova (rovnako ako "busy" vyssie).
             _senzor_vypla_chyba(self)
+            # Pokus po skorsom obsadenom porte by inak o par sekund prijem
+            # znova spustil, hoci je senzor po chybe vypnuty (0.2.2).
+            _zrus_pokus_o_vazbu(self)
             # Prepinac sa prave vypol, ale relacia zostavala OTVORENA: uz
             # sa nedala vypnut cez `stop_heart_rate_monitor` (ten vola len
             # `on_hr_toggle`, a prepinac je uz v polohe vypnute), takze sa
@@ -755,6 +854,56 @@ class SessionMixin:
         except Exception:
             pass
 
+    def _hlidaj_medzeru_relacie(self, teraz=None):
+        """Tik relacie alebo vzorka tepu: bola od posledneho dlha medzera?
+
+        Vola sa zo `_tick_activity` (4x za sekundu) a z `_apply_hr_bpm`
+        PRED zapisom vzorky - vzorka po prebudeni tak uz patri novej relacii.
+        Medzera sa rata len pocas sledovania s otvorenou relaciou; cas sa
+        posuva vzdy, aby relacia otvorena neskor nemerala od stareho tiku.
+        Hodiny iduce dozadu len posunu vychodisko (`je_medzera_spanku`).
+        Vracia True, ked relaciu rozdelila."""
+        teraz = time.time() if teraz is None else float(teraz)
+        posledny = getattr(self, "_posledny_tik_relacie", None)
+        self._posledny_tik_relacie = teraz
+        if not (getattr(self, "listening", False)
+                and getattr(self, "_hr_session_open", False)):
+            return False
+        if posledny is None or not je_medzera_spanku(posledny, teraz):
+            return False
+        self._rozdel_relaciu_po_medzere(posledny, teraz)
+        return True
+
+    def _rozdel_relaciu_po_medzere(self, posledny, teraz):
+        """PC spalo: relacia konci POSLEDNYM TIKOM pred medzerou a po nej sa
+        zacne nova, ak sa stale sleduje a prijem bezi.
+
+        Uklada sa beznou cestou (`_close_hr_session(koniec=...)`), takze
+        plati vsetko ako inde - kratka relacia sa neulozi, zo spanku sa nic
+        neuci, kontrolny bod sa zmaze. Bez dotaznika (hrac pri tom nebol).
+        Do dennika jeden riadok."""
+        minut = max(1, int(round((float(teraz) - float(posledny)) / 60.0)))
+        app_log.info("relacia: %d s bez tiku (PC asi spalo) - relacia sa rozdeli",
+                     int(float(teraz) - float(posledny)))
+        try:
+            self._close_hr_session(koniec=posledny)
+        except Exception:
+            app_log.exception("relacia sa po uspani PC nezatvorila")
+        nova = False
+        if (getattr(self, "listening", False)
+                and getattr(self, "hr_monitoring_enabled", False)
+                and not getattr(self, "_hr_session_open", False)):
+            try:
+                if self.heart_rate_monitor.running:
+                    # Prijem bezi dalej, siete sa nedotykame (ako `start_listening`).
+                    self._open_hr_session(prepoj=False, meria=True)
+                    nova = bool(getattr(self, "_hr_session_open", False))
+            except Exception:
+                app_log.exception("nova relacia po uspani PC sa neotvorila")
+        self.log(tr("log.session_split_sleep" if nova else "log.session_split_sleep_end",
+                    min=minut))
+        return nova
+
     def _tick_session(self):
         """Raz za sekundu obnovi "naposledy sa ozvala pred X min" a pri
         otvorenej relacii skontroluje exkluzivny fullscreen.
@@ -804,6 +953,11 @@ class SessionMixin:
         4x za sekundu zvysovala sanca, ze jeden callback dobehne az nad
         rozobratym oknom.
         """
+        # Uspanie PC: prvy tik po prebudeni prisiel po dlhej medzere.
+        try:
+            self._hlidaj_medzeru_relacie()
+        except Exception:
+            app_log.exception("relacia: kontrola medzery po uspani zlyhala")
         try:
             idle = self.activity.poll()
         except Exception:

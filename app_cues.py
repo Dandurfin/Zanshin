@@ -71,6 +71,16 @@ class CuesMixin:
         ocami je presne to, co ma appka nerobit; veta hovori, ze sa caka, a
         to staci.
         """
+        # OBSADENY PORT (0.2.2 davka 4) - pred vsetkym ostatnym, aj pred
+        # "Zastavene". Je to chyba, o ktorej hrac nevie a ktoru treba opravit
+        # skor, nez ho spusti: tep z telefonu nepride, nech je sledovanie
+        # zapnute alebo nie. Do 0.2.2 tu bolo vseobecne "Cakam na tep" (pocas
+        # opakovanych pokusov) a po vzdani "Bez hodiniek" - lenze hodinky su v
+        # poriadku a prijem si hrac nevypol, port drzi iny program. Plati pre
+        # pokusy ("busy") aj vzdanie ("busy_gave_up"); stav zhodi az vypnutie,
+        # novy pokus alebo zmena portu (`app_session`).
+        if getattr(self, "_hr_state", None) in ("busy", "busy_gave_up"):
+            return self._kamae_port_obsadeny()
         if not self.listening:
             # PRVY START (0.2.2): sledovanie sa zapne samo, len co bude hlas
             # pripraveny (`app._zacni_sledovat_po_priprave_hlasu`, najviac
@@ -112,7 +122,14 @@ class CuesMixin:
         # "TERAZ NIE" (24. 9.): pocuva a meria sa dalej, ale hlaska neprijde.
         # "Cakam na spravnu chvilu" by slubovalo presne to, co hrac vypol.
         if getattr(self, "_snooze_job", None) is not None:
-            return tr("kamae.snoozed"), tr("kamae.snoozed_sub",
+            # Skratku veta menuje, len ked naozaj plati (0.2.2): vypnuta alebo
+            # cudzim programom drzana by slubovala nieco, co nefunguje. Ponuka
+            # ikony v liste plati vzdy.
+            skratka = getattr(self, "_skratka_teraz_nie", lambda: "")()
+            if skratka:
+                return tr("kamae.snoozed"), tr("kamae.snoozed_sub",
+                                               until=self._snooze_do(), combo=skratka)
+            return tr("kamae.snoozed"), tr("kamae.snoozed_sub_tray",
                                            until=self._snooze_do())
         if self._cue_armed:
             return tr("kamae.armed"), tr("kamae.armed_sub")
@@ -123,20 +140,56 @@ class CuesMixin:
             return tr("kamae.running"), tr("kamae.paused_sub")
         return tr("kamae.running"), tr("kamae.running_sub")
 
+    def _kamae_port_obsadeny(self):
+        """(nadpis, veta) pre obsadeny port tepu - co sa deje a co s tym.
+
+        Najcastejsia pricina je OBS s vlastnym WebSocket serverom, ktory
+        pouziva ten isty port 4455 (README, "Streaming with OBS?"). Veta
+        menuje obe opravy a miesto, kde sa port meni, menom, ake ma v okne:
+        stranka "V hre" sa vo svete Praca vola "Obrazovka" (`_nazov_vhre`).
+        Atrapy v testoch `_nazov_vhre` nemaju - vtedy plati nazov z Hry."""
+        port = getattr(self, "hr_port", None) or ""
+        nazov = getattr(self, "_nazov_vhre", None)
+        stranka = nazov() if callable(nazov) else tr("nav.vhre_short")
+        return (tr("kamae.port_busy", port=port),
+                tr("kamae.port_busy_sub", page=stranka,
+                   card=tr("settings.hr_section_title")))
+
+    @staticmethod
+    def _texty_pasu():
+        """(text tlacidla zastavene, text tlacidla sleduje, ticha veta) pre
+        hlavny vypinac v dychajucom pase (`ui_kit.KamaeBar`, 0.2.2 davka 4).
+
+        Tie iste slova ako v ponuke ikony v liste (`tray.start` /
+        `tray.stop`), len so znakom ▶ / ■ - hrac hlada jeden vypinac, nie
+        dva rozne nazvy toho isteho. Ktory z dvoch textov tlacidlo prave
+        ukazuje, urcuje `KamaeBar.set_live` (z `_apply_listening_visuals`),
+        nie tato funkcia - preto sa tlacidlo s listou nerozide."""
+        return tr("dock.start"), tr("dock.stop"), tr("kamae.bar_hint")
+
     def _refresh_kamae_state_text(self):
         """Prepise pas, ked sa stav zmenil. Vola sa zo `_set_enso_armed`,
         cize z tej istej cesty ako prstenec - aby sa text a znacka nemohli
-        rozist."""
+        rozist.
+
+        Je to zaroven JEDINA cesta, ktorou idu vsetky zmeny stavu tepu
+        (`_apply_hr_status`, `_apply_hr_bpm`, vypnutie prijmu, telefon sa
+        nepripojil) aj sledovania - preto sa odtialto prekresli aj bodka v
+        bocnom paneli (`_refresh_state_dot`: sleduje, ale tep vypadol)."""
         bar = getattr(self, "kamae", None)
+        if bar is not None:
+            try:
+                # Pas nesie stav POHYBOM (dycha/stoji) a tlacidlom; samotny
+                # stav (Zastavene/Sledujem/...) je v strede stranky (hero),
+                # aby sa neduplikoval. Viz KamaeBar docstring.
+                bar.set_texts(*self._texty_pasu())
+            except Exception:
+                app_log.exception("dychajuci pas: prepis textu zlyhal")
+        bodka = getattr(self, "_refresh_state_dot", None)
+        if callable(bodka):
+            bodka()
         if bar is None:
             return
-        try:
-            # Pas nesie stav POHYBOM (dycha/stoji), nie textom - preto staticka
-            # napoveda o vypinaci; samotny stav (Zastavene/Pocuvam/...) je v strede
-            # stranky (hero), aby sa neduplikoval. Viz KamaeBar docstring.
-            bar.set_texts(tr("kamae.bar_title"), tr("kamae.bar_sub"))
-        except Exception:
-            app_log.exception("dychajuci pas: prepis textu zlyhal")
         self._refresh_dnes_state_text()
 
     def _refresh_last_cue(self):

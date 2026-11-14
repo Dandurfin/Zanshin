@@ -79,13 +79,17 @@ class ControlsMixin:
             (tr("nav.historia"), navigacia, lambda: self.sidebar._select("historia")),
             (tr("nav.spustace"), navigacia, lambda: self.sidebar._select("spustace")),
             (tr("nav.zvuk"), navigacia, lambda: self.sidebar._select("zvuk")),
-            (tr("nav.vhre"), navigacia, lambda: self.sidebar._select("vhre")),
+            # vo svete Praca "Hodinky a obrazovka" (`_nazov_vhre`, 0.2.2)
+            (self._nazov_vhre(dlhy=True), navigacia, lambda: self.sidebar._select("vhre")),
             (tr("nav.nastavenia"), navigacia, lambda: self.sidebar._select("nastavenia")),
             (sprievodca, pomoc, self.open_guide_panel),
             (tr("common.prepare_voices"), tr("palette.cat.sound"),
              lambda: self.pregenerate(force=True)),
-            (tr("status.running") + " / " + tr("status.stopped"), appka,
-             self.toggle_listening),
+            # Polozka hovori, co sa po vybere STANE - tie iste slova ako
+            # tlacidlo v pase a ponuka v liste (0.2.2 davka 4). Paleta sa
+            # stavia pri kazdom otvoreni, takze stav sedi.
+            (tr("tray.stop") if getattr(self, "listening", False) else tr("tray.start"),
+             appka, self.toggle_listening),
             (tr("common.minimize"), appka, self.minimize_to_tray),
         ]
         for profile in self.profiles:

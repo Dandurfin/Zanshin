@@ -280,7 +280,9 @@ def test_dnes_hovori_ze_mlci_a_meria_dalej(monkeypatch):
     a._start_snooze(30)
     titul, veta = a._kamae_state_text()
     assert titul == i18n.tr("kamae.snoozed")
-    assert veta == i18n.tr("kamae.snoozed_sub", until="21:45")
+    # 0.2.2: bez zaregistrovanej skratky veta posiela len do ponuky v liste
+    # (variant so skratkou {combo}: tests/test_022e_skratka.py)
+    assert veta == i18n.tr("kamae.snoozed_sub_tray", until="21:45")
     assert a.bodka.stav[-1] == (True, i18n.tr("dock.snooze_active_tip",
                                               until="21:45"))
     a.root.spusti(a._snooze_job)

@@ -58,6 +58,9 @@ MAZATELNE = (
     # isty suhrn ako v hr_sessions.json, len este neuzavrety. Bez neho by po
     # "Zmazat" pri dalsom starte obnova vratila do historie posledny vecer.
     ("data.delete.open_session", "hr_session_open.json"),
+    # Relacie, ktore sa nepodarilo ulozit (`hr_stats.CAKAJUCA_MENO`, 0.2.2) -
+    # bez nich by sa po "Zmazat" pri dalsom starte vratili do historie.
+    ("data.delete.pending_session", "hr_session_pending.json"),
 )
 # Priečinky, ktoré sa zmažú celé (a hneď vytvoria prázdne, ak do nich appka
 # píše za behu). `logs` tu ZÁMERNE NIE JE: v dev režime je `data_dir`
@@ -568,7 +571,7 @@ def vlastne(zaznamy):
 
 
 def vysledok_importu(moje_s, moje_w, cudzie_s, cudzie_w, nahradit,
-                     max_s=None, max_w=None):
+                     max_s=None, max_w=None, info=None):
     """Čo sa po importe zapíše - a KOĽKO ZO SÚBORU NAOZAJ PRIBUDLO.
 
     Vracia (relacie, okna, pridane_relacie, pridane_okna). Hlásenie po
@@ -577,9 +580,14 @@ def vysledok_importu(moje_s, moje_w, cudzie_s, cudzie_w, nahradit,
     pribudlo 5. Ráta sa preto, koľko záznamov zo súboru v zapisovanom
     zozname naozaj je - duplikát (vlastný záznam vyhráva) ani to, čo odreže
     strop dĺžky histórie (`max_s`, `max_w`), sa nepočíta.
+
+    `info` (voliteľný dict, 0.2.2) dostane, koľko relácií odrezal strop
+    `max_s`: `vypadlo` spolu, z toho `vypadlo_vlastnych` (tie sú v zálohe
+    pred importom) - hlásenie to má povedať, nie orezať potichu.
     """
     cudzie_s = [s for s in (cudzie_s or ()) if isinstance(s, dict)]
     cudzie_w = [w for w in (cudzie_w or ()) if isinstance(w, dict)]
+    zo_suboru_s = {id(s) for s in cudzie_s}
     if nahradit:
         relacie = sorted(cudzie_s, key=lambda s: s.get("started") or 0)
         okna = sorted(cudzie_w, key=lambda w: w.get("ts") or 0)
@@ -588,13 +596,17 @@ def vysledok_importu(moje_s, moje_w, cudzie_s, cudzie_w, nahradit,
                                  cudzie_s)
         okna = merge_windows([w for w in (moje_w or ()) if isinstance(w, dict)],
                              cudzie_w)
+    vypadli = []
     if max_s:
+        vypadli = relacie[:max(0, len(relacie) - int(max_s))]
         relacie = relacie[-int(max_s):]
     if max_w:
         okna = okna[-int(max_w):]
+    if info is not None:
+        info["vypadlo"] = len(vypadli)
+        info["vypadlo_vlastnych"] = sum(1 for s in vypadli if id(s) not in zo_suboru_s)
     # Tie isté objekty (merge ani sorted ich nekopírujú) - podľa identity sa
     # dá presne povedať, ktoré prišli zo súboru.
-    zo_suboru_s = {id(s) for s in cudzie_s}
     zo_suboru_w = {id(w) for w in cudzie_w}
     return (relacie, okna,
             sum(1 for s in relacie if id(s) in zo_suboru_s),

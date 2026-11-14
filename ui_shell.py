@@ -9,11 +9,11 @@ dokopy v `DandurfApp._build_ui`.
                  berie z témy appky (`pal`), nie z modulového PAL, aby
                  ladila so zvyškom okna pri prepnutí Aizome/Sumi.
                  Maximalizáciu NEMÁ - appka je fixný dashboard.
-  Sidebar        úzky ľavý pruh: kontrolka stavu, navigácia, lupa,
-                 Nastavenia úplne dole.
+  Sidebar        uzky lavy pruh: kontrolka stavu, jedna skupina (Dnes,
+                 Historia, V hre, Nastavenia, Hladat), kontrolka hodiniek.
   PageContainer  stránky naukladané na sebe, prepínané cez `show()`.
   CommandPalette Ctrl+K popup s fuzzy filtrom.
-  _StateDot      bodka stavu v rade: počúva / nepočúva / odložená.
+  _StateDot      bodka stavu v rade: sleduje / stoji / odlozena / tep vypadol.
 
 TENTO SÚBOR SA NESPÚŠŤA SÁM. Appka štartuje vždy cez `main.py` ->
 `app.DandurfApp`. `python ui_shell.py` neurobí nič - kedysi tu bola
@@ -356,16 +356,23 @@ def enable_frameless(root):
 class Sidebar(ctk.CTkFrame):
     """Bocna navigacia.
 
-    Poradie zhora nadol kopiruje to, ako sa appka naozaj pouziva:
-      1. KONTROLKA STAVU - svieti, ked appka pocuva (`_StateDot`)
-      2. navigacia - Dnes (co sa prave deje), Historia, V hre
-      3. KONTROLKA TEPU - zivy stav senzora + skratka na parovanie
+    Poradie zhora nadol (0.2.2 davka 4):
+      1. KONTROLKA STAVU - sleduje / stoji / "teraz nie" / tep vypadol
+         (`_StateDot`)
+      2. JEDNA SKUPINA: Dnes, Historia, V hre (vo svete Praca "Obrazovka"),
+         Nastavenia a Hladat (Ctrl+K)
+      3. KONTROLKA TEPU s popiskom "Hodinky" - zivy stav senzora + skratka
+         na parovanie
       4. pruzna medzera
-      5. UPLNE DOLE, v tomto poradi zhora nadol: rychly dok
-         (stisit/snooze/profil), lupa (Ctrl+K), Nastavenia
-    Hore su STRANKY, dole je OBSLUHA appky. Ozubene koliesko je zamerne
-    poslednym prvkom - je to najzriedkavejsia vec a v lavom dolnom rohu
-    sa hlada najlahsie.
+    Kazdy prvok ma ikonu A kratky popisok - aj hodinky a lupa, ktore ho do
+    0.2.2 nemali (audit UX: "prvky bez popisu").
+
+    PRECO UZ NIC NIE JE DOLE: do 0.2.2 sedeli Nastavenia a lupa na spodku
+    panela. Okno ma pevnu vysku a na beznom hernom notebooku (1920x1080 pri
+    150 %, 1366x768) sa spodok dostal pod panel uloh - Nastavenia boli potom
+    dostupne len cez Ctrl+K, o ktorom appka nikde nehovori. Audit navrhol
+    poistku: Nastavenia a lupu do hornej skupiny pod "V hre". Hore sa
+    zmestia vzdy.
 
     POZN: bod 1 tu do 2.1 bolo ENSO (znacka a zaroven spinac pocuvania).
     Znacka sa presunula do stredu stranky Dnes (`app.py`, `_build_dnes_page`)
@@ -379,15 +386,13 @@ class Sidebar(ctk.CTkFrame):
     # `_select(kluc_karty)` funguje dalej - zvyrazni sa skupina a app
     # prepne kartu (GROUPS), takze paleta, onboarding a tour sa nerozbili.
     #
-    # "nastavenia" MUSI ZOSTAT POSLEDNA POLOZKA a zaroven musi zostat v
-    # `self.rows`. Dva rozne dovody, oba tiche:
-    #   - `__init__` stavia horny blok ako PAGES[:-1] a poslednu polozku
-    #     zvlast, uplne dole. Split je POZICNY, nie podla kluca: keby sa
-    #     "nastavenia" zo zoznamu vyhodilo, spodnym prvkom by sa ticho
-    #     stalo "V hre" - bez vynimky, len by odrazu sedelo dole.
-    #   - `gui_harness_auto.py` indexuje rows["nastavenia"] natvrdo na
-    #     siestich miestach a `_select` cezen zvyraznuje karty Nastaveni
-    #     (GROUPS). Chybajuci kluc = KeyError uprostred kroku harnessu.
+    # "nastavenia" MUSI ZOSTAT v `self.rows`: `gui_harness_auto.py` indexuje
+    # rows["nastavenia"] natvrdo na siestich miestach a `_select` cezen
+    # zvyraznuje karty Nastaveni (GROUPS). Chybajuci kluc = KeyError
+    # uprostred kroku harnessu. Od 0.2.2 (davka 4) sa vsetky STYRI stavaju
+    # v jednom rade v tomto poradi - uz ziadne delenie "posledna ide dole".
+    # Lupa (Hladat) nie je stranka, preto v `rows` nie je (harness rata
+    # `len(rows) == 4`) - drzi ju `self.cmdk_btn`.
     PAGES = [
         ("dnes", "◗", "Dnes"),
         ("historia", "◷", "História"),
@@ -404,7 +409,12 @@ class Sidebar(ctk.CTkFrame):
     # 70.7 px (CTkButton s corner_radius=8 si pyta 16 px "skrupiny" + sirku
     # glyfu, nie zadanych `width=24`). Dok je teraz na vysku, takze najsirsi
     # prvok dole je jedno tlacidlo ~34 px a 64 px ma rezervu.
-    WIDTH = 78
+    # 78 -> 80 (0.2.2 davka 4): popisok pod ikonou ma v rade 2x8 px okraj,
+    # takze na text ostava WIDTH - 16. Najdlhsi zo vsetkych 11 jazykov je
+    # portugalske "Configurações" (63 px pri ui(10)) - pri 78 mu chybal
+    # pixel. Nove "Hodinky"/"Hladat" su kratsie (najdlhsie bulharske
+    # "Часовник", 45 px). Meria to `tests/test_022e_bocny_panel.py`.
+    WIDTH = 80
 
     @staticmethod
     def _mapuj_paletu(pal):
@@ -442,14 +452,12 @@ class Sidebar(ctk.CTkFrame):
                 row.set_pal(self.pal)
             except Exception:
                 pass
+        # Lupa je od 0.2.2 (davka 4) rad ako ostatne (`_NavRow`), len nie je
+        # v `self.rows` (nie je to stranka) - prefarbuje sa zvlast.
         cmdk = getattr(self, "cmdk_btn", None)
         if cmdk is not None:
             try:
-                cmdk.configure(hover_color=self.pal["hover"],
-                               text_color=self.pal["text_2"])
-                if getattr(self, "_cmdk_img", None) is not None:
-                    self._cmdk_img = nav_ikona("search", self.pal["text_2"])
-                    cmdk.configure(image=self._cmdk_img)
+                cmdk.set_pal(self.pal)
             except Exception:
                 pass
         # kontrolka tepu je OBRAZOK - farby su do nej zapecene, musi sa
@@ -523,74 +531,59 @@ class Sidebar(ctk.CTkFrame):
             dot_wrap, pal, tip=labels.get("state_tip", ""))
         self.state_dot.pack()
 
-        # navigacia pod znackou; posledna polozka ("nastavenia") ide dolu
-        for key, icon, default_label in self.PAGES[:-1]:
+        # JEDNA SKUPINA pod bodkou: vsetky styri stranky v poradi PAGES.
+        for key, icon, default_label in self.PAGES:
             row = _NavRow(self, self.pal, key, icon, labels.get(key, default_label),
                           on_click=self._select, compact=True)
             row.pack(fill="x", padx=8, pady=2)
             self.rows[key] = row
 
-        # KONTROLKA SENZORA TEPU - hned pod navigaciou, oddelena medzerou.
-        # Je to zaroven skratka na parovanie hodiniek (karta "Hodinky a
-        # tep" sedi az dole na stranke V hre).
+        # Ctrl+K - posledny v skupine, ten isty rad (ikona + kratky popisok
+        # "Hladat") ako stranky nad nim. Bublina povie cely nazov aj skratku.
+        # Nie je v `self.rows`: nie je to stranka, nikdy nesvieti ako
+        # aktivna a klik na nu nenaviguje, len otvori paletu. Obycajny
+        # callback, nie virtualna udalost (CTkFrame.bind() ide na vnutorne
+        # platno, event_generate() na ramec - nedorazilo by).
+        cmdk_hint = _NavRow(
+            self, self.pal, "hladat", "⌕", labels.get("search", "Hľadať"),
+            on_click=lambda _k: self.on_palette() if self.on_palette else None,
+            compact=True,
+            tip=lambda: f"{labels.get('cmdk', 'Hľadať a prepínať')}   Ctrl K")
+        cmdk_hint.pack(fill="x", padx=8, pady=2)
+        self.cmdk_btn = cmdk_hint
+
+        # KONTROLKA SENZORA TEPU s popiskom "Hodinky" - pod skupinou,
+        # oddelena medzerou (je to stav a skratka, nie stranka). Je to zaroven
+        # skratka na parovanie hodiniek (karta "Hodinky a tep" na stranke
+        # V hre).
         #
-        # POZOR NA PRUZNE MEDZERY: povodne tu boli DVE (nad aj pod
-        # kontrolkou), aby ju drzali presne v strede. Lenze kazda si vzala
-        # ~300 px a na spodne polozky uz neostalo nic - dok aj lupa boli
-        # vysoke 1 px a Tk ich vobec nevykreslil. Medzera smie byt len
-        # JEDNA, a az POD kontrolkou: tlaci nadol Nastavenia, dok a lupu,
-        # a kontrolka tym sedi vyssie, pri navigacii, kam patri.
+        # POZOR NA PRUZNE MEDZERY: smie byt len JEDNA, a az POD kontrolkou.
+        # Dve (nad aj pod) si kedysi vzali vsetko miesto a prvky medzi nimi
+        # mali 1 px - Tk ich vobec nevykreslil.
         self.pair_btn = None
         if on_pair_watch is not None:
             self.pair_btn = _WatchPulse(
                 self, pal, on_click=on_pair_watch,
                 tip_fn=lambda: labels.get("pair_tip", "Spárovať hodinky"),
-                tip_live_fn=lambda: labels.get("pair_live_tip", "Tep z hodiniek"))
+                tip_live_fn=lambda: labels.get("pair_live_tip", "Tep z hodiniek"),
+                caption=labels.get("watch", ""))
             self.pair_btn.pack(pady=(12, 0))
         ctk.CTkFrame(self, fg_color="transparent").pack(fill="both", expand=True)
 
-        # Nastavenia su UPLNE DOLE - pod dokom aj lupou, v samom rohu okna.
-        # `side="bottom"` a poradie packovania: pri Tk ide PRVY packnuty
-        # spodny prvok najnizsie, takze tato trojica sa musi packnut v
-        # poradi Nastavenia -> lupa -> dok, a na obrazovke potom zhora
-        # nadol vyjde dok, lupa, Nastavenia.
-        last_key, last_icon, last_default = self.PAGES[-1]
-        last_row = _NavRow(self, self.pal, last_key, last_icon,
-                           labels.get(last_key, last_default),
-                           on_click=self._select, compact=True)
-        last_row.pack(side="bottom", fill="x", padx=8, pady=(2, 10))
-        self.rows[last_key] = last_row
-
-        # Ctrl+K: v uzkom paneli len ikona s tooltipom; popisok berie
-        # z `labels` (app.py ho preklada cez nav.cmdk_hint)
-        # POZN: lupa mala `border_width=1` a sirku 44 px - bola tak jedinym
-        # oramovanym prvkom v celom bocnom paneli (navigacia, enso aj dok su
-        # ploche, bez ramceka) a posobila ako vlozene vyhladavacie policko,
-        # nie ako ikona. Teraz ma rovnaky plochy vzhlad aj rozmery ako
-        # tlacidla doku pod nou.
-        # Lupa je nakreslena tym istym perom ako ikony navigacie (znak bol z
-        # ineho pisma a tenky ako vlas); znak ostava len ako zaloha.
-        self._cmdk_img = nav_ikona("search", self.pal["text_2"])
-        cmdk_hint = ctk.CTkButton(
-            self, text="" if self._cmdk_img is not None else "⌕",
-            image=self._cmdk_img, width=34, height=30,
-            corner_radius=8, fg_color="transparent", border_width=0,
-            hover_color=self.pal["hover"],
-            text_color=self.pal["text_2"], font=("Segoe UI", 13),
-            # Obycajny callback, nie virtualna udalost (CTkFrame.bind() ide
-            # na vnutorne platno, event_generate() na ramec - nedorazilo by).
-            command=lambda: self.on_palette() if self.on_palette else None,
-        )
-        self.cmdk_btn = cmdk_hint
-        cmdk_hint.pack(side="bottom", pady=(0, 6))
-        _HoverTip(cmdk_hint, lambda: f"{labels.get('cmdk', 'Hľadať a prepínať')}   Ctrl K")
-
         # POZN: tu bol `dock_slot` - prazdny ramec, do ktoreho `app.py`
-        # vkladal `QuickDock`. Dok odisiel (dovod je pri jeho triede nizsie),
-        # takze slot uz nema co drzat. Rad tym dole konci lupou a
-        # Nastaveniami.
+        # vkladal `QuickDock`. Dok odisiel (dovod je pri jeho triede nizsie).
+        # Do 0.2.2 (davka 4) tu dole sedeli aj lupa a Nastavenia (viz
+        # docstring triedy, preco uz nie).
 
         self._select("dnes")
+
+    def set_label(self, key, text):
+        """Novy popisok polozky `key` bez prestavby panela - "V hre" sa vo
+        svete Praca vola "Obrazovka" a svet sa prepina prefarbenim okna, nie
+        prestavbou (`app_prefs.set_world`)."""
+        row = self.rows.get(key)
+        if row is not None:
+            row.set_label(text)
 
     def set_badge(self, key, text=""):
         """Male cislo alebo bodka vpravo pri polozke (pocet spustacov,
@@ -633,7 +626,7 @@ _NAV_ICON_SS = 3          # kresli sa trojnasobne, CTk zmensi podla mierky
 
 # kluc polozky -> meno ikony (polozky bez ikony ostavaju pri znaku z PAGES)
 NAV_ICON_FOR = {"dnes": "enso", "historia": "clock", "vhre": "screen",
-                "nastavenia": "gear"}
+                "nastavenia": "gear", "hladat": "search"}
 
 
 def kresli_nav_ikonu(meno, farba, px=NAV_ICON_PX, ss=_NAV_ICON_SS):
@@ -713,7 +706,8 @@ class _NavRow(ctk.CTkFrame):
     HEIGHT_COMPACT = 48
     ICON_W = 24
 
-    def __init__(self, master, pal, key, icon, label, on_click, compact=False):
+    def __init__(self, master, pal, key, icon, label, on_click, compact=False,
+                 tip=None):
         self.compact = bool(compact)
         height = self.HEIGHT_COMPACT if self.compact else self.HEIGHT
         super().__init__(master, fg_color="transparent", height=height, corner_radius=0)
@@ -723,6 +717,10 @@ class _NavRow(ctk.CTkFrame):
         self.on_click = on_click
         self.active = False
         self.text = label
+        # Bublina: predvolene cely nazov (`self.text`), lupa ma vlastnu
+        # (cely nazov palety + Ctrl K) - `tip` je funkcia, cita sa az pri
+        # zobrazeni.
+        self._tip_fn = tip if callable(tip) else (lambda: self.text)
 
         # "tlacidlo" - zaobleny podklad, ktory nesie hover/aktivne pozadie
         self.box = ctk.CTkFrame(self, fg_color="transparent", corner_radius=8,
@@ -755,7 +753,7 @@ class _NavRow(ctk.CTkFrame):
             self.label.pack(side="top", pady=(0, 2))
             self.badge = ctk.CTkLabel(self.box, text="", anchor="e",
                                       font=ui_kit.ui(10, "bold"), text_color=pal["text_3"])
-            _HoverTip(self.box, lambda: self.text)
+            _HoverTip(self.box, lambda: self._tip_fn())
         else:
             self.icon = ctk.CTkLabel(self.box, text=icon, width=self.ICON_W,
                                      anchor="center", font=("Segoe UI", 12),
@@ -799,6 +797,14 @@ class _NavRow(ctk.CTkFrame):
     def set_active(self, active):
         self.active = bool(active)
         self._paint(hover=False)
+
+    def set_label(self, text):
+        """Novy popisok (aj bublina, ktora ho cita z `self.text`)."""
+        self.text = text
+        try:
+            self.label.configure(text=text)
+        except Exception:
+            pass
 
     def set_pal(self, pal):
         """Prepise vlastnu kopiu palety a hned prekresli.
@@ -867,7 +873,7 @@ class _NavRow(ctk.CTkFrame):
 # Enso (残) - znacka appky a zaroven spinac pocuvania, HORE v paneli
 # ---------------------------------------------------------------------------
 class _StateDot(ctk.CTkFrame):
-    """Bodka v bocnom paneli: pocuva / nepocuva / odlozena.
+    """Bodka v bocnom paneli: sleduje / stoji / odlozena / tep vypadol.
 
     PRECO VOBEC EXISTUJE
     --------------------
@@ -901,6 +907,19 @@ class _StateDot(ctk.CTkFrame):
     by v periferii splynula s cervenou. Odlozenie ma prednost pred
     pocuvanim: ked appka pocuva, ale je odlozena, plati odlozena.
 
+    STVRTY STAV: SLEDUJE, ALE TEP VYPADOL (0.2.2 davka 4)
+    -----------------------------------------------------
+    Hodinky vypadli uprostred vecera (`app._hr_lost`: po 12 s ticha,
+    `heart_rate.STALE_AFTER_S`) - appka "sleduje", ale nema z coho a sama sa
+    neozve. Na Historii ci v Nastaveniach by plna zelena bodka tvrdila, ze
+    je vsetko v poriadku. Vypadok je jediny stav, ktory si pyta zasah, preto
+    ma vlastny TVAR - plny TROJUHOLNIK (varovanie), nie dalsie kolecko - a
+    farbu `danger_text`: audit ju vyhradil stratenym hodinkam (theme.py) a
+    na `bg` ma v oboch temach >= 4,5:1. Ma prednost aj pred odlozenim:
+    "teraz nie" si hrac zapol sam a vie o nom, vypadok nie. Zastavenej
+    appke sa neukazuje (nesleduje, nema co vypadnut). Stav posiela appka
+    cez `set_lost` (`app_today._refresh_state_dot`).
+
     Nie je to tlacidlo. Spinac je jeden a je v dychajucom pase.
     """
 
@@ -913,11 +932,29 @@ class _StateDot(ctk.CTkFrame):
         self._pal = pal
         self._live = False
         self._snoozed = False
+        self._lost = False
         self.canvas = tk.Canvas(self, width=self.SIZE + 8, height=self.SIZE + 8,
                                 bg=pal["bg"], highlightthickness=0, bd=0)
         self.canvas.pack()
         self._tip_text = tip
-        self._tip = _HoverTip(self.canvas, lambda: self._tip_text)
+        # Zakladna bublina (opis vsetkych stavov). `_tip_text` pocas
+        # odlozenia nesie cas konca; pri vypadku plati zakladna.
+        self._base_tip = tip
+        self._tip = _HoverTip(self.canvas, self._aktualny_tip)
+        self._redraw()
+
+    def _aktualny_tip(self):
+        if self._lost and self._live:
+            return self._base_tip
+        return self._tip_text
+
+    def set_lost(self, lost):
+        """Sleduje, ale tep z hodiniek vypadol. Kresli sa len spolu so
+        `set_live(True)`."""
+        lost = bool(lost)
+        if lost == self._lost:
+            return
+        self._lost = lost
         self._redraw()
 
     def set_live(self, live):
@@ -946,25 +983,60 @@ class _StateDot(ctk.CTkFrame):
             pass
         self._redraw()
 
+    def _set_scaling(self, *args, **kwargs):
+        """Prekresli aj pri zmene DPI (presun okna na monitor s inou
+        mierkou) - platno je holy tk.Canvas a mierku si dorabia samo."""
+        try:
+            super()._set_scaling(*args, **kwargs)
+        except Exception:
+            pass
+        self._redraw()
+
+    def _mierka(self):
+        try:
+            return float(ctk.ScalingTracker.get_widget_scaling(self)) or 1.0
+        except Exception:
+            return 1.0
+
     def _redraw(self):
-        c, pal = self.canvas, self._pal
+        c, pal = getattr(self, "canvas", None), getattr(self, "_pal", None)
+        if c is None or pal is None:
+            return          # `_set_scaling` este pred postavenim platna
         try:
             c.delete("all")
         except Exception:
             return
-        r = self.SIZE / 2.0
-        stred = (self.SIZE + 8) / 2.0
+        # DPI (0.2.2 davka 4): ramec okolo platna CTk zvacsi sam, holy
+        # tk.Canvas nie - pri 150 % bola bodka o tretinu mensia nez ikony
+        # pod nou a duty kruzok sa rozpadal na par pixelov.
+        m = self._mierka()
+        strana = int(round((self.SIZE + 8) * m))
+        try:
+            if int(float(c.cget("width"))) != strana:
+                c.configure(width=strana, height=strana)
+        except Exception:
+            pass
+        r = self.SIZE / 2.0 * m
+        stred = strana / 2.0
+        if self._lost and self._live:
+            # sleduje, ale tep vypadol: plny trojuholnik (varovanie)
+            farba = pal.get("danger_text", pal.get("warn", "#D46F57"))
+            c.create_polygon(stred, stred - r - 2 * m, stred - r - 1.5 * m, stred + r,
+                             stred + r + 1.5 * m, stred + r, fill=farba, outline="")
+            return
         if self._snoozed:
             farba = pal.get("warn", pal["success"])
             # Prstenec, nie len ina farba: jantarova a zelena su v
             # periferii blizko, kym nemaju iny TVAR.
-            c.create_oval(stred - r - 3, stred - r - 3, stred + r + 3, stred + r + 3,
-                          outline=farba, width=1)
+            okraj = r + 3 * m
+            c.create_oval(stred - okraj, stred - okraj, stred + okraj, stred + okraj,
+                          outline=farba, width=max(1, round(m)))
         elif not self._live:
             # zastavene: duty kruzok, ziadna vypln - pokoj, nie poplach
             farba = pal.get("text_faint", pal.get("text_dim", "#888888"))
-            c.create_oval(stred - r + 1, stred - r + 1, stred + r - 1, stred + r - 1,
-                          outline=farba, width=1.5)
+            vnutro = r - 1 * m
+            c.create_oval(stred - vnutro, stred - vnutro, stred + vnutro, stred + vnutro,
+                          outline=farba, width=1.5 * m)
             return
         else:
             farba = pal["success"]
@@ -1468,8 +1540,8 @@ class _EnsoHero:
 
 
 class _WatchPulse(ctk.CTkFrame):
-    """Kontrolka senzora tepu - prstenec s hodinkami, medzi "V hre" a
-    "Nastaveniami". Klik otvara sprievodcu parovanim.
+    """Kontrolka senzora tepu - prstenec s hodinkami a popiskom "Hodinky"
+    pod skupinou navigacie. Klik otvara sprievodcu parovanim.
 
     LOGIKA STAVOV (v tomto poradi):
       1. NESPAROVANE - prstenec tlmeny a NEHYBNY, hodinky sive.
@@ -1490,15 +1562,17 @@ class _WatchPulse(ctk.CTkFrame):
     ~12 % muzov, ktori nerozlisia cervenu od zelenej.
     """
 
-    # Medzi polozkou navigacie (48) a ensom/znackou (68) - kontrolka je
-    # dolezitejsia nez polozka menu, ale znacka ostava najvacsia.
-    SIZE = 56
+    # 56 -> 48 (0.2.2 davka 4): kontrolka ma pod sebou popisok "Hodinky"
+    # ako ostatne polozky panela a prstenec bez neho bol najvacsi prvok
+    # panela (audit UX). Spolu s popiskom zaberie zhruba tolko, co rad
+    # navigacie.
+    SIZE = 48
     FRAMES = 20
     TICK_MS = 60           # dost husto, aby tep nesekal aj pri 180 BPM
     WAIT_CYCLE_MS = 2600   # "cakam na tep" dycha pomaly
 
     def __init__(self, master, pal, on_click=None, tip_fn=None,
-                 tip_live_fn=None):
+                 tip_live_fn=None, caption=""):
         super().__init__(master, fg_color="transparent")
         self._pal = pal
         self._on_click = on_click
@@ -1510,6 +1584,16 @@ class _WatchPulse(ctk.CTkFrame):
         self.btn = ctk.CTkLabel(self, text="", cursor="hand2")
         self.btn.pack()
         self.btn.bind("<Button-1>", self._clicked)
+        # Kratky popisok pod prstencom ("Hodinky") - do 0.2.2 bol prstenec
+        # jediny prvok panela bez popisu (audit UX). Klik na popisok robi to
+        # iste co klik na prstenec.
+        self.caption = None
+        if caption:
+            self.caption = ctk.CTkLabel(self, text=caption, font=ui_kit.ui(10),
+                                        text_color=pal.get("text_dim", PAL["text_2"]),
+                                        height=16, cursor="hand2")
+            self.caption.pack(pady=(1, 0))
+            self.caption.bind("<Button-1>", self._clicked)
 
         # Bublina hovorila "Sparovat hodinky" aj vtedy, ked uz boli
         # sparovane a prstenec bil - vtedy je to matuce, lebo klik vtedy
@@ -1523,6 +1607,8 @@ class _WatchPulse(ctk.CTkFrame):
             return tip_fn() if callable(tip_fn) else "Spárovať hodinky"
 
         self._tip = _HoverTip(self.btn, popis)
+        if self.caption is not None:
+            self._tip_caption = _HoverTip(self.caption, popis)
         self._build_frames()
         self._tick()
 
@@ -1536,6 +1622,11 @@ class _WatchPulse(ctk.CTkFrame):
         self._pal = pal
         self._build_frames()
         self._last_key = None
+        if self.caption is not None:
+            try:
+                self.caption.configure(text_color=pal.get("text_dim", PAL["text_2"]))
+            except Exception:
+                pass
 
     def destroy(self):
         if self._after_id is not None:

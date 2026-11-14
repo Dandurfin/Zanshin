@@ -643,7 +643,9 @@ def test_texty_o_praci_hovoria_pravdu():
     for kluc in ("world.tip", "settings.world_sub", "ob.world.work.desc",
                  "session.end.cues_work"):
         sk = i18n.STRINGS[kluc]["sk"]
-        assert "obrazom" in sk, kluc
+        # 0.2.2: jedno slovo "obrazok" pre to, co sa ukaze v hre
+        assert "obrázkom" in sk, kluc
+        assert "obrazom" not in sk, kluc
     assert "Práca" == i18n.STRINGS["world.work"]["sk"]
     assert "Hra" == i18n.STRINGS["world.play"]["sk"]
 

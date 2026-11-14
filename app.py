@@ -21,7 +21,6 @@ import os
 import threading
 import time
 import tkinter as tk
-from tkinter import messagebox
 
 import customtkinter as ctk
 
@@ -562,6 +561,12 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         # poistka: keby sa slucka nikdy nerozbehla, fronta nesmie rast.
         self._ui_pending = deque(maxlen=200)
         self.snooze_hotkey = settings["snooze_hotkey"]
+        # Skratku si hrac vybral sam - appka mu ju pri zrazke s rozlozenim
+        # klavesnice nevymeni (`_vyber_skratku_pri_starte`, 0.2.2).
+        self.snooze_hotkey_chosen = bool(settings.get("snooze_hotkey_chosen", False))
+        # Posledna registracia skratky zlyhala (drzi ju iny program) - riadok
+        # v Nastaveniach to povie (`_snooze_hotkey_sub`).
+        self._hotkey_zlyhala = False
         # Fotka na pozadi. Vymena obrazku aj vypnutie su v
         # `background.py` - tu sa drzi uz len zvolena jemnost.
         self.background_opacity = settings["background_opacity"]
@@ -623,6 +628,7 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         self.edge_voice_map = {}     # popis -> ShortName
         self.edge_cache = EdgeTTSCache(self.log_threadsafe)
         self.edge_status_label = None
+        self.edge_retry_btn = None
         self._pregen_job = None
         self._pregen_seq = 0
         # Hlaska, ktora pocas pocuvania chybala v cache (`_speak_text`) -
@@ -748,7 +754,13 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         # zalogovat pred rozbehnutim slucky.
         self.root.after(0, self._flush_ui_pending)
 
+        # Predvolena skratka, ktora by na niektorom rozlozeni klavesnice
+        # zhltla pismeno (AltGr = Ctrl+Alt), sa este pred registraciou vymeni.
+        self._vyber_skratku_pri_starte()
         self.start_snooze_hotkey()
+        # Riadok v Nastaveniach vznikol pred registraciou: obsadenu (alebo
+        # vymenenu) skratku musi povedat uz od startu.
+        self._refresh_snooze_hotkey_row()
 
         if settings["first_run"]:
             # Az PO priprave hlasu (najviac `PRVY_START_MAX_S`): kym appka
@@ -905,9 +917,12 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
             "pair_live_tip": tr("dock.pulse_live_tip"),
             "dnes": tr("nav.dnes"),
             "historia": tr("nav.historia"),
-            "vhre": tr("nav.vhre_short"),
+            # vo svete Praca "Obrazovka" (`_nazov_vhre`, app_today.py)
+            "vhre": self._nazov_vhre(),
             "nastavenia": tr("nav.nastavenia"),
             "cmdk": tr("nav.cmdk_hint"),
+            "search": tr("nav.search"),
+            "watch": tr("nav.watch"),
             "enso_start_tip": tr("dock.start_tip"),
             "enso_stop_tip": tr("dock.stop_tip"),
             "state_tip": tr("sidebar.state_tip"),
@@ -1010,13 +1025,17 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         self._dashboard_anchor_frame = anchor
         anchor.pack(fill="x")
 
+        # HLAVNY VYPINAC: tlacidlo "▶ Spustit sledovanie" / "■ Zastavit
+        # sledovanie" v dychajucom pase (0.2.2 davka 4). Texty ma jedno miesto
+        # (`_texty_pasu`, app_cues.py), aby ich prestavba okna, zmena stavu
+        # aj prepnutie auto-profilu nastavovali rovnako.
         self.kamae = ui_kit.KamaeBar(anchor, pal, on_toggle=self.toggle_listening)
+        self.kamae.set_texts(*self._texty_pasu())
         # Znacka (enso) dycha PRESNE s dychovou linkou tejto hlavicky -
         # jedno okno, jeden rytmus. Viz `KamaeBar.phase()`.
         # Vpravo nechava miesto posuvnika pod nim, aby pas koncil na tej istej
         # pravej hrane ako karty (audit: pas siahal o ~25 px dalej).
         self.kamae.pack(fill="x", padx=(0, ui_kit.SCROLLBAR_W))
-        self.kamae.set_texts(tr("kamae.bar_title"), tr("kamae.bar_sub"))
 
         # Kedy sa appka naposledy ozvala. Zamerne tlmene: je to kontext k
         # stavu, nie vykon. Ked este nic nebolo, riadok sa vobec nezobrazi -
@@ -1046,7 +1065,11 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         cols.grid_columnconfigure(1, weight=0, minsize=300)
         cols.grid_rowconfigure(0, weight=1)
 
-        stred = ctk.CTkFrame(cols, fg_color="transparent")
+        # Vysku riadku urcuje pravy stlpec (karty a pasma). Kym nie je ziadna
+        # relacia s tepom, karty su schovane (`_sync_dnes_prazdny_stav`) a
+        # stlpec je nizky - stred si preto drzi vlastne minimum, do ktoreho sa
+        # zmesti znacka, nadpis aj najdlhsia veta stavu (obsadeny port).
+        stred = ctk.CTkFrame(cols, fg_color="transparent", height=340)
         stred.grid(row=0, column=0, sticky="nsew", padx=(0, 14))
         self.dnes_stred = stred
 
@@ -1080,6 +1103,12 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         self._dnes_titul = ""
         self._dnes_veta = ""
         self._dnes_lastcue_text = ""
+        # Nova stranka (aj po zmene jazyka): veta o uceni sa napise nanovo v
+        # novom jazyku a prazdny stav (`_sync_dnes_prazdny_stav`) sa nastavi
+        # na nove widgety - stare priznaky patrili znicenej stranke.
+        self._dnes_learning_text = ""
+        self._dnes_learning_key = None
+        self._dnes_ma_tep_stav = None
 
         # ZNACKA (残 v ense) + spinac stavu. Uz to NIE JE widget, ale kresba na
         # Canvase (`ui_shell._EnsoHero`). API ostava rovnake, takze alias
@@ -1112,7 +1141,13 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         hr_panel.pack(fill="x", pady=(16, 0))
         self.hr_panel = hr_panel
 
-        bpm_row = ctk.CTkFrame(hr_panel.body, fg_color="transparent")
+        # Cislo tepu a veta k nemu su v jednom ramci: pred prvou relaciou s
+        # tepom sa schova cely (velke "--" by bolo len dalsie predstierane
+        # meranie) - viz `_sync_dnes_prazdny_stav`.
+        bpm_box = ctk.CTkFrame(hr_panel.body, fg_color="transparent")
+        bpm_box.pack(fill="x")
+        self.dnes_bpm_box = bpm_box
+        bpm_row = ctk.CTkFrame(bpm_box, fg_color="transparent")
         bpm_row.pack(fill="x")
         self.dnes_bpm = ctk.CTkLabel(bpm_row, text="--", font=ui_kit.display(40),
                                      text_color=pal["text"])
@@ -1121,7 +1156,7 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
                      text_color=pal["text_faint"]).pack(side="left", padx=(9, 0),
                                                         pady=(14, 0))
         # "aby pouzivatel vedel": veta pri cisle + rozbalitelne co to znamena
-        self.dnes_info_bpm = self._metric_info(hr_panel.body, pal, "bpm")
+        self.dnes_info_bpm = self._metric_info(bpm_box, pal, "bpm")
         self.dnes_info_bpm.pack(fill="x", pady=(2, 0))
 
         # "zive" prvky (krivka, zataz) su v jednom ramci, ktory sa bez hodiniek
@@ -1161,35 +1196,15 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         self.dnes_trace.pack(fill="x", pady=(4, 0))
         live.pack(fill="x")
 
-        # Prazdny stav (feedback: "Dnes posobi holo"): kym nie su hodinky,
-        # ukazeme tlmeny nahlad HUD-u, jednu vetu a tlacidlo na parovanie.
+        # PRAZDNY STAV (0.2.2 davka 4, `ui_kit.EmptyState`): kym nechodi tep,
+        # jedna veta a jedna akcia - "Sparovat hodinky" (otvori navod a zapne
+        # prijem tepu, `open_watch_pairing`). Do 0.2.2 tu bol aj tlmeny
+        # nahlad HUD-u s vymyslenym tepom 72 a nadpis nad vetou - nahlad
+        # predstieral meranie a nadpis opakoval nadpis panela.
         # Po pripojeni sa schova (_refresh_dnes_stats).
-        self.dnes_empty = ctk.CTkFrame(hr_panel.body, fg_color="transparent")
-        try:
-            style = hud_paint.Style(pal)
-            img = hud_paint.render_hud(
-                style, bpm=72, stress=18,
-                history=[64 + ((i * 5) % 14) for i in range(90)],
-                threshold=self.hr_critical_bpm, baseline=64,
-                labels={"load": tr("hud.load")}, pulse=0.0, session="", ss=2)
-            img = img.resize((int(img.width * 0.62), int(img.height * 0.62)))
-            img.putalpha(img.getchannel("A").point(lambda v: int(v * 0.45)))
-            photo = ctk.CTkImage(light_image=img, dark_image=img, size=img.size)
-            preview = ctk.CTkLabel(self.dnes_empty, image=photo, text="")
-            preview.image = photo
-            preview.pack(pady=(10, 6))
-            # referencia pre `_redraw_dnes_preview` - obrazok ma farby
-            # zapecene, pri zmene temy sa musi nakreslit znova
-            self.dnes_preview_label = preview
-        except Exception:
-            app_log.exception("nahlad HUD na Dnes sa nepodarilo vykreslit")
-        ctk.CTkLabel(self.dnes_empty, text=tr("dnes.empty_title"), font=ui_kit.ui(13, "bold"),
-                     text_color=pal["text_dim"]).pack()
-        ctk.CTkLabel(self.dnes_empty, text=tr("dnes.empty_body"), font=ui_kit.ui(11),
-                     text_color=pal["text_faint"], wraplength=380,
-                     justify="center").pack(pady=(4, 10))
-        ui_kit.chip(self.dnes_empty, pal, tr("dnes.empty_btn"), self.open_watch_pairing,
-                    width=170).pack()
+        self.dnes_empty = ui_kit.EmptyState(
+            hr_panel.body, pal, tr("dnes.empty_body"), action=tr("dnes.empty_btn"),
+            command=self.open_watch_pairing)
         # ktory z dvojice (live / empty) je vidno, riesi _refresh_dnes_stats
 
         # "Moje štatistiky" - volitelna mriezka 2x2 (nahradza povodny pevny
@@ -1220,8 +1235,11 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
             command=lambda: self.on_hud_config_change(
                 enabled=self.hud_quick_var.get())).pack(side="right", padx=(0, 8))
 
+        # Hlavicka a mriezka kariet sa pred prvou relaciou s tepom schovaju -
+        # styri karty s pomlckami nic nehovoria (`_sync_dnes_prazdny_stav`).
         stats_head = ctk.CTkFrame(stats_wrap, fg_color="transparent")
         stats_head.pack(fill="x", pady=(0, 10))
+        self.dnes_stats_head = stats_head
         ctk.CTkLabel(stats_head, text=tr("dashboard.stats_title").upper(),
                      font=ui_kit.ui(11, "bold"), text_color=pal["text_faint"],
                      anchor="w").pack(side="left")
@@ -1245,7 +1263,15 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         zone_panel = ui_kit.Panel(stats_wrap, pal, title=tr("dnes.zones_title"))
         zone_panel.pack(fill="both", expand=True, pady=(12, 0))
         self.dnes_zone_panel = zone_panel
-        self.dnes_zone_bar = ui_kit.ZoneBar(zone_panel.body, pal)
+        # Pruh, riadky aj veta pod nimi su v jednom ramci - pred prvou
+        # relaciou s tepom ho nahradi jedna veta (`dnes_zone_empty`): styri
+        # riadky "0 %" vyzerali ako meranie, nie ako "zatial nic".
+        zone_obsah = ctk.CTkFrame(zone_panel.body, fg_color="transparent")
+        zone_obsah.pack(fill="x")
+        self.dnes_zone_obsah = zone_obsah
+        self.dnes_zone_empty = ui_kit.EmptyState(
+            zone_panel.body, pal, tr("dnes.zones_empty"), wraplength=260)
+        self.dnes_zone_bar = ui_kit.ZoneBar(zone_obsah, pal)
         self.dnes_zone_bar.pack(fill="x", pady=(0, 10))
         self.dnes_zone_rows = {}
         # Nazov vlavo, PODIEL vpravo - a nic medzi tym. Do 2.1 tu bola aj
@@ -1254,7 +1280,7 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         # to iste, co podiel, len inak. Styri riadky po troch udajoch robili
         # z panelu tabulku; ma to byt jeden pohlad.
         for zone in ui_kit.ZoneBar.ORDER:
-            row = ctk.CTkFrame(zone_panel.body, fg_color="transparent")
+            row = ctk.CTkFrame(zone_obsah, fg_color="transparent")
             row.pack(fill="x", pady=2)
             ctk.CTkLabel(row, text=tr(f"metric.zones.{zone}"), font=ui_kit.ui(11),
                          text_color=pal["text_dim"], anchor="w").pack(side="left")
@@ -1263,9 +1289,11 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
             value.pack(side="right")
             self.dnes_zone_rows[zone] = value
         self.dnes_zone_note = ctk.CTkLabel(
-            zone_panel.body, text=tr("dnes.zones_hint"), font=ui_kit.ui(10),
+            zone_obsah, text=tr("dnes.zones_hint"), font=ui_kit.ui(10),
             text_color=pal["text_faint"], anchor="w", justify="left", wraplength=280)
         self.dnes_zone_note.pack(fill="x", pady=(10, 0))
+        # Ktory z dvojice (pasma / veta) a ci su karty vidno, riesi
+        # `_sync_dnes_prazdny_stav` (z `_refresh_dnes_stats`).
 
         # --- dennik ---
         log_panel = ui_kit.Panel(body, pal)
@@ -1359,7 +1387,9 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
                            border_width=1, border_color=pal["line_soft"])
         bar.pack(fill="x", pady=(16, 14))
         inner = ctk.CTkFrame(bar, fg_color="transparent")
-        inner.pack(fill="x", padx=14, pady=11)
+        # padx 16 ako telo panela a karty pripomienok pod listou - pri 14
+        # zacinal obsah listy o 2 px (3 px pri 150 %) vlavo od nich.
+        inner.pack(fill="x", padx=16, pady=11)
 
         self.profile_var = tk.StringVar(value=self.active_profile_name)
         self.profile_switch = ui_kit.option_menu(
@@ -1386,7 +1416,7 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         # appka pozna, ze sama spusti aj zastavi pocuvanie a ze vypnuta
         # procesy necita - vedla styroch tlacidiel profilu by sa nezmestila.
         auto_row = ctk.CTkFrame(bar, fg_color="transparent")
-        auto_row.pack(fill="x", padx=14, pady=(0, 11))
+        auto_row.pack(fill="x", padx=16, pady=(0, 11))
         auto_switch = ui_kit.switch(auto_row, pal, text=auto_text,
                                     variable=self.auto_profile_var,
                                     font=ui_kit.ui(11),
@@ -1455,7 +1485,9 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         # VYSVETLIVKY A TEORIA PATRIA SEM, nie o dve karty dalej.
         # Clovek ich hlada prave vtedy, ked cita, co ktora hlaska hovori -
         # "preco zrovna celust" sa pyta pri celusti.
-        ui_kit.linka(wrap, pal).pack(fill="x", pady=(22, 0))
+        # Odstup, nie linka (0.2.2, audit UX, davka 4): linka 1 px lezala
+        # tesne nad ramom karty Sprievodcu - dve ciary nad sebou.
+        ctk.CTkFrame(wrap, fg_color="transparent", height=16).pack(fill="x")
         self._build_guide_into(wrap, pal)
 
     def _build_zvuk_page(self, page, pal):
@@ -1492,9 +1524,8 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
             zablokovane: stranka sa posuva a bez toho by rolovanie menilo
             hodnotu, nad ktorou prave stoji kurzor."""
             box = ctk.CTkFrame(parent, fg_color="transparent")
-            slider = ui_kit.block_slider_wheel(ctk.CTkSlider(
-                box, width=SLIDER_W, progress_color=pal["accent"], button_color=pal["accent"],
-                button_hover_color=pal["accent_hover"], fg_color=pal["switch_off"], **kw))
+            # jeden styl posuvnika v celej appke (`ui_kit.slider`)
+            slider = ui_kit.slider(box, pal, width=SLIDER_W, **kw)
             slider.pack(side="left")
             return box
 
@@ -1507,24 +1538,12 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
             label.pack(side="left", padx=(10, 0))
             return label
 
-        # --- ako sa ozyvam (styl hlasky, 0.2) ---
-        # Ta ista otazka ako v 5. kroku onboardingu, s tymi istymi vetami.
-        # Je navrchu: rozhoduje, ci zo vsetkeho pod nou v hre vobec nieco
-        # zaznie. "Neviem" tu nie je - v onboardingu znamena hlas.
-        styl_panel = ui_kit.Panel(wrap, pal)
-        styl_panel.pack(fill="x")
-        row = ui_kit.SettingRow(styl_panel.body, pal, tr("settings.cue_style"),
-                                tr("settings.cue_style_sub"), wrap=WRAP)
-        self.cue_style_var = tk.StringVar(
-            value=self._cue_style_label(getattr(self, "cue_style", None)))
-        ui_kit.option_menu(
-            row.control, pal, values=self._cue_style_labels(),
-            variable=self.cue_style_var,
-            command=self._on_cue_style_label).pack()
-
         # --- hlas ---
+        # POZN: nad nim bol vlastny panel bez nadpisu len pre riadok "Ako sa
+        # ozyvam". Je to teraz prvy riadok panela Hlasitost (0.2.2, audit UX,
+        # davka 4: karta pre jednu vetu = ram bez obsahu).
         voice_panel = ui_kit.Panel(wrap, pal, title=tr("settings.audio_voice_title"))
-        voice_panel.pack(fill="x", pady=(14, 0))
+        voice_panel.pack(fill="x")
 
         row = ui_kit.SettingRow(voice_panel.body, pal, tr("settings.engine"),
                                 tr("settings.engine_sub"), wrap=WRAP)
@@ -1541,6 +1560,12 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
             voice_panel.body, text="", font=ui_kit.ui(10), text_color=pal["text_dim"],
             anchor="w", justify="left", wraplength=520)
         self.edge_status_label.pack(fill="x", pady=(6, 0))
+        # "Skusit znova" (0.2.2): ukaze sa len pod zlyhanou pripravou hlasu
+        # (`_edge_priprava_zlyhala`, app_audio.py); pocas sledovania ju
+        # `pregenerate` aj tak odlozi na po hre.
+        self.edge_retry_btn = ui_kit.button(
+            voice_panel.body, pal, tr("common.retry"), command=self.skus_hlas_znova,
+            height=28)
 
         row = ui_kit.SettingRow(voice_panel.body, pal, tr("settings.voice"),
                                 tr("settings.voice_sub"), wrap=WRAP)
@@ -1561,6 +1586,20 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         # --- hlasitost ---
         loud_panel = ui_kit.Panel(wrap, pal, title=tr("settings.audio_volume_title"))
         loud_panel.pack(fill="x", pady=(14, 0))
+
+        # --- ako sa ozyvam (styl hlasky, 0.2) ---
+        # Ta ista otazka ako v 5. kroku onboardingu, s tymi istymi vetami.
+        # Je to strop hlasitosti (hlas > zvuk > obrazok), preto prvy riadok
+        # panela Hlasitost - rozhoduje, ci z riadkov pod nim v hre vobec
+        # nieco zaznie. "Neviem" tu nie je - v onboardingu znamena hlas.
+        row = ui_kit.SettingRow(loud_panel.body, pal, tr("settings.cue_style"),
+                                tr("settings.cue_style_sub"), wrap=WRAP)
+        self.cue_style_var = tk.StringVar(
+            value=self._cue_style_label(getattr(self, "cue_style", None)))
+        ui_kit.option_menu(
+            row.control, pal, values=self._cue_style_labels(),
+            variable=self.cue_style_var,
+            command=self._on_cue_style_label).pack()
 
         row = ui_kit.SettingRow(loud_panel.body, pal, tr("settings.volume"),
                                 tr("settings.volume_sub"), wrap=WRAP)
@@ -1869,12 +1908,10 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
                                        text_color=pal["text_dim"])
             value_label.pack(side="right", padx=(8, 0))
             var = tk.DoubleVar(value=self.hud_config[key])
-            ui_kit.block_slider_wheel(ctk.CTkSlider(row.control, from_=low, to=high, variable=var, width=180,
-                          number_of_steps=28, progress_color=pal["accent"],
-                          button_color=pal["accent"], fg_color=pal["switch_off"],
-                          button_hover_color=pal["accent_hover"],
+            ui_kit.slider(row.control, pal, from_=low, to=high, variable=var, width=180,
+                          number_of_steps=28,
                           command=lambda _v, k=key, v=var, lbl=value_label, f=fmt:
-                              self._on_hud_slider(k, v, lbl, f))).pack(side="right")
+                              self._on_hud_slider(k, v, lbl, f)).pack(side="right")
 
         # --- anti-cheat ---
         #
@@ -2111,6 +2148,9 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         # _build_vhre_page - je to spravne miesto, lebo ide o IN-GAME
         # vizual, nie o rezim samotnej appky.
 
+        # Skratka "teraz nie" (0.2.2) - predtym sa dala zmenit len v subore.
+        self._build_snooze_hotkey_row(wrap, pal)
+
         guide = ui_kit.Panel(wrap, pal, title=tr("settings.guide_title"))
         guide.pack(fill="x", pady=(14, 0))
         row = ui_kit.SettingRow(guide.body, pal, tr("settings.guide_row"),
@@ -2218,7 +2258,10 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
                                           self.hr_ip_var, extra=_prepinac_ip)
         self.hr_ip_var.trace_add("write", lambda *_a: self._apply_hr_ip_mask())
         self._apply_hr_ip_mask()
-        self._hr_hint(inner, pal, 6, tr("settings.hr_ip_hint"))
+        # Vysvetlivka si drzi odkaz: ked je v poli adresa VPN/virtualneho
+        # adaptera, `_apply_hr_ip_mask` k nej prida vetu (0.2.2).
+        self.hr_ip_hint_label = self._hr_hint(inner, pal, 6, tr("settings.hr_ip_hint"))
+        self._hr_ip_virtual_hint(self.hr_ip_var.get())
 
         self.hr_port_var = tk.StringVar(value=str(self.hr_port))
         self.hr_port_entry = self._hr_entry(inner, pal, 7, tr("settings.hr_port_label"),
@@ -2296,10 +2339,11 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         zarovnanie aj rovnaky vertikalny odstup - feedback z testu ("rozne
         odsadenie") ukazal, ze kopirovanie tych istych grid() argumentov na
         3 miestach sa casom rozide."""
-        ctk.CTkLabel(inner, text=text, text_color=pal["text_dim"],
-                    font=ui_kit.ui(10), wraplength=320, justify="left",
-                    anchor="w").grid(
-            row=row, column=0, columnspan=2, sticky="w", pady=(0, 4))
+        label = ctk.CTkLabel(inner, text=text, text_color=pal["text_dim"],
+                             font=ui_kit.ui(10), wraplength=320, justify="left",
+                             anchor="w")
+        label.grid(row=row, column=0, columnspan=2, sticky="w", pady=(0, 4))
+        return label
 
     # ---------- Somatic Session Tracker ----------
 
@@ -2715,10 +2759,13 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
             self._listen_started = time.time()
         elif not self.listening:
             self._listen_started = None
+        # Tlacidlo v pase prepne text (Spustit <-> Zastavit) samo v
+        # `set_live` - toto je jedina cesta, ktorou idu vsetky spustenia aj
+        # zastavenia (tlacidlo, ponuka v liste, hra), takze sa nerozidu.
         if getattr(self, "kamae", None) is not None:
-            self.kamae.set_texts(tr("kamae.bar_title"), tr("kamae.bar_sub"))
             self.kamae.set_live(self.listening)
-        self._refresh_dnes_state_text()
+        # Text stavu na Dnes a bodka v paneli (sleduje, ale tep vypadol).
+        self._refresh_kamae_state_text()
         # jas fotky za ensom ide za stavom sledovania, nie za hodinkami
         if hasattr(self, "_sync_dnes_hero"):
             self._sync_dnes_hero()
@@ -2862,12 +2909,26 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         # PRVY KRIZIK: povedat, ze appka nekonci. Doteraz × okno potichu
         # schovalo do listy - port pre telefon ostal otvoreny a tep sa dalej
         # meral a ukladal, hoci si hrac myslel, ze appku zavrel. Raz to
-        # povie a da na vyber (Nie = ukoncit hned); dalej × len schovava.
+        # povie a da na vyber; dalej × len schovava.
+        #
+        # DVE TLACIDLA, NIE ANO/NIE (0.2.2, davka 4): systemove okno malo
+        # tlacidla v jazyku Windowsu a veta musela vysvetlovat "(Nie =
+        # ukoncit hned)". Teraz okno appky (`ui_kit.choose`) s "Nechat bezat
+        # v liste" (predvolene, Enter) a "Ukoncit Zanshin". Escape a × v
+        # dialogu = nic sa nedeje, okno ostava - a pyta sa znova pri dalsom
+        # ×, lebo hrac este nevybral.
         if not getattr(self, "tray_close_explained", True):
+            volba = ui_kit.choose(
+                getattr(self, "root", None), getattr(self, "pal", None), APP_NAME,
+                tr("tray.close_first", port=self.hr_port),
+                [("tray", tr("tray.keep_running"), "primary"),
+                 ("quit", tr("tray.quit_app"), "secondary")],
+                cancel=None, default="tray")
+            if volba is None:
+                return
             self.tray_close_explained = True
             self.save_settings()
-            if not messagebox.askyesno(
-                    APP_NAME, tr("tray.close_first", port=self.hr_port)):
+            if volba == "quit":
                 self.quit_app()
                 return
         self.minimize_to_tray()
@@ -2884,15 +2945,35 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         # potom prebehol cely az po `root.destroy()`, dotaznik zanikol s
         # oknom a prvy `_quit` pokracoval v uz znicenom okne - `log` v
         # `_close_hr_session` spadol na TclError (pad v app.log z buildu).
-        # Druhe "Ukoncit" teraz len zavrie dotaznik (ako "Preskocit") a
-        # ukoncenie dokonci prvy `_quit`, v poradi nizsie.
+        # Druhe "Ukoncit" teraz len zavrie dotaznik a ukoncenie dokonci prvy
+        # `_quit`, v poradi nizsie. VYPLNENE ODPOVEDE SA NESTRACAJU (0.2.2,
+        # rozhodnutie zadavatela): ked sa hrac dotkol aspon jednej odpovede,
+        # ulozia sa (ako "Ulozit"); ked nie, zavrie sa ako "Preskocit".
         if getattr(self, "_quit_bezi", False):
             dotaznik = getattr(self, "_dotaznik_pri_zatvarani", None)
-            if dotaznik is not None:
+            if dotaznik is None:
+                return
+            # Dotaznik bez `bolo_vyplnene` (atrapy) sa bere ako prazdny.
+            try:
+                vyplneny = bool(getattr(dotaznik, "bolo_vyplnene", lambda: False)())
+            except Exception:
+                app_log.exception("ukoncenie: stav dotaznika sa nedal zistit")
+                vyplneny = False
+            try:
+                if vyplneny:
+                    self.log(tr("log.quit_questionnaire_saved"))
+                    dotaznik.confirm()
+                else:
+                    self.log(tr("log.quit_questionnaire_skipped"))
+                    dotaznik.close()
+            except Exception:
+                app_log.exception("ukoncenie: dotaznik sa nepodarilo zavriet")
+                # Prvy `_quit` na dotaznik caka (`wait_window`) - zavriet ho
+                # treba aj vtedy, ked ulozenie zlyhalo.
                 try:
                     dotaznik.close()
                 except Exception:
-                    app_log.exception("ukoncenie: dotaznik sa nepodarilo zavriet")
+                    pass
             return
         self._quit_bezi = True
         # Kym je toto True, `_ask_session_context` na dotaznik pocka.
@@ -2946,7 +3027,7 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
     # app_controls.ControlsMixin. Tieto dve metody ostali v app.py pri
     # liste: `start_snooze_hotkey` cita TRAY_AVAILABLE, ktore sa pocita
     # tu spolu s importom pystray/PIL (a testy ho menia na module app).
-    def start_snooze_hotkey(self):
+    def start_snooze_hotkey(self, po_zmene=False):
         """Zaregistruje globalny klaves pre "teraz nie" (zadanie §1.9).
 
         NIE JE to navrat hooku, ktory faza 3 zrusila - viz hlavicka
@@ -2959,8 +3040,14 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         (`setup_tray`) a riadok v denniku (`log.hotkey_failed_tray`) hraca
         posle tam. Bez listy (chyba pystray/PIL) zostava len zastavit
         pocuvanie, co zastavi aj meranie - to hovori `log.hotkey_failed`.
+
+        `po_zmene=True`: hrac prave vybral inu skratku v Nastaveniach
+        (`on_snooze_hotkey_pick`). Stara sa najprv odregistruje (prvy riadok
+        nizsie), vysledok novej ide do dennika rovnako ako pri starte a do
+        riadku nastavenia (`_hotkey_zlyhala`).
         """
         self.stop_snooze_hotkey()
+        self._hotkey_zlyhala = False
         if not self.snooze_hotkey:
             return False
         try:
@@ -2978,7 +3065,9 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         except Exception:
             app_log.exception("hotkey: registracia zlyhala")
             self._hotkey = None
+            self._hotkey_zlyhala = True
             return False
+        self._hotkey_zlyhala = not ok
         if ok:
             self.log(tr("log.hotkey_on",
                         combo=hotkey.format_combo(self.snooze_hotkey)))

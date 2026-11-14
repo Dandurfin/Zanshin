@@ -46,6 +46,21 @@ preview there uses the Windows voice and sends nothing) or any time under
 Settings → Sound → *How I speak up*. Zanshin may still go quieter on its own,
 but never louder than your choice.
 
+## "Not now"
+
+"Not now" keeps cues quiet for 30 minutes while Zanshin goes on measuring;
+doing it again ends it sooner. It's a global shortcut, Ctrl+Alt+Z by
+default, and always also in the tray icon's menu (right-click). From 0.2.2
+you pick the shortcut under Settings → General → *Keyboard shortcut*:
+Ctrl+Alt+Z, Ctrl+Alt+F9, Ctrl+Alt+F12, Ctrl+Shift+F12 or *Off*. AltGr is the
+same as Ctrl+Alt, so on some keyboard layouts a combination types a letter
+(AltGr+Z is ż on a Polish keyboard); the menu marks such a choice with that
+letter. If you never picked a shortcut and the default would type a letter
+on one of your layouts, Zanshin takes the first one that doesn't (or none)
+and says so once in its log. If another program already holds your
+shortcut, the setting keeps your choice and its line says it doesn't work
+right now. While "not now" holds, *Today* says until when and how to end it.
+
 ## What it learns, and from which sessions
 
 Nothing to tune by hand. Your load threshold, resting baseline and high
@@ -61,13 +76,20 @@ These sessions don't count:
 
 - imported sessions,
 - sessions with implausible readings,
-- sessions recovered after Zanshin ended without saving them (from 0.2.2; see
-  [KNOWN_ISSUES.md](../KNOWN_ISSUES.md)),
+- sessions recovered after Zanshin ended without saving them, or added later
+  because they couldn't be saved at first (from 0.2.2; see
+  [Your sessions](#your-sessions) below),
 - sessions marked *Just setting up the app* (from 0.2.2; the first one saved
   after the introduction gets the mark by itself, and you can change it in the
   questions at the end),
 - sessions you marked afterwards as affected by illness, alcohol or exercise
   just before playing.
+
+From 0.2.2, while Zanshin is still getting to know you, *Today* counts the
+play sessions it can already learn from (five minutes or more, none of the
+above) in one quiet line, for example *Still getting to know you — 1 of 3
+play sessions (5+ min each)*. It shows in Play only, once heart rate has come
+in at least once, and goes away after the third.
 
 ## Silent while you walk, if your watch sends steps
 
@@ -85,13 +107,16 @@ history, insights and look — *Sumi* (ink and gold) for play, *Aizome* (indigo)
 for work — and switches without a restart. At work, cues are pictures only: no
 voice, no sound. The resting baseline is shared; the load threshold and high
 heart-rate limit are learned from play sessions only and used in both worlds,
-so if you only ever use Work, they stay on the average-player numbers.
+so if you only ever use Work, they stay on the average-player numbers. From
+0.2.2 the *In-game* page is called *Screen* in Work.
 
 A running session stays in the world it started in, even if you flip the
-switch meanwhile. At the end, your answer to *Were you playing or working?*
-has the last word: pick the other world and the session moves there — in
-History, and in what the load threshold and high heart-rate limit learn from.
-Skip the question and it stays where it started.
+switch meanwhile. From 0.2.2 so do its cues: whether they speak or make a
+sound follows the session's world, the new world applies from the next time
+you start watching, and the log says so. At the end, your answer to *Were you
+playing or working?* has the last word: pick the other world and the session
+moves there — in History, and in what the load threshold and high heart-rate
+limit learn from. Skip the question and it stays where it started.
 
 ## The heart-rate number on screen
 
@@ -100,6 +125,71 @@ From 0.2.2 the heart-rate number on screen (the heart-rate panel in the game,
 of readings, so it doesn't jump with every message; measuring still uses every
 reading. If the companion writes two different heart rates into one source,
 Zanshin says so (see *Troubleshooting* in the README).
+
+## Today and the sidebar
+
+From 0.2.2 the main switch at the top of *Today* is one button,
+**▶ Start watching** or **■ Stop watching**: the same words as in the tray
+menu and the Ctrl+K palette, and all three stay in step. The big text under
+the ensō says what Zanshin is doing; when another program holds the
+heart-rate port, it says *Port 4455 is busy* (with your port number), names
+the usual cause (OBS with its WebSocket server on) and how to fix it. Until
+your first session with heart rate, *Today* shows one sentence and *Pair your
+watch* instead of the tiles and zones.
+
+The sidebar lists *Today*, *History*, *In-game* (*Screen* in Work),
+*Settings* and *Search* (the Ctrl+K palette), then the watch ring (*Watch*),
+which opens the pairing guide. The dot at the top shows the state: a filled
+green dot while Zanshin is watching, a triangle while it's watching but the
+heart rate from the watch has dropped out (nothing for 12 seconds), an amber
+dot in a ring during "not now", and a hollow ring when it's stopped.
+
+## Your sessions
+
+A session runs while Zanshin is watching. A session of at least a minute with
+at least 10 heart-rate readings is saved, and History keeps the last 400.
+From 0.2.2:
+
+- **Quitting with the questions open.** If you quit Zanshin while it's
+  watching, it saves the session and opens its questions first. If you quit
+  again while they're open, the answers you've touched are saved as with
+  *Save*; if you touched none, they close as with *Skip*.
+- **When the PC sleeps.** If a session's regular ticks stop for more than two
+  minutes (sleep or hibernation), the session ends where the gap began,
+  without the questions, and if Zanshin is still watching, a new one starts
+  after it. A clock set backwards doesn't count as a gap.
+- **Deleting one session.** History → *One session up close* → **Delete this
+  session** asks first, with the session's date and length, deletes it with
+  its measurement windows and recomputes the insights without it. The session
+  being recorded can't be deleted.
+- **Deleting everything.** Settings → General → *Your data* → **Delete
+  history** offers *Delete history*, *Export first…* and *Cancel*. While
+  Zanshin is watching, the button is off: the running session would save
+  itself again right after.
+- **A session that can't be saved** (a full disk, a locked file) goes to
+  `hr_session_pending.json` next to `hr_sessions.json`. Zanshin tells you,
+  and adds it to your history at the next start, or after the next session
+  that saves. Like a session recovered from the 5-minute copy, it doesn't
+  feed what Zanshin learns.
+- **Importing** sets your originals aside as a backup; **Open the data
+  folder** under *Your data* opens the folder where it is. If an import takes
+  your history over 400 sessions, the oldest drop out, and the message says
+  how many.
+
+History's *Consistency* grid shows the weeks since your first session (at
+least 8, at most 26) with month and weekday labels, and load reads *x/100*.
+
+## Which address the pairing guide shows
+
+The pairing guide shows one of this PC's addresses, hidden until you click
+**Show IP**. From 0.2.2 it prefers the PC's real network adapters (Wi‑Fi,
+Ethernet) to VPN and virtual ones, then the one Windows routes through, then
+home-network addresses (192.168.x.x before 10.x.x.x before 172.16–31.x.x). A
+VPN or virtual adapter's address is marked *(VPN/virtual)*, with a note to
+switch the VPN off or allow local network access in it, and the *Network
+address (advanced)* field warns the same way when it holds such an address.
+For this Zanshin uses only the adapters' names, descriptions and types and
+whether they're connected, as Windows reports them; nothing is sent anywhere.
 
 ## The natural voice: when it prepares lines
 
@@ -138,6 +228,13 @@ about 15 seconds (*Today* shows *Preparing the voice*), and only then starts
 watching by itself, as if you had pressed ▶ on *Today*, so the first evening
 can already speak in the natural voice. Lines not ready by then (offline, for
 example) are prepared once you stop watching, or at the next start.
+
+If preparing fails, the line under *Voice source* says how many cues have
+their voice and, from 0.2.2, why: Microsoft's service couldn't be reached,
+it refused the request (try later, or switch to the Windows voice), or
+something else went wrong. A *Try again* button appears under it, and the log
+says how to retry. *Try again* works like *Prepare the cue voice*: while
+Zanshin is watching it sends nothing and waits until you stop.
 
 The full list of what can use the network is in [PRIVACY.md](../PRIVACY.md).
 
@@ -182,7 +279,10 @@ panel*, off by default) and also shows your load. Both are click-through,
 drawn by default on the monitor of the window in focus (normally your game),
 and scaled to that screen's height, so they take the same share of a 1080p or
 a 4K screen. Windows doesn't draw them over a game in exclusive fullscreen (the
-voice still plays); use borderless or windowed mode.
+voice still plays); use borderless or windowed mode. Zanshin can only guess
+exclusive fullscreen (a window that covers the whole monitor). From 0.2.2,
+when it guessed so during a Play session with a cue, the questions after the
+session say the pictures may not have shown and suggest *Borderless*.
 
 ## The Guide
 

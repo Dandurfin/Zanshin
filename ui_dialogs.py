@@ -10,7 +10,7 @@ import shutil
 import threading
 import time
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from tkinter import filedialog
 
 import numpy as np
 
@@ -35,7 +35,7 @@ import sfx_assets
 import theme as theme_mod
 # speak_sapi_isolated: ukazka hlasu v uvode - VZDY hlas z Windows, nikdy Edge
 from audio_engine import MicRecorder, play_audio_file, speak_sapi_isolated
-from i18n import tr
+from i18n import cislo, tr
 from paths import APP_NAME, AUDIO_DIR, images_dir
 from settings_model import (BREATH_SECONDS_MAX, BREATH_SECONDS_MIN, MODE_COMBO, MODE_ORDER,
                             MODE_SFX, MODE_TTS, je_kategoria, label_to_mode,
@@ -267,8 +267,9 @@ class SlotSettingsDialog:
             self.slot.voice_path = self.slot._import_into_store(
                 path, f"voice_pick_{self.slot.uid}")
         except Exception as exc:
-            messagebox.showerror(APP_NAME, tr("record.save_error", err=exc),
-                                 parent=self.top)
+            # okno appky nad tymto dialogom, nie systemove (0.2.2, davka 4)
+            ui_kit.notify(self.top, self.app.pal, APP_NAME,
+                          tr("record.save_error", err=exc), kind="error")
             return
         self._commit_voice(tr("log.slot_voice_set", n=self.slot.index + 1,
                               name=os.path.basename(self.slot.voice_path)))
@@ -469,12 +470,14 @@ class DevLayerDialog:
             try:
                 nove[kluc] = float(str(var.get()).replace(",", "."))
             except ValueError:
-                messagebox.showerror(tr("dev.title"), tr("dev.bad_number"))
+                ui_kit.notify(self.top, self.app.pal, tr("dev.title"),
+                              tr("dev.bad_number"), kind="error")
                 return
         try:
             podiel = float(str(self.silent_var.get()).replace(",", "."))
         except ValueError:
-            messagebox.showerror(tr("dev.title"), tr("dev.bad_number"))
+            ui_kit.notify(self.top, self.app.pal, tr("dev.title"),
+                          tr("dev.bad_number"), kind="error")
             return
         self.app.apply_dev_params(nove, max(0.0, min(1.0, podiel)))
         self.close()
@@ -550,7 +553,10 @@ class SessionEndDialog:
         self.top.transient(app.root)
         self.top.grab_set()
 
-        chrome = ui_kit.DialogChrome(self.top, pal, titulok, on_close=self.close)
+        # V listke len meno appky: veta s casom je NADPIS tela nizsie (0.2.2,
+        # audit UX - "Hral si 26 min." bol najmenej viditelny text okna) a
+        # dvakrat pod sebou by tam stala zbytocne.
+        chrome = ui_kit.DialogChrome(self.top, pal, APP_NAME, on_close=self.close)
         # Podval s tlacidlami je PRIPNUTY dole (vzdy viditelny), obsah nad nim
         # SCROLLUJE. Dotaznik narastol o subjektivnu vrstvu a na 1366x768 by sa
         # inak k Ulozit/Preskocit nedalo dostat (nadvazuje na B33).
@@ -562,6 +568,26 @@ class SessionEndDialog:
             scrollbar_button_color=pal["surface_alt"],
             scrollbar_button_hover_color=pal["accent"])
         body.pack(fill="both", expand=True, padx=(22, 10), pady=(18, 4))
+
+        # NADPIS TELA: kolko si hral (0.2.2, audit UX, davka 4). Bola to len
+        # drobna veta v listke okna - prave to jedno cislo, ku ktoremu sa
+        # vztahuju vsetky otazky pod nim.
+        self.heading_label = ctk.CTkLabel(
+            body, text=titulok, font=ui_kit.ui(16, "bold"), text_color=pal["text"],
+            anchor="w", justify="left", wraplength=420)
+        self.heading_label.pack(fill="x", pady=(0, 6))
+        # EXKLUZIVNY FULLSCREEN (0.2.2 davka 4): kym hra zaberala celu
+        # obrazovku, Windows obrazky nad nou nevykreslil - jedna kratka veta
+        # hned pod nadpisom, inak by si hrac myslel, ze sa appka neozvala.
+        # Len ked sa naozaj ozvala, a nie v Praci (tam sa ozyva len obrazom
+        # a veta o hlase by neplatila).
+        self.fullscreen_label = None
+        if self.ukaz_fullscreen_vetu(summary, cues, self._svet):
+            self.fullscreen_label = ctk.CTkLabel(
+                body, text=tr("session.end.fullscreen_note"), font=ui_kit.ui(11),
+                text_color=pal["text_dim"], anchor="w", justify="left",
+                wraplength=420)
+            self.fullscreen_label.pack(fill="x", pady=(0, 8))
 
         # PROMOCIA (easter egg): raz, ked hrac dosiahol "plny Zanshin".
         # `_maybe_graduate` oznaci summary; kruh sa uz uzavrel do zlateho
@@ -608,9 +634,14 @@ class SessionEndDialog:
         # Cisla dodava `CueTrigger` cez suhrn relacie (app.py,
         # `_close_hr_session`); ked tam nie su, riadok sa proste nezobrazi.
         preco = self._preco_ticho(summary) if not cues else ""
-        ctk.CTkLabel(body, text=preco, font=ui_kit.ui(11),
-                     text_color=pal["text_faint"], anchor="w", justify="left",
-                     wraplength=420).pack(fill="x", pady=(3, 10))
+        if preco:
+            ctk.CTkLabel(body, text=preco, font=ui_kit.ui(11),
+                         text_color=pal["text_faint"], anchor="w", justify="left",
+                         wraplength=420).pack(fill="x", pady=(3, 10))
+        else:
+            # Prazdny riadok bol vysoky ako riadok textu - pod vetou o
+            # hlaskach tak visela medzera ~30 px (0.2.2 davka 4).
+            ctk.CTkFrame(body, fg_color="transparent", height=12).pack(fill="x")
 
         # AKO TO SLO - krivka celeho vecera priamo nad otazkami.
         #
@@ -927,7 +958,10 @@ class SessionEndDialog:
         bolo, ze sa dialog pri zatvarani appky zahodil skor, nez sa vykreslil."""
         if minuty < 60:
             return tr("history.minutes", m=minuty)
-        return f"{minuty // 60}:{minuty % 60:02d}"
+        # Od hodiny "2 h 03 min", nie "2:03" (0.2.2 davka 4): v nadpise
+        # dotaznika sa "2:03 hrania" citalo ako dve minuty. Ten isty format
+        # ako karta "Dĺžka relácie" a os stopy relacie (`ui_kit.dlzka_text`).
+        return ui_kit.dlzka_text(minuty * 60)
 
     def _set_activity(self, kind):
         """Jednovyber hral/pracoval. Klik je ODPOVED hraca - az ten sa ulozi
@@ -1019,6 +1053,41 @@ class SessionEndDialog:
         else:
             btn.configure(fg_color="transparent", border_color=pal["control_border"],
                           text_color=pal["text_dim"])
+
+    @staticmethod
+    def ukaz_fullscreen_vetu(summary, cues, svet):
+        """Patri do hlavicky veta o exkluzivnom fullscreene? (0.2.2 davka 4)
+
+        Len ked appka v relacii zbadala hru na celu obrazovku (`fullscreen`
+        v suhrne), naozaj sa ozvala (`cues` > 0 - inak nebol ziadny obrazok,
+        ktory by nebolo vidno) a nie v Praci (tam ide vsetko len obrazom,
+        veta o hlase by neplatila)."""
+        try:
+            return bool(isinstance(summary, dict) and summary.get("fullscreen")
+                        and int(cues or 0) > 0 and svet != "work")
+        except (TypeError, ValueError):
+            return False
+
+    def bolo_vyplnene(self):
+        """Dotkol sa hrac aspon jednej odpovede? (0.2.2, druhe "Ukoncit")
+
+        Druhe "Ukoncit" z listy pocas otvoreneho dotaznika ho doteraz zavrelo
+        ako "Preskocit" a vyplnene odpovede zmizli. Rozhodnutie zadavatela:
+        nieco vyplnene = ulozit (ako "Ulozit"), nic = zavriet ako "Preskocit"
+        (`app._quit`). Zvyraznenie sveta relacie ani cip nastavovania od
+        appky odpovedou nie su - az klik."""
+        if (self.vybrane or self._body_sel or self.activity is not None
+                or self.sleep is not None or self.felt_load is not None
+                or self.valence is not None or self.cue_verdict is not None):
+            return True
+        if self.setup != bool(self.summary.get("setup")):
+            return True
+        if self.note_box is not None:
+            try:
+                return bool(self.note_box.get("1.0", "end").strip())
+            except Exception:
+                return False
+        return False
 
     def confirm(self):
         # Prazdny zoznam NIE JE to iste, co preskocenie: [] znamena
@@ -1270,9 +1339,11 @@ class OverlaySettingsDialog:
 
         footer = ctk.CTkFrame(chrome.body, fg_color="transparent")
         footer.pack(fill="x", padx=20, pady=(0, 16))
-        ctk.CTkButton(footer, text=tr("common.close"), width=100,
-                     fg_color=pal["accent2"], hover_color=pal["accent2_hover"],
-                     text_color=pal["text"], command=self.close).pack(side="right")
+        # Vedlajsie tlacidlo (`ui_kit.button`), nie vypln `accent2` bez
+        # ramu v predvolenom pisme CTk (0.2.2 davka 4) - zmeny plati hned,
+        # "Zavriet" nie je hlavna akcia okna.
+        ui_kit.button(footer, pal, tr("common.close"), command=self.close,
+                      width=100).pack(side="right")
 
         self.top.protocol("WM_DELETE_WINDOW", self.close)
 
@@ -1303,28 +1374,33 @@ class OverlaySettingsDialog:
 
         scale_row = ctk.CTkFrame(inner, fg_color="transparent")
         scale_row.pack(fill="x", pady=(10, 0))
+        # Pismo appky (`ui_kit.ui`), nie predvolene CTk; velkost s ciarkou
+        # podla jazyka a znakom × (0.2.2 davka 4).
         ctk.CTkLabel(scale_row, text=tr("overlay.scale"), text_color=pal["text_dim"],
-                    width=90, anchor="w").pack(side="left")
-        scale_value_label = ctk.CTkLabel(scale_row, text=f"{cfg['scale']:.2f}x",
-                                         text_color=pal["text_faint"], width=50)
+                     font=ui_kit.ui(12), width=90, anchor="w").pack(side="left")
+        scale_value_label = ctk.CTkLabel(scale_row, text=f"{cislo(cfg['scale'], 2)}×",
+                                         text_color=pal["text_faint"], width=50,
+                                         font=ui_kit.ui(12))
         scale_value_label.pack(side="right")
         scale_var = tk.DoubleVar(value=cfg["scale"])
 
         def on_scale(_v, idx=index, var=scale_var, label=scale_value_label):
             value = round(float(var.get()), 2)
-            label.configure(text=f"{value:.2f}x")
+            label.configure(text=f"{cislo(value, 2)}×")
             self.app.on_overlay_config_change(idx, scale=value)
 
-        ui_kit.block_slider_wheel(ctk.CTkSlider(scale_row, from_=0.5, to=2.0, variable=scale_var,
-                     number_of_steps=30, progress_color=pal["accent"],
-                     button_color=pal["accent"], button_hover_color=pal["accent_hover"],
-                     command=on_scale)).pack(side="left", fill="x", expand=True, padx=(8, 8))
+        # Vsetky posuvniky okna jednym stylom (`ui_kit.slider`, 0.2.2 davka
+        # 4): X/Y mali tmavu vypln `accent2` a vyzerali vypnute vedla zlateho
+        # posuvnika velkosti.
+        ui_kit.slider(scale_row, pal, from_=0.5, to=2.0, variable=scale_var,
+                      number_of_steps=30,
+                      command=on_scale).pack(side="left", fill="x", expand=True, padx=(8, 8))
 
         if index == 3:
             self._build_breath_seconds_rows(inner, pal)
 
-        ctk.CTkLabel(inner, text=tr("overlay.position"), text_color=pal["text_dim"]).pack(
-            anchor="w", pady=(12, 4))
+        ctk.CTkLabel(inner, text=tr("overlay.position"), text_color=pal["text_dim"],
+                     font=ui_kit.ui(12)).pack(anchor="w", pady=(12, 4))
 
         pos_area = ctk.CTkFrame(inner, fg_color="transparent")
         pos_area.pack(fill="x")
@@ -1347,7 +1423,8 @@ class OverlaySettingsDialog:
         sliders.pack(side="left", fill="x", expand=True)
 
         x_label = ctk.CTkLabel(sliders, text=f"X {cfg['pos_x']:.0f}%",
-                               text_color=pal["text_faint"], anchor="w")
+                               text_color=pal["text_faint"], anchor="w",
+                               font=ui_kit.ui(12))
         x_label.pack(fill="x")
 
         def on_pos_x(_v, idx=index, var=pos_x_var, other=pos_y_var, label=x_label):
@@ -1355,13 +1432,12 @@ class OverlaySettingsDialog:
             label.configure(text=f"X {value:.0f}%")
             self.app.on_overlay_config_change(idx, pos=(value, other.get()))
 
-        ui_kit.block_slider_wheel(ctk.CTkSlider(sliders, from_=0, to=100, variable=pos_x_var,
-                     number_of_steps=100, progress_color=pal["accent2"],
-                     button_color=pal["accent2"], button_hover_color=pal["accent2_hover"],
-                     command=on_pos_x)).pack(fill="x", pady=(2, 8))
+        ui_kit.slider(sliders, pal, from_=0, to=100, variable=pos_x_var,
+                      number_of_steps=100, command=on_pos_x).pack(fill="x", pady=(2, 8))
 
         y_label = ctk.CTkLabel(sliders, text=f"Y {cfg['pos_y']:.0f}%",
-                               text_color=pal["text_faint"], anchor="w")
+                               text_color=pal["text_faint"], anchor="w",
+                               font=ui_kit.ui(12))
         y_label.pack(fill="x")
 
         def on_pos_y(_v, idx=index, var=pos_y_var, other=pos_x_var, label=y_label):
@@ -1369,10 +1445,8 @@ class OverlaySettingsDialog:
             label.configure(text=f"Y {value:.0f}%")
             self.app.on_overlay_config_change(idx, pos=(other.get(), value))
 
-        ui_kit.block_slider_wheel(ctk.CTkSlider(sliders, from_=0, to=100, variable=pos_y_var,
-                     number_of_steps=100, progress_color=pal["accent2"],
-                     button_color=pal["accent2"], button_hover_color=pal["accent2_hover"],
-                     command=on_pos_y)).pack(fill="x", pady=(2, 0))
+        ui_kit.slider(sliders, pal, from_=0, to=100, variable=pos_y_var,
+                      number_of_steps=100, command=on_pos_y).pack(fill="x", pady=(2, 0))
 
         self._rows.append({"x_label": x_label, "y_label": y_label})
 
@@ -1388,7 +1462,7 @@ class OverlaySettingsDialog:
         row = ctk.CTkFrame(parent, fg_color="transparent")
         row.pack(fill="x", pady=(10, 0))
         ctk.CTkLabel(row, text=tr("overlay.breath_seconds"), text_color=pal["text_dim"],
-                    anchor="w").pack(anchor="w")
+                     font=ui_kit.ui(12), anchor="w").pack(anchor="w")
 
         self._breath_seconds(row, pal, tr("overlay.breath_inhale"),
                              self.app.breath_inhale_s,
@@ -1401,9 +1475,10 @@ class OverlaySettingsDialog:
         sub = ctk.CTkFrame(parent, fg_color="transparent")
         sub.pack(fill="x", pady=(6, 0))
         ctk.CTkLabel(sub, text=label, text_color=pal["text_dim"], width=90,
-                    anchor="w").pack(side="left")
+                     font=ui_kit.ui(12), anchor="w").pack(side="left")
         value_label = ctk.CTkLabel(sub, text=f"{value:.0f} s",
-                                   text_color=pal["text_faint"], width=40)
+                                   text_color=pal["text_faint"], width=40,
+                                   font=ui_kit.ui(12))
         value_label.pack(side="right")
         var = tk.DoubleVar(value=value)
 
@@ -1413,11 +1488,10 @@ class OverlaySettingsDialog:
             cb(current)
 
         steps = int(BREATH_SECONDS_MAX - BREATH_SECONDS_MIN)
-        ui_kit.block_slider_wheel(ctk.CTkSlider(
-            sub, from_=BREATH_SECONDS_MIN, to=BREATH_SECONDS_MAX, variable=var,
-            number_of_steps=steps, progress_color=pal["accent"],
-            button_color=pal["accent"], button_hover_color=pal["accent_hover"],
-            command=handler)).pack(side="left", fill="x", expand=True, padx=(8, 8))
+        ui_kit.slider(
+            sub, pal, from_=BREATH_SECONDS_MIN, to=BREATH_SECONDS_MAX, variable=var,
+            number_of_steps=steps,
+            command=handler).pack(side="left", fill="x", expand=True, padx=(8, 8))
 
     def _apply_preset(self, index, x, y, pos_x_var, pos_y_var):
         pos_x_var.set(x)
@@ -1604,6 +1678,10 @@ class WatchPairingDialog:
         self._candidates = candidates
         ip = candidates[0] if candidates else None
         self._ip = ip
+        # VPN a virtualne adaptery (0.2.2): fyzicka adresa ide prva
+        # (`netinfo.local_ip_candidates`), virtualne nesu stitok a pod
+        # adresou je veta, ked aj ta prva je virtualna.
+        self._virtualne = self._virtual_ips()
         addr_row = ctk.CTkFrame(net_in, fg_color="transparent")
         addr_row.pack(fill="x", pady=(4, 0))
         self.ip_label = ctk.CTkLabel(addr_row, text=tr("hr.pair_ip_unknown"),
@@ -1613,20 +1691,36 @@ class WatchPairingDialog:
         self.ip_toggle = None
         self.other_ips_label = None
         self.ip_hidden_label = None
+        self.ip_virtual_label = None
         if not ip:
             ctk.CTkLabel(net_in, text=tr("hr.pair_ip_help"), font=ui_kit.ui(10),
                          text_color=pal["text_faint"], wraplength=480, anchor="w",
                          justify="left").pack(fill="x", pady=(6, 0))
         else:
+            # "Ukazat IP" sa pakuje PRED adresu (`before=`), takze miesto v
+            # rade dostane ako prve. Dlhsi riadok adresy ho inak z okna
+            # vytlacil a adresa sa potom nedala odkryt (0.2.2, stitok VPN).
             self.ip_toggle = ui_kit.chip(addr_row, pal, tr("hr.ip_show"),
                                          self._toggle_ip)
-            self.ip_toggle.pack(side="right", padx=(8, 0))
+            self.ip_toggle.pack(side="right", padx=(8, 0), before=self.ip_label)
             # veta pod skrytou adresou - ako ju odkryt (len kym je skryta)
             self.ip_hidden_label = ctk.CTkLabel(
                 net_in, text=tr("hr.ip_hidden_note"), font=ui_kit.ui(10),
                 text_color=pal["text_faint"], wraplength=480, anchor="w",
                 justify="left")
             self._ip_hidden_after = addr_row
+            if ip in self._virtualne:
+                # Stitok "(VPN/virtualny)" NIE v riadku adresy (mono 20): tam
+                # sa nezmestil, orezal sa a vytlacil "Ukazat IP". Je to vlastny
+                # maly riadok hned pod adresou; veta pod nim povie, co s tym.
+                self.ip_virtual_label = ctk.CTkLabel(
+                    net_in, text=tr("hr.ip_virtual"), font=ui_kit.ui(11, "bold"),
+                    text_color=pal["warn"], anchor="w")
+                self.ip_virtual_label.pack(fill="x", pady=(2, 0))
+                self._ip_hidden_after = self.ip_virtual_label
+                ctk.CTkLabel(net_in, text=tr("hr.ip_virtual_note"), font=ui_kit.ui(10),
+                             text_color=pal["warn"], wraplength=480, anchor="w",
+                             justify="left").pack(fill="x", pady=(6, 0))
             # PC s Wi-Fi + Ethernet + VPN ma adries viac a appka nevie, na
             # ktorej su hodinky - ukazeme aj ostatne, nech si hrac vyberie
             if len(candidates) > 1:
@@ -1750,6 +1844,14 @@ class WatchPairingDialog:
         except Exception:
             return []
 
+    def _virtual_ips(self):
+        """Adresy tohto PC na VPN / virtualnych adapteroch (`netinfo`)."""
+        try:
+            import netinfo
+            return netinfo.virtualne_adresy()
+        except Exception:
+            return set()
+
     def _local_ip(self):
         """Zachovane pre spatnu kompatibilitu - preferovana adresa alebo None."""
         ips = self._local_ips()
@@ -1761,12 +1863,16 @@ class WatchPairingDialog:
         show = bool(getattr(self.app, "show_ip", False))
         try:
             if self._ip:
+                # stitok VPN tu nie - ma vlastny riadok (`ip_virtual_label`)
                 self.ip_label.configure(text=netinfo.pairing_address(
                     self._ip, self.app.hr_port, show))
             if self.other_ips_label is not None:
                 self.other_ips_label.configure(text=tr(
                     "hr.pair_other_ips",
-                    ips=netinfo.pairing_other_ips(self._candidates[1:], show)))
+                    ips=netinfo.pairing_other_ips(
+                        self._candidates[1:], show,
+                        virtualne=getattr(self, "_virtualne", set()),
+                        stitok=tr("hr.ip_virtual"))))
             if self.ip_toggle is not None:
                 self.ip_toggle.configure(
                     text=tr("hr.ip_hide") if show else tr("hr.ip_show"))
@@ -1958,6 +2064,18 @@ class SlotCard:
         # 1 - fraza + suhrn casovania pod nou
         text_col = ctk.CTkFrame(grid, fg_color="transparent")
         text_col.grid(row=0, column=1, sticky="ew", padx=(0, 14))
+        # PEVNY NAZOV KATEGORIE nad frazou (0.2.2, audit UX, davka 4). Frazu
+        # si hrac moze prepisat na cokolvek ("Ramena!") - a potom z karty
+        # nebolo poznat, ze je to Tazisko. Kategoriu urcuje pozicia slotu,
+        # takze nazov je pevny text, nie pole. Slot navyse z 0.1 (index 4+)
+        # kategoriu nema, ani nazov.
+        self.category_label = None
+        if je_kategoria(self.index):
+            self.category_label = ctk.CTkLabel(
+                text_col, text=ui_kit.bez_ikony(tr(f"overlay.slot.{self.index}")),
+                font=ui_kit.ui(11), text_color=pal["text_dim"], anchor="w",
+                height=16)
+            self.category_label.pack(fill="x", pady=(0, 2))
         self.text_var = tk.StringVar(value=self.text_value)
         self.entry = ctk.CTkEntry(text_col, textvariable=self.text_var,
                                   placeholder_text=tr("slot.text_placeholder"),
@@ -2239,7 +2357,8 @@ class SlotCard:
             try:
                 self.audio_path = self._import_into_store(path, f"pick_{self.uid}")
             except Exception as exc:
-                messagebox.showerror(APP_NAME, tr("record.save_error", err=exc))
+                ui_kit.notify(self.app.root, self.pal, APP_NAME,
+                              tr("record.save_error", err=exc), kind="error")
                 return
             self.sfx_key = "__custom__"
             self.sfx_var.set(sfx_choice_display(self.sfx_key, self.audio_path))
@@ -2349,8 +2468,8 @@ class RecordDialog:
             try:
                 self.recorder.stop_and_save(self.target)
             except Exception as exc:
-                messagebox.showerror(APP_NAME, tr("record.save_error", err=exc),
-                                     parent=self.top)
+                ui_kit.notify(self.top, self.app.pal, APP_NAME,
+                              tr("record.save_error", err=exc), kind="error")
                 self._reset_ui()
                 return
             self.saved_path = self.target
@@ -2361,8 +2480,8 @@ class RecordDialog:
             try:
                 self.recorder.start()
             except Exception as exc:
-                messagebox.showerror(APP_NAME, tr("record.start_error", err=exc),
-                                     parent=self.top)
+                ui_kit.notify(self.top, self.app.pal, APP_NAME,
+                              tr("record.start_error", err=exc), kind="error")
                 return
             self.start_time = time.time()
             self.rec_btn.configure(text=tr("record.stop"))
@@ -2807,6 +2926,12 @@ class OnboardingWizard:
         ctk.CTkLabel(parent, text=tr("ob.step1.how"), font=ui_kit.ui(11),
                      text_color=pal["accent"], justify="center",
                      wraplength=560).pack(pady=(10, 0))
+        # Co hrac na prvy tep potrebuje (0.2.2, davka 4). Uvod to doteraz
+        # nepovedal nikde - a bez hodiniek a spolocnej siete appka mlci.
+        # Tichy riadok pod uvodom, nie dalsi odsek: nesmie prebit "ako".
+        ctk.CTkLabel(parent, text=tr("ob.step1.need"), font=ui_kit.ui(11),
+                     text_color=pal["text_dim"], justify="center",
+                     wraplength=560).pack(pady=(12, 0))
 
     # ---- KROK 2: ako to vyzera v hre ----
 
@@ -3132,10 +3257,12 @@ class OnboardingWizard:
         self.preview_btn.pack(side="left")
         self._volume_box = ctk.CTkFrame(self._preview_row, fg_color="transparent")
         self.volume_var = tk.IntVar(value=self.volume_value)
-        ui_kit.block_slider_wheel(ctk.CTkSlider(
-            self._volume_box, from_=0, to=100, number_of_steps=100,
+        # styl posuvnika ako v Nastaveniach (`ui_kit.slider`), nie predvoleny
+        # sivomodry z customtkinter
+        ui_kit.slider(
+            self._volume_box, pal, from_=0, to=100, number_of_steps=100,
             variable=self.volume_var, width=130,
-            command=lambda _v: self._on_volume_slide())).pack(side="left", padx=(12, 6))
+            command=lambda _v: self._on_volume_slide()).pack(side="left", padx=(12, 6))
         self.volume_label = ctk.CTkLabel(self._volume_box, text=f"{self.volume_value} %",
                                          text_color=pal["text_dim"], width=44)
         self.volume_label.pack(side="left")

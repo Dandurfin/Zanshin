@@ -170,8 +170,11 @@ def _appka(monkeypatch, najdene, frozen=True):
     # z paths - podstrcit treba tam.
     monkeypatch.setattr(app_data, "stara_instalacia", _hladaj)
     zobrazene = []
-    monkeypatch.setattr(app_data.messagebox, "showinfo",
-                        lambda titul, text: zobrazene.append(text))
+    # 0.2.2 davka 4: oznam v okne appky (`ui_kit.notify`), nie systemovy
+    # messagebox - app_data ho uz neimportuje
+    import ui_kit
+    monkeypatch.setattr(ui_kit, "notify",
+                        lambda okno, pal, titul, text, **kw: zobrazene.append(text))
     planovane, denn, ulozene = [], [], []
     a = types.SimpleNamespace(
         old_installer_warned=False, log=denn.append,
@@ -255,7 +258,8 @@ def test_readme_krok_nula_v_zip_navode():
 
 
 def test_known_issues_v_sekcii_022():
-    k = zdroj_suboru("KNOWN_ISSUES.md")
+    # Od 0.2.2 (davka 4) je historia verzii v CHANGELOG.md.
+    k = zdroj_suboru("CHANGELOG.md")
     sekcia = " ".join(k[k.index("## What 0.2.2 changes"):k.index("## What 0.2.1 fixes")].split())
     assert "The 0.2 uninstaller can delete this version's data." in sekcia
     assert "**No** deletes that folder" in sekcia and "Answer **Yes**." in sekcia

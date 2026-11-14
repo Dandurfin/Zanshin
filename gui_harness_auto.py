@@ -165,8 +165,12 @@ HR_INSIGHTS = os.path.join(PROJ, "hr_insights.json")
 # relacia z padnutej appky by bola navzdy prec. Rovnako .bak nastaveni: inak
 # by po behu ostal s nastaveniami, ktore si harness upravil.
 HR_SESSION_OPEN = os.path.join(PROJ, "hr_session_open.json")
+# Relacie, ktore sa nedali ulozit (0.2.2, hr_stats.CAKAJUCA_MENO) - start ich
+# doplni do historie a subor zmaze, presne ako kontrolny bod vyssie.
+HR_SESSION_PENDING = os.path.join(PROJ, "hr_session_pending.json")
 SETTINGS_BAK = SETTINGS + ".bak"
-ODLOZENE = (SETTINGS, HR_SESSIONS, HR_INSIGHTS, HR_SESSION_OPEN, SETTINGS_BAK)
+ODLOZENE = (SETTINGS, HR_SESSIONS, HR_INSIGHTS, HR_SESSION_OPEN, SETTINGS_BAK,
+            HR_SESSION_PENDING)
 obnov_po_prerusenom_behu(ODLOZENE)
 zaloz_zalohy(ODLOZENE)
 atexit.register(vrat_zalohy, ODLOZENE)

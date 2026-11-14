@@ -126,7 +126,9 @@ def _app_so_slotmi(flags):
 
 def test_kategoria_sa_neda_odstranit(monkeypatch):
     import app as app_mod
-    monkeypatch.setattr(app_mod.messagebox, "showinfo",
+    import ui_kit
+    # 0.2.2 davka 4: oznamy v okne appky (`ui_kit.notify`), nie messagebox
+    monkeypatch.setattr(ui_kit, "notify",
                         lambda *a, **k: pytest.fail("ziadna hlaska"))
     a, zaznam = _app_so_slotmi([False] * 4)
     for i in range(4):
@@ -143,10 +145,12 @@ def test_slot_navyse_z_01_sa_odstranit_da(monkeypatch):
 
 def test_hromadne_odstranenie_nesiahne_na_kategorie(monkeypatch):
     import app as app_mod
+    import ui_kit
     otazky = []
-    monkeypatch.setattr(app_mod.messagebox, "askyesno",
+    # 0.2.2 davka 4: potvrdenie v okne appky (`ui_kit.confirm`)
+    monkeypatch.setattr(ui_kit, "confirm",
                         lambda *a, **k: otazky.append(a) or True)
-    monkeypatch.setattr(app_mod.messagebox, "showinfo", lambda *a, **k: None)
+    monkeypatch.setattr(ui_kit, "notify", lambda *a, **k: None)
     # oznacene su vsetky styri kategorie -> nic sa nestane, nic sa nepyta
     a, zaznam = _app_so_slotmi([True] * 4)
     app_mod.DandurfApp.remove_selected_slots(a)
@@ -186,24 +190,28 @@ def _app_na_zatvorenie(vysvetlene):
         quit_app=lambda: zaznam.append("quit")), zaznam
 
 
-@pytest.mark.parametrize("odpoved, ocakavane", [(True, "tray"), (False, "quit")])
+@pytest.mark.parametrize("odpoved, ocakavane", [("tray", "tray"), ("quit", "quit")])
 def test_prvy_krizik_sa_opyta(monkeypatch, odpoved, ocakavane):
+    # 0.2.2 davka 4: okno appky s dvoma tlacidlami (`ui_kit.choose`), nie
+    # systemove Ano/Nie - odpoved je hodnota tlacidla, nie True/False
     import app as app_mod
+    import ui_kit
     monkeypatch.setattr(app_mod, "TRAY_AVAILABLE", True)
     otazky = []
-    monkeypatch.setattr(app_mod.messagebox, "askyesno",
+    monkeypatch.setattr(ui_kit, "choose",
                         lambda *a, **k: otazky.append(a) or odpoved)
     a, zaznam = _app_na_zatvorenie(False)
     app_mod.DandurfApp.on_close(a)
-    assert len(otazky) == 1 and "4455" in otazky[0][1]
+    assert len(otazky) == 1 and "4455" in otazky[0][3]
     assert a.tray_close_explained is True
     assert zaznam == ["save", ocakavane]
 
 
 def test_dalsi_krizik_len_schova(monkeypatch):
     import app as app_mod
+    import ui_kit
     monkeypatch.setattr(app_mod, "TRAY_AVAILABLE", True)
-    monkeypatch.setattr(app_mod.messagebox, "askyesno",
+    monkeypatch.setattr(ui_kit, "choose",
                         lambda *a, **k: pytest.fail("uz sa nepyta"))
     a, zaznam = _app_na_zatvorenie(True)
     app_mod.DandurfApp.on_close(a)

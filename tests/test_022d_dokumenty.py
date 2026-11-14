@@ -15,10 +15,14 @@ README bola pre vyvojarov a testy ho zamykali v dlzke. Teraz:
     premenovani (watching, cue, Voice source, ...) a stare nazvy sa do
     dokumentov pre hraca nevracaju (v KNOWN_ISSUES ostavaju len ako historia),
   * cisla a mena v Quick start, Troubleshooting a Uninstall su z kodu
-    (hry auto-profilu, hlavny vypinac ▶ v pase "Main switch", skratka
-    "teraz nie", meno pravidla vo firewalle),
+    (hry auto-profilu, hlavny vypinac, skratka "teraz nie", meno pravidla
+    vo firewalle),
   * KNOWN_ISSUES zacina tym, co este nefunguje, a 0.2.2 ma bod o novych
     nazvoch; SAFETY.md zacina anglickym zhrnutim.
+
+Davka 4 (0.2.2): hlavny vypinac je tlacidlo "▶ Start watching" (dock.start),
+nie ikona v pase "Main switch"; historia verzii je v CHANGELOG.md, nie v
+KNOWN_ISSUES.md - straze isli za vetami.
 
 Zamerne sa nepinuju cele odstavce - len nazvy z UI, cisla z kodu, poradie
 sekcii a vety, ktore uz nesmu byt pravda.
@@ -32,11 +36,11 @@ sys.path.insert(0, ROOT)
 
 import i18n  # noqa: E402
 import hotkey  # noqa: E402
-from _zdroj_appky import zdroj_suboru  # noqa: E402
+from _zdroj_appky import zdroj_appky, zdroj_suboru  # noqa: E402
 
 PRE_HRACA = ("README.md", "PRIVACY.md", "SAFETY.md", "docs/HOW-IT-WORKS.md")
-VSETKY = PRE_HRACA + ("KNOWN_ISSUES.md", "DEVELOPMENT.md", "docs/PRIOR_ART.md",
-                      "SOUL.md", "LICENSE-DESIGN.md")
+VSETKY = PRE_HRACA + ("KNOWN_ISSUES.md", "CHANGELOG.md", "DEVELOPMENT.md",
+                      "docs/PRIOR_ART.md", "SOUL.md", "LICENSE-DESIGN.md")
 
 
 def _read(meno):
@@ -153,8 +157,9 @@ def test_kotvy_v_readme_vedu_na_nadpisy():
 
 def test_readme_odkazuje_na_vsetky_dokumenty():
     readme = _read("README.md")
-    for subor in ("PRIVACY.md", "SAFETY.md", "KNOWN_ISSUES.md", "DEVELOPMENT.md",
-                  "docs/HOW-IT-WORKS.md", "docs/PRIOR_ART.md", "SOUL.md"):
+    for subor in ("PRIVACY.md", "SAFETY.md", "KNOWN_ISSUES.md", "CHANGELOG.md",
+                  "DEVELOPMENT.md", "docs/HOW-IT-WORKS.md", "docs/PRIOR_ART.md",
+                  "SOUL.md"):
         assert "](%s)" % subor in readme, subor
     assert "](https://github.com/Dandurfin/Zanshin/issues)" in readme
 
@@ -169,14 +174,15 @@ def _bez_medzier(text):
 
 def test_readme_menuje_ovladace_ako_appka():
     r = _plain(_read("README.md"))
-    # Hlavny vypinac na Dnes je ikona ▶ v pase s nadpisom kamae.bar_title,
-    # nie tlacidlo s textom. Kluc dock.start ("▶ Start") appka nekresli
-    # nikde, preto ho README citovat nesmie (review 0.2.2d).
-    assert 'tr("kamae.bar_title")' in zdroj_suboru("app.py")
-    assert "▶" in _en("kamae.bar_sub")
-    assert "▶ in the *%s* bar on *Today*" % _en("kamae.bar_title") in r
-    assert 'tr("dock.start")' not in zdroj_suboru("app.py")
-    assert _bez_medzier(_en("dock.start")) not in r
+    # Hlavny vypinac na Dnes je od davky 4 (0.2.2) jedno tlacidlo s textom
+    # dock.start / dock.stop (`_texty_pasu`) - tie iste slova ako v liste
+    # (tray.start) so znackou ▶. Pas s nadpisom "Main switch"
+    # (kamae.bar_title) je prec, README ho uz menovat nesmie.
+    assert 'tr("dock.start")' in zdroj_appky() and 'tr("dock.stop")' in zdroj_appky()
+    assert "kamae.bar_title" not in i18n.STRINGS
+    assert _en("dock.start") == "▶ " + _en("tray.start")
+    assert "**%s** at the top of *Today*" % _bez_medzier(_en("dock.start")) in r
+    assert "*Main switch*" not in r
     assert "**%s**" % _en("tray.quit") in r
     assert "*%s*" % _en("engine.sapi") in r                         # Windows (offline)
     assert "*%s*" % _en("settings.engine") in r                     # Voice source
@@ -274,6 +280,13 @@ def test_troubleshooting_skratka_a_cisla_z_kodu():
     assert DEFAULT_SNOOZE_HOTKEY == "ctrl+alt+z"
     assert hotkey.format_combo(DEFAULT_SNOOZE_HOTKEY).replace(" ", "") == "Ctrl+Alt+Z"
     assert "Ctrl+Alt+Z" in t
+    # Od 0.2.2 (davka 4) sa skratka vybera v Nastavenia -> Vseobecne; rucna
+    # uprava suboru ostava v README pre 0.2.1 ZIP (ten volbu nema).
+    assert "Settings → %s → *%s*" % (_en("nav.nastavenia_tabs.vseobecne"),
+                                     _en("settings.snooze_hotkey")) in t
+    assert "*%s*" % _en("settings.snooze_hotkey_none") in t
+    assert 'tr("settings.snooze_hotkey")' in zdroj_suboru("app_prefs.py")
+    assert "In the 0.2.1 ZIP" in t
     # navrhnuta nahrada je platna kombinacia a "" skratku vypne
     m = re.search(r'for example `"([^"]+)"`', t)
     assert m and hotkey.is_valid(m.group(1)), m
@@ -302,21 +315,34 @@ def test_uninstall_meno_vo_firewalle_ako_vo_version_info():
 # --------------------------------------------------------------------------
 
 def test_known_issues_zacina_tym_co_este_nefunguje():
+    """Od davky 4 je historia verzii v CHANGELOG.md; KNOWN_ISSUES ma len
+    otvorene veci, ako pomoct a odkaz na CHANGELOG (audit, cast 1)."""
     k = _read("KNOWN_ISSUES.md")
-    poradie = ["## Still open", "## How to help", "## What 0.2.2 changes",
-               "## What 0.2.1 fixes", "## Before 0.2", "## What 0.1 got wrong"]
+    poradie = ["## Still open", "## How to help", "## What changed in each version"]
     indexy = [k.index("\n" + n) for n in poradie]
     assert indexy == sorted(indexy)
+    for stara in ("## What 0.2.2 changes", "## What 0.2.1 fixes", "## Before 0.2",
+                  "## What 0.1 got wrong"):
+        assert stara not in k, stara
+    assert "](CHANGELOG.md)" in _sekcia(k, "What changed in each version")
+    c = _read("CHANGELOG.md")
+    poradie = ["## What 0.2.2 changes", "## What 0.2.1 fixes", "## Before 0.2",
+               "## What 0.1 got wrong"]
+    indexy = [c.index("\n" + n) for n in poradie]
+    assert indexy == sorted(indexy)
+    assert "## Still open" not in c
 
 
 def test_known_issues_022_menuje_nove_nazvy():
-    k = _plain(_read("KNOWN_ISSUES.md"))
+    k = _plain(_read("CHANGELOG.md"))
     sekcia = k[k.index("## What 0.2.2 changes"):k.index("## What 0.2.1 fixes")]
     assert "### Words and looks" in sekcia
     for kluc in ("tray.start", "tray.stop", "settings.hr_enable_switch",
                  "nav.spustace", "settings.audio_voice_title", "settings.engine",
                  "overlay.dialog_title", "overlay.test", "hud.quick_label",
-                 "pack.zen", "pack.modern", "dnes.stat_hrpi"):
+                 # metric.hrpi.title, nie dnes.stat_hrpi: ten appka nekresli
+                 # nikde (karta HRPI z Dnes odisla), nazov ukazuje Historia
+                 "pack.zen", "pack.modern", "metric.hrpi.title"):
         assert "*%s*" % _en(kluc) in sekcia, kluc
     # veta po relacii: bez tichych len pocet, s tichymi aj kolko
     assert "{silent}" not in _en("session.end.cues")

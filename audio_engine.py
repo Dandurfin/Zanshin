@@ -298,6 +298,58 @@ def edge_rate_str(rate):
     return f"{pct:+d}%"
 
 
+# --------------------------------------------------------------------------
+# Druh chyby prirodzeneho hlasu (0.2.2, audit 4)
+# --------------------------------------------------------------------------
+#
+# PRECO: kazde zlyhanie pripravy hlasilo "skontroluj internet" - aj ked
+# internet fungoval a Microsoft poziadavku len odmietol (HTTP 401/403/429,
+# odmietnuty handshake WebSocketu). Hrac potom hladal chybu v sieti, ktora
+# bola v poriadku. Tri druhy, kazdy s inou radou:
+#   offline - spojenie, DNS, vyprsany cas: "skontroluj internet"
+#   refused - Microsoft povedal nie: "skus neskor alebo prepni na Windows"
+#   other   - cokolvek ine (prazdny vystup, plny disk, chyba knižnice)
+# Rozhoduje sa podla MIEN tried vo vynimke a jej pricinach (`__cause__`,
+# `__context__`), nie podla importu aiohttp - ten tu byt nemusi a testy
+# podstrcia vlastne triedy. Cista funkcia, ziadna chyba von nejde.
+EDGE_CHYBA_OFFLINE = "offline"
+EDGE_CHYBA_ODMIETNUTE = "refused"
+EDGE_CHYBA_INA = "other"
+
+_EDGE_ODMIETNUTE_STATUSY = (401, 403, 429)
+_EDGE_ODMIETNUTE_TRIEDY = frozenset({"WSServerHandshakeError"})
+_EDGE_OFFLINE_TRIEDY = frozenset({
+    "ClientConnectorError", "ClientConnectorDNSError", "ClientConnectionError",
+    "ClientOSError", "ServerDisconnectedError",
+    "ServerTimeoutError", "ConnectionTimeoutError", "SocketTimeoutError",
+    "ClientProxyConnectionError", "gaierror", "herror", "timeout", "TimeoutError",
+    "ConnectionError", "ConnectionRefusedError", "ConnectionResetError",
+    "ConnectionAbortedError",
+})
+
+
+def druh_chyby_edge(exc):
+    """Druh chyby pri priprave prirodzeneho hlasu: `EDGE_CHYBA_*`."""
+    try:
+        offline = False
+        videne = set()
+        while exc is not None and id(exc) not in videne and len(videne) < 8:
+            videne.add(id(exc))
+            mena = {c.__name__ for c in type(exc).__mro__}
+            try:
+                status = int(getattr(exc, "status", None) or 0)
+            except (TypeError, ValueError):
+                status = 0
+            if mena & _EDGE_ODMIETNUTE_TRIEDY or status in _EDGE_ODMIETNUTE_STATUSY:
+                return EDGE_CHYBA_ODMIETNUTE
+            if mena & _EDGE_OFFLINE_TRIEDY:
+                offline = True
+            exc = exc.__cause__ or exc.__context__
+        return EDGE_CHYBA_OFFLINE if offline else EDGE_CHYBA_INA
+    except Exception:
+        return EDGE_CHYBA_INA
+
+
 class EdgeTTSCache:
     """Generuje MP3 hlasky cez edge-tts a drzi ich v audio/tts_cache/.
 
@@ -309,6 +361,22 @@ class EdgeTTSCache:
     def __init__(self, log):
         self.log = log
         self._lock = threading.Lock()
+        # Posledna chyba `ensure` - ZA KAZDE VLAKNO zvlast: pripravu aj
+        # hlasku odlozenu na po hre volaju rozne vlakna a jedno nesmie
+        # druhemu prepisat, preco zlyhalo (`posledna_chyba`, 0.2.2).
+        self._chyba = threading.local()
+
+    def posledna_chyba(self):
+        """(druh, vynimka) posledneho zlyhaneho `ensure` v TOMTO vlakne, alebo
+        None, ked posledne `ensure` nezlyhalo. Druh je `EDGE_CHYBA_*`."""
+        chyba = getattr(self, "_chyba", None)
+        return getattr(chyba, "posledna", None) if chyba is not None else None
+
+    def _zapamataj_chybu(self, exc):
+        chyba = getattr(self, "_chyba", None)
+        if chyba is None:
+            return
+        chyba.posledna = None if exc is None else (druh_chyby_edge(exc), exc)
 
     # ---- cesty ----
 
@@ -340,6 +408,7 @@ class EdgeTTSCache:
         poziadavka sa nezacne - vrati sa None. Hotovy subor z cache sa vrati
         aj tak (na siet nejde).
         """
+        self._zapamataj_chybu(None)
         if not (EDGE_AVAILABLE and text and text.strip() and voice):
             return None
         path = self.path_for(text, voice, rate)
@@ -368,6 +437,7 @@ class EdgeTTSCache:
                     os.remove(tmp)
                 except OSError:
                     pass
+                self._zapamataj_chybu(exc)
                 self.log(tr("log.edge_gen_failed", text=text, err=exc))
                 return None
         return path

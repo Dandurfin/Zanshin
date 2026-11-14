@@ -17,8 +17,9 @@ pustiť kedykoľvek. Nič netvrdí o správnosti — obrázky musí pozrieť čl
 
 Čo si zálohuje a vráti
 ----------------------
-`dandurf_settings.json` (aj jeho `.bak`), `hr_sessions.json`, `hr_insights.json`
-a `hr_session_open.json` (kontrolný bod relácie). Skript do
+`dandurf_settings.json` (aj jeho `.bak`), `hr_sessions.json`, `hr_insights.json`,
+`hr_session_open.json` (kontrolný bod relácie) a `hr_session_pending.json`
+(relácie, ktoré sa nepodarilo uložiť). Skript do
 nich zapisuje (syntetická história, prepnutie témy), ale na konci — aj po
 páde — obnoví pôvodný stav. Bez toho by ti fotenie prepísalo reálne relácie.
 
@@ -26,9 +27,19 @@ Spustenie
 ---------
     python gui_screenshots.py                 # do logs/gui_screenshots
     python gui_screenshots.py C:\\cesta\\sem   # inam
+    python gui_screenshots.py --lang en       # cely beh v inom jazyku appky
+    python gui_screenshots.py --okno          # len okno appky, bez plochy okolo
+
+`--lang` prepne jazyk hned na zaciatku a kroky s nemcinou a japoncinou sa
+potom vratia k nemu (bez neho k slovencine, ako doteraz). `--okno` (alias
+`--window`) foti len samotne okno appky podla jeho HWND - bez plochy, panela
+uloh a okien okolo, aj ked ho nieco prekryva - a navyse odfoti panel
+„Relacia zblizka“ z Historie (`17_relacia_zblizka`); z toho su obrazky
+v README. Bez `--okno` ostava fotka okna s malym okrajom ako doteraz.
 
 Návratový kód: 0 = žiadna chyba v callbackoch Tk, 1 = niečo spadlo.
 """
+import argparse
 import json
 import math
 import os
@@ -38,9 +49,29 @@ import time
 import traceback
 
 PROJ = os.path.dirname(os.path.abspath(__file__))
-OUT = sys.argv[1] if len(sys.argv) > 1 else os.path.join(PROJ, "logs", "gui_screenshots")
-os.makedirs(OUT, exist_ok=True)
 sys.path.insert(0, PROJ)
+
+from i18n import LANGUAGES                      # noqa: E402  (bez Tk, nic nezapisuje)
+
+
+def _argumenty(argv):
+    """Volby sa citaju PRED zalohou a pred appkou - zly jazyk skonci hned,
+    skor nez sa skript dotkne jedineho suboru."""
+    p = argparse.ArgumentParser(
+        description="Odfoti okno Zanshinu so syntetickymi datami.")
+    p.add_argument("out", nargs="?",
+                   default=os.path.join(PROJ, "logs", "gui_screenshots"),
+                   help="priecinok na obrazky (predvolene logs/gui_screenshots)")
+    p.add_argument("--lang", choices=LANGUAGES, default=None,
+                   help="jazyk appky pocas behu, napr. en")
+    p.add_argument("--okno", "--window", dest="okno", action="store_true",
+                   help="fotit len okno appky (podla HWND), bez plochy okolo")
+    return p.parse_args(argv)
+
+
+ARGS = _argumenty(sys.argv[1:])
+OUT = ARGS.out
+os.makedirs(OUT, exist_ok=True)
 os.chdir(PROJ)
 
 # hr_session_open.json a .bak nastaveni od 0.2.2: appka pri starte kontrolny
@@ -48,7 +79,10 @@ os.chdir(PROJ)
 # a historiu potom vratilo bez neho (viz gui_harness_auto.py).
 ZALOHOVAT = [os.path.join(PROJ, n) for n in
              ("dandurf_settings.json", "hr_sessions.json", "hr_insights.json",
-              "hr_session_open.json", "dandurf_settings.json.bak")]
+              "hr_session_open.json", "dandurf_settings.json.bak",
+              # relacie, ktore sa nedali ulozit (0.2.2) - start ich doplni
+              # do historie a subor zmaze, rovnako ako kontrolny bod
+              "hr_session_pending.json")]
 _zalohy = {}
 for _cesta in ZALOHOVAT:
     if os.path.exists(_cesta):
@@ -98,6 +132,18 @@ root.report_callback_exception = lambda et, ev, tb: chyby.append(
 app = DandurfApp(root)
 
 
+def _len_okno(okno):
+    """HWND okna pre `--okno`, alebo None (vtedy sa foti obdlznik)."""
+    return ui_kit._window_hwnd(okno) if ARGS.okno else None
+
+
+def _bez_metadat(img):
+    """Kopia obrazka bez EXIF/XMP/textovych blokov - nic okrem pixelov."""
+    cisty = img.convert("RGB")
+    cisty.info = {}
+    return cisty
+
+
 def foto(meno):
     root.update_idletasks()
     root.update()
@@ -107,13 +153,54 @@ def foto(meno):
         kontrola(f"foto {meno}: okno uz nie je zahalene", False)
         return
     x, y = root.winfo_rootx(), root.winfo_rooty()
-    # okno + kúsok okolo, aby bolo vidno aj vlastnú titulkovú lištu
-    bbox = (x - 8, y - 40, x + root.winfo_width() + 8, y + root.winfo_height() + 8)
+    hwnd = _len_okno(root)
     try:
-        ImageGrab.grab(bbox=bbox, all_screens=True).save(os.path.join(OUT, meno + ".png"))
-        print("  foto", meno, flush=True)
+        if hwnd:
+            # LEN NASE OKNO (`--okno`): podla HWND, nie obdlznik obrazovky -
+            # ziadna plocha ani panel uloh, a okno inej appky navrchu sa do
+            # fotky nedostane.
+            img = ImageGrab.grab(window=hwnd)
+        elif ARGS.okno:
+            img = ImageGrab.grab(bbox=(x, y, x + root.winfo_width(),
+                                       y + root.winfo_height()), all_screens=True)
+        else:
+            # okno + kúsok okolo, aby bolo vidno aj vlastnú titulkovú lištu
+            bbox = (x - 8, y - 40, x + root.winfo_width() + 8, y + root.winfo_height() + 8)
+            img = ImageGrab.grab(bbox=bbox, all_screens=True)
+        _bez_metadat(img).save(os.path.join(OUT, meno + ".png"))
+        print("  foto", meno, img.size, flush=True)
+        return img
     except Exception as exc:
         chyby.append(f"screenshot {meno} zlyhal: {exc}")
+
+
+def foto_panelu(widget, meno, viditelne=None):
+    """Jeden panel okna (obrazok do README) - vyrez z fotky celeho okna.
+
+    Len s `--okno`: vtedy fotka zacina presne v rohu okna, takze poloha
+    panelu v okne je aj jeho poloha na fotke. `viditelne` je widget, ktory
+    panel orezava (platno scrollovanej stranky) - panel musi byt cely v nom."""
+    img = foto("_okno_pre_" + meno)
+    if img is None:
+        return
+    try:
+        os.remove(os.path.join(OUT, "_okno_pre_" + meno + ".png"))
+    except OSError:
+        pass
+
+    def obdlznik(w):
+        x = w.winfo_rootx() - root.winfo_rootx()
+        y = w.winfo_rooty() - root.winfo_rooty()
+        return x, y, x + w.winfo_width(), y + w.winfo_height()
+
+    x0, y0, x1, y1 = obdlznik(widget)
+    hx0, hy0, hx1, hy1 = obdlznik(viditelne) if viditelne is not None else (0, 0) + img.size
+    cely = (max(0, hx0) <= x0 and max(0, hy0) <= y0
+            and x1 <= min(img.size[0], hx1) and y1 <= min(img.size[1], hy1))
+    kontrola(f"panel {meno} je cely na obrazovke", cely, f"{(x0, y0, x1, y1)} v {img.size}")
+    if cely:
+        _bez_metadat(img.crop((x0, y0, x1, y1))).save(os.path.join(OUT, meno + ".png"))
+        print("  foto", meno, (x1 - x0, y1 - y0), flush=True)
 
 
 def foto_okna(okno, meno):
@@ -134,10 +221,14 @@ def foto_okna(okno, meno):
     okno.update_idletasks()
     okno.update()
     x, y = okno.winfo_rootx(), okno.winfo_rooty()
-    bbox = (x - 8, y - 8, x + okno.winfo_width() + 8, y + okno.winfo_height() + 8)
+    okraj = 0 if ARGS.okno else 8
+    bbox = (x - okraj, y - okraj, x + okno.winfo_width() + okraj,
+            y + okno.winfo_height() + okraj)
+    hwnd = _len_okno(okno)
     try:
-        ImageGrab.grab(bbox=bbox, all_screens=True).save(
-            os.path.join(OUT, meno + ".png"))
+        img = (ImageGrab.grab(window=hwnd) if hwnd
+               else ImageGrab.grab(bbox=bbox, all_screens=True))
+        _bez_metadat(img).save(os.path.join(OUT, meno + ".png"))
         print("  foto", meno, flush=True)
     except Exception as exc:
         chyby.append(f"screenshot {meno} zlyhal: {exc}")
@@ -169,14 +260,22 @@ def ziva_relacia(minut=95):
 
 def historia(pocet=46, dni=74):
     """Zapíše `hr_sessions.json` s reláciami za posledných ~10 týždňov —
-    s dierami (dni bez hrania) aj s krivkou, nech je čo kresliť."""
+    s dierami (dni bez hrania) aj s krivkou, nech je čo kresliť.
+
+    Relacie zacinaju vecer (18-23 h miestneho casu), ako herny vecer, a
+    pocet pripomienok sedi s trojuholnikmi v krivke (audit: "HLÁŠKY 0" pri
+    troch ▼ vyzeralo ako chyba appky)."""
     sessions = []
     teraz = time.time()
     for den in range(1, dni + 1):
         if random.random() < 0.32:
             continue
+        d = time.localtime(teraz - (dni - den) * 86400)
+        # od 18:00 TOHO DNA, nie od polnoci + 18 h - v den zmeny casu by to
+        # bolo 17:00 alebo 19:00
+        vecer = time.mktime((d.tm_year, d.tm_mon, d.tm_mday, 18, 0, 0, 0, 0, -1))
         for _ in range(1 if random.random() < 0.8 else 2):
-            start = teraz - (dni - den) * 86400 + random.uniform(16, 22) * 3600
+            start = vecer + random.uniform(0, 5) * 3600
             if start > teraz:
                 continue
             trvanie = random.uniform(2400, 9000)
@@ -193,20 +292,23 @@ def historia(pocet=46, dni=74):
                 krivka.append(int(round(bpm)))
                 if bpm >= kriticky:
                     nad += trvanie / hr_stats.CURVE_POINTS
+            # jedno cislo pre pocet, automaticke aj ▼ v krivke
+            hlasok = random.randint(0, 4)
             sessions.append({
                 "started": start, "duration_s": round(trvanie, 1),
                 "min_bpm": min(krivka), "avg_bpm": int(sum(krivka) / len(krivka)),
                 "max_bpm": max(krivka), "time_over_s": round(nad, 1),
                 "time_high_s": round(nad * 2.2, 1),
                 "peak_stress": int(min(100, 30 + (max(krivka) - base) * 1.1)),
-                "triggers": random.randint(1, 6), "auto_triggers": random.randint(0, 4),
+                "triggers": hlasok, "auto_triggers": hlasok,
                 "critical_bpm": kriticky, "samples": int(trvanie),
                 "baseline_bpm": int(round(base)),
                 "zone_seconds": {"calm": trvanie * 0.55, "raised": trvanie * 0.2,
                                  "high": trvanie * 0.18, "critical": trvanie * 0.07},
                 "hrr_bpm": random.randint(8, 32), "hrr_events": 3,
                 "hrpi": random.randint(70, 120),
-                "trigger_offsets_s": sorted(random.uniform(0, trvanie) for _ in range(3)),
+                "trigger_offsets_s": sorted(random.uniform(0, trvanie)
+                                            for _ in range(hlasok)),
                 "curve": krivka,
             })
     sessions.sort(key=lambda s: s["started"])
@@ -227,6 +329,23 @@ kroky = []
 def krok(fn):
     kroky.append(fn)
     return fn
+
+
+ZACIATOCNY_JAZYK = {}
+
+
+@krok
+def k_jazyk_zaciatok():
+    """`--lang`: cely beh v tom jazyku (napr. anglicke obrazky do README).
+    Ulozene nastavenia sa na konci vratia zo zalohy, takze jazyk hraca
+    ostane, aky bol."""
+    from app import LANG_NATIVE_LABELS
+    # bez --lang sa kroky s de/ja vracaju k slovencine, ako doteraz
+    ZACIATOCNY_JAZYK["kod"] = ARGS.lang or "sk"
+    if ARGS.lang:
+        if app.lang != ARGS.lang:
+            app.on_lang_switch(LANG_NATIVE_LABELS[ARGS.lang])
+        kontrola("jazyk behu je %s" % ARGS.lang, app.lang == ARGS.lang, str(app.lang))
 
 
 @krok
@@ -278,7 +397,14 @@ def k_historia():
     kontrola("graf trendu má body aj popisky osi",
              len(app.history_trend._values) > 1 and len(app.history_trend._labels) > 1,
              f"{len(app.history_trend._values)} bodov / {len(app.history_trend._labels)} popiskov")
-    kontrola("mriežka dní je naplnená", len(app.history_daygrid._days) > 60)
+    # Od 0.2.2 (davka 4) mriezka ukazuje tyzdne od prvej relacie, najviac
+    # 26 - nie cely rok. Ma mat aspon tyzden, najviac pol roka, a popisky.
+    mriezka = app.history_daygrid
+    kontrola("mriežka dní je naplnená",
+             7 <= len(mriezka._days) <= 26 * 7
+             and any(d.get("count") for d in mriezka._days)
+             and len(mriezka._months) == 12 and len(mriezka._weekdays) == 7,
+             f"{len(mriezka._days)} dní")
     kontrola("detail relácie má krivku", len(app.history_detail_trace._values) > 2)
 
 
@@ -307,6 +433,32 @@ def k_historia_scroll2():
 @krok
 def k_historia_foto3():
     foto("04_historia_dole")
+
+
+@krok
+def k_historia_detail():
+    """`--okno`: panel „Relacia zblizka“ navrch viditelnej casti stranky -
+    v dalsom kroku z neho bude samostatny obrazok (README)."""
+    if not ARGS.okno:
+        return
+    # najnovsia relacia s dvoma pripomienkami - nech su v krivke vidno ▼
+    sessions = app._world_sessions()
+    s_dvoma = [i for i, s in enumerate(sessions)
+               if len(s.get("trigger_offsets_s") or ()) == 2]
+    if s_dvoma:
+        app._pick_history_session(s_dvoma[-1])
+    kontrola("detail ukazuje reláciu s pripomienkami", bool(s_dvoma))
+    panel = app.history_detail_panel
+    root.update_idletasks()
+    vyska = max(1, app.history_scroll.winfo_height())
+    app.history_scroll._parent_canvas.yview_moveto(max(0.0, (panel.winfo_y() - 12) / vyska))
+
+
+@krok
+def k_historia_detail_foto():
+    if ARGS.okno:
+        foto_panelu(app.history_detail_panel, "17_relacia_zblizka",
+                    viditelne=app.history_scroll._parent_canvas)
 
 
 @krok
@@ -561,7 +713,7 @@ def k_jazyk_ja_foto():
 @krok
 def k_jazyk_spat():
     from app import LANG_NATIVE_LABELS
-    app.on_lang_switch(LANG_NATIVE_LABELS["sk"])
+    app.on_lang_switch(LANG_NATIVE_LABELS[ZACIATOCNY_JAZYK.get("kod", "sk")])
 
 
 @krok

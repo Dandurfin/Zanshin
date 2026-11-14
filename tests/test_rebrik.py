@@ -328,7 +328,7 @@ def test_veta_v_historii_len_pod_vrcholom_a_s_dovodom():
         assert _veta(stav([rel(0)], styl="visual")) == "", \
             "zvoleny styl nie je stisenie - nie je co vysvetlovat"
         veta = _veta(stav([rel(0, cue_verdict="agitated")]))
-        assert "len obrazom" in veta and "rozhodila" in veta
+        assert "len obrázkom" in veta and "rozhodila" in veta
         assert "treba ešte: 3" in veta
         pauza = _veta(stav([rel(0, cue_verdict="disruptive"),
                             rel(1, cue_verdict="disruptive")]))
@@ -652,7 +652,9 @@ def test_vety_rebrika_hovoria_jazykom_appky():
     Ctrl+Alt+Z), nie interný názov „teraz nie“, ktorý appka nikde neukazuje.
     A appka nežiada, aby jej niekto chýbal - SK hovorí o hláškach ako EN."""
     snooze = i18n.STRINGS["history.rebrik.why.snooze"]
-    assert "stíšil" in snooze["sk"] and "teraz nie" not in snooze["sk"]
+    # 0.2.2 (davka 4): bez rodu hraca - "som bola stisena", nie "si ma stisil"
+    assert "stíšená" in snooze["sk"] and "teraz nie" not in snooze["sk"]
+    assert "stíšil" not in snooze["sk"]
     assert "snoozed" in snooze["en"] and "not now" not in snooze["en"]
     for kluc in ("history.rebrik.pause", "session.end.none_paused"):
         assert "chýbam" not in i18n.STRINGS[kluc]["sk"], kluc

@@ -175,6 +175,56 @@ class TodayMixin:
         except Exception:
             app_log.exception("stav na Dnes: prepis textu zlyhal")
 
+    def _hodinky_vypadli(self):
+        """Sleduje, prijem tepu je zapnuty, ale tep z hodiniek vypadol.
+
+        Vypadok rozpoznava appka uz davno (`app_session._zaznamenaj_vypadok`:
+        tep chodil a 12 s ticha, `heart_rate.STALE_AFTER_S`) a drzi ho v
+        `_hr_lost`, kym nepride platna vzorka (`_tep_je_spat`). Tu sa nic
+        nove nemeria - len sa to povie aj mimo stranky Dnes."""
+        return bool(getattr(self, "listening", False)
+                    and getattr(self, "hr_monitoring_enabled", False)
+                    and getattr(self, "_hr_lost", False))
+
+    def _refresh_state_dot(self):
+        """Bodka stavu v bocnom paneli: "sleduje, ale tep vypadol" (0.2.2
+        davka 4). Vola sa z `_refresh_kamae_state_text`, cize pri kazdej
+        zmene stavu tepu aj sledovania. Sledovanie samo (plna / duta bodka)
+        nastavuje `_apply_listening_visuals` cez `set_live`."""
+        sidebar = getattr(self, "sidebar", None)
+        bodka = getattr(sidebar, "state_dot", None) if sidebar is not None else None
+        if bodka is None or not hasattr(bodka, "set_lost"):
+            return
+        try:
+            bodka.set_lost(TodayMixin._hodinky_vypadli(self))
+        except Exception:
+            app_log.exception("bodka stavu: vypadok tepu sa nepodarilo ukazat")
+
+    def _nazov_vhre(self, dlhy=False):
+        """Meno stranky "V hre" podla sveta (0.2.2 davka 4, audit UX).
+
+        Vo svete Praca sa nic "v hre" nedeje - stranka nesie hodinky a
+        obrazky na obrazovke, preto sa tam vola "Obrazovka". `dlhy=True` je
+        cely nazov (paleta Ctrl+K): "Hodinky a v hre" / "Hodinky a
+        obrazovka"."""
+        praca = getattr(self, "world", hr_stats.WORLD_DEFAULT) == "work"
+        if dlhy:
+            return tr("nav.vhre_work") if praca else tr("nav.vhre")
+        return tr("nav.vhre_work_short") if praca else tr("nav.vhre_short")
+
+    def _sync_world_nazvy(self):
+        """Po prepnuti sveta prepise meno stranky "V hre" v bocnom paneli.
+        Svet sa prepina prefarbenim okna, nie prestavbou (`set_world`), takze
+        popisok postaveny pri `_build_ui` by inak ostal z druheho sveta. Na
+        vete o obsadenom porte (meno stranky) sa prepise aj stav na Dnes."""
+        sidebar = getattr(self, "sidebar", None)
+        if sidebar is not None and hasattr(sidebar, "set_label"):
+            try:
+                sidebar.set_label("vhre", self._nazov_vhre())
+            except Exception:
+                app_log.exception("bocny panel: meno stranky sa neprepisalo")
+        self._refresh_kamae_state_text()
+
     def _resume_cue_trigger(self):
         """Vedome zdvihne pozastavenie spustaca.
 
@@ -529,12 +579,162 @@ class TodayMixin:
                     empty.pack(fill="x", pady=(6, 0))
                 # cez triedu: testy volaju tuto metodu na atrape appky
                 TodayMixin._sync_dnes_hero(self)
+            # Pred prvou relaciou s tepom: karty a pasma len s pomlckami sa
+            # schovaju (0.2.2 davka 4) - viz `_sync_dnes_prazdny_stav`.
+            TodayMixin._sync_dnes_prazdny_stav(self)
         except Exception:
             self._dnes_refresh_fails = getattr(self, "_dnes_refresh_fails", 0) + 1
             if self._dnes_refresh_fails == 1:
                 app_log.exception(
                     "Dnes: obnovenie zlyhalo (dalsie vyskyty sa uz nevypisu)")
+        TodayMixin._refresh_dnes_learning(self)
         self._refresh_last_cue()
+
+    def _dnes_ma_tep(self):
+        """Prisla uz niekedy relacia s tepom? (0.2.2 davka 4)
+
+        Ano, ked chodi tep v tejto relacii (`session_count`), alebo ked je v
+        historii aspon jedna ulozena relacia - kazda ulozena ma tep
+        (`hr_stats.je_ulozitelna`: aspon 10 vzoriek a minuta). Z oboch
+        svetov: ide o to, ci hodinky uz niekedy poslali tep, nie co sa deje
+        v Praci. Historia ide z cache (`_history_cached`), lebo toto bezi
+        pri kazdej vzorke. Atrapy bez cache (testy) dostanu plny pohlad."""
+        stats = getattr(self, "hr_stats", None)
+        if getattr(stats, "session_count", 0):
+            return True
+        historia = getattr(self, "_history_cached", None)
+        if not callable(historia):
+            return True
+        try:
+            return bool(historia())
+        except Exception:
+            return True
+
+    def _sync_dnes_prazdny_stav(self):
+        """Prazdny stav Dnes pred prvou relaciou s tepom (0.2.2 davka 4).
+
+        Audit UX: bez dat ukazovala stranka velke "--", styri karty s
+        pomlckami a "0:00 nad hranicou" a styri riadky "0 %" - vyzeralo to
+        ako meranie, nie ako "zatial nic", a jedina vyzva, ktora mala zmysel
+        (sparovat hodinky), bola az pod okrajom okna. Kym ziadna relacia s
+        tepom nie je (`_dnes_ma_tep`):
+          * v paneli "Tep a zataz" je len veta a "Sparovat hodinky"
+            (`dnes_empty`) - cislo tepu s vetou (`dnes_bpm_box`) sa schova,
+          * hlavicka a mriezka kariet "Moje statistiky" sa schovaju,
+          * panel pasiem ma namiesto pruhu a styroch riadkov jednu vetu
+            (`dnes_zone_empty`) a nerozpina sa na celu vysku stlpca.
+        Prva vzorka tepu vrati plny pohlad. Prestavuje sa len pri zmene."""
+        ma_tep = TodayMixin._dnes_ma_tep(self)
+        if ma_tep == getattr(self, "_dnes_ma_tep_stav", None):
+            return
+        bpm_box = getattr(self, "dnes_bpm_box", None)
+        head = getattr(self, "dnes_stats_head", None)
+        grid = getattr(self, "dashboard_grid", None)
+        zone_panel = getattr(self, "dnes_zone_panel", None)
+        obsah = getattr(self, "dnes_zone_obsah", None)
+        veta = getattr(self, "dnes_zone_empty", None)
+        if any(w is None for w in (bpm_box, head, grid, zone_panel, obsah, veta)):
+            return
+        self._dnes_ma_tep_stav = ma_tep
+
+        def zabaleny(widget):
+            try:
+                return widget.winfo_manager() == "pack"
+            except Exception:
+                return False
+
+        if ma_tep:
+            if not zabaleny(bpm_box):
+                # cislo tepu je v paneli prve - pred zivy blok / prazdny stav
+                pred = next((w for w in (getattr(self, "dnes_live", None),
+                                         getattr(self, "dnes_empty", None))
+                             if w is not None and zabaleny(w)), None)
+                if pred is not None:
+                    bpm_box.pack(fill="x", before=pred)
+                else:
+                    bpm_box.pack(fill="x")
+            if not zabaleny(head):
+                head.pack(fill="x", pady=(0, 10), before=zone_panel)
+            if not zabaleny(grid):
+                grid.pack(fill="x", before=zone_panel)
+            if zabaleny(veta):
+                veta.pack_forget()
+            if not zabaleny(obsah):
+                obsah.pack(fill="x")
+            TodayMixin._rozpinaj(zone_panel, True)
+        else:
+            for widget in (bpm_box, head, grid, obsah):
+                if zabaleny(widget):
+                    widget.pack_forget()
+            if not zabaleny(veta):
+                veta.pack(fill="x", pady=(2, 4))
+            TodayMixin._rozpinaj(zone_panel, False)
+
+    @staticmethod
+    def _rozpinaj(widget, rozpinaj):
+        """Zmeni len `expand` zabaleneho widgetu a necha mu miesto v poradi.
+
+        CTk widget sa prebali tym, s cim ho zabalili (`_last_geometry_manager
+        _call`, okraje NEnasobene mierkou) - CTk si to pamata a pri zmene DPI
+        to nanovo aplikuje, takze holy `pack_configure` by sa po presune okna
+        na iny monitor vratil. Ostatne (atrapy v testoch) cez `pack_configure`."""
+        posledne = getattr(widget, "_last_geometry_manager_call", None)
+        if isinstance(posledne, dict) and isinstance(posledne.get("kwargs"), dict):
+            kw = dict(posledne["kwargs"])
+            kw["expand"] = bool(rozpinaj)
+            widget.pack(**kw)
+        else:
+            widget.pack_configure(expand=bool(rozpinaj))
+
+    # Kolko relacii appka potrebuje, kym si spocita vlastnu hranicu tepu
+    # (`hr_stats.dynamicky_kriticky`): to iste pravidlo ako veta pri senzore
+    # (`_kriticky_popis`) - ciste HERNE relacie dlhe aspon 5 minut.
+    def _relacie_na_ucenie(self, historia):
+        """Kolko z `historia` sa ráta do ucenia hranice - najviac
+        `KRITICKY_MIN_RELACII` (viac netreba vediet, a od najnovsej sa da
+        skoncit skor: ostrieleny hrac nepreveruje 400 kriviek)."""
+        svet = getattr(self, "ALGORITMUS_SVET", hr_stats.WORLD_DEFAULT)
+        treba = hr_stats.KRITICKY_MIN_RELACII
+        n = 0
+        for relacia in reversed(hr_stats.sessions_in_world(historia or [], svet)):
+            if hr_stats.je_dost_dlha(relacia) and hr_stats.ciste_relacie([relacia]):
+                n += 1
+                if n >= treba:
+                    break
+        return n
+
+    def _refresh_dnes_learning(self):
+        """Ticha veta pod stavom na Dnes, kym si appka uci hranicu (0.2.2
+        davka 4): "Este ta spoznavam — 1 z 3 hernych relacii".
+
+        Len vo svete Hra (Praca sa hranicu neuci a veta by v nej pytala
+        herne relacie navzdy) a az ked uz nejaky tep prisiel - pred prvou
+        relaciou ma Dnes vlastny prazdny stav. Po tretej relacii zmizne.
+        Pocita sa len pri novej historii z cache (raz za ~20 s alebo po
+        ulozeni relacie), nie pri kazdej vzorke."""
+        try:
+            text = ""
+            svet = getattr(self, "ALGORITMUS_SVET", hr_stats.WORLD_DEFAULT)
+            historia_fn = getattr(self, "_history_cached", None)
+            if (getattr(self, "world", svet) == svet and callable(historia_fn)
+                    and TodayMixin._dnes_ma_tep(self)):
+                historia = historia_fn()
+                kluc = (id(historia), svet)
+                if kluc == getattr(self, "_dnes_learning_key", None):
+                    text = getattr(self, "_dnes_learning_text", "")
+                else:
+                    n = TodayMixin._relacie_na_ucenie(self, historia)
+                    celkom = hr_stats.KRITICKY_MIN_RELACII
+                    text = tr("dnes.learning", n=n, celkom=celkom) if n < celkom else ""
+                    self._dnes_learning_key = kluc
+            else:
+                self._dnes_learning_key = None
+            if text != getattr(self, "_dnes_learning_text", ""):
+                self._dnes_learning_text = text
+                if callable(getattr(self, "_refresh_dnes_backdrop", None)):
+                    self._refresh_dnes_backdrop(force=False)
+        except Exception:
+            app_log.exception("Dnes: veta o uceni sa nepodarilo obnovit")
 
     def _refresh_session_trace(self, connected):
         """Stopa relacie na Dnes.
@@ -1152,6 +1352,10 @@ class TodayMixin:
         nonstop = getattr(self, "_dnes_nonstop_text", "") or ""
         if nonstop:
             last = f"{last}\n{nonstop}" if last else nonstop
+        # A uplne dole "este ta spoznavam" (`_refresh_dnes_learning`).
+        ucenie = getattr(self, "_dnes_learning_text", "") or ""
+        if ucenie:
+            last = f"{last}\n{ucenie}" if last else ucenie
 
         # (1) PRESKOC identicke prekreslenie.
         frame_sig = (w, h, round(mierka, 2), id(dojo), id(pil),

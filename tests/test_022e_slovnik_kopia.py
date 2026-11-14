@@ -1,0 +1,267 @@
+# -*- coding: utf-8 -*-
+"""0.2.2 (UX audit, davka 4): texty existujucich klucov vo vsetkych 11 jazykoch.
+
+Co stráži tento test:
+  * jedno slovo pre to, co appka posle (zh 提示, ja 合図, ru подсказка,
+    de Hinweis, pt aviso, fr rappel) a pre obrazok v hre (sk/cs „obrázkom“),
+  * hranica / limit = len tep v BPM, prah / threshold = len zataz - aj v
+    japoncine, cinstine, rustine a francuzstine,
+  * oslovenie hraca bez rodu (ru „ты включил“, bg „Добре дошъл“, es
+    „Bienvenido“, pt „Bem-vindo“),
+  * krok 2 parovania neposle majitela iPhonu okolo kroku 3 (adresa a port),
+  * texty metrik a postrehov hovoria v prvej osobe ako ostatne,
+  * uvod povie, co hrac na prvy tep potrebuje (`ob.step1.need`),
+  * stlpce CSV exportu su gramaticky (sk „verdikt pripomienky“),
+  * pocitadlo relacie menuje styri pripomienky rovnako ako hra,
+  * dennik hovori o prijme tepu a o telefone, nie o „monitorovani“ a hodinkach.
+
+Synteticke data: ziadne - test cita len slovnik a zdrojaky.
+"""
+import ast
+import os
+import re
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+import i18n  # noqa: E402
+
+KOREN = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+S = i18n.STRINGS
+JAZYKY = i18n.LANGUAGES
+
+
+def _read(meno):
+    with open(os.path.join(KOREN, meno), encoding="utf-8-sig") as fh:
+        return fh.read()
+
+
+def _vsetky(jazyk):
+    return [(k, e[jazyk]) for k, e in S.items()]
+
+
+# --------------------------------------------------------------------------
+# Jedno slovo pre pripomienku a pre obrazok
+# --------------------------------------------------------------------------
+
+def test_obrazok_sa_vola_obrazok_aj_v_cestine_a_japoncine():
+    for kluc in ("world.tip", "settings.world_sub", "history.world_note",
+                 "ob.world.work.desc", "session.end.cues_work", "session.end.cues_visual",
+                 "history.rebrik.visual", "history.rebrik.pause", "data.import.flagged"):
+        assert re.search(r"[Oo]brázkom", S[kluc]["sk"]), kluc
+        assert re.search(r"[Oo]brázkem", S[kluc]["cs"]), kluc
+    assert not [k for k, v in _vsetky("sk") if re.search(r"\b[Oo]brazom\b", v)]
+    assert not [k for k, v in _vsetky("cs") if re.search(r"\b[Oo]brazem\b", v)]
+    assert not [k for k, v in _vsetky("ja") if "ビジュアル" in v]
+
+
+def test_pripomienka_ma_v_kazdom_jazyku_jedno_slovo():
+    # zh: 提醒 ostava len ako sloveso ("我提醒了你"), podstatne meno je 提示
+    for kluc in ("dev.param.min_gap_s", "history.effect_empty", "session.context.why",
+                 "palette.slot", "slots.unnamed", "dev.silent"):
+        assert "提示" in S[kluc]["zh"], kluc
+    for zle in ("提醒间隔", "提醒响起", "提醒没用", "提醒之间"):
+        assert not [k for k, v in _vsetky("zh") if zle in v], zle
+    assert S["palette.slot"]["zh"] == "提示 — {label}"
+    assert not [k for k, v in _vsetky("de") if "Erinnerung" in v]
+    assert not [k for k, v in _vsetky("ru") if re.search(r"[Рр]еплик", v)]
+    assert not [k for k, v in _vsetky("ja") if "セリフ" in v or "リマインダー" in v]
+    assert not [k for k, v in _vsetky("pt") if re.search(r"[Ll]embrete", v)]
+    assert not [k for k, v in _vsetky("es") if re.search(r"[Rr]ecordatorio", v)]
+    for kluc, slovo in (("palette.slot", "合図"), ("slots.unnamed", "合図")):
+        assert slovo in S[kluc]["ja"], kluc
+    assert S["slots.unnamed"]["ru"] == "Подсказка {n}"
+    assert "rappel" in S["guide.panel_subtitle"]["fr"]
+    assert "signal" not in S["guide.panel_subtitle"]["fr"]
+
+
+def test_francuzstina_ma_pre_relaciu_jedno_slovo():
+    for kluc in ("session.context.save_failed", "session.context.setup_hint",
+                 "session.context.setup_hint_first", "session.summary"):
+        assert "séance" in S[kluc]["fr"].lower(), kluc
+        assert not re.search(r"\bsession", S[kluc]["fr"], re.I), kluc
+
+
+# --------------------------------------------------------------------------
+# Hranica = tep (BPM), prah = zataz - aj v dalsich jazykoch
+# --------------------------------------------------------------------------
+
+HRANICA = {"ja": "上限", "zh": "上限", "ru": "границ", "fr": "limite"}
+PRAH = {"ja": "しきい値", "zh": "阈值", "ru": "порог", "fr": "seuil"}
+
+
+def test_hranica_tepu_nie_je_prah_ani_v_dalsich_jazykoch():
+    for kluc in ("metric.over.more", "metric.zones.more", "insight.over_up",
+                 "history.export_col.over_min"):
+        for jazyk, slovo in HRANICA.items():
+            text = S[kluc][jazyk]
+            assert slovo in text, (kluc, jazyk)
+            assert PRAH[jazyk] not in text, (kluc, jazyk)
+    # texty, ktore menuju oboje, menuju kazde svojim slovom
+    for kluc in ("data.import.flagged", "settings.world_sub"):
+        for jazyk in HRANICA:
+            assert HRANICA[jazyk] in S[kluc][jazyk], (kluc, jazyk)
+            assert PRAH[jazyk] in S[kluc][jazyk], (kluc, jazyk)
+
+
+def test_stlpce_o_zatazi_nad_prahom_hovoria_o_prahu():
+    """`above_runs` a `longest_above_s` su o zatazi nad prahom pripomienky
+    (`trigger`), nie o tepe nad hranicou."""
+    for kluc in ("history.export_col.above_runs", "history.export_col.longest_above_s"):
+        assert "prahom" in S[kluc]["sk"] and "hranic" not in S[kluc]["sk"], kluc
+        assert "prahem" in S[kluc]["cs"] and "hranic" not in S[kluc]["cs"], kluc
+        assert "прага" in S[kluc]["bg"] and "границ" not in S[kluc]["bg"], kluc
+
+
+# --------------------------------------------------------------------------
+# Oslovenie bez rodu
+# --------------------------------------------------------------------------
+
+def test_oslovenie_hraca_bez_rodu():
+    # ru: "ты ...л" (minuly cas muzskeho rodu) v osloveni hraca
+    assert not [k for k, v in _vsetky("ru")
+                if re.search(r"\b[Тт]ы\s+(?:уже\s+)?[а-яё]+л(?:ся)?\b", v)]
+    # bg: "си ...л" / "...л си" (muzsky rod) a muzske "Добре дошъл"
+    assert not [k for k, v in _vsetky("bg")
+                if re.search(r"\bси\s+[а-я]+л\b|\b[а-я]+л\s+си\b|дошъл", v)]
+    assert "Bienvenido" not in S["onboarding.welcome"]["es"]
+    assert "Bem-vindo" not in S["onboarding.welcome"]["pt"]
+    for jazyk in JAZYKY:
+        assert "{app}" in S["onboarding.welcome"][jazyk], jazyk
+    # cipy v dotazniku: podstatne mena, nie pridavne mena o hracovi
+    assert S["session.context.chill"]["es"] != "relajado"
+    assert S["session.context.chill"]["pt"] != "tranquilo"
+    # es "agitarse" znamena rozrusit sa, nie pohyb pred hranim
+    assert "agit" not in S["session.context.exercise_before"]["es"]
+    # Sprievodca: "tazko byt uvolneny" mal muzsky rod - veta je teraz o tele
+    filozofia = S["guide.philosophy.block3_text"]
+    assert "uvoľnené" in filozofia["sk"] and "uvoľnený a" not in filozofia["sk"]
+    assert "uvolněné" in filozofia["cs"] and "uvolněný a" not in filozofia["cs"]
+    assert "да си наистина отпуснат" not in filozofia["bg"]
+    for jazyk, zle in (("es", "estar de verdad relajado"), ("pt", "estar realmente relaxado"),
+                       ("fr", "d’être vraiment détendu"), ("ru", "быть по-настоящему")):
+        assert zle not in filozofia[jazyk], jazyk
+
+
+# --------------------------------------------------------------------------
+# Krok 2 parovania: iPhone nepreskoci adresu a port
+# --------------------------------------------------------------------------
+
+def test_krok_2_neposle_iphone_okolo_adresy_a_portu():
+    for jazyk in JAZYKY:
+        text = S["hr.step2_body"][jazyk]
+        assert "3–4" not in text and "3-4" not in text, jazyk
+        assert "3" in text and "4" in text, jazyk
+        assert "PulseOSC" in text and "HeartRateOnStream" in text, jazyk
+    sk, en = S["hr.step2_body"]["sk"], S["hr.step2_body"]["en"]
+    assert "Adresu a port (krok 3) zadáš v oboch appkách" in sk
+    assert "krok 4 preskoč" in sk
+    assert "Both apps need the address and port (step 3)" in en
+    assert "skip step 4" in en
+    # kroky, na ktore veta odkazuje, su naozaj tieto
+    assert "adresu a port" in S["hr.step3_body"]["sk"]
+    assert "scénu" in S["hr.step4_body"]["sk"]
+
+
+# --------------------------------------------------------------------------
+# Prva osoba v metrikach a postrehoch
+# --------------------------------------------------------------------------
+
+APPKA = {"sk": "appka", "cs": "appka", "en": "the app", "ja": "アプリ", "zh": "应用",
+         "ru": "приложени", "es": "la app", "de": "die App", "fr": "l’app", "pt": "o app",
+         "bg": "приложението"}
+
+
+def test_metriky_a_postrehy_hovoria_v_prvej_osobe():
+    for jazyk, slovo in APPKA.items():
+        assert slovo not in S["metric.load.more"][jazyk].lower(), jazyk
+    assert "mlčím" in S["metric.load.more"]["sk"]
+    assert "I stay quiet" in S["metric.load.more"]["en"]
+    assert "som si" in S["insight.steady"]["sk"]
+    assert S["insight.steady"]["en"].startswith("I haven")
+    for kluc in ("insight.triggers_early", "insight.triggers_late"):
+        assert "the app" not in S[kluc]["en"], kluc
+        assert "my cues" in S[kluc]["en"], kluc
+
+
+# --------------------------------------------------------------------------
+# Uvod: co hrac potrebuje
+# --------------------------------------------------------------------------
+
+def test_uvod_povie_co_hrac_na_prvy_tep_potrebuje():
+    zaznam = S["ob.step1.need"]
+    assert set(zaznam) == set(JAZYKY)
+    for jazyk in JAZYKY:
+        text = zaznam[jazyk]
+        assert text.strip() and "{" not in text, jazyk
+        assert "Wi‑Fi" in text or "WLAN" in text, jazyk
+        if jazyk != "en":
+            assert text != zaznam["en"], jazyk
+    assert "hrudný pás" in zaznam["sk"] and "telefóne" in zaznam["sk"]
+    assert "domácej sieti" in zaznam["sk"]
+    assert "chest strap" in zaznam["en"] and "phone app" in zaznam["en"]
+    assert "same home network" in zaznam["en"]
+
+
+def test_krok_1_uvodu_ukaze_co_treba_pod_uvodom():
+    strom = ast.parse(_read("ui_dialogs.py"))
+    krok1 = next(f for t in ast.walk(strom) if isinstance(t, ast.ClassDef)
+                 and t.name == "OnboardingWizard" for f in t.body
+                 if isinstance(f, ast.FunctionDef) and f.name == "_step1")
+    kod = ast.unparse(krok1)
+    assert "tr('ob.step1.need')" in kod
+    assert kod.index("tr('ob.step1.body')") < kod.index("tr('ob.step1.need')")
+
+
+# --------------------------------------------------------------------------
+# Export, pocitadlo relacie, dennik
+# --------------------------------------------------------------------------
+
+def test_stlpce_exportu_su_gramaticky():
+    verdikt = S["history.export_col.cue_verdict"]
+    assert verdikt["sk"] == "verdikt pripomienky"
+    assert verdikt["cs"] == "verdikt připomínky"
+    assert verdikt["es"] == "veredicto del aviso"
+    assert verdikt["pt"] == "veredito do aviso"
+    assert verdikt["fr"] == "verdict du rappel"
+    assert S["history.export_col.confounded"]["es"].startswith("¿")
+    for jazyk in JAZYKY:
+        assert "." not in S["history.export_col.felt_load"][jazyk], jazyk
+
+
+def test_pocitadlo_relacie_menuje_pripomienky_ako_hra():
+    for jazyk in JAZYKY:
+        text = S["session.summary"][jazyk]
+        for index in range(4):
+            assert S[f"overlay.slot.{index}"][jazyk] in text, (jazyk, index)
+        for meno in ("{g}", "{j}", "{r}", "{b}"):
+            assert meno in text, (jazyk, meno)
+    assert "Uvoľnenie" not in S["session.summary"]["sk"]
+    assert "Release" not in S["session.summary"]["en"]
+
+
+def test_dennik_hovori_o_prijme_tepu_a_telefone():
+    assert S["log.hr_disabled"]["sk"].startswith("Príjem tepu")
+    assert "receiving" in S["log.hr_disabled"]["en"]
+    assert S["log.hr_socket_error"]["sk"].startswith("Príjem tepu")
+    assert not [k for k, v in _vsetky("sk") if re.search(r"[Mm]onitorovan", v)]
+    assert not [k for k, v in _vsetky("en") if re.search(r"[Mm]onitoring", v)]
+    # klient, ktory sa odpoji, je appka v telefone - rovnako ako ten, co sa pripojil
+    for jazyk in ("sk", "en", "cs"):
+        assert ("Telef" in S["log.hr_client_gone"][jazyk]
+                or "phone" in S["log.hr_client_gone"][jazyk]), jazyk
+        assert ("Telef" in S["log.hr_client_connected"][jazyk]
+                or "phone" in S["log.hr_client_connected"][jazyk]), jazyk
+
+
+def test_cestina_bez_preklepov_z_davky_4():
+    assert "Když sleduju" in S["tour.dock.body"]["cs"]
+    assert "co se v ty večery změnilo" in S["metric.over.more"]["cs"]
+    assert "v liště" in S["tray.already_running"]["cs"]
+
+
+def test_build_skript_posiela_vyvojara_do_development():
+    skript = _read("build_all.ps1")
+    assert "vie z DEVELOPMENT.md" in skript
+    assert "vie z README" not in skript
+    assert "Inno Setup" in _read("DEVELOPMENT.md")

@@ -32,6 +32,7 @@ import os
 import sys
 import tkinter as tk
 from tkinter import font as tkfont
+from tkinter import messagebox    # len zaloha okien appky (`_systemove_okno`)
 
 import customtkinter as ctk
 
@@ -411,6 +412,10 @@ class Panel(ctk.CTkFrame):
         self.pal = pal
         self.right_label = None
 
+        # ROZOSTUPY 8/16 (0.2.2, audit UX, davka 4): nadpis -> linka -> telo
+        # mali 9 + 14 px a riadok nastavenia pod tym este svojich 9, takze
+        # medzi linkou a prvym textom bolo 23 px - viac nez medzi dvoma
+        # panelmi. Teraz 8 px nad linkou aj pod nou (+ odsadenie riadku).
         if title is not None:
             head = ctk.CTkFrame(self, fg_color="transparent", height=40)
             head.pack(fill="x", padx=16, pady=(11, 0))
@@ -424,10 +429,11 @@ class Panel(ctk.CTkFrame):
             # `rule` (>= 1,5:1), nie `line_soft` (1,11:1): linka, ktoru
             # nevidno, nechava len nevysvetlenu medzeru pod nadpisom.
             rule = linka(self, pal)
-            rule.pack(fill="x", pady=(9, 0))
+            rule.pack(fill="x", pady=(8, 0))
 
         self.body = ctk.CTkFrame(self, fg_color="transparent")
-        self.body.pack(fill="both", expand=True, padx=16, pady=14)
+        self.body.pack(fill="both", expand=True, padx=16,
+                       pady=(8 if title is not None else 14, 14))
 
     def set_right(self, text):
         if self.right_label is not None:
@@ -1018,6 +1024,21 @@ def bez_ikony(text):
     return text
 
 
+def dlzka_text(seconds):
+    """Dlzka "45 min" alebo "2 h 05 min" v jazyku appky; pokazena hodnota
+    -> "—". Jeden zdroj pre kartu "Dĺžka relácie", detail relacie v
+    Historii (`HistoryMixin._fmt_dlzka`) aj koniec osi stopy relacie."""
+    try:
+        total_min = int(max(0.0, float(seconds or 0.0)) // 60)
+    except (TypeError, ValueError, OverflowError):
+        return "—"
+    from i18n import tr
+    hodiny, minuty = divmod(total_min, 60)
+    if hodiny:
+        return tr("dashboard.fmt.h_min", h=hodiny, m=f"{minuty:02d}")
+    return tr("dashboard.fmt.min", n=minuty)
+
+
 class SettingRow(ctk.CTkFrame):
     """Riadok nastavenia: nazov, vysvetlenie pod nim, ovladac vpravo.
 
@@ -1083,7 +1104,60 @@ class SettingRow(ctk.CTkFrame):
                 anchor="w", justify="left", wraplength=note_wrap)
             self.note_label.pack(fill="x", pady=(0, 9))
 
-        linka(self, pal).pack(fill="x")
+        # Deliaca linka je MEDZI riadkami, nie pod poslednym (0.2.2, audit
+        # UX, davka 4): pod poslednym riadkom panela lezala ~13 px nad jeho
+        # ramom - dve ciary tesne nad sebou. Ci je riadok posledny, sa vie
+        # az ked je cely panel postaveny. Samotne `after_idle` nestacilo:
+        # rozbalovacka v DALSOM riadku si pri stavbe vola `update_idletasks`,
+        # takze sa kontrola spustila skor, nez dalsi riadok existoval, a linky
+        # zmizli aj medzi riadkami. Preto sa to prepocita pri kazdej zmene
+        # rozmeru rodica (pribudol riadok = rodic narastie) - `obnov_linky`.
+        self.deliaca_linka = linka(self, pal)
+        self.deliaca_linka.pack(fill="x")
+        self._linka_vidno = True
+        master = self.master
+        try:
+            if not getattr(master, "_zanshin_linky_riadkov", False):
+                master._zanshin_linky_riadkov = True
+                # `tk.Misc.bind` priamo na ramec (CTk `bind` by ho dal na
+                # vnutorny canvas) a "+" - CTk tam ma svoj <Configure>.
+                tk.Misc.bind(master, "<Configure>",
+                             lambda _e, m=master: SettingRow.obnov_linky(m), "+")
+            self.after_idle(lambda m=master: SettingRow.obnov_linky(m))
+        except Exception:
+            pass
+
+    @staticmethod
+    def obnov_linky(master):
+        """Linka pod kazdym riadkom nastavenia v `master` okrem posledneho.
+
+        Posledny riadok svojho rodica nema linku pod sebou. Riadok, za
+        ktorym este nieco nasleduje (dalsi riadok, tlacidlo, veta), ju ma -
+        oddeluje ho od toho, co je pod nim. Vola sa opakovane (kazdy
+        <Configure> rodica); meni len to, co sa zmenilo. Nikdy nevyhodi
+        vynimku."""
+        try:
+            susedia = master.pack_slaves()
+        except Exception:
+            return
+        for i, riadok in enumerate(susedia):
+            if not isinstance(riadok, SettingRow):
+                continue
+            riadok._nastav_linku(i < len(susedia) - 1)
+
+    def _nastav_linku(self, vidno):
+        try:
+            if vidno and not self._linka_vidno:
+                self.deliaca_linka.pack(fill="x")
+            elif not vidno and self._linka_vidno:
+                self.deliaca_linka.pack_forget()
+            self._linka_vidno = bool(vidno)
+        except Exception:
+            pass
+
+    def skry_linku_ak_je_posledny(self):
+        """Prepocita linky vsetkych riadkov u rodica (`obnov_linky`)."""
+        SettingRow.obnov_linky(self.master)
 
 
 def chip(master, pal, text, command=None, pressed=False, width=0):
@@ -1099,6 +1173,49 @@ def chip(master, pal, text, command=None, pressed=False, width=0):
     if width:
         btn.configure(width=width)
     return btn
+
+
+# --------------------------------------------------------------------------
+# Prazdny stav
+# --------------------------------------------------------------------------
+
+class EmptyState(ctk.CTkFrame):
+    """Prazdny stav: JEDNA veta a nanajvys JEDNA akcia (0.2.2 davka 4).
+
+    Audit UX: bez dat appka ukazovala pomlcky, "0 %" a prazdne grafy - to
+    vyzeralo ako meranie, nie ako "zatial nic". Jedina vyzva, ktora mala
+    zmysel (sparovat hodinky), bola navyse az pod okrajom okna. Prazdny stav
+    ma povedat, co sa tu objavi a co pre to spravit - nic viac.
+
+    Akcia je `button(kind="secondary")`, nie `chip()`: chip ostava pre
+    externe odkazy (pravidla dizajnu v audite). Druh ide zmenit cez `kind`.
+    Veta je v `text_dim` (>= 4,5:1), lebo je to obsah, nie dekoracia.
+    Farby su z palety, takze prefarbenie temy (`theme_recolor`) ich zvladne
+    bez vlastneho `set_pal`.
+    """
+
+    def __init__(self, master, pal, text, action=None, command=None,
+                 kind="secondary", wraplength=440, anchor="center", pady=(8, 8)):
+        super().__init__(master, fg_color="transparent")
+        self.pal = pal
+        stred = anchor == "center"
+        self.label = ctk.CTkLabel(self, text=text, font=ui(12),
+                                  text_color=pal["text_dim"], wraplength=wraplength,
+                                  justify="center" if stred else "left",
+                                  anchor="center" if stred else "w")
+        self.action = None
+        if action and command is not None:
+            self.label.pack(anchor=anchor, pady=(pady[0], 0))
+            self.action = button(self, pal, action, command=command, kind=kind)
+            self.action.pack(anchor=anchor, pady=(10, pady[1]))
+        else:
+            self.label.pack(anchor=anchor, pady=pady)
+
+    def set_text(self, text):
+        try:
+            self.label.configure(text=text)
+        except Exception:
+            pass
 
 
 # --------------------------------------------------------------------------
@@ -1177,29 +1294,56 @@ def set_label_text(widget, text):
 # --------------------------------------------------------------------------
 
 class KamaeBar(ctk.CTkFrame):
-    """Jediny pohyblivy prvok v celom okne.
+    """Hlavny vypinac na stranke Dnes - a jediny pohyblivy prvok v okne.
 
     Dycha v rovnakom rytme ako dychovy kruh v hre (5 s nadych, 5 s vydych) a
     ked je appka zastavena, stoji. Stav sa necita z odznaku ani z farby
-    textu, ale z toho, ci sa rozhranie hybe - a je to zaroven hlavne
-    tlacidlo, takze ziadne dalsie netreba.
+    textu, ale z toho, ci sa rozhranie hybe.
+
+    JEDNO TLACIDLO S TEXTOM (0.2.2 davka 4, audit UX). Do 0.2.2 tu bol
+    34 px kruh s ▶, nadpis "Hlavny vypinac" a pod nim navod "Klikni ▶
+    vlavo" - ovladac, ktory potreboval navod. Teraz je vlavo jedno tlacidlo
+    "▶ Spustit sledovanie" / "■ Zastavit sledovanie" (texty `dock.start` /
+    `dock.stop`, tie iste slova ako v ponuke ikony v liste) a vedla neho
+    len ticha veta, preco pas dycha. Zastavena appka ma tlacidlo `primary`
+    (vypln `accent`), sledujuca `secondary` (ram `control_border`) - tie
+    iste farby ako `button(kind=...)`. Stav prepina kazda cesta rovnako
+    (`DandurfApp._apply_listening_visuals` -> `set_live`): tlacidlo, ponuka
+    v liste aj spustenie hrou.
+
+    KLAVESNICA: platno sa da zamerat (Tab) a Enter alebo medzernik prepnu
+    to iste, co klik. Zameranie ukaze prstenec okolo tlacidla - klik mysou
+    platno nezameria, takze prstenec nevyskoci pri kazdom kliknuti.
+
+    PRECO KRESLENE, NIE CTkButton: plat pod tlacidlom pocas sledovania dycha
+    - kazdych 90 ms ma inu vypln. CTkButton ma rohy vo farbe pozadia, ktora
+    sa nastavi raz, takze v dychajucom plate by sedel ostrovcek inej farby.
+    Tlacidlo je preto obrazok s priehladnymi rohmi (vyhladeny cez PIL;
+    bez PIL obycajny polygon) a text je text platna.
 
     Animacia sa zastavi vzdy, ked okno nie je viditelne (minimalizovane do
     listy) - appka bezi na pozadi celu hraciu seansu a prekreslovat pritom
     nieco, na co sa nikto nepozera, by bolo plytvanie.
     """
 
-    HEIGHT = 92
+    # 92 -> 64 (0.2.2 davka 4): pas uz nenesie dva riadky textu (nadpis a
+    # navod), len tlacidlo a jednu vetu. Okno ma pevnu vysku a kazdy riadok
+    # pasu chyba stranke pod nim.
+    HEIGHT = 64
     TICK_MS = 90
-    # Spinac vlavo v pase. Do verzie 2.1 bola na tomto mieste len farebna
+    # Tlacidlo vlavo v pase. Do verzie 2.1 bola na tomto mieste len farebna
     # bodka a prepinal KLIK KAMKOLVEK do pasu - o com sa hrac dozvedel len
-    # zo sprievodcu. Teraz je to ovladac, ktory vyzera ako ovladac, a
-    # prepina UZ LEN on: jeden zamer, jedno miesto.
-    BTN_X = 18
-    BTN_SIZE = 34
+    # zo sprievodcu. Prepina UZ LEN tlacidlo: jeden zamer, jedno miesto.
+    BTN_X = 14
+    BTN_SIZE = 36               # vyska tlacidla (logicke px), audit: 36 px
+    BTN_PAD = 18                # okraj textu vnutri tlacidla
+    BTN_MIN_W = 150
+    FOCUS_GAP = 3               # medzera medzi tlacidlom a prstencom zamerania
+    FOCUS_W = 2                 # hrubka prstenca zamerania
     HALF_CYCLE_MS = 5000.0      # rovnaka faza ako _SlotOverlay.HALF_CYCLE_S
 
-    def __init__(self, master, pal, on_toggle, label="", sub=""):
+    def __init__(self, master, pal, on_toggle, start_label="", stop_label="",
+                 hint=""):
         super().__init__(master, fg_color="transparent", height=self.HEIGHT)
         self.pack_propagate(False)
         self.pal = pal
@@ -1207,8 +1351,17 @@ class KamaeBar(ctk.CTkFrame):
         self.live = False
         self._phase = 0.0
         self._job = None
-        self._label = label
-        self._sub = sub
+        self._start_label = start_label
+        self._stop_label = stop_label
+        self._hint = hint
+        # Stav tlacidla: kurzor nad nim / zamerane klavesnicou. Obrazky
+        # tlacidla su v cache podla (rozmer, druh, stav, farby) - pri tiku
+        # dychu sa nemenia, vymienaju sa len pri zmene stavu.
+        self._hover_btn = False
+        self._focus = False
+        self._btn_imgs = {}
+        self._btn_stav = None
+        self._btn_rect = None     # (x0, y0, x1, y1) vo FYZICKYCH px platna
         # Znovupouzitie prvkov platna namiesto delete("all")+znovu-vytvorenie
         # kazdy tik (90 ms). `_it` su id-cka poloziek, `_it_sig` je (sirka, vyska,
         # mierka), pre ktore su postavene - pri zmene sa postavia nanovo, inak
@@ -1217,12 +1370,18 @@ class KamaeBar(ctk.CTkFrame):
         self._it_sig = None       # (w, h, mierka), pre ktore su polozky postavene
         self._last_mierka = 1.0
 
+        # `takefocus=1`: na hlavny vypinac sa da dostat klavesnicou (Tab).
         self.canvas = tk.Canvas(self, height=self.HEIGHT, bg=pal["bg"],
-                                highlightthickness=0, bd=0)
+                                highlightthickness=0, bd=0, takefocus=1)
         self.canvas.pack(fill="both", expand=True)
         self.canvas.bind("<Button-1>", self._clicked)
         self.canvas.bind("<Motion>", self._hover)
+        self.canvas.bind("<Leave>", self._leave)
         self.canvas.bind("<Configure>", lambda _e: self._redraw())
+        self.canvas.bind("<FocusIn>", lambda _e: self._set_focus(True))
+        self.canvas.bind("<FocusOut>", lambda _e: self._set_focus(False))
+        for klaves in ("<Return>", "<KP_Enter>", "<space>"):
+            self.canvas.bind(klaves, self._key)
 
     def _set_scaling(self, *args, **kwargs):
         """Prekresli aj pri zmene DPI (presun okna na monitor s inou mierkou).
@@ -1256,15 +1415,23 @@ class KamaeBar(ctk.CTkFrame):
         self._redraw()
         self._schedule()
 
-    def set_texts(self, label, sub):
-        self._label, self._sub = label, sub
-        if self._it is not None:
-            try:
-                self.canvas.itemconfigure(self._it["title"], text=label)
-                self.canvas.itemconfigure(self._it["sub"], text=sub)
-            except Exception:
-                pass
+    def set_texts(self, start_label, stop_label, hint=""):
+        """Texty tlacidla (zastavene / sleduje) a ticha veta vedla neho.
+
+        Sirka tlacidla sa rata z DLHSIEHO z dvoch textov, aby pri prepnuti
+        neposkocilo - preto sa pri zmene textu polozky postavia nanovo. Vola
+        sa casto (kazda vzorka tepu prepisuje stav na Dnes), takze rovnake
+        texty nerobia nic."""
+        texty = (start_label, stop_label, hint)
+        if texty == (self._start_label, self._stop_label, self._hint):
+            return
+        self._start_label, self._stop_label, self._hint = texty
+        self._it = None
         self._redraw()
+
+    def button_label(self):
+        """Text, ktory tlacidlo prave ukazuje (pre testy a sprievodcu)."""
+        return self._stop_label if self.live else self._start_label
 
     def set_pal(self, pal):
         """Prekresli pas v novej teme.
@@ -1281,6 +1448,9 @@ class KamaeBar(ctk.CTkFrame):
         ale nevola ju nic.
         """
         self.pal = pal
+        # obrazky tlacidla maju farby zapecene - stara tema do novej nepatri
+        self._btn_imgs = {}
+        self._btn_stav = None
         try:
             self.canvas.configure(bg=pal["bg"])
         except Exception:
@@ -1318,32 +1488,57 @@ class KamaeBar(ctk.CTkFrame):
     # ---- vnutro ----
 
     def _v_spinaci(self, event):
-        """Je klik v spinaci? Suradnice udalosti su FYZICKE px, takze spinac
-        skalujeme mierkou (rovnako ako sa kresli) a beriem realnu vysku platna -
-        inak by klik na 150 % netrafil tam, kde je spinac nakresleny."""
-        m = self._last_mierka or 1.0
-        bs = self.BTN_SIZE * m
-        bx = self.BTN_X * m
-        try:
-            h = int(self.canvas.winfo_height())
-        except Exception:
-            h = int(self.HEIGHT * m)
-        by = (h - bs) / 2.0
-        return (bx <= event.x <= bx + bs and by <= event.y <= by + bs)
+        """Je klik v tlacidle? Suradnice udalosti su FYZICKE px - obdlznik
+        tlacidla sa preto pamata z kreslenia (`_btn_rect`, uz skalovany
+        mierkou). Kym este nie je nakreslene, odhad z konstant a realnej
+        vysky platna - inak by klik na 150 % netrafil tam, kde tlacidlo je."""
+        rect = self._btn_rect
+        if rect is None:
+            m = self._last_mierka or 1.0
+            bs = self.BTN_SIZE * m
+            bx = self.BTN_X * m
+            try:
+                h = int(self.canvas.winfo_height())
+            except Exception:
+                h = int(self.HEIGHT * m)
+            by = (h - bs) / 2.0
+            rect = (bx, by, bx + self.BTN_MIN_W * m, by + bs)
+        x0, y0, x1, y1 = rect
+        return x0 <= event.x <= x1 and y0 <= event.y <= y1
 
     def _clicked(self, event):
         if self._v_spinaci(event) and callable(self.on_toggle):
             self.on_toggle()
 
+    def _key(self, _event=None):
+        """Enter / medzernik na zameranom pase = klik na tlacidlo."""
+        if callable(self.on_toggle):
+            self.on_toggle()
+        return "break"
+
     def _hover(self, event):
-        """Ruka len nad spinacom. Kurzor je jediny nahlad, ktory hrac dostane
-        pred klikom - keby bola ruka nad celym pasom, slubovala by akciu,
-        ktora sa uz nikde inde nestane."""
+        """Ruka a zvyraznenie len nad tlacidlom. Kurzor je jediny nahlad,
+        ktory hrac dostane pred klikom - keby bola ruka nad celym pasom,
+        slubovala by akciu, ktora sa uz nikde inde nestane."""
+        nad = self._v_spinaci(event)
         try:
-            self.canvas.configure(
-                cursor="hand2" if self._v_spinaci(event) else "")
+            self.canvas.configure(cursor="hand2" if nad else "")
         except Exception:
             pass
+        if nad != self._hover_btn:
+            self._hover_btn = nad
+            self._redraw()
+
+    def _leave(self, _event=None):
+        if self._hover_btn:
+            self._hover_btn = False
+            self._redraw()
+
+    def _set_focus(self, zamerane):
+        zamerane = bool(zamerane)
+        if zamerane != self._focus:
+            self._focus = zamerane
+            self._redraw()
 
     def _schedule(self):
         self.stop()
@@ -1399,11 +1594,11 @@ class KamaeBar(ctk.CTkFrame):
         """Postavi prvky platna RAZ pre danu (sirku, vysku, mierku); pri kazdom
         tiku sa uz len upravuju (`_update_items`) - ziadne delete("all") ani
         znovu-vytvorenie, takze pas nebliká ani na buildoch Tk bez dvojiteho
-        bufferu. `w`/`h` su FYZICKE px platna; logicke konstanty (spinac, medzery)
-        skalujeme mierkou `m`, aby na 150 % pas vyplnili proporcne."""
+        bufferu. `w`/`h` su FYZICKE px platna; logicke konstanty (tlacidlo,
+        medzery) skalujeme mierkou `m`, aby na 150 % pas vyplnili proporcne."""
         c = self.canvas
         c.delete("all")
-        it = {"glow": [], "pause": []}
+        it = {"glow": []}
         it["plate"] = round_rect(c, 1, 1, w - 1, h - 1, int(round(7 * m)),
                                  fill="", outline="")
         # NAPLNAJUCI SA LESK - pevny bazen 22 obdlznikov od stredu do bokov;
@@ -1416,29 +1611,106 @@ class KamaeBar(ctk.CTkFrame):
                                                  outline="", state="hidden"))
         it["line"] = c.create_line(0, h - 3, 0, h - 3, width=max(1, int(round(2 * m))),
                                    capstyle="round", state="hidden")
-        # SPINAC - kruh + tvar znaku (pauza = pocuvam / play = zastavene)
-        bx = self.BTN_X * m
-        bs = self.BTN_SIZE * m
-        scx, scy = bx + bs / 2.0, h / 2.0
-        rr = bs / 2.0 - 3 * m
-        it["oval"] = c.create_oval(scx - rr, scy - rr, scx + rr, scy + rr,
-                                   width=max(1, int(round(2 * m))))
-        for smer in (-1, 1):
-            x0 = scx + smer * 3.8 * m - 1.3 * m
-            it["pause"].append(c.create_rectangle(x0, scy - 5.5 * m, x0 + 2.6 * m,
-                                                  scy + 5.5 * m, outline="", state="hidden"))
-        it["play"] = c.create_polygon(scx - 4.5 * m, scy - 6.5 * m, scx - 4.5 * m,
-                                      scy + 6.5 * m, scx + 6.5 * m, scy,
-                                      outline="", state="hidden")
-        # TEXT - medzera -18/+16 (skalovana) aby zostup 'ý' z nadpisu nenarazal
-        # na 'ľ'/'ď' z podtitulku; `width` = zalomenie na sirku pasu.
-        tx = bx + bs + 14 * m
-        sirka = max(1, int(w - tx - 16 * m))
-        it["title"] = c.create_text(tx, h / 2 - 18 * m, text=self._label, anchor="w",
-                                    font=self._cvfont(17, "bold"), width=sirka)
-        it["sub"] = c.create_text(tx, h / 2 + 16 * m, text=self._sub, anchor="w",
-                                  font=self._cvfont(11), width=sirka)
+        # TLACIDLO. Sirka zo sirsieho z dvoch textov - pri prepnuti
+        # Spustit <-> Zastavit nesmie poskocit ani tlacidlo, ani veta vedla.
+        pismo = self._cvfont(13, "bold")
+        try:
+            meradlo = tkfont.Font(family=pismo[0], size=pismo[1], weight=pismo[2])
+            sirka_textu = max(meradlo.measure(t) for t in
+                              (self._start_label, self._stop_label, ""))
+        except Exception:
+            sirka_textu = int(max(len(self._start_label), len(self._stop_label)) * 8 * m)
+        bw = int(round(max(self.BTN_MIN_W * m, sirka_textu + 2 * self.BTN_PAD * m)))
+        bh = int(round(self.BTN_SIZE * m))
+        bx = int(round(self.BTN_X * m))
+        by = int((h - bh) / 2)
+        self._btn_rect = (bx, by, bx + bw, by + bh)
+        okraj = self._btn_okraj(m)
+        it["btn_img"] = c.create_image(bx - okraj, by - okraj, anchor="nw")
+        it["btn_poly"] = round_rect(c, bx, by, bx + bw, by + bh,
+                                    int(round(RADIUS_CONTROL * m)), fill="",
+                                    outline="", state="hidden")
+        it["btn_text"] = c.create_text(bx + bw / 2.0, by + bh / 2.0, text="",
+                                       anchor="center", font=pismo)
+        # TICHA VETA vedla tlacidla - preco pas dycha. Ked sa nezmesti
+        # (uzke okno, dlhy preklad tlacidla), radsej ziadna nez orezana.
+        tx = bx + bw + 16 * m
+        sirka = int(w - tx - 16 * m)
+        it["hint"] = c.create_text(tx, h / 2.0, text=self._hint if sirka > 80 * m else "",
+                                   anchor="w", font=self._cvfont(12),
+                                   width=max(1, sirka))
         self._it = it
+        self._btn_stav = None       # nove polozky -> tlacidlo nakreslit znova
+
+    def _btn_okraj(self, m):
+        """O kolko je obrazok tlacidla vacsi nez tlacidlo (miesto na prstenec
+        zamerania), vo fyzickych px."""
+        return int(math.ceil((self.FOCUS_GAP + self.FOCUS_W) * m))
+
+    def _btn_obrazok(self, bw, bh, m, vypln, ram, prstenec):
+        """Vyhladene tlacidlo (a prstenec zamerania) ako obrazok s priehladnymi
+        rohmi, alebo None bez PIL. Kresli sa 4x vacsie a zmensi - Tk polygon
+        na Windows hrany nevyhladzuje. Zmensuje sa v predvynasobenej alfe
+        ("RGBa"), inak by priehladne pixely do hrany primiesali ciernu."""
+        kluc = (bw, bh, round(m, 2), vypln, ram, prstenec)
+        obr = self._btn_imgs.get(kluc)
+        if obr is not None:
+            return obr
+        try:
+            from PIL import Image, ImageDraw, ImageTk
+        except Exception:
+            return None
+        try:
+            ss = 4
+            okraj = self._btn_okraj(m)
+            sirka, vyska = bw + 2 * okraj, bh + 2 * okraj
+            img = Image.new("RGBA", (sirka * ss, vyska * ss), (0, 0, 0, 0))
+            d = ImageDraw.Draw(img)
+            r = RADIUS_CONTROL * m
+            if prstenec:
+                hr = (self.FOCUS_GAP + self.FOCUS_W) * m
+                d.rounded_rectangle(
+                    [(okraj - hr) * ss, (okraj - hr) * ss,
+                     (okraj + bw + hr) * ss - 1, (okraj + bh + hr) * ss - 1],
+                    radius=(r + hr) * ss, outline=prstenec,
+                    width=max(1, int(round(self.FOCUS_W * m * ss))))
+            d.rounded_rectangle(
+                [okraj * ss, okraj * ss, (okraj + bw) * ss - 1, (okraj + bh) * ss - 1],
+                radius=r * ss, fill=vypln, outline=ram,
+                width=max(1, int(round(m * ss))) if ram else 0)
+            img = img.convert("RGBa").resize((sirka, vyska), Image.LANCZOS).convert("RGBA")
+            obr = ImageTk.PhotoImage(img, master=self.canvas)
+        except Exception:
+            return None
+        if len(self._btn_imgs) > 24:
+            self._btn_imgs = {}
+        self._btn_imgs[kluc] = obr
+        return obr
+
+    def _kresli_tlacidlo(self, druh, m):
+        """Prekresli tlacidlo pre `druh` ("primary" zastavene / "secondary"
+        sleduje), kurzor nad nim a zameranie. Farby su tie iste ako pri
+        `button(kind=...)`: primary = vypln `accent` a text `bg`, secondary =
+        ram `control_border` (>= 3:1) a text `text`."""
+        c, it, pal = self.canvas, self._it, self.pal
+        x0, y0, x1, y1 = self._btn_rect
+        if druh == "primary":
+            vypln = pal["accent_hover"] if self._hover_btn else pal["accent"]
+            ram, farba_textu = None, pal["bg"]
+        else:
+            vypln = pal["surface_alt"] if self._hover_btn else None
+            ram, farba_textu = pal["control_border"], pal["text"]
+        prstenec = pal["accent_hover"] if self._focus else None
+        obr = self._btn_obrazok(x1 - x0, y1 - y0, m, vypln, ram, prstenec)
+        if obr is not None:
+            c.itemconfigure(it["btn_img"], image=obr, state="normal")
+            c.itemconfigure(it["btn_poly"], state="hidden")
+        else:
+            c.itemconfigure(it["btn_img"], state="hidden")
+            c.itemconfigure(it["btn_poly"], state="normal", fill=vypln or "",
+                            outline=prstenec or ram or "",
+                            width=max(1, int(round((2 if prstenec else 1) * m))))
+        c.itemconfigure(it["btn_text"], text=self.button_label(), fill=farba_textu)
 
     def _update_items(self, w, h, m, t):
         """Upravi farbu/polohu/viditelnost prvkov podla stavu a fazy dychu,
@@ -1475,13 +1747,15 @@ class KamaeBar(ctk.CTkFrame):
             c.itemconfigure(it["line"], fill=pal["accent_hover"], state="normal")
         else:
             c.itemconfigure(it["line"], state="hidden")
-        glyf = pal["accent_hover"] if live else pal["accent"]
-        c.itemconfigure(it["oval"], outline=pal["accent"])
-        for rid in it["pause"]:
-            c.itemconfigure(rid, fill=glyf, state="normal" if live else "hidden")
-        c.itemconfigure(it["play"], fill=glyf, state="hidden" if live else "normal")
-        c.itemconfigure(it["title"], fill=pal["text"])
-        c.itemconfigure(it["sub"], fill=pal["text_dim"] if live else pal["text_faint"])
+        # Tlacidlo sa prekresluje len pri zmene stavu, nie pri kazdom tiku
+        # dychu: obrazok ma priehladne rohy a vnutro `secondary`, takze
+        # dychajuci plat pod nim presvita sam.
+        druh = "secondary" if live else "primary"
+        stav = (druh, self._hover_btn, self._focus, self._btn_rect)
+        if stav != self._btn_stav:
+            self._btn_stav = stav
+            self._kresli_tlacidlo(druh, m)
+        c.itemconfigure(it["hint"], fill=pal["text_dim"] if live else pal["text_faint"])
 
 
 # --------------------------------------------------------------------------
@@ -1911,6 +2185,17 @@ class SessionTrace(PalCanvas):
         total = int(max(0.0, seconds))
         return f"{total // 60}:{total % 60:02d}"
 
+    # Od hodiny vyssie sa koniec osi pise ako dlzka ("2 h 18 min"), nie m:ss:
+    # "138:02" vyzeralo ako cas na hodinkach (0.2.2, audit UX, davka 4).
+    OS_DLZKA_OD_S = 3600
+
+    @classmethod
+    def os_popisky(cls, duration_s):
+        """(zaciatok, koniec) osi casu pre relaciu dlhu `duration_s`."""
+        if duration_s >= cls.OS_DLZKA_OD_S:
+            return dlzka_text(0), dlzka_text(duration_s)
+        return "0:00", cls._mmss(duration_s)
+
     def _draw_strip(self, w, top, vyska):
         """Pas pasiem - susedne rovnake pasma sa spajaju do jedneho
         obdlznika, nech na platne nelezi 120 utvarov namiesto piatich."""
@@ -2043,9 +2328,10 @@ class SessionTrace(PalCanvas):
         self._draw_activity(pw, strip_top - self.ACT_H - 2, self.ACT_H)
         self._draw_strip(pw, strip_top, strip_h)
         if self._duration > 0:
-            c.create_text(0, h - 2 * s, text="0:00", anchor="sw",
+            zaciatok, koniec = self.os_popisky(self._duration)
+            c.create_text(0, h - 2 * s, text=zaciatok, anchor="sw",
                           fill=pal["text_faint"], font=mono(10))
-            c.create_text(pw, h - 2 * s, text=self._mmss(self._duration), anchor="se",
+            c.create_text(pw, h - 2 * s, text=koniec, anchor="se",
                           fill=pal["text_faint"], font=mono(10))
 
 
@@ -2151,7 +2437,10 @@ class CueEffectChart(PalCanvas):
                 for kx in (c1, c2):
                     c.create_line(kx, y - 4 * s, kx, y + 4 * s,
                                   fill=pal["text_faint"], width=max(1, round(s)))
-            c.create_text(pravo, y, text="%+.1f  (n=%d)" % (delta, n), anchor="e",
+            # cislo podla jazyka appky ("−4,2", nie "-4.2" - `i18n.cislo`)
+            from i18n import cislo
+            c.create_text(pravo, y, text="%s  (n=%d)" % (cislo(delta, 1, sign=True), n),
+                          anchor="e",
                           fill=pal["text_faint"], font=mono(10))
             y += self.RIADOK * s
 
@@ -2168,19 +2457,56 @@ class DayGrid(PalCanvas):
     CELL = 12
     GAP = 3
     LEGEND_H = 18
+    # POPISKY (0.2.2, audit UX, davka 4): mesiace nad stlpcami a dni vlavo.
+    # Bez nich sa z mriezky nedalo povedat, ktory stlpec je ktory tyzden ani
+    # ktory riadok je nedela - vzor (vikendy, vecery) sa citat nedal.
+    MONTH_H = 15
     STEPS = 4       # kolko odtienov nad "prazdny den"
+    # Ktore riadky nesu meno dna: pondelok, streda, piatok - siedmy popisok
+    # pri 12 px riadku by sa s vedlajsimi slial.
+    DAY_ROWS = (0, 2, 4)
 
     def __init__(self, master, pal):
-        super().__init__(master, pal, 7 * (self.CELL + self.GAP) - self.GAP
-                         + self.LEGEND_H)
+        super().__init__(master, pal, self.MONTH_H + 7 * (self.CELL + self.GAP)
+                         - self.GAP + self.LEGEND_H)
         self._days = []
         self._legend = ("", "")
+        self._months = ()
+        self._weekdays = ()
 
-    def set_days(self, days, legend=("", "")):
-        """`days` je vystup `hr_stats.day_activity` (od najstarsieho)."""
+    def set_days(self, days, legend=("", ""), months=(), weekdays=()):
+        """`days` je vystup `hr_stats.day_activity` (od najstarsieho).
+
+        `months` = 12 skratiek mesiacov (januar prvy), `weekdays` = 7 skratiek
+        dni (pondelok prvy) - v jazyku APPKY, preto ich dava volajuci z i18n.
+        Prazdne = bez popiskov."""
         self._days = list(days or [])
         self._legend = legend
+        self._months = tuple(months or ())
+        self._weekdays = tuple(weekdays or ())
         self._redraw()
+
+    @staticmethod
+    def stlpce_mesiacov(prvy_datum, prvy_den, stlpcov):
+        """[(stlpec, mesiac 1..12)] - kde zacina mesiac nad mriezkou.
+
+        Mesiac sa pise nad stlpec, v ktorom je jeho 1. den. Prvy stlpec
+        dostane mesiac svojho prveho dna, len ked do dalsieho popisku ostavaju
+        aspon tri stlpce - inak by sa dve skratky prekryli."""
+        from datetime import timedelta
+        vysledok = []
+        for stlpec in range(stlpcov):
+            for riadok in range(7):
+                index = stlpec * 7 + riadok - prvy_den
+                if index < 0:
+                    continue
+                datum = prvy_datum + timedelta(days=index)
+                if datum.day == 1:
+                    vysledok.append((stlpec, datum.month))
+                    break
+        if not vysledok or vysledok[0][0] >= 3:
+            vysledok.insert(0, (0, prvy_datum.month))
+        return vysledok
 
     def _odtiene(self):
         # odtiene smerom k farbe POKOJA danej temy, nie k univerzalnej
@@ -2204,10 +2530,26 @@ class DayGrid(PalCanvas):
         aktivne = sorted(d["seconds"] for d in self._days if d["seconds"] > 0)
         prahy = [aktivne[min(len(aktivne) - 1, int(len(aktivne) * (i + 1) / float(self.STEPS)))]
                  for i in range(self.STEPS)] if aktivne else []
+        # Popisky su v `text_faint` (>= 4,5:1 v oboch temach) a ui(10) -
+        # najmensi obsahovy text appky.
+        farba_popisu = pal["text_faint"]
+        vrch = self.MONTH_H * s
+        # Stlpec dni vlavo: sirka podla najdlhsieho popisku v tomto jazyku
+        # ("Mon" / "月" / "seg"), nie natvrdo - inak by "lun" prekryl mriezku.
+        lavo = 0
+        if len(self._weekdays) == 7:
+            for riadok in self.DAY_ROWS:
+                polozka = c.create_text(0, vrch + riadok * krok + cell / 2.0,
+                                        text=self._weekdays[riadok], anchor="w",
+                                        fill=farba_popisu, font=ui(10))
+                box = c.bbox(polozka)
+                if box:
+                    lavo = max(lavo, box[2] - box[0])
+            lavo += 6 * s if lavo else 0
         # Kolko tyzdnov sa zmesti - a orezava sa ZACIATOK, nie koniec:
         # dnesok musi byt v mriezke vzdy, aj keby sa historia nezmestila
         # cela. Volajuci preto moze pokojne poslat cely rok.
-        stlpcov = max(1, int((w + gap) // krok))
+        stlpcov = max(1, int((w - lavo + gap) // krok))
         dni = self._days
         for _ in range(3):
             prebytok = len(dni) + dni[0]["date"].weekday() - stlpcov * 7
@@ -2217,8 +2559,8 @@ class DayGrid(PalCanvas):
         prvy_den = dni[0]["date"].weekday()
         for i, den in enumerate(dni):
             poradie = i + prvy_den
-            x = (poradie // 7) * krok
-            y = (poradie % 7) * krok
+            x = lavo + (poradie // 7) * krok
+            y = vrch + (poradie % 7) * krok
             if x + cell > w:
                 break
             if den["seconds"] <= 0:
@@ -2227,11 +2569,26 @@ class DayGrid(PalCanvas):
                 stupen = sum(1 for p in prahy if den["seconds"] > p)
                 farba = odtiene[min(stupen, self.STEPS - 1)]
             round_rect(c, x, y, x + cell, y + cell, 3 * s, fill=farba, outline="")
-        legenda_y = 7 * krok - gap + (self.LEGEND_H - 6) * s
+        if len(self._months) == 12:
+            pouzite = (len(dni) + prvy_den + 6) // 7
+            koniec = -1.0
+            for stlpec, mesiac in self.stlpce_mesiacov(dni[0]["date"], prvy_den,
+                                                       min(stlpcov, pouzite)):
+                x = lavo + stlpec * krok
+                if x < koniec:
+                    continue            # predosla skratka by sa prekryla
+                polozka = c.create_text(x, vrch - 3 * s, text=self._months[mesiac - 1],
+                                        anchor="sw", fill=farba_popisu, font=ui(10))
+                box = c.bbox(polozka)
+                koniec = (box[2] if box else x) + 4 * s
+        legenda_y = vrch + 7 * krok - gap + (self.LEGEND_H - 6) * s
         menej, viac = self._legend
-        c.create_text(0, legenda_y, text=menej, anchor="sw",
-                      fill=pal["text_faint"], font=ui(10))
-        x = 46 * s
+        polozka = c.create_text(0, legenda_y, text=menej, anchor="sw",
+                                fill=pal["text_faint"], font=ui(10))
+        # Stvorceky legendy za slovom "menej" podla jeho skutocnej sirky -
+        # "weniger" / "меньше" su sirsie nez slovenske "menej".
+        box = c.bbox(polozka)
+        x = max(46 * s, (box[2] + 6 * s) if box else 0)
         for farba in [pal["line_soft"]] + odtiene:
             round_rect(c, x, legenda_y - 10 * s, x + 10 * s, legenda_y, 2 * s,
                        fill=farba, outline="")
@@ -2827,23 +3184,74 @@ class DialogChrome:
         self.top.geometry(f"+{wx + event.x_root - sx}+{wy + event.y_root - sy}")
 
 
-def confirm(owner, pal, title, text, ok_label, cancel_label, danger=False):
-    """Otazka ano/nie v okne appky (DialogChrome), nie systemovy messagebox.
+# --------------------------------------------------------------------------
+# Okna appky namiesto systemovych (confirm / notify / choose)
+# --------------------------------------------------------------------------
+#
+# PRECO (0.2.2, audit UX): biele systemove okno v tmavej appke malo tlacidla
+# v jazyku Windows ("Ano / Nie"), nie appky, a vyzeralo ako cudzi program.
+# Vsetky tri funkcie stavaju to iste okno (`_okno_appky`): vlastna listka
+# (DialogChrome), text zalomeny na DIALOG_TEXT_W, tlacidla vpravo dole,
+# stred pracovnej plochy a cele na nej. Systemove okno ostava len ZALOHA -
+# ked sa okno appky postavit neda (ziadne hlavne okno, TclError).
 
-    PRECO (0.2.2, audit UX): biely systemovy dialog v tmavej appke mal
-    tlacidla v jazyku Windows ("Ano / Nie"), nie appky - a prave
-    najcitlivejsia akcia, zmazanie celej historie, sa potvrdzovala v okne,
-    ktore nevyzeralo ako sucast appky. Tlacidla tu nesu sloveso akcie
-    (`ok_label`), destruktivna akcia je `danger`, nie hlavne tlacidlo.
-    Escape aj krizik = nie. Modalne: vrati True/False az po zavreti."""
-    vysledok = {"ok": False}
-    top = ctk.CTkToplevel(owner)
-    top.title(title)
-    top.configure(fg_color=pal["bg"])
-    top.resizable(False, False)
+DIALOG_TEXT_W = 440       # zlom textu v okne appky (logicke px)
+DIALOG_MIN_W = 400        # kratky oznam nema byt uzky prúžok
 
-    def zavri(ok):
-        vysledok["ok"] = bool(ok)
+
+class _OknoSaNedaPostavit(Exception):
+    """Okno appky sa postavit neda - volajuci ukaze systemove okno."""
+
+
+def _systemove_okno(druh, title, text):
+    """ZALOHA: systemove okno Windows. `druh` "yesno" vrati True/False,
+    "warning" / "error" / "info" vrati None. Nikdy nevyhodi vynimku."""
+    try:
+        if druh == "yesno":
+            return bool(messagebox.askyesno(title, text))
+        {"warning": messagebox.showwarning,
+         "error": messagebox.showerror}.get(druh, messagebox.showinfo)(title, text)
+    except Exception:
+        pass
+    return False if druh == "yesno" else None
+
+
+def _vlastnik_pouzitelny(owner):
+    """Da sa nad `owner` postavit viditelne modalne okno?
+
+    Bez hlavneho okna nie. A ani nad oknom schovanym v liste: `transient`
+    zdedi stav vlastnika, takze dialog by ostal schovany s grabom - appka
+    by cakala na odpoved, ktoru nikto nevidi. Atrapa bez tychto metod
+    (testy) sa berie ako pouzitelna."""
+    if owner is None:
+        return False
+    try:
+        if hasattr(owner, "winfo_exists") and not owner.winfo_exists():
+            return False
+        if hasattr(owner, "winfo_viewable") and not owner.winfo_viewable():
+            return False
+    except Exception:
+        return False
+    return True
+
+
+def _okno_appky(owner, pal, title, text, tlacidla, zrusit, fokus):
+    """Modalne okno appky s textom a tlacidlami; vrati hodnotu kliknuteho.
+
+    `tlacidla` = [(hodnota, text, druh), ...] zlava doprava, `druh` z
+    `BUTTON_KINDS`. Escape, krizik aj zlyhane cakanie = `zrusit`. Enter
+    stlaci tlacidlo s fokusom - a fokus po otvoreni stoji na tom s hodnotou
+    `fokus` (to bezpecne: Enter omylom nesmie zmazat ani ukoncit).
+
+    Ked sa okno postavit neda, vyhodi `_OknoSaNedaPostavit`."""
+    if pal is None or not _vlastnik_pouzitelny(owner):
+        raise _OknoSaNedaPostavit("bez pouzitelneho hlavneho okna")
+    vysledok = {"hodnota": zrusit}
+    top = None
+    hotove = []               # (hodnota, tlacidlo) sprava dolava
+
+    def zavri(hodnota):
+        vysledok["hodnota"] = hodnota
         try:
             top.grab_release()
         except Exception:
@@ -2853,25 +3261,79 @@ def confirm(owner, pal, title, text, ok_label, cancel_label, danger=False):
         except Exception:
             pass
 
-    top.protocol("WM_DELETE_WINDOW", lambda: zavri(False))
-    chrome = DialogChrome(top, pal, title, on_close=lambda: zavri(False))
-    telo = ctk.CTkFrame(chrome.body, fg_color="transparent")
-    telo.pack(fill="both", expand=True, padx=24, pady=(18, 14))
-    ctk.CTkLabel(telo, text=text, font=ui(12), text_color=pal["text"],
-                 anchor="w", justify="left", wraplength=460).pack(fill="x")
-    paticka = ctk.CTkFrame(chrome.body, fg_color="transparent")
-    paticka.pack(fill="x", padx=24, pady=(0, 18))
-    zrusit = button(paticka, pal, cancel_label, command=lambda: zavri(False))
-    zrusit.pack(side="right")
-    button(paticka, pal, ok_label, kind="danger" if danger else "primary",
-           command=lambda: zavri(True)).pack(side="right", padx=(0, 8))
+    try:
+        top = ctk.CTkToplevel(owner)
+        top.title(title)
+        top.configure(fg_color=pal["bg"])
+        top.resizable(False, False)
+        top.protocol("WM_DELETE_WINDOW", lambda: zavri(zrusit))
+        chrome = DialogChrome(top, pal, title, on_close=lambda: zavri(zrusit))
+        # Paticka sa packuje PRVA a k spodku: ked je text vyssi, nez sa na
+        # plochu zmesti, oreze sa text, nie tlacidla.
+        paticka = ctk.CTkFrame(chrome.body, fg_color="transparent")
+        paticka.pack(side="bottom", fill="x", padx=24, pady=(0, 18))
+        telo = ctk.CTkFrame(chrome.body, fg_color="transparent")
+        telo.pack(fill="both", expand=True, padx=24, pady=(18, 16))
+        ctk.CTkLabel(telo, text=text, font=ui(12), text_color=pal["text"],
+                     anchor="w", justify="left",
+                     wraplength=DIALOG_TEXT_W).pack(fill="x")
+        for hodnota, popis, druh in reversed(list(tlacidla)):
+            tlacidlo = button(paticka, pal, popis, kind=druh,
+                              command=lambda h=hodnota: zavri(h))
+            tlacidlo.pack(side="right", padx=(0, 8) if hotove else 0)
+            hotove.append((hodnota, tlacidlo))
+    except Exception as exc:
+        if top is not None:
+            try:
+                top.destroy()
+            except Exception:
+                pass
+        raise _OknoSaNedaPostavit(str(exc)) from exc
+
+    def enter(_e=None):
+        try:
+            meno = str(top.focus_get() or "")
+        except Exception:
+            meno = ""
+        for hodnota, tlacidlo in hotove:
+            cesta = str(tlacidlo)
+            if meno and (meno == cesta or meno.startswith(cesta + ".")):
+                zavri(hodnota)
+                return "break"
+        zavri(fokus)
+        return "break"
+
+    def umiestni():
+        # Rozmer dava obsah; `umiestni_dialog` ho zmensi na pracovnu plochu
+        # a polozi na jej stred (inak by okno bez ramu stalo v rohu).
+        top.update_idletasks()
+        try:
+            mierka = float(top._get_window_scaling() or 1.0)
+        except Exception:
+            mierka = 1.0
+        sirka = int(top.winfo_reqwidth() / mierka) + 1
+        vyska = int(top.winfo_reqheight() / mierka) + 1
+        umiestni_dialog(top, owner, max(sirka, DIALOG_MIN_W), vyska)
+
+    fokus_tlacidlo = next((t for h, t in hotove if h == fokus), None)
+    # Oznam nad INYM modalnym dialogom (nahravanie, nastavenia hlasky) mu
+    # grab vezme; po zavreti ho treba vratit, inak by ten dialog prestal
+    # byt modalny. Systemovy messagebox to robil sam.
+    try:
+        predosly_grab = top.grab_current()
+    except Exception:
+        predosly_grab = None
     # Kazdy krok zvlast: ked zlyha len `grab_set` (iny grab, okno este nie je
-    # namapovane), dialog uz na obrazovke JE - keby sa hned vratilo False,
-    # ostal by tam s tlacidlom "Zmazat", ktore nic neurobi. Bez grabu je
-    # dialog len nemodalny, na odpoved sa aj tak pocka.
-    for krok in (lambda: top.transient(owner), top.grab_set,
-                 # Fokus na "nie": Enter omylom nesmie zmazat.
-                 lambda: top.after(30, zrusit.focus_set)):
+    # namapovane), dialog uz na obrazovke JE - keby sa hned vratilo `zrusit`,
+    # ostal by tam s tlacidlom, ktore nic neurobi. Bez grabu je dialog len
+    # nemodalny, na odpoved sa aj tak pocka.
+    kroky = [lambda: top.bind("<Return>", enter),
+             lambda: top.bind("<KP_Enter>", enter),
+             umiestni,
+             lambda: top.transient(owner), top.grab_set]
+    if fokus_tlacidlo is not None:
+        kroky.append(lambda: top.after(30, fokus_tlacidlo.focus_set))
+    for krok in kroky:
         try:
             krok()
         except Exception:
@@ -2879,9 +3341,69 @@ def confirm(owner, pal, title, text, ok_label, cancel_label, danger=False):
     try:
         owner.wait_window(top)
     except Exception:
-        zavri(False)          # nepockali sme - neviditelne "ano" nesmie ostat
-        return False
-    return vysledok["ok"]
+        zavri(zrusit)         # nepockali sme - neviditelne "ano" nesmie ostat
+        return zrusit
+    if predosly_grab is not None:
+        try:
+            if predosly_grab.winfo_exists():
+                predosly_grab.grab_set()
+        except Exception:
+            pass
+    return vysledok["hodnota"]
+
+
+def confirm(owner, pal, title, text, ok_label, cancel_label, danger=False):
+    """Otazka ano/nie v okne appky (DialogChrome), nie systemovy messagebox.
+
+    Tlacidla nesu sloveso akcie (`ok_label`), destruktivna akcia je
+    `danger`, nie hlavne tlacidlo. Fokus aj Enter su na "nie" (`cancel_label`)
+    - Enter omylom nesmie zmazat. Escape aj krizik = nie. Modalne: vrati
+    True/False az po zavreti. Ked sa okno appky postavit neda, opyta sa
+    systemovym oknom."""
+    try:
+        return bool(_okno_appky(
+            owner, pal, title, text,
+            [(True, ok_label, "danger" if danger else "primary"),
+             (False, cancel_label, "secondary")],
+            zrusit=False, fokus=False))
+    except _OknoSaNedaPostavit:
+        return _systemove_okno("yesno", title, text)
+
+
+def notify(owner, pal, title, text, ok_label=None, kind="info"):
+    """Oznam v okne appky namiesto messagebox.showinfo / showwarning /
+    showerror. Jedno tlacidlo (`ok_label`, inak "OK" v jazyku appky);
+    Enter, Escape aj krizik ho zavru. Modalne - vrati sa po zavreti.
+
+    `kind` ("info" / "warning" / "error") rozhoduje len o systemovom okne,
+    ktore sa ukaze, ked sa okno appky postavit neda. Okno appky vyzera pre
+    vsetky tri rovnako: pokojne, bez vykricnika - zavaznost nesie veta."""
+    if ok_label is None:
+        try:
+            from i18n import tr
+            ok_label = tr("dialog.ok")
+        except Exception:
+            ok_label = "OK"
+    try:
+        _okno_appky(owner, pal, title, text, [(True, ok_label, "primary")],
+                    zrusit=None, fokus=True)
+    except _OknoSaNedaPostavit:
+        _systemove_okno(kind, title, text)
+
+
+def choose(owner, pal, title, text, choices, cancel=None, default=None):
+    """Volba z viacerych tlacidiel v okne appky.
+
+    `choices` = [(hodnota, text, druh), ...] zlava doprava. Escape a krizik
+    vratia `cancel` (nic sa nedeje), Enter a fokus po otvoreni patria
+    `default`. Ked sa okno appky postavit neda, povie text systemovym oknom
+    a vrati `default` - bezpecnu volbu, ktora nic nezmaze ani neukonci."""
+    try:
+        return _okno_appky(owner, pal, title, text, choices,
+                           zrusit=cancel, fokus=default)
+    except _OknoSaNedaPostavit:
+        _systemove_okno("info", title, text)
+        return default
 
 
 # --------------------------------------------------------------------------
@@ -2947,3 +3469,19 @@ def block_slider_wheel(slider):
         else:
             slider.bind(seq, _redirect)
     return slider
+
+
+def slider(master, pal, **kw):
+    """Jediny posuvnik appky: draha `switch_off`, vyplnena cast aj gombik
+    `accent`, koliesko zablokovane (`block_slider_wheel`).
+
+    PRECO (0.2.2, audit UX, davka 4): v okne "Doladit obrazky" mali posuvniky
+    X/Y tmavu vypln `accent2` a posuvnik velkosti hned nad nimi zlatu - dva
+    styly v jednej karte, a X/Y vyzerali vypnute. Rozmery a rozsah ide
+    prepisat cez `kw`, farby len zamerne (napr. nevyplneny posuvnik v
+    dotazniku, ktory az prvy dotyk zafarbi)."""
+    style = {"progress_color": pal["accent"], "button_color": pal["accent"],
+             "button_hover_color": pal["accent_hover"],
+             "fg_color": pal["switch_off"]}
+    style.update(kw)
+    return block_slider_wheel(ctk.CTkSlider(master, **style))

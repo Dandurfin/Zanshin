@@ -28,10 +28,13 @@ Everything Zanshin learns from outside its own window: the rectangle of the
 window in front (to pick the monitor), the names of running programs (only
 with automatic profile switching on), the milliseconds since your last input
 (not which key), controller activity (while it's watching), heart rate and
-steps from your phone over the network, one shortcut (Ctrl+Alt+Z, "not now",
-through `RegisterHotKey`, not a hook), where the mouse pointer is (to pick the
-monitor), the microphone (only while you record your own cue), and this PC's
-IP addresses and monitors. None of it leaves the PC.
+steps from your phone over the network, one shortcut ("not now", Ctrl+Alt+Z
+by default, through `RegisterHotKey`, not a hook; you can change it or switch
+it off in Settings → General), the list of installed keyboard layouts (only
+to check whether that shortcut would type a letter), where the mouse pointer
+is (to pick the monitor), the microphone (only while you record your own
+cue), and this PC's network adapters, IP addresses and monitors. None of it
+leaves the PC.
 
 The rest of this document is in Slovak.
 
@@ -65,7 +68,8 @@ konkrétny anti-cheat nezablokuje, však môže dať len jeho výrobca.
 Repozitár obsahuje aj vývojárske testovacie skripty na ručné testovanie okna
 (`gui_harness_auto.py`, `gui_harness_onboarding.py`, `gui_screenshots.py`).
 Prvé dva ovládajú skutočnú myš (pohyb, klik, ťahanie, koliesko) a stláčajú
-Escape; všetky tri fotia okná a obrázky appky s malým okrajom okolo. Nie sú
+Escape; všetky tri fotia okná a obrázky appky s malým okrajom okolo
+(`gui_screenshots.py` s voľbou `--okno` len samotné okno appky). Nie sú
 súčasťou postavenej appky ani ZIP-u na stiahnutie: build balí `main.py`,
 moduly, ktoré importuje, a priečinok `assets`, a tieto skripty neimportuje
 nič. Čo počas behu robia s dátami Zanshinu spusteného zo zdrojákov a ako ich
@@ -160,17 +164,26 @@ mechanizmus, aký používajú systémové tooltipy a Windows Ink.
    `hr_stats.note_metrics`.
 6. **Jedna klávesová kombinácia** (`RegisterHotKey`) — „teraz nie": na pol
    hodiny stíši pripomienky a sledovanie nezastaví; druhé stlačenie to
-   zruší.
+   zruší. Predvolene Ctrl+Alt+Z; inú alebo žiadnu si vyberieš v Nastavenia →
+   Všeobecné → „Klávesová skratka“.
+6b. **Zoznam rozložení klávesnice** (`GetKeyboardLayoutList`) — len na to,
+   aby appka vedela, či by kombinácia na niektorom rozložení nepísala znak
+   (AltGr je to isté ako Ctrl+Alt, napr. poľské ż). Pýta sa cez
+   `ToUnicodeEx` s vymysleným stavom klávesov: Windows preloží kláves na
+   znak a zo skutočnej klávesnice sa nečíta nič.
 7. **Poloha kurzora myši** (`GetCursorPos`) — len súradnice bodu, a len na
    to, aby sa zistilo, na ktorom monitore je hráč. Nečíta sa, čo je pod ním,
    ani sa nikam nezapisuje trasa. Kód: `display.monitor_at_cursor`.
 8. **Mikrofón** — len kým nahrávaš vlastný hlas pre pripomienku (tlačidlo
    **Nahrať** v karte pripomienky). Nahrávka ostáva lokálne v priečinku
    `audio/`. Inokedy sa mikrofón nepoužíva.
-9. **IP adresy tohto PC a zoznam monitorov** — adresy len na zobrazenie pri
-   párovaní hodiniek (čo zadať v telefóne; na obrazovke sú skryté, kým
-   neklikneš „Ukázať IP“), monitory s rozlíšením a DPI len
-   na umiestnenie obrázkov. Kód: `netinfo.py`, `display.monitors`.
+9. **IP adresy tohto PC, jeho sieťové adaptéry a zoznam monitorov** —
+   adresy len na zobrazenie pri párovaní hodiniek (čo zadať v telefóne; na
+   obrazovke sú skryté, kým neklikneš „Ukázať IP“), názvy, popisy, typy a
+   stav (pripojený či nie) adaptérov (`GetAdaptersAddresses`) len na to, aby
+   VPN a virtuálne adaptéry išli až za skutočné a mali značku
+   „(VPN/virtuálny)“, monitory s rozlíšením a DPI len na umiestnenie
+   obrázkov. Kód: `netinfo.py`, `display.monitors`.
 
 To je celé. Nič z toho neopúšťa počítač.
 
@@ -188,10 +201,11 @@ až vtedy, keď ju niekto stlačí. Žiadny prúd vstupu cez ňu netečie — o
 | `RegisterHotKey` | len ohlásenú kombináciu | nie |
 
 Keď je kombinácia obsadená inou aplikáciou, registrácia jednoducho zlyhá a
-appka beží ďalej bez nej. Admin práva to nepotrebuje. Vypnúť sa dá — prázdny
-`"snooze_hotkey"` v súbore `dandurf_settings.json` (v appke na to prepínač
-zatiaľ nie je). „Teraz nie“ je od 0.2.1 aj v ponuke ikony v lište (pravý
-klik), takže ide aj bez skratky.
+appka beží ďalej bez nej (od 0.2.2 to povie aj riadok v nastaveniach). Admin
+práva to nepotrebuje. Od 0.2.2 sa skratka vyberá alebo vypína v Nastavenia →
+Všeobecné → „Klávesová skratka“ (voľba „Vypnutá“); v 0.2.1 sa dala vypnúť len
+prázdnym `"snooze_hotkey"` v súbore `dandurf_settings.json`. „Teraz nie“ je od
+0.2.1 aj v ponuke ikony v lište (pravý klik), takže ide aj bez skratky.
 
 Kód je v `hotkey.py` a `tests/test_hotkey.py` stráži aj to, že sa v ňom
 neobjaví `SetWindowsHookEx`, `WH_KEYBOARD`, `GetAsyncKeyState` ani

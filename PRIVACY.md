@@ -11,9 +11,10 @@ anywhere:
 
 - **Heart-rate readings** received from your phone/watch (and steps or speed,
   if your watch app sends them),
-- **Session history** (`hr_sessions.json`, and `hr_session_open.json`: a
-  copy of the session still running, kept every 5 minutes so a crash doesn't
-  lose it),
+- **Session history** (`hr_sessions.json`; `hr_session_open.json`, a copy of
+  the session still running, kept every 5 minutes so a crash doesn't lose it;
+  and `hr_session_pending.json`, a session that couldn't be saved, kept until
+  the next start adds it to your history),
 - **Insights and baselines** (`hr_insights.json`),
 - **Measurement windows / raw events** (`hr_windows.json`, `hr_events.jsonl`),
 - **Your recorded audio.** The microphone is used only while you record your
@@ -26,8 +27,12 @@ anywhere:
   reporting).
 
 Run from source (`python main.py`), these live next to the program; in the
-built app (`Zanshin.exe`) they live in `%APPDATA%\Zanshin`. There is **no telemetry, no analytics, and no
-update-checker** anywhere in the app.
+built app (`Zanshin.exe`) they live in `%APPDATA%\Zanshin`. **Open the data
+folder** under *Settings → General → Your data* opens that folder, and
+**Delete history** there deletes the session, insight and measurement files
+above with their backups, the prepared voice clips, the crash log and older
+logs (not your settings or recordings). There is **no telemetry, no
+analytics, and no update-checker** anywhere in the app.
 
 ## The few things that can use the network
 
@@ -55,7 +60,8 @@ update-checker** anywhere in the app.
        *Voice, sound and picture*, to Play or to the natural voice, when you
        test a cue whose line isn't ready, or when you ask for the voice to be
        prepared again (*Prepare the cue voice* in the *Ctrl+K* command
-       palette).
+       palette, or, from 0.2.2, *Try again* under *Voice source* after
+       preparing failed).
      - **Only if your cues actually speak.** With *Sound and picture* or
        *Picture only* (*Settings → Sound → How I speak up*), and in the *Work*
        world, nothing is prepared and nothing is sent. The style you picked

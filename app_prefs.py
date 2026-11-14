@@ -25,7 +25,6 @@ import os
 import shutil
 import time
 import tkinter as tk
-from tkinter import messagebox
 
 import customtkinter as ctk
 
@@ -54,7 +53,8 @@ from settings_model import (DEFAULT_AUDIO, DEFAULT_BREATH_EXHALE_S,
                             normalize_monitor_target, normalize_overlay_config,
                             normalize_slot, suggested_voice)
 
-from app_spolocne import DEFAULT_SNOOZE_HOTKEY, LABEL_TO_LANG, LANG_NATIVE_LABELS, app_log
+from app_spolocne import (DEFAULT_SNOOZE_HOTKEY, LABEL_TO_LANG, LANG_NATIVE_LABELS,
+                          SNOOZE_HOTKEY_MINUTES, app_log)
 
 # Oznam o obnove nastaveni (`_oznam_obnovu_nastaveni`) az ked okno stoji.
 OZNAM_OBNOVY_MS = 1200
@@ -265,7 +265,22 @@ class PrefsMixin:
         if self.theme_key == tema_pred:
             self.save_settings()
         self._sync_world_switches()
+        # "V hre" sa vo svete Praca vola "Obrazovka" (0.2.2 davka 4,
+        # `app_today._sync_world_nazvy`; atrapy v testoch ho nemaju).
+        nazvy = getattr(self, "_sync_world_nazvy", None)
+        if callable(nazvy):
+            nazvy()
         app_log.info("svet prepnuty na %s", world)
+        # Prepnutie POCAS SLEDOVANIA (0.2.2): relacia aj jej pripomienky
+        # ostavaju vo svete, v ktorom zacala (hlas, zvuky, `_hlasky_hovoria`)
+        # - historia kazdeho sveta tak ostane cista. Povie sa to raz, nech
+        # hrac necaka, ze sa Hra uprostred zmeni na Pracu.
+        svet_relacie = getattr(self, "_session_world", None)
+        if (getattr(self, "_hr_session_open", False)
+                and svet_relacie in hr_stats.ACTIVITY_KINDS and svet_relacie != world):
+            self.log(tr("log.world_switch_session",
+                        world=self._world_label(svet_relacie),
+                        new=self._world_label(world)))
         try:
             self._refresh_history_page()
         except Exception:
@@ -555,6 +570,10 @@ class PrefsMixin:
             "zanshin_graduated": False,
             "zanshin_graduated_at": None,
             "snooze_hotkey": DEFAULT_SNOOZE_HOTKEY,
+            # Vybral si skratku hrac sam (Nastavenia -> Vseobecne)? Kym nie,
+            # smie ju appka pri zrazke s rozlozenim klavesnice vymenit
+            # (`_vyber_skratku_pri_starte`, 0.2.2).
+            "snooze_hotkey_chosen": False,
             "background_opacity": background.DEFAULT_OPACITY,
             "monitor_target": DEFAULT_MONITOR_TARGET,
             "hud_config": default_hud_config(),
@@ -632,6 +651,7 @@ class PrefsMixin:
                 data["snooze_hotkey"] = (
                     hk if (hk == "" or hotkey.is_valid(hk))
                     else DEFAULT_SNOOZE_HOTKEY)
+                data["snooze_hotkey_chosen"] = bool(loaded.get("snooze_hotkey_chosen", False))
                 # Jemnost pozadia. Strop je v `background.py`, nie tu -
                 # kto ho chce zmenit, meni ho na jednom mieste.
                 data["background_opacity"] = background.clamp_opacity(
@@ -744,6 +764,7 @@ class PrefsMixin:
             "zanshin_graduated": bool(self.zanshin_graduated),
             "zanshin_graduated_at": self.zanshin_graduated_at,
             "snooze_hotkey": self.snooze_hotkey,
+            "snooze_hotkey_chosen": bool(getattr(self, "snooze_hotkey_chosen", False)),
             "background_opacity": self.background_opacity,
             "monitor_target": self.monitor_target,
             "hud_config": self.hud_config,
@@ -798,7 +819,9 @@ class PrefsMixin:
 
         def _ukaz():
             try:
-                messagebox.showwarning(APP_NAME, text)
+                # okno appky, nie systemove (0.2.2, davka 4)
+                ui_kit.notify(getattr(self, "root", None), getattr(self, "pal", None),
+                              APP_NAME, text, kind="warning")
             except Exception:
                 app_log.exception("oznam o obnove nastaveni sa neukazal")
 
@@ -858,6 +881,167 @@ class PrefsMixin:
             self._load_edge_voices()
         else:
             self.log(tr("log.edge_still_missing", err=audio_engine.EDGE_IMPORT_ERROR))
-            messagebox.showwarning(
-                APP_NAME,
-                tr("msgbox.edge_still_missing", err=audio_engine.EDGE_IMPORT_ERROR))
+            ui_kit.notify(
+                getattr(self, "root", None), getattr(self, "pal", None), APP_NAME,
+                tr("msgbox.edge_still_missing", err=audio_engine.EDGE_IMPORT_ERROR),
+                kind="warning")
+
+    # ---------- skratka "teraz nie" (0.2.2) ----------
+    #
+    # Registracia samotna je v app.py (`start_snooze_hotkey`, cita
+    # TRAY_AVAILABLE). Tu je to, co sa okolo nej rozhoduje: zrazka s
+    # rozlozenim klavesnice pri starte, vyber v Nastaveniach -> Vseobecne a
+    # zapis skratky pre vety, ktore ju hracovi menuju.
+
+    def _skratka_teraz_nie(self):
+        """Pekny zapis skratky, LEN ked je naozaj zaregistrovana; inak "".
+
+        Pas (`kamae.snoozed_sub`) a prehliadka podla toho vyberu vetu:
+        vypnutu alebo cudzim programom drzanu skratku slubovat nesmu."""
+        drzi = getattr(self, "_hotkey", None)
+        if drzi is None or not getattr(drzi, "registered", False):
+            return ""
+        return hotkey.format_combo(getattr(self, "snooze_hotkey", "") or "")
+
+    def _vyber_skratku_pri_starte(self, kolizia=None):
+        """Pred registraciou: predvolena skratka by zhltla pismeno?
+
+        AltGr je na Windows Ctrl+Alt - na polskom rozlozeni AltGr+Z pise
+        "ż" a zaregistrovane Ctrl+Alt+Z by ho hracovi bralo v kazdom okne.
+        Plati LEN pre predvolenu skratku, ktoru si hrac sam nevybral
+        (`snooze_hotkey_chosen`); jeho vlastnu volbu appka nemeni. Nahrada je
+        prva volna predvolba (`hotkey.prva_volna`), inak ziadna. Povie sa to
+        RAZ: nahrada sa ulozi, takze pri dalsom starte uz predvolena nie je.
+
+        `kolizia(combo) -> znak` sa da vlozit (testy). Vracia nahradu, ""
+        (skratka vypnuta) alebo None (nic sa nemenilo)."""
+        combo = getattr(self, "snooze_hotkey", "") or ""
+        if combo != DEFAULT_SNOOZE_HOTKEY or getattr(self, "snooze_hotkey_chosen", False):
+            return None
+        zisti = kolizia or hotkey.znak_kolizie
+        try:
+            znak = zisti(combo)
+        except Exception:
+            app_log.exception("hotkey: kontrola rozlozenia klavesnice zlyhala")
+            return None
+        if not znak:
+            return None
+        nahrada = hotkey.prva_volna(hotkey.PRESETS, preskoc=(combo,), kolizia=zisti)
+        self.snooze_hotkey = nahrada
+        stara = hotkey.format_combo(combo)
+        if nahrada:
+            self.log(tr("log.hotkey_layout_swapped", combo=stara, char=znak,
+                        new=hotkey.format_combo(nahrada)))
+        else:
+            self.log(tr("log.hotkey_layout_off", combo=stara, char=znak))
+        app_log.info("hotkey: %s pise znak na rozlozeni klavesnice, nahrada: %s",
+                     stara, nahrada or "ziadna")
+        try:
+            self.save_settings()
+        except Exception:
+            app_log.exception("hotkey: nahradu skratky sa nepodarilo ulozit")
+        return nahrada
+
+    def _snooze_hotkey_volby(self, kolizia=None):
+        """[(popis, kombinacia)] pre rozbalovacku skratky.
+
+        Predvolby (`hotkey.PRESETS`), skratka z rucne upraveneho suboru, ak
+        medzi nimi nie je, a na konci "vypnuta" (""). Predvolba, ktora by na
+        niektorom rozlozeni pisala znak, sa NESKRYVA (hrac ju mohol mat
+        vybratu), len sa oznaci, ktory znak by zhltla."""
+        zisti = kolizia or hotkey.znak_kolizie
+        kombinacie = list(hotkey.PRESETS)
+        sucasna = getattr(self, "snooze_hotkey", "") or ""
+        if sucasna and sucasna not in kombinacie and hotkey.is_valid(sucasna):
+            kombinacie.append(sucasna)
+        volby = []
+        for combo in kombinacie:
+            popis = hotkey.format_combo(combo)
+            try:
+                znak = zisti(combo)
+            except Exception:
+                znak = ""
+            if znak:
+                popis = tr("settings.snooze_hotkey_types", combo=popis, char=znak)
+            volby.append((popis, combo))
+        volby.append((tr("settings.snooze_hotkey_none"), ""))
+        return volby
+
+    def _snooze_hotkey_sub(self):
+        """Veta pod vyberom skratky - podla toho, co naozaj plati."""
+        combo = getattr(self, "snooze_hotkey", "") or ""
+        if not combo:
+            return tr("settings.snooze_hotkey_off_sub")
+        pekne = hotkey.format_combo(combo)
+        if getattr(self, "_hotkey_zlyhala", False):
+            return tr("settings.snooze_hotkey_taken", combo=pekne)
+        return tr("settings.snooze_hotkey_sub", combo=pekne, minutes=SNOOZE_HOTKEY_MINUTES)
+
+    def _build_snooze_hotkey_row(self, parent, pal):
+        """Nastavenia -> Vseobecne: vyber skratky "teraz nie" (0.2.2).
+
+        Do 0.2.2 sa dala zmenit len rucne v subore nastaveni - a kto mal
+        skratku obsadenu inym programom alebo mu brala pismeno, nemal ako."""
+        panel = ui_kit.Panel(parent, pal, title=tr("settings.snooze_hotkey_title"))
+        panel.pack(fill="x", pady=(14, 0))
+        row = ui_kit.SettingRow(panel.body, pal, tr("settings.snooze_hotkey"),
+                                self._snooze_hotkey_sub())
+        self.snooze_hotkey_row = row
+        volby = self._snooze_hotkey_volby()
+        self._snooze_hotkey_podla_popisu = dict(volby)
+        sucasna = getattr(self, "snooze_hotkey", "") or ""
+        zvolena = next((popis for popis, combo in volby if combo == sucasna), volby[-1][0])
+        self.snooze_hotkey_var = tk.StringVar(value=zvolena)
+        self.snooze_hotkey_menu = ui_kit.option_menu(
+            row.control, pal, values=[popis for popis, _c in volby],
+            variable=self.snooze_hotkey_var, command=self.on_snooze_hotkey_pick)
+        self.snooze_hotkey_menu.pack()
+
+    def _refresh_snooze_hotkey_row(self):
+        """Riadok skratky podla toho, co naozaj plati. Vola sa po volbe v
+        Nastaveniach aj PO REGISTRACII PRI STARTE (`__init__`): riadok sa
+        stavia v `_build_ui` skor, nez sa skratka zaregistruje, a start ju
+        moze aj vymenit (`_vyber_skratku_pri_starte`) - bez toho by riadok
+        tvrdil, ze obsadena skratka funguje, a ponuka ukazovala staru."""
+        row = getattr(self, "snooze_hotkey_row", None)
+        label = getattr(row, "sub_label", None)
+        if label is None:
+            return
+        try:
+            label.configure(text=self._snooze_hotkey_sub())
+        except Exception:
+            pass            # stranka sa prave prestavuje
+        var = getattr(self, "snooze_hotkey_var", None)
+        sucasna = getattr(self, "snooze_hotkey", "") or ""
+        popis = next((p for p, c in getattr(self, "_snooze_hotkey_podla_popisu", {}).items()
+                      if c == sucasna), None)
+        if var is not None and popis is not None:
+            try:
+                if var.get() != popis:
+                    var.set(popis)
+            except Exception:
+                pass
+
+    def on_snooze_hotkey_pick(self, label):
+        """Hrac vybral skratku. Plati HNED: stara sa odregistruje a nova
+        zaregistruje (`start_snooze_hotkey`). Ked ju drzi iny program,
+        volba OSTAVA (do suboru ide), len riadok a dennik to povedia - po
+        zatvoreni toho programu zabere pri dalsom starte."""
+        combo = getattr(self, "_snooze_hotkey_podla_popisu", {}).get(label)
+        if combo is None:
+            return
+        self.snooze_hotkey_chosen = True
+        zmena = combo != (getattr(self, "snooze_hotkey", "") or "")
+        self.snooze_hotkey = combo
+        self.save_settings()
+        if zmena or getattr(self, "_hotkey_zlyhala", False):
+            self.start_snooze_hotkey(po_zmene=True)
+            if not combo:
+                self.log(tr("log.hotkey_off"))
+        self._refresh_snooze_hotkey_row()
+        obnov = getattr(self, "_refresh_kamae_state_text", None)
+        if callable(obnov):
+            try:
+                obnov()
+            except Exception:
+                app_log.exception("hotkey: pas sa po zmene skratky neobnovil")

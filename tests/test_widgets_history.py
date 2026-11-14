@@ -461,15 +461,17 @@ def _detail(session):
     D = _app()
     a = types.SimpleNamespace(
         _fmt_dlzka=D._fmt_dlzka, _fmt_pokrytie=D._fmt_pokrytie,
-        _fmt_citene_merane=D._fmt_citene_merane, _fmt_minutes=D._fmt_minutes)
+        _fmt_citene_merane=D._fmt_citene_merane, _fmt_minutes=D._fmt_minutes,
+        _fmt_zataz=D._fmt_zataz)
     return D._history_detail_values(a, session)
 
 
 def test_detail_hodnoty(sk):
     v = _detail(_relacia(duration_s=3900.0, felt_load=6))
+    # 0.2.2 davka 4: zataz je vsade "x/100" (predtym hole "83")
     assert v == {
         "duration": "1 h 05 min", "avg": "72", "max": "131", "calm": "30 min",
-        "over": "2:05", "breath": "3", "peak": "83", "hrr": "+22",
+        "over": "2:05", "breath": "3", "peak": "83/100", "hrr": "+22",
         "hrpi": "104", "signal": "90 %", "felt": "6 · 8",
     }
     assert set(v) == {k for k, _l, _c in _app().HISTORY_DETAIL_CELLS}

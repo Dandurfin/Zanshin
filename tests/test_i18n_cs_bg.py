@@ -33,8 +33,8 @@ NOVE = {"cs": i18n_cs_bg.CS, "bg": i18n_cs_bg.BG}
 # Slova, ktore su v cestine naozaj rovnake ako v anglictine, hoci slovencina
 # ma ine (valencia / Štart). Vsetko ostatne zhodne s EN je chyba prekladu.
 ZHODA_S_ANGLICTINOU = {
-    "cs": {"history.export_col.valence",   # valence
-           "tray.toggle"},                 # Start / Stop
+    # (0.2.2 davka 4: mrtvy "tray.toggle" - Start / Stop - je zo slovnika zmazany)
+    "cs": {"history.export_col.valence"},  # valence
     "bg": set(),
 }
 

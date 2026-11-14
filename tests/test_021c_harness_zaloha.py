@@ -286,8 +286,10 @@ def test_harness_zalohuje_skor_nez_sa_dotkne_dat_a_vracia_na_kazdej_ceste():
                        if isinstance(u, ast.ImportFrom) and u.module == "app")
     assert obnov < zaloz < zapis_nastaveni < import_appky
     assert "atexit.register(vrat_zalohy, ODLOZENE)" in src
+    # 0.2.2 davka 4: aj relacie, ktore sa nedali ulozit (hr_session_pending.json)
     assert ("ODLOZENE = (SETTINGS, HR_SESSIONS, HR_INSIGHTS, HR_SESSION_OPEN, "
-            "SETTINGS_BAK)") in src
+            "SETTINGS_BAK,\n            HR_SESSION_PENDING)") in src
+    assert 'HR_SESSION_PENDING = os.path.join(PROJ, "hr_session_pending.json")' in src
 
     # posledny `finally` aj `finish()` (os._exit preskoci finally aj atexit)
     posledny_try = [u for u in strom.body if isinstance(u, ast.Try)][-1]

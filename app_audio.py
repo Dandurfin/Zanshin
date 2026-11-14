@@ -25,8 +25,8 @@ nahrada celeho modulu `threading` na module app ich nezasiahne (treba
 """
 
 import os
+import re
 import threading
-from tkinter import messagebox
 
 import customtkinter as ctk
 
@@ -34,12 +34,53 @@ import audio_engine
 import rebrik
 import sfx_assets
 import theme as theme_mod
+import ui_kit
 from audio_engine import EdgeTTSCache, speak_sapi_isolated
 from i18n import tr
 from paths import APP_NAME
 from settings_model import (DEFAULT_EDGE_VOICE, ENGINE_EDGE, ENGINE_SAPI,
                             MODE_COMBO, MODE_SFX, MODE_TTS,
                             engine_labels, je_kategoria, label_to_engine)
+
+
+def _posledna_chyba_edge(cache):
+    """(druh, vynimka) posledneho zlyhaneho `ensure` v tomto vlakne alebo
+    None. Atrapy cache v testoch `posledna_chyba` nemaju."""
+    zisti = getattr(cache, "posledna_chyba", None)
+    if not callable(zisti):
+        return None
+    try:
+        return zisti()
+    except Exception:
+        return None
+
+
+def hlavna_chyba_edge(chyby):
+    """Z chyb jednej pripravy vyberie tu, o ktorej sa hracovi povie.
+
+    Odmietnutie Microsoftom ma prednost (rada je ina: skus neskor / prepni
+    na Windows), potom vypadok siete, potom ostatne. Bez jedinej znamej
+    chyby `(EDGE_CHYBA_INA, None)` - vseobecna veta, nie "internet"."""
+    druhy = [c for c in (chyby or ()) if c]
+    for druh in (audio_engine.EDGE_CHYBA_ODMIETNUTE, audio_engine.EDGE_CHYBA_OFFLINE):
+        for chyba in druhy:
+            if chyba[0] == druh:
+                return chyba
+    return druhy[0] if druhy else (audio_engine.EDGE_CHYBA_INA, None)
+
+
+_CESTA_V_CHYBE = re.compile(r"(?:[A-Za-z]:|\\\\)[\\/][^'\"\n]*")
+
+
+def _kratka_chyba(exc):
+    """Chyba do vety v denniku - meno triedy, ked text chyba; najviac 120
+    znakov a bez celych ciest (v %APPDATA% je meno uctu, PRIVACY.md)."""
+    if exc is None:
+        return "?"
+    text = str(exc).strip() or type(exc).__name__
+    text = _CESTA_V_CHYBE.sub(
+        lambda z: os.path.basename(z.group(0).rstrip("\\/")) or "…", text)
+    return text if len(text) <= 120 else text[:119] + "…"
 
 
 class AudioMixin:
@@ -212,7 +253,9 @@ class AudioMixin:
             self.engine_var.set(engine_labels()[ENGINE_SAPI])
             self.save_settings()
             self.refresh_edge_banner()
-            messagebox.showwarning(APP_NAME, tr("msgbox.edge_missing_body"))
+            # okno appky, nie systemove (0.2.2, davka 4)
+            ui_kit.notify(getattr(self, "root", None), getattr(self, "pal", None),
+                          APP_NAME, tr("msgbox.edge_missing_body"), kind="warning")
             return
         if engine == self.engine:
             return
@@ -265,6 +308,9 @@ class AudioMixin:
     # ---------- predgenerovanie Edge hlasok ----------
 
     def set_edge_status(self, text, color=None):
+        # "Skusit znova" patri len k zlyhanej priprave - kazdy iny stav (aj
+        # prazdny) ho schova; `_edge_priprava_zlyhala` ho ukaze az po tomto.
+        self._ukaz_skusit_hlas_znova(False)
         if self.edge_status_label is not None:
             try:
                 self.edge_status_label.configure(text=text,
@@ -275,10 +321,19 @@ class AudioMixin:
     def _hlasky_hovoria(self):
         """Povie hlaska v hre vobec nieco hlasom (TTS)? Len v style "hlas"
         a mimo sveta Praca - tam ide len obrazom (`rebrik.vrchol`). Styl
-        "zvuk" hra zvuk slotu bez slov a "obraz" len obrazok."""
+        "zvuk" hra zvuk slotu bez slov a "obraz" len obrazok.
+
+        POCAS OTVORENEJ RELACIE plati SVET RELACIE (`_session_world`, 0.2.2),
+        nie prave zobrazeny: prepnutie Hra <-> Praca uprostred sledovania
+        meni len pohlad (historia, vzhlad), nie relaciu a jej pripomienky -
+        to iste pravidlo ako hlas v `_open_hr_session` a zvuky v
+        `resolve_sfx_path`. Novy svet plati od dalsej relacie."""
         styl = rebrik.normalize_cue_style(getattr(self, "cue_style", None))
+        svet = getattr(self, "world", None)
+        if getattr(self, "_hr_session_open", False):
+            svet = getattr(self, "_session_world", svet)
         return (styl == rebrik.STYL_HLAS
-                and rebrik.vrchol(getattr(self, "world", None), styl) == rebrik.HLAS)
+                and rebrik.vrchol(svet, styl) == rebrik.HLAS)
 
     def _slot_na_pripravu(self, slot):
         """Moze text tejto hlasky v hre naozaj povedat prirodzeny hlas?
@@ -365,6 +420,14 @@ class AudioMixin:
         rate = self.rate_value
         jobs = self.pregen_jobs()
         if not jobs:
+            # Relacia z Prace, hrac medzitym prepol na Hru (0.2.2): kym bezi,
+            # plati jej svet a hlasky mlcia (`_hlasky_hovoria`) - lenze dalsia
+            # relacia v Hre uz hovorit bude. Pripravi sa po sledovani, tym
+            # istym odkladom ako hlaska, ktora v hre chybala.
+            if (getattr(self, "listening", False)
+                    and getattr(self, "_hr_session_open", False)
+                    and getattr(self, "_session_world", None) != getattr(self, "world", None)):
+                self._pregen_po_hre = True
             self.set_edge_status("")
             return
 
@@ -391,6 +454,7 @@ class AudioMixin:
 
         def work():
             ok = 0
+            chyby = []          # (druh, vynimka) zlyhanych hlasok (0.2.2)
             for text, voice in jobs:
                 if seq != self._pregen_seq:
                     return
@@ -409,6 +473,10 @@ class AudioMixin:
                         abort=lambda: (seq != self._pregen_seq
                                        or getattr(self, "listening", False))):
                     ok += 1
+                else:
+                    chyba = _posledna_chyba_edge(self.edge_cache)
+                    if chyba is not None:
+                        chyby.append(chyba)
             if seq != self._pregen_seq:
                 return
             total = len(jobs)
@@ -419,15 +487,69 @@ class AudioMixin:
                 self.ui_call(self.pregenerate)
                 return
             if ok == total:
+                self._edge_chyba_v_denniku = None
                 self.ui_call(lambda: self.set_edge_status(
                     tr("edge.ready"), self.pal["success"]))
                 self.log_threadsafe(tr("log.edge_cache_ready", n=ok))
                 self.ui_call(lambda: self._prune_cache(jobs, rate))
             else:
-                self.ui_call(lambda: self.set_edge_status(
-                    tr("edge.partial", ok=ok, total=total), self.pal["danger"]))
+                druh, exc = hlavna_chyba_edge(chyby)
+                self.ui_call(lambda: self._edge_priprava_zlyhala(druh, ok, total, exc))
 
         threading.Thread(target=work, daemon=True).start()
+
+    # ---------- zlyhana priprava prirodzeneho hlasu (0.2.2) ----------
+
+    def _edge_priprava_zlyhala(self, druh, ok, total, exc=None):
+        """Cast hlasok nema prirodzeny hlas. Stav pod Zdrojom hlasu a jeden
+        riadok do dennika POVEDIA PRECO (`audio_engine.druh_chyby_edge`) a ako
+        to skusit znova - doteraz vzdy "skontroluj internet", aj ked Microsoft
+        poziadavku len odmietol. Pod stavom sa ukaze "Skusit znova".
+
+        Na siet sa ani teraz nechodi pocas sledovania: tlacidlo aj Ctrl+K
+        volaju `pregenerate`, ktore ho vtedy odlozi na po hre (PRIVACY.md).
+        Riadok do dennika ide raz za druh chyby - kym sa priprava nepodari,
+        dalsie neuspesne pokusy dennik nezaplnia."""
+        kluc_stavu = {audio_engine.EDGE_CHYBA_OFFLINE: "edge.partial",
+                      audio_engine.EDGE_CHYBA_ODMIETNUTE: "edge.partial_refused"}
+        # `danger_text`, nie `danger`: veta je drobny text (ui 10) a nesie
+        # navod - `danger` ma na `surface` len ~3,7:1 (pravidlo v theme.py).
+        self.set_edge_status(tr(kluc_stavu.get(druh, "edge.partial_other"),
+                                ok=ok, total=total),
+                             self.pal.get("danger_text", self.pal["danger"]))
+        self._ukaz_skusit_hlas_znova(True)
+        if getattr(self, "_edge_chyba_v_denniku", None) == druh:
+            return
+        self._edge_chyba_v_denniku = druh
+        kluc_riadku = {audio_engine.EDGE_CHYBA_OFFLINE: "log.edge_failed_offline",
+                       audio_engine.EDGE_CHYBA_ODMIETNUTE: "log.edge_failed_refused"}
+        self.log(tr(kluc_riadku.get(druh, "log.edge_failed_other"),
+                    err=_kratka_chyba(exc), page=tr("nav.zvuk"),
+                    retry=tr("common.retry"), cmd=tr("common.prepare_voices")))
+
+    def _ukaz_skusit_hlas_znova(self, ukaz):
+        """Tlacidlo "Skusit znova" pod stavom pripravy hlasu (Zvuk / Audio)."""
+        tlacidlo = getattr(self, "edge_retry_btn", None)
+        stav = getattr(self, "edge_status_label", None)
+        if tlacidlo is None:
+            return
+        try:
+            if ukaz and not tlacidlo.winfo_manager():
+                if stav is not None and stav.winfo_manager():
+                    tlacidlo.pack(anchor="w", pady=(6, 0), after=stav)
+                else:
+                    tlacidlo.pack(anchor="w", pady=(6, 0))
+            elif not ukaz and tlacidlo.winfo_manager():
+                tlacidlo.pack_forget()
+        except Exception:
+            pass            # stranka sa prave prestavuje
+
+    def skus_hlas_znova(self):
+        """Klik na "Skusit znova": ta ista priprava ako Ctrl+K -> "Pripravit
+        hlas pripomienok". Pocas sledovania sa na siet nejde - `pregenerate`
+        to odlozi na po hre a povie to v stave."""
+        self._ukaz_skusit_hlas_znova(False)
+        self.pregenerate(force=True)
 
     def _prune_cache(self, jobs, rate):
         keep = [self.edge_cache.path_for(t, v, rate) for t, v in jobs]

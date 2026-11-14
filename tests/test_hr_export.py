@@ -127,7 +127,9 @@ def test_pomocnikov_dotaznika_sa_da_volat_TAK_AKO_ICH_VOLA_DIALOG():
     """
     d = _falosna_instancia()
     assert d._cas(30)
-    assert d._cas(90) == "1:30"
+    # 0.2.2 davka 4: od hodiny citatelna dlzka ("1 h 30 min"), nie "1:30"
+    import i18n
+    assert d._cas(90) == i18n.tr("dashboard.fmt.h_min", h=1, m="30")
     assert isinstance(d._preco_ticho({}), str)
 
 

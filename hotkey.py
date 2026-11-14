@@ -127,6 +127,137 @@ def format_combo(text):
 
 
 # --------------------------------------------------------------------------
+# Zrazka s rozlozenim klavesnice (0.2.2)
+# --------------------------------------------------------------------------
+#
+# PRECO: na Windows je AltGr to iste co Ctrl+Alt. Na polskom rozlozeni
+# AltGr+Z pise "ż" - globalne zaregistrovane Ctrl+Alt+Z by hracovi to
+# pismeno zhltlo v kazdom okne (chat, prehliadac, dokument), aj ked je appka
+# len v liste. Pred registraciou sa preto opyta kazdeho NAINSTALOVANEHO
+# rozlozenia, ci z tej kombinacie nevznikne znak.
+#
+# Detekcia je cista funkcia s vlozitelnymi zavislostami (`rozlozenia`,
+# `znak`): testy ju overia na vymyslenom polskom rozlozeni bez toho, aby
+# sa v systeme cokolvek menilo. Ked sa Windowsu opytat neda (iny OS, chyba
+# ctypes), zrazka sa NEHLASI - appka sa sprava ako doteraz.
+
+# Predvolby v Nastaveniach -> Vseobecne. Prva je predvolena skratka appky,
+# dalsie su zaloha: F-klavesy nepise ziadne rozlozenie ako znak, takze s
+# AltGr sa nebiju nikde.
+PRESETS = ("ctrl+alt+z", "ctrl+alt+f9", "ctrl+alt+f12", "ctrl+shift+f12")
+
+_VK_SHIFT, _VK_CONTROL, _VK_MENU = 0x10, 0x11, 0x12
+_VK_LSHIFT, _VK_LCONTROL, _VK_RMENU = 0xA0, 0xA2, 0xA5
+# ToUnicodeEx: bit 2 = "nemen stav klavesnice" (Windows 10 1607+). Bez neho
+# by mrtvy klaves (diakritika) ostal visiet a pokazil dalsie pismeno.
+_TU_NEMEN_STAV = 0x4
+
+
+def _rozlozenia():
+    """Handle (HKL) vsetkych nainstalovanych rozlozeni; [] ked sa neda."""
+    try:
+        import ctypes
+        from ctypes import wintypes
+        user32 = ctypes.WinDLL("user32", use_last_error=True)
+        user32.GetKeyboardLayoutList.argtypes = [ctypes.c_int,
+                                                 ctypes.POINTER(wintypes.HKL)]
+        user32.GetKeyboardLayoutList.restype = ctypes.c_int
+        pocet = user32.GetKeyboardLayoutList(0, None)
+        if pocet <= 0:
+            return []
+        pole = (wintypes.HKL * pocet)()
+        pocet = user32.GetKeyboardLayoutList(pocet, pole)
+        return [pole[i] for i in range(max(0, pocet)) if pole[i]]
+    except Exception:
+        return []
+
+
+def _znak_rozlozenia(hkl, vk, shift):
+    """Co napise rozlozenie `hkl` na klaves `vk` s AltGr (Ctrl+Alt) a
+    pripadne Shiftom. "" = nic. Vynimka von nejde."""
+    try:
+        import ctypes
+        from ctypes import wintypes
+        user32 = ctypes.WinDLL("user32", use_last_error=True)
+        user32.ToUnicodeEx.argtypes = [wintypes.UINT, wintypes.UINT,
+                                       ctypes.POINTER(ctypes.c_ubyte),
+                                       wintypes.LPWSTR, ctypes.c_int,
+                                       wintypes.UINT, wintypes.HKL]
+        user32.ToUnicodeEx.restype = ctypes.c_int
+        user32.MapVirtualKeyExW.argtypes = [wintypes.UINT, wintypes.UINT,
+                                            wintypes.HKL]
+        user32.MapVirtualKeyExW.restype = wintypes.UINT
+        stav = (ctypes.c_ubyte * 256)()
+        for klaves in (_VK_CONTROL, _VK_MENU, _VK_LCONTROL, _VK_RMENU):
+            stav[klaves] = 0x80
+        if shift:
+            stav[_VK_SHIFT] = stav[_VK_LSHIFT] = 0x80
+        sken = user32.MapVirtualKeyExW(vk, 0, hkl)       # MAPVK_VK_TO_VSC
+        buf = ctypes.create_unicode_buffer(8)
+        n = user32.ToUnicodeEx(vk, sken, stav, buf, 8, _TU_NEMEN_STAV, hkl)
+        if n < 0:
+            # Mrtvy klaves (napr. ˇ alebo ´): aj ten je pismo. Druhe volanie
+            # ho zo stavu vycisti aj na starsom Windowse, ktory bit 2 nepozna.
+            znak = buf.value[:1]
+            user32.ToUnicodeEx(vk, sken, stav, buf, 8, _TU_NEMEN_STAV, hkl)
+            return znak
+        return buf.value[:n] if n > 0 else ""
+    except Exception:
+        return ""
+
+
+def _tlacitelny(text):
+    """Je v `text` znak, ktory by sa napisal (nie riadiaci znak)?"""
+    return any(ch.isprintable() and ord(ch) >= 0x20 for ch in str(text or ""))
+
+
+def znak_kolizie(text, rozlozenia=None, znak=None):
+    """Znak, ktory by kombinacia `text` napisala na niektorom nainstalovanom
+    rozlozeni (AltGr = Ctrl+Alt), alebo "" ked sa s pismom nebije.
+
+    Plati len pre kombinacie s Ctrl AJ Alt a bez Win - ine modifikatory
+    znak nepisu. `rozlozenia` (zoznam HKL) a `znak(hkl, vk, shift)` sa daju
+    vlozit (testy); predvolene sa pyta Windowsu. Ziadna chyba von nejde."""
+    try:
+        mody, vk = parse_combo(text)
+    except BadCombo:
+        return ""
+    if not (mody & MOD_CONTROL and mody & MOD_ALT) or mody & MOD_WIN:
+        return ""
+    shift = bool(mody & MOD_SHIFT)
+    try:
+        zoznam = _rozlozenia() if rozlozenia is None else list(rozlozenia)
+    except Exception:
+        return ""
+    zisti = _znak_rozlozenia if znak is None else znak
+    for hkl in zoznam:
+        try:
+            vysledok = zisti(hkl, vk, shift)
+        except Exception:
+            continue
+        if _tlacitelny(vysledok):
+            return next(ch for ch in str(vysledok) if ch.isprintable() and ord(ch) >= 0x20)
+    return ""
+
+
+def prva_volna(predvolby=PRESETS, preskoc=(), kolizia=None):
+    """Prva platna predvolba, ktora sa s pismom nebije; "" ked ziadna.
+
+    `kolizia(text) -> znak` (predvolene `znak_kolizie`) sa da vlozit."""
+    zisti = znak_kolizie if kolizia is None else kolizia
+    for combo in predvolby or ():
+        if combo in (preskoc or ()) or not is_valid(combo):
+            continue
+        try:
+            if zisti(combo):
+                continue
+        except Exception:
+            continue
+        return combo
+    return ""
+
+
+# --------------------------------------------------------------------------
 # Registracia
 # --------------------------------------------------------------------------
 

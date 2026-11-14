@@ -34,16 +34,24 @@ KOREN = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 S = i18n.STRINGS
 JAZYKY = i18n.LANGUAGES
 
-# Kluce, ktore appka uz nepouziva (zvysky z 0.1 - prekryvanie hlasok, prisny
-# zamok, oneskorenie, QR poznamka). Hrac ich nikdy neuvidi, slovnik v nich
-# nestrazime. Keby sa niektory vratil do kodu, test_mrtve_kluce_su_naozaj_mrtve
-# to chyti.
-MRTVE = {"hr.qr_note", "log.listener_error", "settings.overlap", "settings.overlap_sub",
-         "log.overlap_on", "log.overlap_off", "settings.strict_global_lock",
-         "settings.strict_global_lock_short", "settings.strict_global_lock_sub",
-         "log.strict_lock_on", "log.strict_lock_off", "dialog.delay", "dialog.jitter_note",
-         "settings.cooldown", "log.slot_settings_saved", "log.slot_key_bound",
-         "app.tagline", "onboarding.diag.subtitle"}
+# Kluce, ktore appka uz nepouzivala (zvysky z 0.1 - prekryvanie hlasok, prisny
+# zamok, oneskorenie, cooldown, QR poznamka, Start / Stop v liste). Do 0.2.2
+# tu boli vynimkou zo slovnika; v davke 4 su zo slovnika ZMAZANE vo vsetkych
+# jedenastich jazykoch, takze slovnik uz stazi kazdy kluc bez vynimky.
+# test_mrtve_kluce_su_zmazane strazi, aby sa nevratili.
+ZMAZANE = {"hr.qr_note", "log.listener_error", "settings.overlap", "settings.overlap_sub",
+           "log.overlap_on", "log.overlap_off", "settings.strict_global_lock",
+           "settings.strict_global_lock_short", "settings.strict_global_lock_sub",
+           "log.strict_lock_on", "log.strict_lock_off", "dialog.delay", "dialog.jitter_note",
+           "settings.cooldown", "log.slot_settings_saved", "log.slot_key_bound",
+           "app.tagline", "onboarding.diag.subtitle", "tray.toggle",
+           "settings.cooldown_sub", "dialog.jitter", "dialog.custom_cooldown",
+           "dialog.every_n", "dialog.repeat", "dialog.repeat_gap", "slot.summary_every",
+           # mrtvy a k tomu s muzskym rodom v osloveni ("pokojnejsi, nez si vosiel")
+           "onboarding.why.mission",
+           # mrtvy, v rustine este stare slovo "реплика"
+           "log.cue_rate_changed"}
+MRTVE = frozenset()
 
 # "pocuvat" v prirodzenom zmysle, nie ako vypinac appky.
 PRIRODZENE_POCUVAT = {"about.between_lines"}
@@ -58,12 +66,18 @@ def _zive():
     return [(k, e) for k, e in S.items() if k not in MRTVE]
 
 
-def test_mrtve_kluce_su_naozaj_mrtve():
-    """Výnimka platí len pre kľúč, ktorý žiadny modul appky nevolá."""
+def test_mrtve_kluce_su_zmazane():
+    """Mŕtve kľúče zo starého slovníka sú preč zo slovníka, z češtiny a
+    bulharčiny aj zo `_tr7` riadkov - a žiadny modul appky ich nevolá."""
+    import i18n_cs_bg
     zdroje = "".join(_read(m) for m in os.listdir(KOREN)
                      if m.endswith(".py") and not m.startswith("i18n"))
-    for kluc in MRTVE:
-        assert kluc in S, kluc
+    i18n_zdroj = _read("i18n.py")
+    for kluc in ZMAZANE:
+        assert kluc not in S, kluc
+        assert kluc not in i18n_cs_bg.CS and kluc not in i18n_cs_bg.BG, kluc
+        assert f"_tr7('{kluc}'" not in i18n_zdroj, kluc
+        assert f"'{kluc}':" not in i18n_zdroj, kluc
         assert f'"{kluc}"' not in zdroje and f"'{kluc}'" not in zdroje, kluc
 
 

@@ -15,13 +15,13 @@ on the same home network.
 [Download](https://github.com/Dandurfin/Zanshin/releases/latest) ·
 [Quick start](#quick-start) · [Pair your watch](#getting-your-heart-rate-in) ·
 [Troubleshooting](#troubleshooting) · [Known issues](KNOWN_ISSUES.md) ·
-[Privacy](PRIVACY.md) · [Anti-cheat](SAFETY.md)
+[Changelog](CHANGELOG.md) · [Privacy](PRIVACY.md) · [Anti-cheat](SAFETY.md)
 
 ![Zanshin's Today page in the Sumi theme: the main switch, the ensō, today's numbers and where the session went](docs/img/today.webp)
 
 *Today, with synthetic data. This page describes the code here, which is newer
-than the 0.2.1 release: the 0.2.1 ZIP still uses some older names
-([old → new](KNOWN_ISSUES.md#words-and-looks)).*
+than the 0.2.1 release: the 0.2.1 ZIP still uses some older names and lacks
+some controls ([what changed](CHANGELOG.md#what-022-changes-not-released-yet)).*
 
 **Local-first.** Your heart rate, sessions and insights never leave your PC.
 No account, no telemetry, no analytics. One exception is on by default: the
@@ -39,11 +39,12 @@ not a medical device.
 memory or the screen, no simulated input, no administrator rights. Outside its
 own window Zanshin learns only the time since your last input (not which key),
 controller activity while it's watching, where the foreground window and the
-mouse pointer are, your monitors and this PC's network addresses, and — with
-automatic profile switching on, the default — the names of running programs.
-The microphone is used only while you record your own cue. While Zanshin runs
-it reserves one shortcut, Ctrl+Alt+Z ("not now": no cues for 30 minutes), so a
-game that uses it may not receive it. Full list: [SAFETY.md](SAFETY.md) (in
+mouse pointer are, your monitors, keyboard layouts and this PC's network
+adapters and addresses, and — with automatic profile switching on, the
+default — the names of running programs. The microphone is used only while
+you record your own cue. While Zanshin runs it reserves one shortcut for "not
+now" (no cues for 30 minutes; Ctrl+Alt+Z by default), so a game that uses it
+may not receive it. Full list: [SAFETY.md](SAFETY.md) (in
 Slovak, with an English summary at the top). Only an anti-cheat's maker can
 promise it won't flag you.
 
@@ -57,15 +58,15 @@ promise it won't flag you.
    introduction (from 0.2.2 it first waits for the natural voice, at most about
    15 seconds; *Today* shows *Preparing the voice*). After that it starts by
    itself whenever Apex Legends, Call of Duty, CS2 or Valorant is running
-   (automatic profile switching, on by default); otherwise press ▶ in the
-   *Main switch* bar on *Today*.
+   (automatic profile switching, on by default); otherwise press
+   **▶ Start watching** at the top of *Today*.
 5. After a session, answer the few questions if you like: that's how Zanshin
    learns when to go quieter.
 
-The first time you close the window, Zanshin asks whether to keep running in
-the tray; after that × only hides it there (on Windows 11 the icon is often
-under the ^ arrow by the clock). To quit: right-click the tray icon →
-**Quit**.
+The first time you close the window, Zanshin asks: **Keep running in the
+tray** or **Quit Zanshin**. After that × only hides it there (on Windows 11
+the icon is often under the ^ arrow by the clock). To quit: right-click the
+tray icon → **Quit**.
 
 ## Install
 
@@ -184,9 +185,10 @@ a new program, so it may ask again.
 **Your data** (settings, heart-rate history, recordings, prepared voice and
 sounds) lives in `%APPDATA%\Zanshin`, not in the app's folder, so neither a new
 ZIP nor rebuilding touches it. From 0.2.2, shutting Windows down saves a
-session in progress, a running session is also copied every 5 minutes, and
-your settings keep a backup copy; details in
-[KNOWN_ISSUES.md](KNOWN_ISSUES.md).
+session in progress, a running session is also copied every 5 minutes, a
+session that can't be saved is kept aside for the next start, your settings
+keep a backup copy, and **Open the data folder** under Settings → General →
+*Your data* opens that folder; details in [CHANGELOG.md](CHANGELOG.md).
 
 **No administrator rights,** not for Python's install manager, not for the
 build, not for the app, and don't run Zanshin as administrator. The app draws
@@ -237,15 +239,16 @@ won’t connect at all?* box lists what to check. The usual causes: **Cancel**
 in Windows Firewall's question (fix: Windows Security → Firewall & network
 protection → Allow an app through firewall → Change settings → tick
 **Private** next to Zanshin), a network set to Public (step 3), a guest Wi‑Fi
-or the router's "client isolation", which keeps devices apart, or a VPN.
-After a router restart the PC can get a new address: check the one in the
-phone again.
+or the router's "client isolation", which keeps devices apart, or a VPN (from
+0.2.2 the guide marks a VPN's address *(VPN/virtual)*). After a router
+restart the PC can get a new address: check the one in the phone again.
 
 **Streaming with OBS?** OBS Studio's own WebSocket server also uses port
-`4455`. While it holds the port, Zanshin can't open it, and its log says so.
-Change **Port** in **In-game → Watch and heart rate**, for example to `4456`,
-and enter the same number in the phone app; Zanshin tries the new port right
-away. You don't need OBS for Zanshin.
+`4455`. While it holds the port, Zanshin can't open it: its log says so, and
+from 0.2.2 *Today* shows *Port 4455 is busy*. Change **Port** in **In-game →
+Watch and heart rate**, for example to `4456`, and enter the same number in
+the phone app; Zanshin tries the new port right away. You don't need OBS for
+Zanshin.
 
 **iPhone / Apple Watch:** *PulseOSC* (paid) sends OSC, which Zanshin's code
 can receive — **but the iPhone route is untested so far: I have no Apple
@@ -367,10 +370,17 @@ The short version is at the top of this page. In detail:
 - **A cue spoke in a robotic voice.** That's the Windows voice: the natural
   voice wasn't ready for that line yet (offline, for example, or you changed
   it while Zanshin was watching). Zanshin prepares it once you stop watching.
-- **A game's Ctrl+Alt+Z does nothing.** Zanshin reserves it. Quit Zanshin, then
-  in `%APPDATA%\Zanshin\dandurf_settings.json` set `"snooze_hotkey"` to another
+  From 0.2.2, if preparing failed, the line under Settings → Sound → *Voice
+  source* says why, with a *Try again* button.
+- **A game's Ctrl+Alt+Z does nothing.** Zanshin reserves it for "not now".
+  From 0.2.2, pick another shortcut or *Off* in Settings → General →
+  *Keyboard shortcut*. In the 0.2.1 ZIP, quit Zanshin, then in
+  `%APPDATA%\Zanshin\dandurf_settings.json` set `"snooze_hotkey"` to another
   combination with Ctrl, Alt, Shift or Win (for example `"ctrl+alt+x"`), or to
   `""` to switch the shortcut off. "Not now" stays in the tray icon's menu.
+- **A session you don't want in your history** (one that ran overnight, for
+  example): from 0.2.2, History → *One session up close* → **Delete this
+  session**.
 - **"Windows protected your PC", your antivirus or Smart App Control blocked
   it.** See *If Windows blocks it* under [Install](#install). Please don't
   switch your protection off.
@@ -398,6 +408,7 @@ folder, and `%LOCALAPPDATA%\Python` too if it's still there afterwards.
 ## Known issues
 
 What doesn't work yet or works only partly: [KNOWN_ISSUES.md](KNOWN_ISSUES.md).
+What each version changed: [CHANGELOG.md](CHANGELOG.md).
 Found something? [Open an issue](https://github.com/Dandurfin/Zanshin/issues).
 Please don't post heart-rate files or logs publicly.
 

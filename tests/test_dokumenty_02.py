@@ -8,7 +8,8 @@
   * Príprava hlasu nikdy nejde na Microsoft počas počúvania.
   * ZDROJE.md netvrdí, že appka sama zisťuje, či hlášky pomáhajú.
   * Vývojárske GUI skripty sú spomenuté a build ich nebalí.
-  * KNOWN_ISSUES: repozitár začína 0.2, bez detailov o pracovných poznámkach.
+  * KNOWN_ISSUES: repozitár začína 0.2, bez detailov o pracovných poznámkach
+    (od 0.2.2, dávka 4, je história verzií v CHANGELOG.md).
   * Dandurf.iss: verzia v Podrobnostiach setup.exe a [InstallDelete] len
     pre súbory z 0.1 v {app}.
   * LICENSE-DESIGN.md: CC0 zvuky sú pribalené, nie sťahované.
@@ -37,8 +38,11 @@ from _zdroj_appky import zdroj_metody  # noqa: E402
 ROOT = os.path.join(os.path.dirname(__file__), "..")
 
 DOKUMENTY = ("README.md", "SOUL.md", "PRIVACY.md", "SAFETY.md",
-             "KNOWN_ISSUES.md", "ZDROJE.md", "DEVELOPMENT.md",
+             "KNOWN_ISSUES.md", "CHANGELOG.md", "ZDROJE.md", "DEVELOPMENT.md",
              "docs/HOW-IT-WORKS.md", "docs/PRIOR_ART.md")
+# Historia verzii (co ktora verzia opravila) je od 0.2.2 (davka 4) v
+# CHANGELOG.md - straze na tie vety idu tam.
+ZMENY = "CHANGELOG.md"
 # Kam sa v 0.2.2d presunuli podrobnosti z README (pravidla appky a cast pre
 # vyvojarov) - stráže idú za vetou.
 AKO = "docs/HOW-IT-WORKS.md"
@@ -137,7 +141,7 @@ STARE_PASMO = re.compile(r"critical zone|kritick\w* pásm|pásm\w* kritick",
 def test_dokumenty_menuju_pasmo_po_novom():
     for meno in DOKUMENTY:
         assert not STARE_PASMO.search(_plain(meno)), meno
-    for meno in ("README.md", "SOUL.md", "KNOWN_ISSUES.md", AKO):
+    for meno in ("README.md", "SOUL.md", ZMENY, AKO):
         assert "Peak zone" in _plain(meno), meno
     assert "pásme Špička" in _plain("ZDROJE.md")
 
@@ -187,7 +191,8 @@ def test_ziadny_dokument_netvrdi_ze_appka_uz_porovnava():
     for meno in ("README.md", AKO):
         assert "so the app can compare whether the cues help" not in _plain(meno), meno
     assert "doesn't show that comparison yet" in _plain(AKO)
-    assert "finds out whether cues help" not in _plain("KNOWN_ISSUES.md")
+    for meno in ("KNOWN_ISSUES.md", ZMENY):
+        assert "finds out whether cues help" not in _plain(meno), meno
 
 
 # --------------------------------------------------------------------------
@@ -220,7 +225,7 @@ def test_gui_skripty_su_spomenute_a_build_ich_nebali():
 def test_known_issues_vysvetli_historiu_bez_detailov():
     """0.1 je v historii repozitara bez veci, ktore do verejnosti nepatrili -
     KNOWN_ISSUES to povie vseobecne (rozhodnutie autora 24. 9.), bez detailov."""
-    k = _plain("KNOWN_ISSUES.md")
+    k = _plain(ZMENY)
     assert "**About 0.1 in this repository's history.**" in k
     assert "work stays work, private stays private" in k
     assert k.index("About 0.1 in this repository's history") < k.index(
@@ -229,7 +234,10 @@ def test_known_issues_vysvetli_historiu_bez_detailov():
                 "folders on my PC", "prototypes"):
         assert zle not in k, zle
     # log.safe_mode už „no blocking“ nehovorí - bod o skratke to nesmie tvrdiť
-    assert "The anti-cheat log line says input is read with" not in k
+    for meno in ("KNOWN_ISSUES.md", ZMENY):
+        assert "The anti-cheat log line says input is read with" not in _plain(meno)
+        for zle in ("Working notes", "history on GitHub", "tester"):
+            assert zle not in _plain(meno), (meno, zle)
 
 
 # --------------------------------------------------------------------------
@@ -411,7 +419,7 @@ def test_cisla_v_dokumentoch_su_z_kodu():
     assert sfx_assets.MAX_STIAHNUTIE_BAJTOV == 256 * 1024
     assert "256 KB" in _plain("PRIVACY.md")
 
-    k = _plain("KNOWN_ISSUES.md")
+    k = _plain(ZMENY)
     assert data_io.MAX_IMPORT_BAJTOV == 50 * 1024 * 1024 and "over 50 MB" in k
     roky = [datetime.fromtimestamp(t, timezone.utc).year
             for t in (data_io.MIN_CAS, data_io.MAX_CAS)]
@@ -424,8 +432,9 @@ def test_cisla_v_dokumentoch_su_z_kodu():
 
 
 def test_known_issues_021_je_navrchu_a_teraz_nie_je_v_liste():
+    c = _read(ZMENY)
+    assert c.index("## What 0.2.1 fixes") < c.index("## What 0.1 got wrong")
     k = _read("KNOWN_ISSUES.md")
-    assert k.index("## What 0.2.1 fixes") < k.index("## What 0.1 got wrong")
     otvorene = " ".join(_sekcia(k, "Still open").split())
     assert "hard to find" not in otvorene
     assert "tray icon's menu" in otvorene

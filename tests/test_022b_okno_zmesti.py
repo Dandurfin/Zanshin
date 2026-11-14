@@ -431,7 +431,8 @@ def test_logicky_rozmer_okna_sa_nezmenil():
 
 
 def test_known_issues_hovori_to_iste_co_kod():
-    with open(os.path.join(ROOT, "KNOWN_ISSUES.md"), encoding="utf-8-sig") as fh:
+    # Od 0.2.2 (davka 4) je historia verzii v CHANGELOG.md.
+    with open(os.path.join(ROOT, "CHANGELOG.md"), encoding="utf-8-sig") as fh:
         text = " ".join(fh.read().split())
     sekcia = text[text.index("## What 0.2.2 changes"):text.index("## What 0.2.1 fixes")]
     assert "The window didn't fit smaller laptop screens." in sekcia

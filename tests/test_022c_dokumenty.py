@@ -13,7 +13,8 @@ povedat rovnako. Strazi sa:
     ze appka zacne sledovat hned po uvode,
   * es/de/fr/pt dostanu hlas svojho jazyka, relacia "Len nastavovanie
     appky" sa z ucenia vyradi,
-  * KNOWN_ISSUES ma v sekcii 0.2.2 body o uvode, prehliadke a parovani.
+  * KNOWN_ISSUES ma v sekcii 0.2.2 body o uvode, prehliadke a parovani
+    (od davky 4 je ta sekcia v CHANGELOG.md).
 
 Zamerne sa nepinuju cele odstavce (audit: testy zamykali README v dlzke) -
 len nazvy z UI, cisla z kodu a vety, ktore uz nesmu byt pravda. Od 0.2.2d
@@ -173,9 +174,9 @@ def test_hlasy_jazykov_es_de_fr_pt():
     assert {"es", "de", "fr", "pt"} <= set(VOICE_HINTS)
     ako = _plain(_read(AKO))
     assert "also in Spanish, German, French or Portuguese" in ako
-    k = _plain(_sekcia(_read("KNOWN_ISSUES.md"), "What 0.2.2 changes",
+    k = _plain(_sekcia(_read("CHANGELOG.md"), "What 0.2.2 changes",
                        "\n## What 0.2.1 fixes"))
-    # mena hlasov v KNOWN_ISSUES su tie z VOICE_HINTS
+    # mena hlasov v CHANGELOG su tie z VOICE_HINTS
     for jazyk in ("es", "de", "fr", "pt"):
         meno = re.match(r"\w+-\w+-(\w+?)Neural$", VOICE_HINTS[jazyk]).group(1)
         assert meno in k, (jazyk, meno)
@@ -186,7 +187,7 @@ def test_relacia_nastavovania_sa_neuci():
     zaklad = {"duration_s": 900.0, "baseline_bpm": 70.0, "max_bpm": 95.0}
     assert hr_stats.ciste_relacie([dict(zaklad, setup=True)]) == []
     ako = _plain(_read(AKO))
-    k = _plain(_read("KNOWN_ISSUES.md"))
+    k = _plain(_read("CHANGELOG.md"))
     assert "*%s*" % znacka in ako
     assert "*%s*" % znacka in k
 
@@ -196,7 +197,7 @@ def test_relacia_nastavovania_sa_neuci():
 # --------------------------------------------------------------------------
 
 def _known_022():
-    return _plain(_sekcia(_read("KNOWN_ISSUES.md"), "What 0.2.2 changes",
+    return _plain(_sekcia(_read("CHANGELOG.md"), "What 0.2.2 changes",
                           "\n## What 0.2.1 fixes"))
 
 

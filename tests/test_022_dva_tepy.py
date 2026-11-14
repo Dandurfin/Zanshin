@@ -417,7 +417,8 @@ def test_readme_a_known_issues_hovoria_to_iste_co_kod():
     stitok = i18n.STRINGS["settings.hr_status_two_series"]["en"]
     readme = _plain("README.md")
     ako = _plain("docs/HOW-IT-WORKS.md")
-    known = _plain("KNOWN_ISSUES.md")
+    # Od 0.2.2 (davka 4) je bod o oprave v CHANGELOG.md, nie v KNOWN_ISSUES.
+    known = _plain("CHANGELOG.md")
     assert "*%s*" % stitok in readme
     assert "*%s*" % stitok in known
     for text in (ako, known):
@@ -434,5 +435,7 @@ def test_readme_a_known_issues_hovoria_to_iste_co_kod():
     with open(os.path.join(ROOT, "KNOWN_ISSUES.md"), encoding="utf-8-sig") as fh:
         k = fh.read()
     assert k.splitlines()[0].endswith("alpha 0.2.1")
-    assert (k.index("## What 0.2.2 changes (not released yet)")
-            < k.index("## What 0.2.1 fixes"))
+    with open(os.path.join(ROOT, "CHANGELOG.md"), encoding="utf-8-sig") as fh:
+        c = fh.read()
+    assert (c.index("## What 0.2.2 changes (not released yet)")
+            < c.index("## What 0.2.1 fixes"))

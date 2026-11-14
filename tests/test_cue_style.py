@@ -339,7 +339,10 @@ def test_riadok_v_nastaveniach_meni_styl_a_uklada():
     assert "tr('settings.cue_style')" in stranka
     assert "tr('settings.cue_style_sub')" in stranka
     assert "command=self._on_cue_style_label" in stranka
-    assert stranka.index("settings.cue_style") < stranka.index("settings.audio_voice_title")
+    # 0.2.2 davka 4: uz nie vlastny panel nad hlasom, ale PRVY riadok panela
+    # Hlasitost (audit UX: karta pre jednu vetu)
+    hlasitost = stranka.index("settings.audio_volume_title")
+    assert hlasitost < stranka.index("settings.cue_style") < stranka.index("settings.volume'")
 
 
 def test_texty_su_vo_vsetkych_jazykoch_a_hovoria_pravdu():

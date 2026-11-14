@@ -184,10 +184,12 @@ def test_platny_subor_nic_neodklada(prostredie):
 
 def test_oznam_raz_do_dennika_a_sprava_az_po_starte(monkeypatch):
     import app as app_mod
-    import app_prefs
+    import ui_kit
     zobrazene, planovane = [], []
-    monkeypatch.setattr(app_prefs.messagebox, "showwarning",
-                        lambda titul, text: zobrazene.append(text))
+    # 0.2.2 davka 4: oznam v okne appky (`ui_kit.notify`), nie systemovy
+    # messagebox - app_prefs ho uz neimportuje
+    monkeypatch.setattr(ui_kit, "notify",
+                        lambda okno, pal, titul, text, **kw: zobrazene.append(text))
     denn = []
     a = types.SimpleNamespace(
         _nastavenia_obnova={"odlozene": "dandurf_settings.json.corrupt-20261114-213000",

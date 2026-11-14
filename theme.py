@@ -6,7 +6,9 @@ noc"). Zlato (`accent`/`kin`) je hlavny akcent v celom rozhrani; modra
 zotavenie tepu), nie ako ozdoba.
 
 AIZOME - indigo variant. Rovnaka architektura, len iny podklad a modry
-akcent. Od 0.2 je to vzhlad PRACOVNEHO sveta (viz `WORLD_THEME`).
+akcent. Od 0.2 je to vzhlad PRACOVNEHO sveta (viz `WORLD_THEME`). Aj tu
+plati, ze cislo v modrej (`blue`) je len zotavenie tepu - pasmo pokoja
+(`zone_calm`) preto nie je modre, ale asagi (modrozelena).
 
 STAVOVE FARBY (0.2.2, audit UX). Bodka stavu v bocnom paneli
 (`ui_shell._StateDot`) je pri sledovani plna `success`, zastavena je len
@@ -99,10 +101,14 @@ THEMES = {
         "blue": "#5C86C9",           # pokojne/nizke hodnoty (Aizome uz je modra)
         "murasaki": "#9C8FC9",
         # --- pasma tepu (viz poznamka pod THEMES) ---
-        # Aizome zacina na STUDENOM konci: pokoj je indigova modra, ktora
-        # je identitou temy. Horuci koniec ostava horuci - teplo je teplo
-        # v kazdej teme.
-        "zone_calm": "#6FA5C9",
+        # Aizome zacina na STUDENOM konci, horuci koniec ostava horuci -
+        # teplo je teplo v kazdej teme. Pokoj je ASAGI (modrozelena, odtien
+        # z tej istej indigovej farbiarne), NIE modra: do 0.2.2 bol #6FA5C9 a
+        # karta "Pokojovy tep" vedla karty "Zotavenie" (`blue`) boli dve modre
+        # - modra pritom patri len zotaveniu (0.2.2 davka 4, audit UX). Ako
+        # v Sumi, kde je pokoj matcha: zelenkavy, studenejsi nez zvysok radu.
+        # 7,15:1 na surface; od `success` sa lisi odtienom aj sytostou.
+        "zone_calm": "#5FB3A3",
         "zone_raised": "#B9A25F",
         "zone_high": "#C97C43",
         "zone_critical": "#C04A3E",
@@ -179,8 +185,9 @@ THEMES = {
 #
 # Preto ma teraz kazda tema svoje vlastne `zone_*` tokeny:
 #   Sumi   - cely rad v teplej rodine (zelena -> zlato -> slivka -> bengara)
-#   Aizome - studeny zaciatok (indigova modra pre pokoj), horuci koniec
-#            ostava horuci, lebo teplo je teplo v kazdej teme
+#   Aizome - studeny zaciatok (asagi, modrozelena pre pokoj - modra `blue`
+#            patri len zotaveniu tepu), horuci koniec ostava horuci, lebo
+#            teplo je teplo v kazdej teme
 #
 # Co plati v oboch: rad musi byt TEPLOTNE monotonny (od pokojneho ku
 # horucemu) a vsetky styri farby navzajom rozlisitelne - to stapi

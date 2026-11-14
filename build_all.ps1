@@ -154,7 +154,7 @@ if (-not $iscc) {
     Write-Host ""
     # Instalacka sa nevydava (bez podpisoveho certifikatu) - hrac ju nepotrebuje,
     # takze ho tu neposielame stahovat Inno Setup. Vyvojar, ktory ju chce,
-    # vie z README, ze staci Inno Setup 6 nainstalovat a skript spustit znova.
+    # vie z DEVELOPMENT.md, ze staci Inno Setup 6 nainstalovat a skript spustit znova.
     Write-Host "Inno Setup som nenasiel - instalacku som nepostavil (netreba ju)." -ForegroundColor Yellow
     Write-Host "HOTOVO: appka je dist\Zanshin\Zanshin.exe - staci ju spustit." -ForegroundColor Green
     exit 0

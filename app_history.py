@@ -37,7 +37,7 @@ import os
 import threading
 import time
 import webbrowser
-from tkinter import filedialog, messagebox
+from tkinter import filedialog
 
 import customtkinter as ctk
 
@@ -48,7 +48,7 @@ import measure
 import rebrik
 import ui_kit
 from guide_content import origin_sources
-from i18n import tr
+from i18n import cislo, tr
 from paths import APP_NAME
 
 from app_spolocne import app_log
@@ -218,9 +218,14 @@ class HistoryMixin:
         days_box = ctk.CTkFrame(grid_row, fg_color="transparent", width=150, height=118)
         days_box.pack(side="right", padx=(18, 0))
         days_box.pack_propagate(False)
-        ctk.CTkLabel(days_box, text=tr("history.days_played").upper(),
-                     font=ui_kit.ui(10, "bold"), text_color=pal["text_faint"],
-                     anchor="w").pack(fill="x")
+        # Popisok nesie pocet tyzdnov mriezky - ten sa meni s historiou,
+        # preto si ho stranka drzi (`_refresh_history_rhythm`).
+        self.history_days_label = ctk.CTkLabel(
+            days_box, text=tr("history.days_played",
+                              weeks=self.RYTMUS_MAX_TYZDNOV).upper(),
+            font=ui_kit.ui(10, "bold"), text_color=pal["text_faint"],
+            anchor="w", justify="left", wraplength=150)
+        self.history_days_label.pack(fill="x")
         # Farba je `text`, nie `success`: zelena bola z cias, ked to bola
         # seria a dala sa "drzat". Pocet dni nie je uspech ani neuspech.
         self.history_days_value = ctk.CTkLabel(days_box, text="—",
@@ -235,6 +240,13 @@ class HistoryMixin:
         dp.pack(fill="x", pady=(14, 0))
         self.history_detail_panel = dp
         self.history_detail_index = None      # None = najnovsia relacia
+        # PRAZDNY STAV (0.2.2 davka 4, `ui_kit.EmptyState`): bez relacie bola
+        # v paneli prazdna stopa, jedenast pomlciek a veta az pod nimi. Teraz
+        # len veta - co sa tu objavi (`_history_detail_prazdny`). Nepakuje
+        # sa tu: ukaze ju az `_refresh_history_detail`.
+        self.history_detail_empty = ui_kit.EmptyState(
+            dp.body, pal, tr("history.detail_empty"), pady=(18, 18))
+        self._history_detail_packy = None
         self.history_detail_trace = ui_kit.SessionTrace(dp.body, pal, height=96)
         self.history_detail_trace.pack(fill="x")
         # Ten isty popis ako pod grafom v dotazniku po relacii - nie novy
@@ -269,6 +281,20 @@ class HistoryMixin:
             dp.body, text=tr("history.detail_hint"), font=ui_kit.ui(10),
             text_color=pal["text_faint"], anchor="w", justify="left", wraplength=640)
         self.history_detail_hint.pack(fill="x", pady=(10, 0))
+        # "ZMAZAT TUTO RELACIU" (0.2.2, audit 4): napr. 14-hodinova "relacia"
+        # cez uspany PC by inak tlacila spankovy tep do pokojovej zakladne a
+        # jedinou napravou bolo zmazat celu historiu. Nenapadne - vpravo pod
+        # detailom, mensie; potvrdenie s datumom a dlzkou (fokus na Zrusit) je
+        # v `delete_history_session` (app_data.py). Prave nahravanu relaciu
+        # neponuka (`_refresh_history_detail`).
+        zmaz_rad = ctk.CTkFrame(dp.body, fg_color="transparent")
+        zmaz_rad.pack(fill="x", pady=(10, 0))
+        self._history_detail_session = None
+        self.history_detail_delete_btn = ui_kit.button(
+            zmaz_rad, pal, tr("history.delete_session.btn"), kind="danger", height=28,
+            command=lambda: self.delete_history_session(
+                getattr(self, "_history_detail_session", None)))
+        self.history_detail_delete_btn.pack(side="right")
 
         # --- tabulka relacii ---
         sp = ui_kit.Panel(scroll, pal, title=tr("history.sessions_title"), right="")
@@ -484,18 +510,21 @@ class HistoryMixin:
             if metric == "baseline":
                 trend = hr_stats.baseline_trend(period_sessions)
                 if not trend["insufficient_span"]:
+                    # Cisla vo vete podla jazyka (`i18n.cislo`): "−2,0", nie
+                    # "-2.0" v slovenskej vete (0.2.2, davka 4).
                     delta_text = tr("history.trend_delta", first=int(round(first_v)),
-                                    last=int(round(last_v)), slope=trend["slope_per_week"])
+                                    last=int(round(last_v)),
+                                    slope=cislo(trend["slope_per_week"], 1, sign=True))
                 else:
                     delta_text = tr("history.trend_need_more")
             elif metric == "over":
                 delta_text = tr("history.trend_simple_delta",
-                                first=f"{first_v / 60.0:.1f}", last=f"{last_v / 60.0:.1f}")
+                                first=cislo(first_v / 60.0, 1), last=cislo(last_v / 60.0, 1))
             elif scale != 1.0 or decimals:
                 # nove metriky 0.2: v tych istych jednotkach ako graf
                 delta_text = tr("history.trend_simple_delta",
-                                first=f"{first_v * scale:.{decimals}f}",
-                                last=f"{last_v * scale:.{decimals}f}")
+                                first=cislo(first_v * scale, decimals),
+                                last=cislo(last_v * scale, decimals))
             else:
                 delta_text = tr("history.trend_simple_delta",
                                 first=int(round(first_v)), last=int(round(last_v)))
@@ -504,6 +533,22 @@ class HistoryMixin:
         else:
             delta_text = ""          # veta je uz v grafe (`empty_text`)
         self.history_trend_delta.configure(text=delta_text)
+        # PRAZDNY RIADOK NEZABERA MIESTO (0.2.2 davka 4): graf bez dat ma 80 px
+        # a vetu nesie sam (`empty_text`). CTkLabel s prazdnym textom si drzi
+        # vysku riadku, takze pod grafom ostavala dalsia diera.
+        riadok = self.history_trend_delta
+        try:
+            zabaleny = riadok.winfo_manager() == "pack"
+            if delta_text and not zabaleny:
+                dalsi = getattr(self, "history_info_wrap", None)
+                if dalsi is not None and dalsi.winfo_manager() == "pack":
+                    riadok.pack(fill="x", pady=(4, 0), before=dalsi)
+                else:
+                    riadok.pack(fill="x", pady=(4, 0))
+            elif not delta_text and zabaleny:
+                riadok.pack_forget()
+        except Exception:
+            pass        # atrapy v testoch nevedia pack; stranka sa zatvara
 
     def _refresh_history_page(self):
         """Prekresli trend, tabulku a postrehy z aktualnych suborov. Ked
@@ -578,12 +623,17 @@ class HistoryMixin:
                 # ktore appka poslala sama (`hlasky_relacie`). Stare
                 # `triggers` ratalo aj klavesu a tlacidlo "Test".
                 hlasky = hr_stats.hlasky_relacie(s)
-                cells = (date, self._fmt_minutes(s.get("duration_s")),
+                # Dlzka ako v detaile nad tabulkou ("1 h 24 min"), nie
+                # "84:54" - to vyzeralo ako cas a ta ista relacia mala na
+                # jednej stranke dva zapisy (audit UX, davka 4).
+                dlzka = s.get("duration_s")
+                cells = (date, self._fmt_dlzka(dlzka) if dlzka else "-",
                          str(s.get("avg_bpm") or "-"),
                          f"{s.get('min_bpm') or '-'} / {s.get('max_bpm') or '-'}",
                          self._fmt_minutes(s.get("time_over_s")),
                          str(hlasky) if hlasky is not None else "-",
-                         f"{s.get('peak_stress', 0)} %",
+                         # zataz je vsade "x/100", nie percenta (audit UX)
+                         self._fmt_zataz(s.get("peak_stress"), "-"),
                          f"{int(hrr):+d}" if hrr is not None else "-",
                          str(s.get("hrpi") if s.get("hrpi") is not None else "-"))
                 bunky = [row]
@@ -719,8 +769,10 @@ class HistoryMixin:
         Vzdy VSETKY relacie, z oboch svetov (B3-worlds) - su to jeho data.
         """
         sessions = self._history_sessions()
+        # Oznamy v okne appky (`ui_kit.notify`), nie systemove (0.2.2).
+        okno, pal = getattr(self, "root", None), getattr(self, "pal", None)
         if not sessions:
-            messagebox.showinfo(APP_NAME, tr("history.export_empty"))
+            ui_kit.notify(okno, pal, APP_NAME, tr("history.export_empty"))
             return
         default = time.strftime("zanshin-relacie-%Y-%m-%d.csv")
         path = filedialog.asksaveasfilename(
@@ -737,14 +789,15 @@ class HistoryMixin:
             dalsie = self._export_podrobnosti(path)
         except Exception as exc:
             app_log.exception("export relacii zlyhal")
-            messagebox.showerror(APP_NAME, tr("history.export_failed", err=exc))
+            ui_kit.notify(okno, pal, APP_NAME, tr("history.export_failed", err=exc),
+                          kind="error")
             return
         self.log(tr("log.sessions_exported", n=count))
         sprava = tr("history.export_done", n=count, path=os.path.basename(path))
         if dalsie:
             sprava += "\n\n" + tr("history.export_extra",
                                    files="\n".join(dalsie))
-        messagebox.showinfo(APP_NAME, sprava)
+        ui_kit.notify(okno, pal, APP_NAME, sprava)
 
     def _export_podrobnosti(self, path):
         """Vedla relacii ulozi aj meracie okna a udalosti. Vrati nazvy.
@@ -801,15 +854,51 @@ class HistoryMixin:
         grid = getattr(self, "history_daygrid", None)
         if grid is None or not grid.winfo_exists():
             return
-        # Cely rok: mriezka si sama oreze zaciatok na to, co sa do jej sirky
-        # zmesti (viz ui_kit.DayGrid), takze na sirsom paneli vidno viac.
-        dni = hr_stats.day_activity(sessions, days=371)
-        grid.set_days(dni, legend=(tr("history.grid_less"), tr("history.grid_more")))
-        # Cislo samo, jednotka je v popisku nad nim ("Dní s reláciou · rok").
+        # NAJVIAC 26 TYZDNOV, OD PRVEJ RELACIE (0.2.2, audit UX, davka 4).
+        # Cely rok (371 dni) bol z 85 % prazdny - data v siedmich stlpcoch z
+        # 53. Prvy stlpec je vzdy pondelok, posledny tento tyzden.
+        tyzdne = self._rytmus_tyzdne(sessions)
+        dni = hr_stats.day_activity(
+            sessions, days=(tyzdne - 1) * 7 + time.localtime().tm_wday + 1)
+        # Mesiace a dni v jazyku APPKY (nie Windowsu) - `strftime` by na
+        # slovenskom Windowse pisal po slovensky aj japonskemu hracovi.
+        grid.set_days(dni, legend=(tr("history.grid_less"), tr("history.grid_more")),
+                      months=tr("history.grid_months").split(),
+                      weekdays=tr("history.grid_weekdays").split())
+        stitok = getattr(self, "history_days_label", None)
+        if stitok is not None:
+            stitok.configure(text=tr("history.days_played", weeks=tyzdne).upper())
+        # Cislo samo, jednotka je v popisku nad nim ("Dní s reláciou · 26 týž.").
         # Slovencina sklonuje "deň/dni/dní" podla poctu a appka ma vela
         # jazykov - cislo bez podstatneho mena je spravne v kazdom z nich.
         aktivne = sum(1 for den in dni if den.get("count"))
         self.history_days_value.configure(text=str(aktivne) if aktivne else "—")
+
+    # Kolko tyzdnov ukazuje mriezka Pravidelnost: od tyzdna prvej relacie,
+    # ale aspon RYTMUS_MIN (inak by mesiace nad stlpcami nemali kam ist) a
+    # najviac RYTMUS_MAX (pol roka; starsie vzory su v grafe trendu).
+    RYTMUS_MIN_TYZDNOV = 8
+    RYTMUS_MAX_TYZDNOV = 26
+
+    def _rytmus_tyzdne(self, sessions, now=None):
+        """Pocet tyzdnov (stlpcov) mriezky Pravidelnost pre `sessions`."""
+        now = time.time() if now is None else now
+        zaciatky = [s.get("started") for s in sessions or ()
+                    if isinstance(s, dict)
+                    and isinstance(s.get("started"), (int, float))]
+        if not zaciatky:
+            return self.RYTMUS_MIN_TYZDNOV
+        dnes = time.localtime(now)
+        prvy = time.localtime(min(zaciatky))
+        # pondelok tohto tyzdna a tyzdna prvej relacie, v dnoch od epochy
+        # (cez kalendarny den, nie sekundy - prechod na letny cas by inak
+        # posunul hranicu tyzdna o hodinu)
+        dnes_den = int(time.mktime((dnes.tm_year, dnes.tm_mon, dnes.tm_mday,
+                                    12, 0, 0, 0, 0, -1)) // 86400) - dnes.tm_wday
+        prvy_den = int(time.mktime((prvy.tm_year, prvy.tm_mon, prvy.tm_mday,
+                                    12, 0, 0, 0, 0, -1)) // 86400) - prvy.tm_wday
+        tyzdne = (dnes_den - prvy_den) // 7 + 1
+        return max(self.RYTMUS_MIN_TYZDNOV, min(self.RYTMUS_MAX_TYZDNOV, tyzdne))
 
     def _refresh_history_detail(self, sessions):
         """Krivka a cisla jednej relacie - z `curve` ulozenej v suhrne.
@@ -823,13 +912,26 @@ class HistoryMixin:
             return
         index = self._history_detail_index(sessions)
         session = sessions[index] if index is not None else None
+        # Ktoru relaciu zmaze "Zmazat tuto relaciu" - a ci ju vobec ponuknut:
+        # prave nahravana sa zmazat neda (`_je_nahravana_relacia`).
+        self._history_detail_session = session or None
+        tlacidlo = getattr(self, "history_detail_delete_btn", None)
+        if tlacidlo is not None:
+            try:
+                nahravana = bool(session) and self._je_nahravana_relacia(session)
+                tlacidlo.configure(state="disabled" if (not session or nahravana)
+                                   else "normal")
+            except Exception:
+                pass
         if not session:
             trace.set_trace([])
             self.history_detail_panel.set_right("")
             for cell in self.history_detail_cells.values():
                 cell.configure(text="—")
             self.history_detail_hint.configure(text=tr("history.detail_empty"))
+            self._history_detail_prazdny(True)
             return
+        self._history_detail_prazdny(False)
         started = float(session.get("started") or 0)
         self.history_detail_panel.set_right(
             time.strftime("%d.%m.%Y %H:%M", time.localtime(started)) if started else "")
@@ -846,6 +948,54 @@ class HistoryMixin:
             cell.configure(text=hodnoty.get(key, "—"))
         self.history_detail_hint.configure(
             text=tr("history.detail_hint") if curve else tr("history.detail_no_curve"))
+
+    def _history_detail_prazdny(self, prazdny):
+        """Panel "Relacia zblizka" bez relacie = len jedna veta (0.2.2
+        davka 4). Prazdna stopa a jedenast pomlciek pod nou vyzerali ako
+        meranie, nie ako "zatial nic".
+
+        Schova VSETKO, co je v paneli zabalene (stopa, legenda, mriezka,
+        veta pod nou), a zapamata si poradie - pri prvej relacii ich vrati
+        presne tak, ako boli postavene, nech sa uz poradie v
+        `_build_historia_page` zmeni akokolvek.
+
+        POZOR NA MIERKU: `pack_info()` vracia okraje uz NASOBENE mierkou DPI
+        a CTk widget ich pri `pack()` nasobi znova - pri 150 % by sa okraj
+        po kazdom prazdnom stave zvacsil. Preto sa berie to, s cim widget
+        naozaj zabalili (`_last_geometry_manager_call`, nenasobene); holy
+        tk widget mierku nema, tomu staci `pack_info()`."""
+        veta = getattr(self, "history_detail_empty", None)
+        panel = getattr(self, "history_detail_panel", None)
+        if veta is None or panel is None:
+            return
+        try:
+            if prazdny:
+                if self._history_detail_packy is None:
+                    packy = []
+                    for widget in panel.body.pack_slaves():
+                        if widget is veta:
+                            continue
+                        posledne = getattr(widget, "_last_geometry_manager_call", None)
+                        if isinstance(posledne, dict) and posledne.get("kwargs") is not None:
+                            info = dict(posledne["kwargs"])
+                        else:
+                            info = dict(widget.pack_info())
+                        # poradie drzi samo poradie zoznamu - odkazy na
+                        # susedov by pri navrate mierili na nezabaleny widget
+                        for kluc in ("in", "in_", "before", "after"):
+                            info.pop(kluc, None)
+                        packy.append((widget, info))
+                        widget.pack_forget()
+                    self._history_detail_packy = packy
+                if veta.winfo_manager() != "pack":
+                    veta.pack(fill="x")
+            elif self._history_detail_packy is not None:
+                veta.pack_forget()
+                for widget, info in self._history_detail_packy:
+                    widget.pack(**info)
+                self._history_detail_packy = None
+        except Exception:
+            app_log.exception("historia: prazdny stav detailu zlyhal")
 
     def _history_detail_values(self, session):
         """{kluc bunky: text} pre VSETKY bunky detailu jednej relacie.
@@ -876,7 +1026,8 @@ class HistoryMixin:
                      else tr("dashboard.fmt.min", n=int(calm // 60))),
             "over": self._fmt_minutes(over) if over is not None else "—",
             "breath": str(hlasky) if hlasky is not None else "—",
-            "peak": cislo("peak_stress"),
+            # zataz ako "x/100" - ta ista miera ako prah na strane Hlasky
+            "peak": self._fmt_zataz(session.get("peak_stress"), "—"),
             "hrr": hrr_text,
             "hrpi": cislo("hrpi"),
             "signal": self._fmt_pokrytie(pokrytie),
@@ -886,15 +1037,21 @@ class HistoryMixin:
     @staticmethod
     def _fmt_dlzka(seconds):
         """Dlzka "45 min" alebo "1 h 05 min" - karta "Dĺžka relácie" aj
-        detail relacie v Historii. Pokazena hodnota -> "—"."""
+        detail relacie v Historii. Pokazena hodnota -> "—". Ten isty text
+        pise aj os stopy relacie (`ui_kit.dlzka_text`), preto jeden zdroj."""
+        return ui_kit.dlzka_text(seconds)
+
+    @staticmethod
+    def _fmt_zataz(value, prazdne="—"):
+        """Zataz 0..100 ako "83/100" - v tabulke aj v detaile relacie
+        (0.2.2, audit UX: raz "90 %", raz holé "90", inde "nad 55").
+        Chybajuca alebo pokazena hodnota -> `prazdne`."""
+        if value in (None, ""):
+            return prazdne
         try:
-            total_min = int(max(0.0, float(seconds or 0.0)) // 60)
+            return f"{int(round(float(value)))}/100"
         except (TypeError, ValueError, OverflowError):
-            return "—"
-        hodiny, minuty = divmod(total_min, 60)
-        if hodiny:
-            return tr("dashboard.fmt.h_min", h=hodiny, m=f"{minuty:02d}")
-        return tr("dashboard.fmt.min", n=minuty)
+            return prazdne
 
     @staticmethod
     def _fmt_pokrytie(pokrytie):

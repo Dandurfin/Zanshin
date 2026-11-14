@@ -375,15 +375,16 @@ def test_text_zataze_je_poctivy():
     for kus in ("10 BPM above your calm", "at 25 BPM", "high heart-rate limit"):
         assert kus in en, kus
     # „Vysoká" NIE JE „appka čaká na pauzu": najprv počíta, či to vydrží
-    assert "najprv počíta, či tam chvíľu vydrží, a až potom čaká na pauzu" in sk
-    assert "first counts whether it holds there for a while, and only then waits for a pause" in en
+    # (0.2.2, davka 4: v prvej osobe ako ostatne texty metrik)
+    assert "najprv počítam, či tam chvíľu vydrží, a až potom čakám na pauzu" in sk
+    assert "first count whether it holds there for a while, and only then wait for a pause" in en
     assert "začne čakať na pauzu" not in sk
     assert "starts waiting for a pause" not in en
     # Od stress-gate (0.2) najvyššie pásmo hlášku ZASTAVÍ - „o hláške slovo
     # nerozhoduje“ by klamalo. Hlášku slovo nespúšťa, ale „Špička“ ju umlčí
     # (do 0.2 sa pásmo volalo „Kritická“ - znelo to ako diagnóza).
     assert "nerozhoduje" not in sk and "does not decide" not in en
-    assert "Kým slovo ukazuje „Špička“, appka mlčí." in sk
-    assert "While the word says “Peak”, the app stays quiet." in en
+    assert "Kým slovo ukazuje „Špička“, mlčím." in sk
+    assert "While the word says “Peak”, I stay quiet." in en
     assert "v ktorej už záťaž nestúpa" in sk
     assert "in which the load is no longer climbing" in en

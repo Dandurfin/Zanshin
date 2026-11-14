@@ -305,7 +305,8 @@ def test_readme_a_known_issues_popisuju_hlas_podla_slov():
             "voice, and switching back doesn't undo a change") in readme
     assert "One voice reads all your profiles" in readme
 
-    k = _plain("KNOWN_ISSUES.md")
+    # Od 0.2.2 (davka 4) je historia verzii v CHANGELOG.md.
+    k = _plain("CHANGELOG.md")
     opravy = k[k.index("## What 0.2.1 fixes"):k.index("## What 0.1 got wrong")]
     assert ("**Switching the language to Japanese, Chinese, Russian or "
             "Bulgarian also switched the natural voice to that language**") in opravy

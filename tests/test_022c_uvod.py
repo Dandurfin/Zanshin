@@ -540,9 +540,10 @@ def test_kazde_tvrdenie_o_enso_sedi_s_kodom():
     klik = zdroj_metody("_dnes_canvas_click")
     assert 'hit.get("enso")' in klik and "self.toggle_listening()" in klik
     # "bodka vlavo hore": bodka stavu je v bocnom paneli NAD navigaciou
+    # (od 0.2.2 davka 4 je navigacia jedna skupina - vsetky PAGES naraz)
     sidebar = shell[shell.index("class Sidebar"):shell.index("class _NavRow")]
     assert sidebar.index("self.state_dot = _StateDot(") < sidebar.index(
-        "for key, icon, default_label in self.PAGES[:-1]")
+        "for key, icon, default_label in self.PAGES:")
 
 
 # --------------------------------------------------------------------------

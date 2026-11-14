@@ -177,7 +177,25 @@ class GuidedTour:
         bez tepu appka mlci."""
         if step.key == "done" and not self._tep_chodi():
             return tr("tour.done.no_watch")
+        if step.key == "triggers":
+            # "TERAZ NIE" RAZ, PRI PRIPOMIENKACH (0.2.2): pred prvou
+            # pripomienkou skratku spominal len dennik. Krok hovori, KEDY sa
+            # appka ozve - hned za tym, ako ju v zlej chvili stisit. Menuje sa
+            # skutocna kombinacia, a len ked naozaj plati - inak ponuka ikony
+            # v liste.
+            return step.body + " " + self._veta_teraz_nie()
         return step.body
+
+    def _veta_teraz_nie(self):
+        """Veta o "teraz nie" - so skratkou, ktora naozaj plati."""
+        zisti = getattr(self.app, "_skratka_teraz_nie", None)
+        try:
+            skratka = zisti() if callable(zisti) else ""
+        except Exception:
+            skratka = ""
+        if skratka:
+            return tr("tour.triggers.snooze", combo=skratka)
+        return tr("tour.triggers.snooze_tray")
 
     def _build_steps(self):
         return [

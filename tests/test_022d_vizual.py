@@ -369,8 +369,13 @@ def test_dialog_bez_rozmeru_sa_vycentruje():
 def test_zmazanie_historie_sa_potvrdzuje_v_okne_appky():
     telo = zdroj_metody("delete_history")
     assert "messagebox.askyesno(" not in telo
-    assert "ui_kit.confirm(" in telo and "danger=True" in telo
-    assert 'ok_label=tr("data.delete.btn")' in telo
+    # 0.2.2 davka 4: otazka ma tri volby (Zmazat / Najprv exportovat / Zrusit)
+    # a je v `_spytaj_zmazanie` - `ui_kit.choose`, bez neho `ui_kit.confirm`.
+    assert "self._spytaj_zmazanie(" in telo
+    otazka = zdroj_metody("_spytaj_zmazanie")
+    assert '("delete", tr("data.delete.btn"), "danger")' in otazka
+    assert "ui_kit.confirm(" in otazka and "danger=True" in otazka
+    assert 'ok_label=tr("data.delete.btn")' in otazka
 
 
 # --------------------------------------------------------------------------
