@@ -28,7 +28,7 @@ def test_krok_2_parovania_priznava_nevyskusany_iphone():
     assert "nevyskúšaná" in sk and "platená" in sk and "Apple" in sk
     assert "untested" in en and "paid" in en and "Apple" in en
     # heslo a scena su len pre appku na Androide
-    assert "len appky pre Android" in sk
+    assert "len pre appku na Androide" in sk
     assert "Android app only" in en
     # stara veta "ktoré appka tiež rozumie" tvrdila overenú vec
     assert "also understands" not in en

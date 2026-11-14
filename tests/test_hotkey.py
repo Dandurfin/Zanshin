@@ -230,4 +230,5 @@ def test_log_pri_starte_hovori_pravdu_o_skratke():
             assert stare not in text, (jazyk, stare)
     assert "blokovan" not in zaznam["sk"] and "blocking" not in zaznam["en"]
     assert "„teraz nie“" in zaznam["sk"] and "“not now”" in zaznam["en"]
-    assert "rezervuje" in zaznam["sk"] and "reserves" in zaznam["en"]
+    # 0.2.2: appka hovori o sebe v 1. osobe ("rezervujem", "I reserve")
+    assert "rezervuje" in zaznam["sk"] and "reserve" in zaznam["en"]

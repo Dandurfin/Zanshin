@@ -21,16 +21,19 @@ def _read(meno):
         return fh.read()
 
 
+DOKUMENTY = ("SOUL.md", "README.md", "docs/HOW-IT-WORKS.md")   # 0.2.2d: aj pravidla
+
+
 def test_pauza_v_dokumentoch_sedi_s_kodom():
     assert trigger.default_params()["pause_s"] == 2.5
-    for meno in ("SOUL.md", "README.md"):
+    for meno in DOKUMENTY:
         text = _read(meno)
         assert "2.5 s" in text, meno
         assert "can't see the game" in text, meno
 
 
 def test_ziadne_absolutne_sluby_o_boji():
-    for meno in ("SOUL.md", "README.md"):
+    for meno in DOKUMENTY:
         text = _read(meno).lower()
         for zle in ("never spoken over the action", "never speaks over the fight",
                     "on top of the play", "natural pauses", "never mid-fight",

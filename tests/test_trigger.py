@@ -1042,7 +1042,8 @@ def test_preco_ticho_stare_relacie_nic_netvrdia():
 
 def test_preco_ticho_telo_nebolo_hore():
     veta = _preco(above_runs=0, runs_cancelled_gap=0, runs_cancelled_dip=0)
-    assert veta and "hranic" in veta.lower(), veta
+    # 0.2.2: zataz ma "prah", "hranica" je len tep v BPM
+    assert veta and "prah" in veta.lower(), veta
 
 
 def test_preco_ticho_bolo_hore_ale_kratko():

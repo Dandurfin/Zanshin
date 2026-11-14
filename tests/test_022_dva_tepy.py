@@ -411,19 +411,26 @@ def _plain(meno):
 
 
 def test_readme_a_known_issues_hovoria_to_iste_co_kod():
+    # Audit 0.2.2d: nevydana 0.2.2 nepatri do navodu pre 0.2.1 - README ma
+    # len riadok v Troubleshooting (stitok + co s tym), median je v
+    # docs/HOW-IT-WORKS.md a cely bod v KNOWN_ISSUES.
     stitok = i18n.STRINGS["settings.hr_status_two_series"]["en"]
     readme = _plain("README.md")
+    ako = _plain("docs/HOW-IT-WORKS.md")
     known = _plain("KNOWN_ISSUES.md")
-    for text in (readme, known):
-        assert "*%s*" % stitok in text
+    assert "*%s*" % stitok in readme
+    assert "*%s*" % stitok in known
+    for text in (ako, known):
         assert "median of the last 3 seconds of readings" in text
     assert "let only the live heart rate write into the heart-rate source" in readme
     assert "only the live heart rate should write into the heart-rate source" in known
     assert hr_stats.ZOBRAZ_OKNO_S == 3.0
-    assert "measuring still uses every reading" in readme
+    assert "measuring still uses every reading" in ako
     assert "still use every reading" in known
     # 0.2.2 este nevyslo - dokumenty to hovoria a verzia sa nezdvihla
-    assert "Not released yet (0.2.2)" in readme
+    riadok = readme[readme.index("*%s*" % stitok):][:200]
+    assert "(from 0.2.2)" in riadok
+    assert "From 0.2.2" in ako
     with open(os.path.join(ROOT, "KNOWN_ISSUES.md"), encoding="utf-8-sig") as fh:
         k = fh.read()
     assert k.splitlines()[0].endswith("alpha 0.2.1")

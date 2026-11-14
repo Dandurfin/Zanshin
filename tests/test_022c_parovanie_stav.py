@@ -176,9 +176,9 @@ def _riadok(karta, kotva):
 
 def test_poradie_karty_prijem_stav_navod_az_potom_siet():
     karta = zdroj_metody("_build_heart_rate_card")
-    prijem = _riadok(karta, 'ctk.CTkSwitch(inner, text=tr("settings.hr_enable_switch")')
+    prijem = _riadok(karta, 'ui_kit.switch(inner, pal, text=tr("settings.hr_enable_switch")')
     stav = _riadok(karta, "self.hr_status_label.grid(")
-    navod = _riadok(karta, 'ctk.CTkButton(inner, text=tr("hr.pair_button")')
+    navod = _riadok(karta, 'ui_kit.button(inner, pal, tr("hr.pair_button")')
     adresa = int(re.search(r'_hr_entry\(inner, pal, (\d+), tr\("settings.hr_ip_label"\)',
                            karta).group(1))
     port = int(re.search(r'_hr_entry\(inner, pal, (\d+), tr\("settings.hr_port_label"\)',
@@ -292,6 +292,7 @@ def test_karta_prepinac_nepakuje_sama():
     """O zobrazeni rozhoduje len `_apply_hr_ip_mask` - karta ho len vytvori."""
     karta = zdroj_metody("_build_heart_rate_card")
     vytvorenie = karta[karta.index("def _prepinac_ip"):karta.index("self.hr_ip_entry =")]
-    assert "self.hr_ip_show_switch = ctk.CTkSwitch(" in vytvorenie
+    # jeden prepinac appky (`ui_kit.switch`, 0.2.2 audit UX)
+    assert "self.hr_ip_show_switch = ui_kit.switch(" in vytvorenie
     assert ".pack(" not in vytvorenie
     assert "self.hr_ip_show_switch = None" in zdroj_metody("__init__")

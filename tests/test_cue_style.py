@@ -240,8 +240,11 @@ def test_onboarding_ma_styri_schvalene_odpovede_bez_predvolby():
     W = ui_dialogs.OnboardingWizard
     assert [v for v, _k in W.CUE_VOLBY] == ["voice", "sound", "visual", "unsure"]
     sk = [i18n.STRINGS[k]["sk"] for _v, k in W.CUE_VOLBY]
+    # 0.2.2: "Neviem" uz nesluby rezim "nech si to appka zisti", ktory
+    # neexistuje - uklada sa ako hlas a rebrik sa stisi sam (audit UX).
     assert sk == ["Pokojne aj hlasom", "Radšej len zvuk a obrázok",
-                  "Len obrázok, nič nehovor", "Neviem, nech si to appka zistí sama"]
+                  "Len obrázok, nič nehovor",
+                  "Neviem — začni hlasom a stíš sa, keď budeš prekážať"]
     assert i18n.STRINGS["ob.cue.title"]["sk"] == (
         "Keď ťa hra poriadne vytočí, ako chceš, aby sa appka ozvala?")
     assert i18n.STRINGS["ob.cue.title"]["en"] == (
@@ -320,11 +323,14 @@ def test_riadok_v_nastaveniach_meni_styl_a_uklada():
     a.save_settings = lambda: ulozene.append(a.cue_style)
     # styl rozhoduje, ci sa Edge hlasky pripravuju (`_hlasky_hovoria`)
     a.schedule_pregenerate = lambda *_: pripravy.append(a.cue_style)
-    assert D._cue_style_label("sound") == i18n.tr("ob.cue.sound")
-    assert D._cue_style_label(None) == i18n.tr("ob.cue.voice")
-    assert D._cue_style_labels(a) == [i18n.tr("ob.cue.voice"), i18n.tr("ob.cue.sound"),
-                                      i18n.tr("ob.cue.visual")]
+    # 0.2.2: riadok ma vlastne mena stylov (cue_style.*), nie odpovede z uvodu
+    assert D._cue_style_label("sound") == i18n.tr("cue_style.sound")
+    assert D._cue_style_label(None) == i18n.tr("cue_style.voice")
+    assert D._cue_style_labels(a) == [i18n.tr("cue_style.voice"), i18n.tr("cue_style.sound"),
+                                      i18n.tr("cue_style.visual")]
     D._on_cue_style_label(a, i18n.tr("ob.cue.visual"))
+    assert ulozene == [], "odpoved z uvodu uz nie je meno stylu v Nastaveniach"
+    D._on_cue_style_label(a, i18n.tr("cue_style.visual"))
     assert ulozene == ["visual"] and a._cue_rung == rebrik.OBRAZ
     assert pripravy == ["visual"], "po zmene stylu sa priprava hlasok prepocita"
     D._on_cue_style_label(a, "nieco ine")
@@ -339,12 +345,14 @@ def test_riadok_v_nastaveniach_meni_styl_a_uklada():
 def test_texty_su_vo_vsetkych_jazykoch_a_hovoria_pravdu():
     for kluc in ("ob.step5.kicker", "ob.cue.title", "ob.cue.voice", "ob.cue.sound",
                  "ob.cue.visual", "ob.cue.unsure", "ob.cue.note",
-                 "settings.cue_style", "settings.cue_style_sub"):
+                 "settings.cue_style", "settings.cue_style_sub",
+                 "cue_style.voice", "cue_style.sound", "cue_style.visual"):
         assert set(i18n.STRINGS[kluc]) == set(i18n.LANGUAGES), kluc
     sub = i18n.STRINGS["settings.cue_style_sub"]
     # appka o sebe v zenskom rode; tichsie sama, hlasnejsie nikdy; praca obraz
+    # (0.2.2: jedno slovo "obrazok" pre to, co sa ukaze v hre)
     assert "stíšim sa aj sama" in sub["sk"] and "nikdy" in sub["sk"]
-    assert "V práci" in sub["sk"] and "obrazom" in sub["sk"]
+    assert "V práci" in sub["sk"] and "obrázkom" in sub["sk"]
     assert "never louder" in sub["en"] and "At work" in sub["en"]
     assert "never louder" in i18n.STRINGS["ob.cue.note"]["en"]
     assert i18n.STRINGS["settings.cue_style"]["sk"] == "Ako sa ozývam"

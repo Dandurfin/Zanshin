@@ -16,7 +16,8 @@ povedat rovnako. Strazi sa:
   * KNOWN_ISSUES ma v sekcii 0.2.2 body o uvode, prehliadke a parovani.
 
 Zamerne sa nepinuju cele odstavce (audit: testy zamykali README v dlzke) -
-len nazvy z UI, cisla z kodu a vety, ktore uz nesmu byt pravda.
+len nazvy z UI, cisla z kodu a vety, ktore uz nesmu byt pravda. Od 0.2.2d
+su pravidla hlasu a ucenia v docs/HOW-IT-WORKS.md - straze isli s nimi.
 """
 import os
 import re
@@ -29,6 +30,9 @@ import hr_stats  # noqa: E402
 import i18n  # noqa: E402
 from _zdroj_appky import zdroj_metody, zdroj_suboru  # noqa: E402
 from settings_model import VOICE_HINTS  # noqa: E402
+
+
+AKO = "docs/HOW-IT-WORKS.md"
 
 
 def _read(meno):
@@ -160,15 +164,15 @@ def test_hlas_ukazky_v_uvode_je_z_windows():
     len hlas z Windows (`speak_sapi_isolated`)."""
     assert "speak_sapi_isolated(" in zdroj_suboru("ui_dialogs.py")
     assert "its voice preview there uses the Windows voice and sends nothing" in (
-        _plain(_read("README.md")))
+        _plain(_read(AKO)))
     assert "The voice preview in the introduction always uses it" in (
         _plain(_read("PRIVACY.md")))
 
 
 def test_hlasy_jazykov_es_de_fr_pt():
     assert {"es", "de", "fr", "pt"} <= set(VOICE_HINTS)
-    readme = _plain(_read("README.md"))
-    assert "also in Spanish, German, French or Portuguese" in readme
+    ako = _plain(_read(AKO))
+    assert "also in Spanish, German, French or Portuguese" in ako
     k = _plain(_sekcia(_read("KNOWN_ISSUES.md"), "What 0.2.2 changes",
                        "\n## What 0.2.1 fixes"))
     # mena hlasov v KNOWN_ISSUES su tie z VOICE_HINTS
@@ -181,9 +185,9 @@ def test_relacia_nastavovania_sa_neuci():
     znacka = _en("session.context.setup")
     zaklad = {"duration_s": 900.0, "baseline_bpm": 70.0, "max_bpm": 95.0}
     assert hr_stats.ciste_relacie([dict(zaklad, setup=True)]) == []
-    readme = _plain(_read("README.md"))
+    ako = _plain(_read(AKO))
     k = _plain(_read("KNOWN_ISSUES.md"))
-    assert "*%s*" % znacka in readme
+    assert "*%s*" % znacka in ako
     assert "*%s*" % znacka in k
 
 

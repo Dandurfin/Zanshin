@@ -133,7 +133,7 @@ def test_veta_o_kazdej_desiatej_sedi_s_tichym_ramenom():
     """Text autora: „na začiatku asi každá štvrtá, neskôr každá desiata hláška
     zámerne mlčí“ (autor schválil 24. 9.). Na začiatku je tiché rameno
     štvrtina, po zábehu 10 %; ak sa jedno z nich zmení, veta klame."""
-    assert "na začiatku asi každá štvrtá, neskôr každá desiata hláška zámerne mlčí" in i18n.STRINGS["origin.text"]["sk"]
+    assert "na začiatku asi každá štvrtá, neskôr každá desiata pripomienka zámerne mlčí" in i18n.STRINGS["origin.text"]["sk"]
     assert "at first roughly one cue in four, later one in ten, stays silent" in i18n.STRINGS["origin.text"]["en"]
     assert trigger.silent_share_for(0) == 0.25
     assert trigger.silent_share_for(10_000) == 0.10

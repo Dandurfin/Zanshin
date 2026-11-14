@@ -27,9 +27,16 @@ import hr_stats
 import rebrik
 import trigger
 from i18n import tr
-from ui_dialogs import CUE_STYLE_LABELS
 
 from app_spolocne import app_log
+
+# Mena stylov v riadku "Ako sa ozyvam" (Nastavenia -> Zvuk), 0.2.2. Do vtedy
+# tam boli odpovede z uvodu (`ui_dialogs.CUE_STYLE_LABELS`, napr. "Pokojne aj
+# hlasom") - odpoved na otazku "ked ta hra vytoci...", ktora v Nastaveniach
+# nie je. Uvod si svoje odpovede necha; poradie a styly su tie iste.
+CUE_STYLE_SETTINGS_LABELS = ((rebrik.STYL_HLAS, "cue_style.voice"),
+                             (rebrik.STYL_ZVUK, "cue_style.sound"),
+                             (rebrik.STYL_OBRAZ, "cue_style.visual"))
 
 
 class CuesMixin:
@@ -217,15 +224,16 @@ class CuesMixin:
 
     @staticmethod
     def _cue_style_label(styl):
-        """'voice'/'sound'/'visual' -> veta z onboardingu v jazyku rozhrania."""
-        return tr(dict(CUE_STYLE_LABELS)[rebrik.normalize_cue_style(styl)])
+        """'voice'/'sound'/'visual' -> meno stylu v Nastaveniach (jazyk rozhrania)."""
+        return tr(dict(CUE_STYLE_SETTINGS_LABELS)[rebrik.normalize_cue_style(styl)])
 
     def _cue_style_labels(self):
-        return [tr(kluc) for _styl, kluc in CUE_STYLE_LABELS]
+        return [tr(kluc) for _styl, kluc in CUE_STYLE_SETTINGS_LABELS]
 
     def _on_cue_style_label(self, label):
         """Vyber v riadku "Ako sa ozyvam" (Nastavenia -> Zvuk)."""
-        styl = next((s for s, kluc in CUE_STYLE_LABELS if tr(kluc) == label), None)
+        styl = next((s for s, kluc in CUE_STYLE_SETTINGS_LABELS if tr(kluc) == label),
+                    None)
         if styl is None:
             return
         self._nastav_styl_hlasky(styl)

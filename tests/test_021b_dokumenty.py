@@ -20,6 +20,10 @@
 
 Kazda veta je naviazana na kod: ked sa kod zmeni, test povie, ktory
 dokument treba prepisat - nie naopak.
+
+0.2.2d: podrobne pravidla pripravy hlasu sa z README presunuli do
+docs/HOW-IT-WORKS.md, vyvojarske skripty a GUI harness do DEVELOPMENT.md;
+straze isli s vetami. Slovo "reminder" je v dokumentoch "cue" ako v appke.
 """
 import ast
 import inspect
@@ -35,6 +39,8 @@ import i18n  # noqa: E402
 from _zdroj_appky import zdroj_metody  # noqa: E402
 
 ROOT = os.path.join(os.path.dirname(__file__), "..")
+AKO = "docs/HOW-IT-WORKS.md"
+VYVOJ = "DEVELOPMENT.md"
 
 
 def _read(meno):
@@ -85,28 +91,31 @@ def test_priprava_posiela_len_hlasky_ktore_moze_povedat():
     assert "self._slot_na_pripravu(slot)" in zdroj_metody("pregen_jobs")
     assert "self._slot_na_pripravu(slot)" in zdroj_metody("_speak_text")
 
+    # README hovori len "the wording of your spoken cues"; presne podmienky
+    # su od 0.2.2d v HOW-IT-WORKS a v PRIVACY.
     readme = _plain("README.md")
-    assert "including ones you've switched off" not in readme
-    assert ("that are switched on, with their in-game picture on, and set to "
-            "speak (not ones that play your own recording)") in readme
+    assert "the wording of your spoken cues" in readme
+    ako = _plain(AKO)
+    for meno, text in (("README.md", readme), (AKO, ako)):
+        assert "including ones you've switched off" not in text, meno
     assert ("one of the four, switched on with its in-game picture on, set to "
-            "speak and not playing your own recording") in readme
-    assert ("testing a reminder that is switched off or has its picture off, "
+            "speak and not playing your own recording") in ako
+    assert ("testing a cue that is switched off or has its picture off, "
             "or an extra one kept from 0.1, plays the Windows voice and sends "
-            "nothing") in readme
+            "nothing") in ako
 
     privacy = _plain("PRIVACY.md")
-    assert "**Which reminders:** only those of the four" in privacy
+    assert "**Which cues:** only those of the four" in privacy
     assert ("that are switched on, have their in-game picture on, are set to "
             "speak and don't play your own recording") in privacy
-    assert "extra reminder kept from a 0.1 profile are never sent" in privacy
+    assert "extra cue kept from a 0.1 profile are never sent" in privacy
     # Co pripravu spusti (zapnutie hlasky ci obrazka, zmazanie nahravky,
     # novy profil).
     assert ("switch it or its picture on, switch it to speak or remove its "
-            "own recording") in readme
-    assert ("switch a reminder or its picture on, switch it to speak or "
+            "own recording") in ako
+    assert ("switch a cue or its picture on, switch it to speak or "
             "remove its own recording") in privacy
-    for meno, text in (("README.md", readme), ("PRIVACY.md", privacy)):
+    for meno, text in ((AKO, ako), ("PRIVACY.md", privacy)):
         assert "profile (or create one)" in text, meno
 
 
@@ -130,11 +139,11 @@ def test_prepnutie_prec_zastavi_rozbehnutu_pripravu():
         assert "self._zrus_rozbehnutu_pripravu()" in zdroj_metody(metoda), metoda
     assert "self._pregen_seq += 1" in zdroj_metody("_zrus_rozbehnutu_pripravu")
 
-    readme = _plain("README.md")
-    assert "lines already being prepared at that moment are still sent" not in readme
-    assert "that stops any preparing at once, except a line already on its way" in readme
+    for meno in ("README.md", AKO):
+        assert ("lines already being prepared at that moment are still sent"
+                not in _plain(meno)), meno
     assert ("to Work or to the Windows voice stops any preparing already "
-            "running at once; only a line already on its way is finished") in readme
+            "running at once; only a line already on its way is finished") in _plain(AKO)
 
     privacy = _plain("PRIVACY.md")
     assert "**Switching away stops it.**" in privacy
@@ -209,7 +218,7 @@ def test_udp_stitok_a_log_v_dokumentoch_ako_v_kode():
 
 def test_readme_check_sources_offline_ako_skript():
     import check_sources
-    readme = _plain("README.md")
+    readme = _plain(VYVOJ)      # od 0.2.2d vyvojarske skripty tu, nie v README
     assert ("it says you're offline, checks nothing and exits with 0 instead "
             "of reporting the links as dead") in readme
     main = inspect.getsource(check_sources.main)
@@ -235,7 +244,7 @@ def test_known_issues_bez_rozporov():
         assert nadpis in opravy, nadpis
     # Jazykovy riadok: KNOWN_ISSUES hovori, ze uz netvrdi preklad hlasok.
     assert _en("settings.language_sub") == "Cues you already have keep their wording."
-    assert "reminders you already have keep their wording" in k
+    assert "cues you already have keep their wording" in k
 
 
 def test_chodza_len_stisi_hlasky_ucenie_ju_nevyraduje():
@@ -262,11 +271,16 @@ def test_soul_hranica_a_licencia():
 
 
 def test_safety_harness_odklada_nastavenia_a_historiu_ako_skript():
+    """Od 0.2.2d su podrobnosti o zalohach harnessu v DEVELOPMENT.md (po
+    anglicky); SAFETY ma len, ze skripty hybu mysou a build ich nebali, a
+    odkaz sem. Veta ide za kodom: ked sa zaloha zmeni, test povie kde."""
     skript = _read("gui_harness_auto.py")
     safety = _plain("SAFETY.md")
-    for subor in ("hr_sessions.json", "hr_insights.json"):
+    vyvoj = _plain(VYVOJ)
+    assert "](DEVELOPMENT.md)" in safety
+    for subor in ("hr_sessions.json", "hr_insights.json", "hr_session_open.json"):
         assert '"%s"' % subor in skript, subor
-        assert "`%s`" % subor in safety, subor
+        assert "`%s`" % subor in vyvoj, subor
     assert 'os.path.join(PROJ, "logs", "gui_harness")' in skript
     # Od 0.2.1c je zaloha na disku vedla originalov, nie v pamati ani v
     # logs\gui_harness\ - a po tvrdom zabiti ju vrati dalsi beh
@@ -277,6 +291,7 @@ def test_safety_harness_odklada_nastavenia_a_historiu_ako_skript():
     assert '"%s.pred-obnovou-%s"' in skript
     assert "drží len v pamäti" not in safety
     assert "(zálohu dá do `logs\\gui_harness\\`)" not in safety
-    assert "skopíruje na disk vedľa originálu (`*.pred-harnessom`)" in safety
-    assert "vráti ich aj po prerušení (Ctrl+C, zavreté okno, pád)" in safety
-    assert "`*.pred-obnovou-<čas>`" in safety
+    assert "only in memory" not in vyvoj
+    assert "copies these files to disk next to the originals (`*.pred-harnessom`)" in vyvoj
+    assert "after an interruption too (Ctrl+C, a closed window, a crash)" in vyvoj
+    assert "`*.pred-obnovou-<time>`" in vyvoj

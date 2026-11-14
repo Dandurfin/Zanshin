@@ -85,7 +85,7 @@ def test_zenske_tvary_appky_ostali():
                        ("kamae.lost_sub", "sama sa neozvem"),
                        ("session.zanshin.body", "som ti bola plťou"),
                        # opravené vo fáze jazykov 0.2 (predtým mužský rod)
-                       ("log.overlay_test_ukonceny", "Ukončila som"),
+                       ("log.overlay_test_ukonceny", "Skryla som"),
                        ("dev.min_gap_clamped", "som zdvihla"),
                        ("log.vizualy_napravene", "Zapla som"),
                        ("kamae.stopped_sub_auto", "spustím sama"),

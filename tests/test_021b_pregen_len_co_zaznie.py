@@ -377,7 +377,7 @@ def _styl_bez_slov(a):
     """Ozajstné `_on_cue_style_label` (Nastavenia -> Zvuk)."""
     D = _app().DandurfApp
     a._nastav_styl_hlasky = lambda styl: setattr(a, "cue_style", styl)
-    D._on_cue_style_label(a, i18n.tr("ob.cue.sound"))
+    D._on_cue_style_label(a, i18n.tr("cue_style.sound"))
 
 
 def _do_prace(a):

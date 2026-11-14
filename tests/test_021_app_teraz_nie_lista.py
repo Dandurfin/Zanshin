@@ -267,7 +267,8 @@ def test_skratka_sa_registruje_len_raz_pri_starte():
 def test_nove_vety_hovoria_pravdu():
     """Veta o zlyhaní už nesmie tvrdiť, že „teraz nie“ nepôjde vôbec, ani
     sľubovať meranie (počas stíšenia v zastavenej appke sa nemeria) - len
-    to, čo platí vždy: počúvanie to nezastaví. Kľúče dopĺňa jazyková časť
+    to, čo platí vždy: sledovanie to nezastaví (0.2.2: „sledovať“ namiesto
+    „počúvať“). Kľúče dopĺňa jazyková časť
     0.2.1; kým tam nie sú, stráži ich tests/test_i18n_keys.py."""
     s = i18n.STRINGS
     if "log.hotkey_failed_tray" not in s or "tray.snooze" not in s:
@@ -277,8 +278,8 @@ def test_nove_vety_hovoria_pravdu():
     veta = s["log.hotkey_failed_tray"]
     assert "{combo}" in veta["sk"] and "{combo}" in veta["en"]
     assert "lište" in veta["sk"] and "tray" in veta["en"]
-    assert "Počúvanie to nezastaví" in veta["sk"]
-    assert "doesn’t stop listening" in veta["en"]
+    assert "sledovanie to nezastaví" in veta["sk"]
+    assert "doesn’t stop watching" in veta["en"]
     for jazyk in ("sk", "en"):
         assert "merať" not in veta[jazyk] and "measuring" not in veta[jazyk]
     assert s["tray.snooze"]["sk"].startswith("Teraz nie")

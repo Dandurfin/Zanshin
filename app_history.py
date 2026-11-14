@@ -23,8 +23,7 @@ Presunute z app.py bez zmeny:
     nesuvisi - ostal v app.py pod novou znackou "stranky Nastaveni a V hre".
 
 Konstanty stranky (`HISTORY_ROWS`, `HISTORY_METRICS`, `_METRIC_*`,
-`HISTORY_METRIC_CHIPS_PER_ROW`, `HISTORY_DETAIL_COLS`,
-`HISTORY_DETAIL_CELLS`) ostali v triede DandurfApp medzi ostatnymi
+`HISTORY_DETAIL_COLS`, `HISTORY_DETAIL_CELLS`) ostali v triede DandurfApp medzi ostatnymi
 konstantami triedy - metody ich citaju cez `self`.
 
 Pozor v testoch: `_refresh_history_page`, `export_sessions_csv`,
@@ -60,13 +59,18 @@ class HistoryMixin:
 
     # ---------- info k metrikam ("aby pouzivatel vedel") ----------
 
-    def _metric_info(self, parent, pal, metric, wrap=420):
+    def _metric_info(self, parent, pal, metric, wrap=420, titled=False):
         """Veta pri cisle + rozbalitelne 'co to znamena' (ui_kit.InfoRow).
         Texty su v i18n pod metric.<id>.short / .more - presne znenie zo
-        zadania, pre hraca, nie pre lekara."""
+        zadania, pre hraca, nie pre lekara.
+
+        `titled=True` da nad vetu meno metriky (metric.<id>.title) - pre
+        vysvetlivky pod tabulkou, kde hlavicky stlpcov uz odrolovali a tri
+        "ⓘ co to znamena" pod sebou nehovorili, ku ktoremu cislu patria."""
+        nazov = tr(f"metric.{metric}.title") if titled else None
         return ui_kit.InfoRow(parent, pal, tr(f"metric.{metric}.short"),
                               tr(f"metric.{metric}.more"), tr("history.info_more"),
-                              tr("history.info_less"), wrap=wrap)
+                              tr("history.info_less"), wrap=wrap, title=nazov)
 
     # ---------- stranka Historia ----------
 
@@ -79,24 +83,22 @@ class HistoryMixin:
         (hr_insights.analyze v pozadi). Stranka sa prekresli pri postaveni,
         po ulozeni relacie a po dobehnuti analyzy (_refresh_history_page).
         """
-        scroll = ctk.CTkScrollableFrame(
-            page, fg_color="transparent", scrollbar_button_color=pal["surface_alt"],
-            scrollbar_button_hover_color=pal["accent"])
-        scroll.pack(fill="both", expand=True, padx=24, pady=(20, 20))
+        scroll = ui_kit.stranka_scroll(page, pal)
+        scroll.pack(fill="both", expand=True, padx=ui_kit.PAGE_GUTTER, pady=(20, 20))
         self.history_scroll = scroll
 
         ctk.CTkLabel(scroll, text=tr("history.title"), font=ui_kit.ui(17, "bold"),
-                     text_color=pal["text"], anchor="w").pack(fill="x", padx=6)
+                     text_color=pal["text"], anchor="w").pack(fill="x")
         ctk.CTkLabel(scroll, text=tr("history.subtitle"), font=ui_kit.ui(11),
                      text_color=pal["text_dim"], wraplength=680, anchor="w",
-                     justify="left").pack(fill="x", padx=6, pady=(4, 2))
+                     justify="left").pack(fill="x", pady=(4, 2))
         # Ktory svet stranka ukazuje (B3-worlds). Bez tejto vety by prazdna
         # Praca vyzerala ako stratena historia. Text doplna
         # `_refresh_history_page`, lebo svet sa meni bez prestavby stranky.
         self.history_world_note = ctk.CTkLabel(
             scroll, text="", font=ui_kit.ui(10), text_color=pal["text_faint"],
             wraplength=680, anchor="w", justify="left")
-        self.history_world_note.pack(fill="x", padx=6, pady=(0, 10))
+        self.history_world_note.pack(fill="x", pady=(0, 10))
 
         # --- postrehy (analyza na pozadi) ---
         ins = ui_kit.Panel(scroll, pal, title=tr("history.insights_title"), right="")
@@ -109,58 +111,70 @@ class HistoryMixin:
         ctk.CTkLabel(foot, text=tr("history.insights_note"), font=ui_kit.ui(10),
                      text_color=pal["text_faint"], anchor="w", justify="left",
                      wraplength=520).pack(side="left", fill="x", expand=True)
-        self.history_recompute_btn = ui_kit.chip(foot, pal, tr("history.recompute"),
-                                                 self.run_hr_analysis, width=110)
+        # Vedlajsie tlacidlo, nie chip (chip je len externy odkaz). Kym je
+        # jedinym "postrehom" pocitadlo "0 z 3 relacii", nie je co prepocitat
+        # a tlacidlo sa skryje (`_render_hr_insights`).
+        self.history_recompute_btn = ui_kit.button(foot, pal, tr("history.recompute"),
+                                                   command=self.run_hr_analysis,
+                                                   height=28)
         self.history_recompute_btn.pack(side="right")
 
         # --- trend napriec relaciami: metrika + casove obdobie sa daju
-        # prepnut (chips), graf aj text sa prekreslia (_refresh_history_trend) ---
+        # prepnut, graf aj text sa prekreslia (_refresh_history_trend) ---
         tp = ui_kit.Panel(scroll, pal, title=tr("history.trend_title"))
         tp.pack(fill="x", pady=(14, 0))
 
         # Dva rady chipov pod sebou vyzerali ako jedna mriezka osmich
         # tlacidiel - z obrazovky sa nedalo precitat, ze horny rad meni CO
         # a dolny ZA AKE OBDOBIE. Popisok vlavo to povie jednym slovom.
+        #
+        # DVA OVLADACE, NIE DVANAST RAMOV (0.2.2, audit UX). Osem chipov
+        # metriky a styri obdobia boli dvanast oramovanych tlacidiel, ktore
+        # vizualne prebili graf, ktory ovladaju - a ten isty chip znamenal v
+        # appke aj kartu, akciu a odkaz. Metrika je jedna rozbalovacka (vyber
+        # jednej z osmich), obdobie jeden segmentovy prepinac (styri vedla
+        # seba, jedno zvolene - zvolene nesie text v akcente).
         self.history_metric = getattr(self, "history_metric", "baseline")
+        self._history_metric_by_label = {tr(t): k for k, t, _c in self.HISTORY_METRICS}
         metric_row = ctk.CTkFrame(tp.body, fg_color="transparent")
-        metric_row.pack(fill="x", pady=(0, 4))
+        metric_row.pack(fill="x", pady=(0, 8))
         ctk.CTkLabel(metric_row, text=tr("history.pick_metric").upper(), width=74,
-                     font=ui_kit.ui(9, "bold"), text_color=pal["text_faint"],
-                     anchor="w").pack(side="left", anchor="n")
-        # Osem metrik sa do jedneho radu nezmesti - chipy idu do mriezky
-        # po styroch vpravo od popisku, ktory tak ostava jeden pre vsetky.
-        chips = ctk.CTkFrame(metric_row, fg_color="transparent")
-        chips.pack(side="left", fill="x", expand=True)
-        self.history_metric_chips = {}
-        for i, (key, title_key, _color) in enumerate(self.HISTORY_METRICS):
-            btn = ui_kit.chip(chips, pal, tr(title_key),
-                              lambda k=key: self._set_history_metric(k),
-                              pressed=(key == self.history_metric))
-            row, col = divmod(i, self.HISTORY_METRIC_CHIPS_PER_ROW)
-            btn.grid(row=row, column=col, sticky="w", padx=(0, 6),
-                     pady=(4, 0) if row else (0, 0))
-            self.history_metric_chips[key] = btn
+                     font=ui_kit.ui(10, "bold"), text_color=pal["text_faint"],
+                     anchor="w").pack(side="left")
+        self.history_metric_menu = ui_kit.option_menu(
+            metric_row, pal, values=list(self._history_metric_by_label),
+            command=lambda label: self._set_history_metric(
+                self._history_metric_by_label.get(label, self.history_metric)))
+        self.history_metric_menu.set(self._history_metric_label(self.history_metric))
+        self.history_metric_menu.pack(side="left")
 
         self.history_period = getattr(self, "history_period", hr_stats.PERIOD_WEEK)
+        self._history_period_by_label = {tr(f"history.period.{k}"): k
+                                         for k in hr_stats.PERIODS}
         period_row = ctk.CTkFrame(tp.body, fg_color="transparent")
         period_row.pack(fill="x", pady=(0, 10))
         ctk.CTkLabel(period_row, text=tr("history.pick_period").upper(), width=74,
-                     font=ui_kit.ui(9, "bold"), text_color=pal["text_faint"],
+                     font=ui_kit.ui(10, "bold"), text_color=pal["text_faint"],
                      anchor="w").pack(side="left")
-        self.history_period_chips = {}
-        for key in hr_stats.PERIODS:
-            btn = ui_kit.chip(period_row, pal, tr(f"history.period.{key}"),
-                              lambda k=key: self._set_history_period(k),
-                              pressed=(key == self.history_period))
-            btn.pack(side="left", padx=(0, 6))
-            self.history_period_chips[key] = btn
+        self.history_period_switch = ctk.CTkSegmentedButton(
+            period_row, values=list(self._history_period_by_label), height=28,
+            font=ui_kit.ui(12), fg_color=pal["surface_alt"],
+            selected_color=pal["accent2"], selected_hover_color=pal["accent2_hover"],
+            unselected_color=pal["surface_alt"], unselected_hover_color=pal["border"],
+            text_color=pal["text"],
+            command=lambda label: self._set_history_period(
+                self._history_period_by_label.get(label, self.history_period)))
+        self.history_period_switch.set(tr(f"history.period.{self.history_period}"))
+        self.history_period_switch.pack(side="left")
+        ui_kit.oznac_zvoleny_segment(self.history_period_switch, pal)
 
         self.history_trend_caption = ctk.CTkLabel(tp.body, text="", font=ui_kit.ui(11),
                                                   text_color=pal["text_dim"], anchor="w")
         self.history_trend_caption.pack(fill="x")
         self.history_trend = ui_kit.TrendChart(tp.body, pal, height=158)
         self.history_trend.pack(fill="x", pady=(6, 0))
-        self.history_trend_delta = ctk.CTkLabel(tp.body, text="", font=ui_kit.mono(11),
+        # Veta, nie vypis z konzoly: monospace je len v tabulke a na osiach.
+        self.history_trend_delta = ctk.CTkLabel(tp.body, text="", font=ui_kit.ui(12),
                                                 text_color=pal["text"], anchor="w")
         self.history_trend_delta.pack(fill="x", pady=(4, 0))
         self.history_info_wrap = ctk.CTkFrame(tp.body, fg_color="transparent")
@@ -205,7 +219,7 @@ class HistoryMixin:
         days_box.pack(side="right", padx=(18, 0))
         days_box.pack_propagate(False)
         ctk.CTkLabel(days_box, text=tr("history.days_played").upper(),
-                     font=ui_kit.ui(9, "bold"), text_color=pal["text_faint"],
+                     font=ui_kit.ui(10, "bold"), text_color=pal["text_faint"],
                      anchor="w").pack(fill="x")
         # Farba je `text`, nie `success`: zelena bola z cias, ked to bola
         # seria a dala sa "drzat". Pocet dni nie je uspech ani neuspech.
@@ -245,7 +259,7 @@ class HistoryMixin:
             cell.grid(row=row, column=col, sticky="w", padx=(0, 12),
                       pady=(10, 0) if row else (0, 0))
             ctk.CTkLabel(cell, text=tr(label_key).upper(),
-                         font=ui_kit.ui(9, "bold"), text_color=pal["text_faint"],
+                         font=ui_kit.ui(10, "bold"), text_color=pal["text_faint"],
                          anchor="w").pack(fill="x")
             value = ctk.CTkLabel(cell, text="—", font=ui_kit.display(18),
                                  text_color=pal[token], anchor="w")
@@ -268,13 +282,10 @@ class HistoryMixin:
         # otazka, ktoru si pri appke merajucej tep polozi kazdy.
         export_row = ctk.CTkFrame(sp.body, fg_color="transparent")
         export_row.pack(fill="x", pady=(12, 0))
-        self.history_export_btn = ctk.CTkButton(
-            export_row, text="  " + tr("history.export_btn"),
+        self.history_export_btn = ui_kit.button(
+            export_row, pal, "  " + tr("history.export_btn"),
             image=self._icon_image("table", 26), compound="left",
-            width=210, height=34, corner_radius=ui_kit.RADIUS_CONTROL,
-            border_width=1, border_color=pal["border"], fg_color="transparent",
-            hover_color=pal["surface_alt"], text_color=pal["text_dim"],
-            font=ui_kit.ui(12), command=self.export_sessions_csv)
+            width=210, height=34, command=self.export_sessions_csv)
         self.history_export_btn.pack(side="left")
         self.history_export_note = ctk.CTkLabel(
             export_row, text=tr("history.export_local"), font=ui_kit.ui(10),
@@ -283,17 +294,21 @@ class HistoryMixin:
 
         infos = ctk.CTkFrame(sp.body, fg_color="transparent")
         infos.pack(fill="x", pady=(10, 0))
-        self.history_info_hrr = self._metric_info(infos, pal, "hrr", wrap=640)
+        self.history_info_hrr = self._metric_info(infos, pal, "hrr", wrap=640,
+                                                  titled=True)
         self.history_info_hrr.pack(fill="x")
-        self.history_info_zones = self._metric_info(infos, pal, "zones", wrap=640)
-        self.history_info_zones.pack(fill="x", pady=(6, 0))
-        self.history_info_hrpi = self._metric_info(infos, pal, "hrpi", wrap=640)
-        self.history_info_hrpi.pack(fill="x", pady=(6, 0))
+        self.history_info_zones = self._metric_info(infos, pal, "zones", wrap=640,
+                                                    titled=True)
+        self.history_info_zones.pack(fill="x", pady=(10, 0))
+        self.history_info_hrpi = self._metric_info(infos, pal, "hrpi", wrap=640,
+                                                   titled=True)
+        self.history_info_hrpi.pack(fill="x", pady=(10, 0))
         # "Cítené · merané" v detaile su dve cisla bez sipky a bez verdiktu -
         # bez vety o tom, co je co, by sa "6 · 8" citalo ako "appka tvrdi,
         # ze sa mylis". Graf tuto metriku nema, tak vysvetlenie stoji tu.
-        self.history_info_felt = self._metric_info(infos, pal, "felt_vs_measured", wrap=640)
-        self.history_info_felt.pack(fill="x", pady=(6, 0))
+        self.history_info_felt = self._metric_info(infos, pal, "felt_vs_measured", wrap=640,
+                                                   titled=True)
+        self.history_info_felt.pack(fill="x", pady=(10, 0))
 
         # --- Ako to vzniklo: rozbalitelny panel, text autora + tri priklady ---
         # (0.2) Namiesto dlheho zoznamu studii - cely je v ZDROJE.md.
@@ -375,25 +390,33 @@ class HistoryMixin:
         info = self._metric_info(wrap, self.pal, metric_key, wrap=640)
         info.pack(fill="x")
 
+    def _history_metric_label(self, metric):
+        """Zobrazovane meno metriky trendu (popisok v rozbalovacke)."""
+        for key, title_key, _c in self.HISTORY_METRICS:
+            if key == metric:
+                return tr(title_key)
+        return tr(self.HISTORY_METRICS[0][1])
+
     def _set_history_metric(self, metric):
         self.history_metric = metric
-        pal = self.pal
-        for key, btn in self.history_metric_chips.items():
-            btn.configure(
-                fg_color=pal["accent2"] if key == metric else "transparent",
-                border_color=pal["accent"] if key == metric else pal["border"],
-                text_color=pal["text"] if key == metric else pal["text_dim"])
+        menu = getattr(self, "history_metric_menu", None)
+        if menu is not None:
+            try:
+                menu.set(self._history_metric_label(metric))
+            except Exception:
+                pass
         self._render_history_metric_info()
         self._refresh_history_trend()
 
     def _set_history_period(self, period):
         self.history_period = period
-        pal = self.pal
-        for key, btn in self.history_period_chips.items():
-            btn.configure(
-                fg_color=pal["accent2"] if key == period else "transparent",
-                border_color=pal["accent"] if key == period else pal["border"],
-                text_color=pal["text"] if key == period else pal["text_dim"])
+        prepinac = getattr(self, "history_period_switch", None)
+        if prepinac is not None:
+            try:
+                prepinac.set(tr(f"history.period.{period}"))
+            except Exception:
+                pass
+            ui_kit.oznac_zvoleny_segment(prepinac, self.pal)
         self._refresh_history_trend()
 
     def _refresh_history_trend(self):
@@ -448,10 +471,13 @@ class HistoryMixin:
                                      if b[bucket_key] is not None])
 
         caption.configure(text=f"{tr(title_key)}  ·  {tr(f'history.unit.{metric}')}")
+        # Prazdne obdobie: jedna veta v strede nizsieho grafu namiesto
+        # prazdnej plochy ~230 px a vety o nicom pod nou (audit UX).
+        prazdne = tr("history.empty_period") if not raw_values else ""
         self.history_trend.set_series(chart_values, labels=labels,
                                       color=pal[color_token], band=band,
                                       band_label=tr("history.band_label"), bars=bars,
-                                      decimals=decimals)
+                                      decimals=decimals, empty_text=prazdne)
 
         if len(raw_values) >= 2:
             first_v, last_v = raw_values[0], raw_values[-1]
@@ -476,7 +502,7 @@ class HistoryMixin:
         elif raw_values:
             delta_text = tr("history.sessions_count", n=len(period_sessions))
         else:
-            delta_text = tr("history.empty_period")
+            delta_text = ""          # veta je uz v grafe (`empty_text`)
         self.history_trend_delta.configure(text=delta_text)
 
     def _refresh_history_page(self):
@@ -512,21 +538,39 @@ class HistoryMixin:
             cols = (("col_date", 118), ("col_duration", 62), ("col_avg", 66),
                     ("col_minmax", 84), ("col_over", 86), ("col_triggers", 70),
                     ("col_peak", 92), ("col_hrr", 52), ("col_hrpi", 52))
+
+            # TABULKA NA CELU SIRKU (0.2.2, audit UX). Stlpce mali pevne
+            # sirky a tabulka koncila v dvoch tretinach panela; cisla boli
+            # zarovnane vlavo, takze jednotky a desiatky nesli pod sebou.
+            # Teraz je to mriezka: sirka zo zoznamu je minimum a zaroven vaha,
+            # takze sa stlpce natiahnu na celu sirku v tom istom pomere -
+            # hlavicka aj kazdy riadok maju rovnaku konfiguraciu, preto sedia
+            # pod sebou. Datum vlavo, cisla vpravo.
+            def _stlpce(ramec):
+                for i, (_k, sirka) in enumerate(cols):
+                    ramec.grid_columnconfigure(i, minsize=sirka, weight=sirka)
+
+            def _zarovnanie(i):
+                return "w" if i == 0 else "e"
+
             head = ctk.CTkFrame(box, fg_color="transparent")
             head.pack(fill="x")
-            for key, width in cols:
-                ctk.CTkLabel(head, text=tr(f"history.{key}"), width=width, anchor="w",
-                             font=ui_kit.ui(10, "bold"), text_color=pal["text_faint"]).pack(
-                    side="left")
-            ctk.CTkFrame(box, fg_color=pal["line_soft"], height=1, corner_radius=0).pack(fill="x")
+            _stlpce(head)
+            for i, (key, width) in enumerate(cols):
+                ctk.CTkLabel(head, text=tr(f"history.{key}"), width=width,
+                             anchor=_zarovnanie(i), font=ui_kit.ui(10, "bold"),
+                             text_color=pal["text_faint"]).grid(
+                    row=0, column=i, sticky="ew", padx=(0, 0 if i == 0 else 6))
+            ui_kit.linka(box, pal).pack(fill="x")
             for poradie, s in enumerate(reversed(sessions)):
                 if poradie >= self.HISTORY_ROWS:
                     break
                 index = len(sessions) - 1 - poradie      # index do `sessions`
                 vybrana = index == self._history_detail_index(sessions)
                 row = ctk.CTkFrame(box, fg_color=pal["surface_alt"] if vybrana
-                                   else "transparent")
+                                   else "transparent", corner_radius=0)
                 row.pack(fill="x")
+                _stlpce(row)
                 started = float(s.get("started") or 0)
                 date = time.strftime("%d.%m.%Y %H:%M", time.localtime(started)) if started else "-"
                 hrr = s.get("hrr_bpm")
@@ -543,11 +587,22 @@ class HistoryMixin:
                          f"{int(hrr):+d}" if hrr is not None else "-",
                          str(s.get("hrpi") if s.get("hrpi") is not None else "-"))
                 bunky = [row]
-                for (key, width), text in zip(cols, cells):
-                    label = ctk.CTkLabel(row, text=text, width=width, anchor="w",
+                for i, ((key, width), text) in enumerate(zip(cols, cells)):
+                    label = ctk.CTkLabel(row, text=text, width=width,
+                                         anchor=_zarovnanie(i),
                                          font=ui_kit.mono(10), text_color=pal["text"])
-                    label.pack(side="left")
+                    label.grid(row=0, column=i, sticky="ew",
+                               padx=(0, 0 if i == 0 else 6))
                     bunky.append(label)
+
+                # Hover = `surface_alt`, ako vybrany riadok: riadok je
+                # klikatelny a bez odozvy pod mysou to nebolo poznat.
+                def _hover(_e=None, r=row, zap=True, vyb=vybrana):
+                    try:
+                        r.configure(fg_color=self.pal["surface_alt"] if (zap or vyb)
+                                    else "transparent")
+                    except Exception:
+                        pass
                 # Riadok je klikatelny: otvori tu istu relaciu v detaile
                 # nad tabulkou. Bindovat treba aj kazdu bunku - klik na
                 # popisok sa na ramec nepropaguje.
@@ -568,8 +623,9 @@ class HistoryMixin:
                     # neznama a nerobim, ze nie je.
                     w.bind("<Button-1>",
                            lambda _e=None, i=index: self._pick_history_session(i))
-                ctk.CTkFrame(box, fg_color=pal["line_soft"], height=1,
-                             corner_radius=0).pack(fill="x")
+                    w.bind("<Enter>", lambda _e=None, h=_hover: h(zap=True), add="+")
+                    w.bind("<Leave>", lambda _e=None, h=_hover: h(zap=False), add="+")
+                ui_kit.linka(box, pal).pack(fill="x")
 
         self._refresh_history_rhythm(sessions)
         self._refresh_history_detail(sessions)
@@ -902,7 +958,21 @@ class HistoryMixin:
                 ctk.CTkLabel(row, text=f"{int(params['delta']):+d}",
                              font=ui_kit.mono(12), text_color=farba,
                              anchor="e").pack(side="right", padx=(10, 0))
-        stamp = self._hr_insights_at
+        # PRAZDNY STAV (0.2.2, audit UX): kym je jedinym postrehom pocitadlo
+        # "0 z 3 relacii", "Prepocitat" aj "Analyza z ..." slubovali vysledok,
+        # ktory este nemoze existovat. Skryju sa, vratia sa s prvym postrehom.
+        len_postup = bool(self._hr_insights) and all(
+            i.get("key") == "need_more" for i in self._hr_insights)
+        tlacidlo = getattr(self, "history_recompute_btn", None)
+        if tlacidlo is not None:
+            try:
+                if len_postup:
+                    tlacidlo.pack_forget()
+                elif not tlacidlo.winfo_manager():
+                    tlacidlo.pack(side="right")
+            except Exception:
+                pass
+        stamp = None if len_postup else self._hr_insights_at
         if stamp:
             self.history_insights_panel.set_right(tr(
                 "history.analysis_stamp",

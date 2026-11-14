@@ -344,11 +344,14 @@ class _Widget:
         self.mapped = False
 
 
-def _dnes(stats, hr_state, lost):
+def _dnes(stats, hr_state, lost, listening=False):
     import theme as theme_mod
     app_mod = _app()
     stopa, hero = [], []
+    # 0.2.2 (audit UX): jas fotky na Dnes ide za stavom sledovania
+    # (`_sync_dnes_hero`), nie za tym, ci chodi tep.
     a = types.SimpleNamespace(
+        listening=listening,
         hr_stats=stats, _hr_state=hr_state, _hr_lost=lost,
         pal=theme_mod.tokens(theme_mod.MODERN), hr_critical_bpm=110,
         dnes_bpm=_Widget(), dnes_spark=_Widget(), dnes_load=_Widget(),
@@ -368,7 +371,8 @@ def test_dnes_pocas_vypadku_necha_zivy_blok_bez_falosneho_pokoja():
     st.note_dropout()
     st.clear_live()
     assert st.zone == hr_stats.ZONE_CALM     # samo o sebe by klamalo...
-    a, stopa, hero = _dnes(st, "linked", lost=True)
+    # vypadok hodiniek prichadza uprostred vecera, teda pocas sledovania
+    a, stopa, hero = _dnes(st, "linked", lost=True, listening=True)
     assert a.dnes_bpm.kw["text"] == "--"
     assert a.dnes_zone.kw["text"] == "—", "...preto ho Dnes nesmie citat"
     assert a.dnes_load.hodnota == 0
@@ -540,7 +544,8 @@ def _retaz_cez_telefon(text):
 def test_ticho_bez_prekrocenia_nehodnoti_telo():
     zaznam = i18n.STRINGS["session.end.none_never"]
     assert "telo" not in zaznam["sk"] and "body" not in zaznam["en"]
-    assert "hranic" in zaznam["sk"] and "threshold" in zaznam["en"]
+    # 0.2.2: "hranica" je len BPM, zataz ma "prah" (en threshold)
+    assert "prah" in zaznam["sk"] and "threshold" in zaznam["en"]
 
 
 def test_zmenene_vety_nenechali_stary_preklad():
@@ -566,7 +571,7 @@ def test_postreh_o_vypadkoch_netvrdi_malo_hlasok():
     postreh = i18n.STRINGS["insight.cue_dropouts"]
     assert "hlášok málo" not in postreh["sk"]
     assert "few cues" not in postreh["en"]
-    assert "môže byť hlášok menej" in postreh["sk"]
+    assert "môže byť pripomienok menej" in postreh["sk"]
     assert "may be fewer cues" in postreh["en"]
     # „a to sa začalo" sa dalo čítať ako „a to (konkrétne)…" - počítanie
     # je v oboch vetách pomenované

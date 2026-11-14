@@ -36,7 +36,6 @@ import math
 import threading
 import time
 import tkinter as tk
-import webbrowser
 from tkinter import font as tkfont
 
 import customtkinter as ctk
@@ -139,6 +138,21 @@ class TodayMixin:
         self._dnes_breath_phase = 0.25
         self._refresh_dnes_backdrop(force=True)
         self._ensure_dnes_tick()
+
+    def _sync_dnes_hero(self):
+        """Jas fotky za ensom podla toho, ci appka SLEDUJE (0.2.2, audit UX).
+
+        Do 0.2.2 sa jas riadil pripojenim hodiniek: ten isty stav "Nesledujem
+        nic" mal raz stmavenu, raz jasnu fotku podla toho, ci chodil tep - a
+        hero pritom tvrdil, ze appka stoji. Teraz: zastavena = jasne dojo,
+        sleduje = tlmene (dycha uz len pas). Prekresli sa len pri zmene."""
+        jasne = not bool(getattr(self, "listening", False))
+        if jasne == bool(getattr(self, "_dnes_hero_on", False)):
+            return
+        if jasne:
+            self._start_dnes_hero()
+        else:
+            self._stop_dnes_hero()
 
     def _stop_dnes_hero(self):
         """Prepne dojo na tlmenu fotku (pocuvanie). Enso môže žiť ďalej (počúva /
@@ -510,11 +524,11 @@ class TodayMixin:
                 if ukaz and not live.winfo_ismapped():
                     empty.pack_forget()
                     live.pack(fill="x")
-                    self._stop_dnes_hero()       # dýcha už len pás
                 elif not ukaz and not empty.winfo_ismapped():
                     live.pack_forget()
                     empty.pack(fill="x", pady=(6, 0))
-                    self._start_dnes_hero()      # rozdýchaj dojo za ensom
+                # cez triedu: testy volaju tuto metodu na atrape appky
+                TodayMixin._sync_dnes_hero(self)
         except Exception:
             self._dnes_refresh_fails = getattr(self, "_dnes_refresh_fails", 0) + 1
             if self._dnes_refresh_fails == 1:
@@ -572,6 +586,11 @@ class TodayMixin:
 
         Token, nie hodnota: kartu aj bodku vo vybere treba po zmene temy
         prefarbit, a token si novu farbu najde sam."""
+        # FARBA ZNACI STAV, NIE METRIKU (0.2.2, audit UX) - to iste pravidlo
+        # ako `HISTORY_METRICS`: cislo je `text`, farbu pasma ma len hodnota,
+        # ktora pasmom je (pokoj, cas nad hranicou), `blue` len zotavenie.
+        # "Najvyssi tep" v `zone_critical` vyzeral ako poplach pri beznom
+        # hernom maxime.
         return [
             # tep patri do radu pasiem, nie do success/warn/danger - inak by
             # karta "pokojová základňa" svietila inou zelenou, nez akou je
@@ -579,17 +598,17 @@ class TodayMixin:
             ("baseline", tr("metric.baseline.title"), "zone_calm"),
             ("hrr", tr("metric.hrr.title"), "blue"),
             ("over", tr("metric.over.title"), "zone_high"),
-            ("breath", tr("metric.breath.title"), "murasaki"),
-            ("avg", tr("metric.avg.title"), "zone_calm"),
-            ("max", tr("metric.max.title"), "zone_critical"),
-            ("peak", tr("metric.peak.title"), "accent"),
-            ("week", tr("metric.week.title"), "blue"),
+            ("breath", tr("metric.breath.title"), "text"),
+            ("avg", tr("metric.avg.title"), "text"),
+            ("max", tr("metric.max.title"), "text"),
+            ("peak", tr("metric.peak.title"), "text"),
+            ("week", tr("metric.week.title"), "text"),
             # 0.2: ta ista farba ako ciara tej istej metriky v Historii
             # (HISTORY_METRICS) - karta a graf su jedna vec
-            ("session_len", tr("metric.session_len.title"), "text_dim"),
-            ("last_cue", tr("metric.last_cue.title"), "murasaki"),
+            ("session_len", tr("metric.session_len.title"), "text"),
+            ("last_cue", tr("metric.last_cue.title"), "text"),
             ("calm_time", tr("metric.calm_time.title"), "zone_calm"),
-            ("signal", tr("metric.signal.title"), "blue"),
+            ("signal", tr("metric.signal.title"), "text"),
             # neutralna farba: ani jedno z dvoch cisel nie je "to spravne"
             ("felt_vs_measured", tr("metric.felt_vs_measured.title"), "text"),
         ]
@@ -635,24 +654,33 @@ class TodayMixin:
         "week" a "felt_vs_measured" z ulozenej historie relacii
         (hr_sessions.json, cez `_history_cached`)."""
         stats = self.hr_stats
+        # BEZ TEPU "—", NIE NULA (0.2.2, audit UX). Karta odvodena z tepu,
+        # ktory este neprisiel, ukazovala "0:00 nad hranicou" a ASCII "-" -
+        # vyzeralo to ako meranie, nie ako "zatial nic". Pocet pripomienok
+        # ostava cislo: nula pripomienok je skutocna hodnota.
+        bez_tepu = not getattr(stats, "session_count", 0)
         if stat_id == "baseline":
             base = stats.session_baseline
-            return (str(int(round(base))) if base else "-", tr("dashboard.unit.baseline"))
+            return (str(int(round(base))) if base else "—", tr("dashboard.unit.baseline"))
         if stat_id == "hrr":
             hrr = stats.hrr if stats.session_count else None
-            return (f"{hrr:+d}" if hrr is not None else "-", tr("dashboard.unit.hrr"))
+            return (f"{hrr:+d}" if hrr is not None else "—", tr("dashboard.unit.hrr"))
         if stat_id == "over":
+            if bez_tepu:
+                return ("—", tr("dashboard.unit.over"))
             over = int(stats.time_over)
             return (f"{over // 60}:{over % 60:02d}", tr("dashboard.unit.over"))
         if stat_id == "breath":
             return (str(stats.auto_triggers), tr("dashboard.unit.breath"))
         if stat_id == "avg":
-            return (str(int(round(stats.average))) if stats.average else "-",
+            return (str(int(round(stats.average))) if stats.average else "—",
                     tr("dashboard.unit.avg"))
         if stat_id == "max":
-            return (str(int(stats.session_max)) if stats.session_max else "-",
+            return (str(int(stats.session_max)) if stats.session_max else "—",
                     tr("dashboard.unit.max"))
         if stat_id == "peak":
+            if bez_tepu:
+                return ("—", tr("dashboard.unit.peak"))
             return (str(int(round(stats.peak_stress))), tr("dashboard.unit.peak"))
         if stat_id == "week":
             try:
@@ -706,7 +734,7 @@ class TodayMixin:
             except Exception:
                 par = None
             return (self._fmt_citene_merane(par), tr("dashboard.unit.felt_vs_measured"))
-        return ("-", "")
+        return ("—", "")
 
     def _rebuild_dashboard_stats_grid(self):
         grid = getattr(self, "dashboard_grid", None)
@@ -777,7 +805,7 @@ class TodayMixin:
                              border_width=1, border_color=pal["border"], width=230)
         frame.pack(padx=1, pady=1)
         ctk.CTkFrame(frame, width=228, height=0, fg_color="transparent").pack()
-        ctk.CTkLabel(frame, text=tr("dashboard.picker_title").upper(), font=ui_kit.ui(9, "bold"),
+        ctk.CTkLabel(frame, text=tr("dashboard.picker_title").upper(), font=ui_kit.ui(10, "bold"),
                      text_color=pal["text_faint"], anchor="w").pack(fill="x", padx=12, pady=(10, 4))
         self._dashboard_picker_rows = ctk.CTkFrame(frame, fg_color="transparent")
         self._dashboard_picker_rows.pack(fill="both", expand=True, padx=6, pady=(0, 4))
@@ -1080,7 +1108,11 @@ class TodayMixin:
         kluc = (size, weight, underline, round(mierka, 2))
         f = self._dnes_fonts.get(kluc)
         if f is None:
-            f = tkfont.Font(family="Segoe UI", size=-max(1, int(round(size * mierka))),
+            # Pismo z `ui_kit.fonts()`, nie natvrdo "Segoe UI": v japoncine a
+            # cinstine ma appka vlastne pismo s CJK znakmi (inak Tk kazdy znak
+            # dohladal v inom nahradnom pisme a riadok sa rozsypal).
+            f = tkfont.Font(family=ui_kit.fonts()["ui"],
+                            size=-max(1, int(round(size * mierka))),
                             weight=weight, underline=underline)
             self._dnes_fonts[kluc] = f
         return f
@@ -1215,7 +1247,10 @@ class TodayMixin:
         if veta:
             y = self._canvas_text(canvas, cx, y, veta, self._cvfont(12),
                                   pal["text_dim"], wrap=wrap, shadow=True) + int(gap * 1.4)
-        y = self._canvas_credit(canvas, cx, y, pal) + gap
+        # POZN: tu bol riadok "© 2026 Dandurfin · GPLv3" (meno klikatelne na
+        # Twitch). Odisiel z hero (0.2.2, audit UX): licencia aj verzia su v
+        # titulkovej liste na kazdej stranke a autor s odkazmi v O appke
+        # (ⓘ) - v strede stavu bol treti, najmenej potrebny riadok.
         if last:
             y = self._canvas_text(canvas, cx, y, last, self._cvfont(10),
                                   pal["text_faint"], wrap=wrap) + gap
@@ -1249,33 +1284,9 @@ class TodayMixin:
         bb = canvas.bbox(item)
         return bb[3] if bb else y_top
 
-    def _canvas_credit(self, canvas, cx, y_top, pal):
-        """Riadok "© 2026 Dandurfin · GPLv3" vycentrovany; meno podciarknute a
-        klikatelne (Twitch). Kresli sa po castiach vedla seba."""
-        f = self._cvfont(10)
-        fu = self._cvfont(10, underline=True)
-        pre, meno, post = "© 2026 ", "Dandurfin", "  ·  GPLv3"
-        try:
-            wpre, wmeno, wpost = f.measure(pre), fu.measure(meno), f.measure(post)
-        except Exception:
-            wpre = wmeno = wpost = 0
-        x = cx - (wpre + wmeno + wpost) / 2
-        canvas.create_text(x + 1, y_top + 1, text=pre, anchor="nw", font=f,
-                           fill="#0b0b0f", tags=("block", "dtext"))
-        canvas.create_text(x, y_top, text=pre, anchor="nw", font=f,
-                           fill=pal["text_faint"], tags=("block", "dtext"))
-        x += wpre
-        canvas.create_text(x, y_top, text=meno, anchor="nw", font=fu,
-                           fill=pal["text_dim"], tags=("block", "dtext", "credit"))
-        x += wmeno
-        canvas.create_text(x, y_top, text=post, anchor="nw", font=f,
-                           fill=pal["text_faint"], tags=("block", "dtext"))
-        bb = canvas.bbox("credit")
-        return bb[3] if bb else y_top
-
     def _record_dnes_hits(self, canvas):
-        """Zapamata bboxy klikacich zon (enso, kredit) PO vycentrovani."""
-        for tag in ("enso", "credit"):
+        """Zapamata bboxy klikacich zon (enso) PO vycentrovani."""
+        for tag in ("enso",):
             try:
                 bb = canvas.bbox(tag)
             except Exception:
@@ -1298,20 +1309,11 @@ class TodayMixin:
 
     def _dnes_canvas_motion(self, event):
         hit = getattr(self, "_dnes_hit", {})
-        over = (self._in_bbox(event.x, event.y, hit.get("enso"))
-                or self._in_bbox(event.x, event.y, hit.get("credit")))
+        over = self._in_bbox(event.x, event.y, hit.get("enso"))
         self._dnes_set_cursor("hand2" if over else "")
 
     def _dnes_canvas_click(self, event):
         hit = getattr(self, "_dnes_hit", {})
-        if self._in_bbox(event.x, event.y, hit.get("credit")):
-            tw = getattr(self, "_dnes_twitch", None)
-            if tw:
-                try:
-                    webbrowser.open(tw)
-                except Exception:
-                    app_log.exception("kredit: otvorenie Twitchu zlyhalo")
-            return
         if self._in_bbox(event.x, event.y, hit.get("enso")):
             # Klik na znacku = spinac pocuvania (rovnako, ako mal widget).
             try:

@@ -291,12 +291,14 @@ def test_readme_a_known_issues_popisuju_hlas_podla_slov():
     for metoda in ("create_profile", "_handle_game_found"):
         assert "self._hlas_k_hlaskam(new_slots)" in zdroj_metody(metoda), metoda
 
-    readme = _plain("README.md")
+    # Od 0.2.2d su pravidla hlasu v docs/HOW-IT-WORKS.md, nie v README;
+    # "reminder" je v dokumentoch "cue" ako v appke.
+    readme = _plain("docs/HOW-IT-WORKS.md")
     assert ("which switch to a voice of their own while you're still on the "
             "default") not in readme
     assert ("get a voice of that language while you're still on the default "
             "voice: on a first start in that language, when a profile is "
-            "created in it, or when you switch to it and the reminders that "
+            "created in it, or when you switch to it and the cues that "
             "speak in the profile you're in use its built-in words (not "
             "reworded ones)") in readme
     assert ("switching the language with English words keeps the English "

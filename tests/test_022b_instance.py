@@ -219,8 +219,9 @@ def test_obchadzka_a_iny_os_mutex_nevytvaraju(mm, environ, platforma):
 
 
 def test_obchadzka_ma_verejne_meno_a_readme_ju_menuje(mm):
+    # Od 0.2.2d je spustenie zo zdrojakov v DEVELOPMENT.md, nie v README.
     assert mm.POVOL_VIAC_KOPII == "ZANSHIN_ALLOW_MULTI"
-    with open(os.path.join(ROOT, "README.md"), encoding="utf-8-sig") as fh:
+    with open(os.path.join(ROOT, "DEVELOPMENT.md"), encoding="utf-8-sig") as fh:
         readme = " ".join(fh.read().split())
     assert "`%s=1`" % mm.POVOL_VIAC_KOPII in readme
     assert "only one copy runs at a time" in readme

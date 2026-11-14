@@ -403,6 +403,7 @@ def test_texty_maju_vsetky_jazyky():
         for jazyk in i18n.LANGUAGES:
             assert i18n.tr_lang(jazyk, kluc).strip(), (kluc, jazyk)
         assert i18n.tr_lang("sk", kluc) != i18n.tr_lang("en", kluc)
-    # riadok hovori aj to, co funguje dalej - nie len, co nejde
-    assert "TCP" in i18n.tr_lang("sk", "log.hr_udp_busy")
-    assert "TCP" in i18n.tr_lang("en", "log.hr_udp_error")
+    # riadok hovori aj to, co funguje dalej - nie len, co nejde (0.2.2: bez
+    # zargonu TCP - menuje appku pre Android, ktora ide cez TCP dalej)
+    assert "Android" in i18n.tr_lang("sk", "log.hr_udp_busy")
+    assert "Android" in i18n.tr_lang("en", "log.hr_udp_error")

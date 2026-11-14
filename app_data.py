@@ -71,24 +71,27 @@ class DataMixin:
                      text_color=pal["text_dim"], anchor="w",
                      justify="left", wraplength=560).pack(fill="x", pady=(0, 12))
 
+        # HIERARCHIA TLACIDIEL (0.2.2, audit UX). "Zmazat historiu" vyzeralo
+        # presne ako "Importovat" a stalo hned vedla - najnebezpecnejsia
+        # akcia appky ako neutralna. Teraz: export a import su vedlajsie
+        # tlacidla (ram >= 3:1), zmazanie je `danger` (ram aj text v cervenej)
+        # a odsadene o 24 px, aby sa netrafilo omylom.
         rad = ctk.CTkFrame(panel.body, fg_color="transparent")
         rad.pack(fill="x")
-        for text, prikaz, hlavne in (
-                (tr("data.export.btn"), self.export_all_json, True),
-                (tr("data.import.btn"), self.import_all_json, False),
-                (tr("data.delete.btn"), self.delete_history, False)):
-            ctk.CTkButton(
-                rad, text=text, height=32,
-                corner_radius=ui_kit.RADIUS_CONTROL,
-                fg_color=pal["accent2"] if hlavne else pal["surface_alt"],
-                hover_color=pal["accent2_hover"] if hlavne else pal["border"],
-                text_color=pal["text"], font=ui_kit.ui(12),
-                command=prikaz).pack(side="left", padx=(0, 8))
+        for text, prikaz in ((tr("data.export.btn"), self.export_all_json),
+                             (tr("data.import.btn"), self.import_all_json)):
+            ui_kit.button(rad, pal, text, command=prikaz,
+                          height=32).pack(side="left", padx=(0, 8))
+        ui_kit.button(rad, pal, tr("data.delete.btn"), kind="danger",
+                      command=self.delete_history,
+                      height=32).pack(side="left", padx=(16, 0))
 
+        # Vysledok exportu/importu. Prazdny riadok sa NEPAKUJE - prazdny
+        # CTkLabel je vysoky ako riadok textu a pod tlacidlami ostavala
+        # nevysvetlena medzera. Ukaze sa az s prvou spravou (`_data_note`).
         self.data_note = ctk.CTkLabel(panel.body, text="", font=ui_kit.ui(11),
-                                      text_color=pal["text_faint"], anchor="w",
+                                      text_color=pal["text_dim"], anchor="w",
                                       justify="left", wraplength=560)
-        self.data_note.pack(fill="x", pady=(10, 0))
 
     def show_about(self):
         """Tlacidlo "A" v titulkovej liste: otvor Nastavenia a skoc na O appke.
@@ -101,7 +104,11 @@ class DataMixin:
         self.root.after(80, self._scroll_to_about)
 
     def _scroll_to_about(self):
-        panel = getattr(self, "about_panel", None)
+        self._posun_vseobecne_na(getattr(self, "about_panel", None))
+
+    def _posun_vseobecne_na(self, panel):
+        """Posunie stranku Vseobecne tak, aby `panel` bol hore. Spolocne pre
+        ⓘ (O appke) aj ⚙ pri "Tep v hre" (sekcia panela s tepom)."""
         wrap = getattr(self, "vseobecne_wrap", None)
         if panel is None or wrap is None:
             return
@@ -115,7 +122,7 @@ class DataMixin:
         except Exception:
             # Skrolovanie je pohodlie, nie funkcia. Ked sa nepodari, hrac je
             # aspon na spravnej stranke - to je stale lepsie nez vynimka.
-            app_log.debug("posun na sekciu O appke zlyhal", exc_info=True)
+            app_log.debug("posun na sekciu Vseobecne zlyhal", exc_info=True)
 
     def _build_about_panel(self, parent, pal):
         """Preco appka vznikla a kde najst autora.
@@ -133,38 +140,37 @@ class DataMixin:
                      anchor="w", justify="left", wraplength=560).pack(fill="x")
         ctk.CTkLabel(panel.body, text=tr("about.body"), font=ui_kit.ui(11),
                      text_color=pal["text_dim"], anchor="w", justify="left",
-                     wraplength=560).pack(fill="x", pady=(6, 12))
+                     wraplength=560).pack(fill="x", pady=(6, 8))
+
+        # ODKAZY HNED ZA VETOU, ktora na ne ukazuje (0.2.2, audit UX). Veta
+        # "...zastav sa u nas:" koncila dvojbodkou, za ktorou bolo ~50 px
+        # prazdna a dalsia sekcia - odkazy prisli az pod nou s vlastnym
+        # nadpisom. Chip je tu spravne: je to externy odkaz (jediny druh,
+        # pre ktory chip ostava). Sipka napovie, ze to otvori prehliadac -
+        # rovnaky mechanizmus ako zdroje v Sprievodcovi a v Historii.
+        rad = ctk.CTkFrame(panel.body, fg_color="transparent")
+        rad.pack(fill="x", pady=(0, 16))
+        for nazov, url in guide_content.COMMUNITY_LINKS:
+            ui_kit.chip(rad, pal, "\u2197 " + nazov,
+                        lambda u=url: webbrowser.open(u)).pack(
+                side="left", padx=(0, 8))
 
         # NAJHLBSIA VRSTVA "PRECO" - pre toho, kto cita medzi riadkami.
         # Nie pribeh autora, ale co appka NAOZAJ meria: medzeru medzi meranym
         # a citenym. Zamerne tlmene (text_faint, tenka ciara) - kto cita pomaly
         # a az sem, najde to sam. To je cely zmysel: appka je nastroj na tu
         # medzeru, nie na cislo.
-        ctk.CTkFrame(panel.body, fg_color=pal["line_soft"], height=1,
-                     corner_radius=0).pack(fill="x", pady=(2, 12))
+        ui_kit.linka(panel.body, pal).pack(fill="x", pady=(2, 12))
         ctk.CTkLabel(panel.body, text=tr("about.between_lines"), font=ui_kit.ui(11),
                      text_color=pal["text_faint"], anchor="w", justify="left",
-                     wraplength=560).pack(fill="x", pady=(0, 14))
-
-        ctk.CTkLabel(panel.body, text=tr("about.links").upper(),
-                     font=ui_kit.ui(9, "bold"), text_color=pal["text_faint"],
-                     anchor="w").pack(fill="x", pady=(0, 6))
-        rad = ctk.CTkFrame(panel.body, fg_color="transparent")
-        rad.pack(fill="x")
-        # Sipka napovie, ze to otvori prehliadac - rovnaky mechanizmus ako
-        # zdroje v Sprievodcovi a v Historii.
-        for nazov, url in guide_content.COMMUNITY_LINKS:
-            ui_kit.chip(rad, pal, "\u2197 " + nazov,
-                        lambda u=url: webbrowser.open(u)).pack(
-                side="left", padx=(0, 8))
+                     wraplength=560).pack(fill="x", pady=(0, 4))
 
         # COPYRIGHT A LICENCIA VIDITELNE, nie zahrabane v subore LICENSE.
         #
         # GPLv3 odporuca, aby interaktivny program vypisal kratke oznamenie
         # o autorstve a zaruke. Hlavne je to ale slub hracovi: appka mu
         # priamo v okne hovori, pod cim ju dostal a co s nou smie robit.
-        ctk.CTkFrame(panel.body, fg_color=pal["line_soft"], height=1,
-                     corner_radius=0).pack(fill="x", pady=(16, 10))
+        ui_kit.linka(panel.body, pal).pack(fill="x", pady=(16, 10))
         # Verzia sa berie z `app.version_short`, nie zadrôtovaná - inak sa pri
         # ďalšom bumpe rozíde s titulkom (B27).
         ctk.CTkLabel(panel.body,
@@ -177,6 +183,8 @@ class DataMixin:
         if widget is not None:
             try:
                 widget.configure(text=text)
+                if text and not widget.winfo_manager():
+                    widget.pack(fill="x", pady=(10, 0))
             except Exception:
                 pass
         self.log(text)
@@ -273,9 +281,13 @@ class DataMixin:
                 riadky.append(f"  · {meno} — {tr('data.delete.empty')}")
             else:
                 riadky.append(f"  · {meno} — {polozka['bytes'] / 1024:.0f} kB")
-        if not messagebox.askyesno(
-                tr("data.delete.title"),
-                tr("data.delete.intro") + "\n\n" + "\n".join(riadky)):
+        # Potvrdenie v okne appky, nie systemovy dialog (`ui_kit.confirm`):
+        # tlacidlo nesie sloveso "Zmazat historiu" a je cervene, nie "Ano".
+        if not ui_kit.confirm(
+                self.root, self.pal, tr("data.delete.title"),
+                tr("data.delete.intro") + "\n\n" + "\n".join(riadky),
+                ok_label=tr("data.delete.btn"), cancel_label=tr("common.cancel"),
+                danger=True):
             return
         pocet = data_io.delete_all(DATA_DIR, log=self.log_threadsafe,
                                    legacy_dirs=stare)

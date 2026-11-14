@@ -41,7 +41,7 @@ def _draw_grounding(c, pal, s):
     _arrow(c, cx - 10, 103, cx - 10, 126, pal["text_faint"])
     _arrow(c, cx + 10, 103, cx + 10, 126, pal["text_faint"])
     c.create_text(cx, 140, text=tr("guide.grounding.sketch_caption"),
-                  fill=pal["text_faint"], font=ui_kit.ui(8))
+                  fill=pal["text_faint"], font=ui_kit.ui(10), width=s - 8)
 
 
 def _draw_jaw(c, pal, s):
@@ -53,10 +53,10 @@ def _draw_jaw(c, pal, s):
     c.create_line(cx - 8, cy + 25, cx + 8, cy + 25, fill=pal["text_dim"], width=2)
     _arrow(c, cx, cy + 18, cx, cy + 25, pal["accent2"])
     c.create_text(cx + 26, cy + 21, text="2 mm", fill=pal["text_faint"],
-                 font=ui_kit.ui(8))
+                 font=ui_kit.ui(10), width=s - 8)
     c.create_oval(cx - 40, cy + 4, cx - 32, cy + 12, fill=pal["danger"], outline="")
     c.create_text(cx, s - 12, text=tr("guide.jaw.sketch_caption"), fill=pal["text_faint"],
-                 font=ui_kit.ui(8))
+                 font=ui_kit.ui(10), width=s - 8)
 
 
 def _draw_periphery(c, pal, s):
@@ -72,7 +72,7 @@ def _draw_periphery(c, pal, s):
     c.create_line(cx + 16, cy - 3, s - 30, cy, fill=pal["danger"], width=1)
     c.create_line(cx + 16, cy + 3, s - 30, cy, fill=pal["danger"], width=1)
     c.create_text(s / 2, s - 12, text=tr("guide.periphery.sketch_caption"),
-                 fill=pal["text_faint"], font=ui_kit.ui(8))
+                 fill=pal["text_faint"], font=ui_kit.ui(10), width=s - 8)
 
 
 def _draw_breath(c, pal, s):
@@ -89,7 +89,7 @@ def _draw_breath(c, pal, s):
     c.create_oval(10, s - 34, 28, s - 8, outline=pal["accent2"], width=2)
     c.create_oval(22, s - 34, 40, s - 8, outline=pal["accent2"], width=2)
     c.create_text(s / 2, s - 44, text=tr("guide.breath.sketch_caption"),
-                 fill=pal["text_faint"], font=ui_kit.ui(8))
+                 fill=pal["text_faint"], font=ui_kit.ui(10), width=s - 8)
 
 
 def _draw_philosophy(c, pal, s):
@@ -106,7 +106,7 @@ def _draw_philosophy(c, pal, s):
     c.create_oval(s - 40, 14, s - 16, 38, outline=pal["accent"], width=2)
     c.create_line(24, 44, s - 46, 22, fill=pal["text_dim"], width=2, arrow=tk.LAST)
     c.create_text(s / 2, s - 12, text=tr("guide.philosophy.sketch_caption"),
-                 fill=pal["text_faint"], font=ui_kit.ui(8))
+                 fill=pal["text_faint"], font=ui_kit.ui(10), width=s - 8)
 
 
 SKETCHES = {
@@ -409,8 +409,10 @@ class GuidePanel:
         self.top = ctk.CTkToplevel(app.root)
         self.top.title(tr("guide.window_title"))
         self.top.configure(fg_color=pal["bg"])
-        self.top.geometry("720x680")
-        self.top.minsize(560, 420)
+        # Na stred pracovnej plochy a cely na nej (okno bez ramu OS
+        # neumiestni - otvaralo sa v rohu) - viz `ui_kit.umiestni_dialog`.
+        ui_kit.umiestni_dialog(self.top, app.root, 720, 680,
+                               min_width=560, min_height=420)
         self.top.transient(app.root)
 
         # Vlastna listka namiesto OS ramu - hlavne okno appky OS ram nema,

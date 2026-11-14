@@ -436,7 +436,7 @@ class DevLayerDialog:
                       command=self.fire).pack(side="left")
 
         # Surovy vypis poslednych okien - to jedine, co o merani povie pravdu.
-        ctk.CTkLabel(body, text=tr("dev.windows"), font=ui_kit.ui(9, "bold"),
+        ctk.CTkLabel(body, text=tr("dev.windows"), font=ui_kit.ui(10, "bold"),
                      text_color=pal["text_faint"], anchor="w").pack(
             fill="x", pady=(18, 4))
         self.vypis = ctk.CTkTextbox(body, height=150, fg_color=pal["entry_bg"],
@@ -587,8 +587,14 @@ class SessionEndDialog:
         elif cues and summary.get("cue_rung") == rebrik.OBRAZ:
             # To iste v hre na stupni "obraz" (rebrik hlasky, 0.2).
             podnadpis = tr("session.end.cues_visual", n=cues)
+        elif cues and silent:
+            # Tiche kontrolne rameno JE sucastou `cues` (ukazal sa len obrazok),
+            # nie navyse - veta to musi povedat ako "z toho", nie ako
+            # porovnanie. Pri nule by "0x som naschval mlcala" vyzeralo ako
+            # chyba sablony (audit UX, cast 3).
+            podnadpis = tr("session.end.cues_silent", n=cues, silent=silent)
         elif cues:
-            podnadpis = tr("session.end.cues", n=cues, silent=silent)
+            podnadpis = tr("session.end.cues", n=cues)
         else:
             podnadpis = tr("session.end.cues_none")
         ctk.CTkLabel(body, text=podnadpis, font=ui_kit.ui(13),
@@ -633,7 +639,7 @@ class SessionEndDialog:
         # nalez je ROZCHOD merane x citene (tep moze byt plochy, a clovek sa
         # pritom citi zle). Preto ordinalne skaly s pevnymi id, nie volny text.
         ctk.CTkLabel(body, text=tr("session.felt.header").upper(),
-                     font=ui_kit.ui(9, "bold"), text_color=pal["text_faint"],
+                     font=ui_kit.ui(10, "bold"), text_color=pal["text_faint"],
                      anchor="w").pack(fill="x", pady=(0, 8))
 
         # Vnimana zataz 0-10 (posuvnik). None kym sa nedotkne (0 != nevyjadril sa).
@@ -644,14 +650,20 @@ class SessionEndDialog:
         self._load_val = ctk.CTkLabel(load_row, text="—", width=28,
                                       font=ui_kit.mono(12), text_color=pal["accent"])
         self._load_val.pack(side="right")
+        # NEVYPLNENY POSUVNIK NEVYZERA AKO ODPOVED (0.2.2, audit UX). Gombik
+        # musi niekde stat a stal na 0 v zlatej - presne ten zly datovy bod,
+        # pred ktorym varuje komentar vyssie. Kym sa ho hrac nedotkne, je
+        # cely v `switch_off` (prazdna draha, ziadna hodnota, vedla "—");
+        # prvy dotyk ho zafarbi akcentom (`_on_load`).
         sl = ui_kit.block_slider_wheel(ctk.CTkSlider(
             body, from_=0, to=10, number_of_steps=10,
-            progress_color=pal["accent"], button_color=pal["accent"],
+            progress_color=pal["switch_off"], button_color=pal["switch_off"],
             fg_color=pal["switch_off"], button_hover_color=pal["accent_hover"],
             command=self._on_load))
         sl.set(0)
         sl.pack(fill="x", pady=(0, 2))
-        ctk.CTkLabel(body, text=tr("session.felt.load_hint"), font=ui_kit.ui(9),
+        self._load_slider = sl
+        ctk.CTkLabel(body, text=tr("session.felt.load_hint"), font=ui_kit.ui(10),
                      text_color=pal["text_faint"], anchor="w").pack(fill="x", pady=(0, 10))
 
         # Valencia (5 stupnov, jednovyber).
@@ -665,7 +677,7 @@ class SessionEndDialog:
             btn = ctk.CTkButton(
                 val_row, text=tr(f"session.felt.valence.{v}"), height=30, width=40,
                 corner_radius=ui_kit.RADIUS_CONTROL, border_width=1,
-                fg_color="transparent", border_color=pal["card_border"],
+                fg_color="transparent", border_color=pal["control_border"],
                 hover_color=pal["surface_alt"], text_color=pal["text_dim"],
                 font=ui_kit.ui(11),
                 command=lambda x=v: self._pick_one("valence", x, self._val_btns))
@@ -681,7 +693,7 @@ class SessionEndDialog:
             btn = ctk.CTkButton(
                 body_row, text=tr(f"session.felt.body.{bid}"), height=30,
                 corner_radius=ui_kit.RADIUS_CONTROL, border_width=1,
-                fg_color="transparent", border_color=pal["card_border"],
+                fg_color="transparent", border_color=pal["control_border"],
                 hover_color=pal["surface_alt"], text_color=pal["text_dim"],
                 font=ui_kit.ui(12), command=lambda b=bid: self._toggle_body(b))
             btn.grid(row=i // 3, column=i % 3, padx=(0, 6), pady=(0, 4), sticky="w")
@@ -703,15 +715,14 @@ class SessionEndDialog:
             btn = ctk.CTkButton(
                 cue_row, text=tr(f"session.felt.cue.{v}"), height=30,
                 corner_radius=ui_kit.RADIUS_CONTROL, border_width=1,
-                fg_color="transparent", border_color=pal["card_border"],
+                fg_color="transparent", border_color=pal["control_border"],
                 hover_color=pal["surface_alt"], text_color=pal["text_dim"],
                 font=ui_kit.ui(12),
                 command=lambda x=v: self._pick_one("cue_verdict", x, self._cue_btns))
             btn.pack(side="left", padx=(0, 6))
             self._cue_btns[v] = btn
 
-        ctk.CTkFrame(body, fg_color=pal["line_soft"], height=1,
-                     corner_radius=0).pack(fill="x", pady=(2, 12))
+        ui_kit.linka(body, pal).pack(fill="x", pady=(2, 12))
 
         # CINNOST: hral alebo pracoval? Jednovyber (nie cipy - su to vylucne
         # moznosti). Navrchu zamerne: je to najzakladnejsi kontext vecera a
@@ -719,7 +730,7 @@ class SessionEndDialog:
         # dohadom. Bez kliku = hrac sa nevyjadril (None), rovnako ako pri
         # cipoch; relacia potom patri svetu, v ktorom zacala (`world`).
         ctk.CTkLabel(body, text=tr("session.context.activity_question").upper(),
-                     font=ui_kit.ui(9, "bold"), text_color=pal["text_faint"],
+                     font=ui_kit.ui(10, "bold"), text_color=pal["text_faint"],
                      anchor="w").pack(fill="x", pady=(0, 8))
         akt_row = ctk.CTkFrame(body, fg_color="transparent")
         akt_row.pack(fill="x", pady=(0, 10))
@@ -727,7 +738,7 @@ class SessionEndDialog:
             btn = ctk.CTkButton(
                 akt_row, text=tr(f"session.context.activity.{kind}"), height=30,
                 corner_radius=ui_kit.RADIUS_CONTROL, border_width=1,
-                fg_color="transparent", border_color=pal["card_border"],
+                fg_color="transparent", border_color=pal["control_border"],
                 hover_color=pal["surface_alt"], text_color=pal["text_dim"],
                 font=ui_kit.ui(12), command=lambda k=kind: self._set_activity(k))
             btn.pack(side="left", padx=(0, 6))
@@ -746,7 +757,7 @@ class SessionEndDialog:
         self._setup_btn = ctk.CTkButton(
             setup_row, text=tr("session.context.setup"), height=30,
             corner_radius=ui_kit.RADIUS_CONTROL, border_width=1,
-            fg_color="transparent", border_color=pal["card_border"],
+            fg_color="transparent", border_color=pal["control_border"],
             hover_color=pal["surface_alt"], text_color=pal["text_dim"],
             font=ui_kit.ui(12), command=self._prepni_setup)
         self._setup_btn.pack(side="left")
@@ -769,7 +780,7 @@ class SessionEndDialog:
         for nadpis, skupina in (("session.context.question", hr_stats.CONTEXT_DIANIE),
                                 ("session.context.body_question", hr_stats.CONTEXT_TELO)):
             ctk.CTkLabel(body, text=tr(nadpis).upper(),
-                         font=ui_kit.ui(9, "bold"), text_color=pal["text_faint"],
+                         font=ui_kit.ui(10, "bold"), text_color=pal["text_faint"],
                          anchor="w").pack(fill="x", pady=(0, 8))
             chips = ctk.CTkFrame(body, fg_color="transparent")
             chips.pack(fill="x", pady=(0, 10))
@@ -781,7 +792,7 @@ class SessionEndDialog:
                 btn = ctk.CTkButton(
                     chips, text=tr(f"session.context.{cid}"), height=30,
                     corner_radius=ui_kit.RADIUS_CONTROL, border_width=1,
-                    fg_color="transparent", border_color=pal["card_border"],
+                    fg_color="transparent", border_color=pal["control_border"],
                     hover_color=pal["surface_alt"], text_color=pal["text_dim"],
                     font=ui_kit.ui(12),
                     command=lambda c=cid: self._prepni(c))
@@ -792,7 +803,7 @@ class SessionEndDialog:
         # SPANOK minulu noc (nahradza binarne 'unavený'): 3 urovne, jednovyber.
         # Nevyspatie dvíha osobnu zakladnu na cely den - vysvetľuje, preco ta
         # ista hra raz "nič" a inokedy "zle".
-        ctk.CTkLabel(body, text=tr("session.sleep.q").upper(), font=ui_kit.ui(9, "bold"),
+        ctk.CTkLabel(body, text=tr("session.sleep.q").upper(), font=ui_kit.ui(10, "bold"),
                      text_color=pal["text_faint"], anchor="w").pack(fill="x", pady=(2, 8))
         sleep_row = ctk.CTkFrame(body, fg_color="transparent")
         sleep_row.pack(fill="x", pady=(0, 10))
@@ -800,7 +811,7 @@ class SessionEndDialog:
             btn = ctk.CTkButton(
                 sleep_row, text=tr(f"session.sleep.{lvl}"), height=30,
                 corner_radius=ui_kit.RADIUS_CONTROL, border_width=1,
-                fg_color="transparent", border_color=pal["card_border"],
+                fg_color="transparent", border_color=pal["control_border"],
                 hover_color=pal["surface_alt"], text_color=pal["text_dim"],
                 font=ui_kit.ui(12),
                 command=lambda l=lvl: self._pick_one("sleep", l, self._sleep_btns))
@@ -814,7 +825,7 @@ class SessionEndDialog:
         # VLASTNA POZNAMKA: volny text k veceru (co cipy nezachytia - nova hra,
         # zle spanok, hadka, cokolvek). Appka ju len drzi a ukaze, neinterpretuje.
         ctk.CTkLabel(body, text=tr("session.context.note_label").upper(),
-                     font=ui_kit.ui(9, "bold"), text_color=pal["text_faint"],
+                     font=ui_kit.ui(10, "bold"), text_color=pal["text_faint"],
                      anchor="w").pack(fill="x", pady=(0, 6))
         self.note_box = ctk.CTkTextbox(
             body, height=58, font=ui_kit.ui(12), fg_color=pal["surface_alt"],
@@ -841,15 +852,10 @@ class SessionEndDialog:
         # sa na sirku scroll-kanvasu (~pravy stlpec cipov orezany). S pevnou
         # geometriou telo scrolluje vnutri a footer ostava pripnuty a viditelny.
         # Rozmery su LOGICKE - CTk ich prenasobi mierkou DPI.
-        self.top.geometry("660x680")
-        try:
-            self.top.update_idletasks()
-            sirka, vyska = self.top.winfo_width(), self.top.winfo_height()
-            sw, sh = self.top.winfo_screenwidth(), self.top.winfo_screenheight()
-            x, y = max(0, (sw - sirka) // 2), max(0, (sh - vyska) // 3)
-            self.top.geometry(f"+{x}+{y}")
-        except Exception:
-            pass
+        # Stred PRACOVNEJ plochy monitora pod kurzorom (nie celej obrazovky
+        # hlavneho monitora) a nizsi, ked sa 680 px na plochu nezmesti -
+        # paticka s tlacidlami ostane nad listou uloh.
+        ui_kit.umiestni_dialog(self.top, self.app.root, 660, 680)
 
     @staticmethod
     def _preco_ticho(summary):
@@ -941,7 +947,7 @@ class SessionEndDialog:
                 btn.configure(fg_color=pal["accent2"], border_color=pal["accent"],
                               text_color=pal["accent"])
             else:
-                btn.configure(fg_color="transparent", border_color=pal["card_border"],
+                btn.configure(fg_color="transparent", border_color=pal["control_border"],
                               text_color=pal["text_dim"])
 
     def _prepni(self, cid):
@@ -949,7 +955,7 @@ class SessionEndDialog:
         btn = self.chips[cid]
         if cid in self.vybrane:
             self.vybrane.discard(cid)
-            btn.configure(fg_color="transparent", border_color=pal["card_border"],
+            btn.configure(fg_color="transparent", border_color=pal["control_border"],
                           text_color=pal["text_dim"])
         else:
             self.vybrane.add(cid)
@@ -962,6 +968,10 @@ class SessionEndDialog:
         self.felt_load = int(round(float(v)))
         try:
             self._load_val.configure(text=str(self.felt_load))
+            # od prveho dotyku je to odpoved - draha aj gombik v akcente
+            pal = self.app.pal
+            self._load_slider.configure(progress_color=pal["accent"],
+                                        button_color=pal["accent"])
         except Exception:
             pass
 
@@ -976,7 +986,7 @@ class SessionEndDialog:
                 btn.configure(fg_color=pal["accent2"], border_color=pal["accent"],
                               text_color=pal["accent"])
             else:
-                btn.configure(fg_color="transparent", border_color=pal["card_border"],
+                btn.configure(fg_color="transparent", border_color=pal["control_border"],
                               text_color=pal["text_dim"])
 
     def _toggle_body(self, bid):
@@ -985,7 +995,7 @@ class SessionEndDialog:
         btn = self._body_btns[bid]
         if bid in self._body_sel:
             self._body_sel.discard(bid)
-            btn.configure(fg_color="transparent", border_color=pal["card_border"],
+            btn.configure(fg_color="transparent", border_color=pal["control_border"],
                           text_color=pal["text_dim"])
         else:
             self._body_sel.add(bid)
@@ -1007,7 +1017,7 @@ class SessionEndDialog:
             btn.configure(fg_color=pal["accent2"], border_color=pal["accent"],
                           text_color=pal["accent"])
         else:
-            btn.configure(fg_color="transparent", border_color=pal["card_border"],
+            btn.configure(fg_color="transparent", border_color=pal["control_border"],
                           text_color=pal["text_dim"])
 
     def confirm(self):
@@ -1224,8 +1234,10 @@ class OverlaySettingsDialog:
         self.top = ctk.CTkToplevel(app.root)
         self.top.title(tr("overlay.dialog_title"))
         self.top.configure(fg_color=pal["bg"])
-        self.top.geometry("520x760")
-        self.top.minsize(470, 480)
+        # Na stred plochy a cely na nej (760 px sa na 768-px obrazovku
+        # nezmesti nikdy) - viz `ui_kit.umiestni_dialog`.
+        ui_kit.umiestni_dialog(self.top, app.root, 520, 760,
+                               min_width=470, min_height=480)
         self.top.transient(app.root)
         self.top.grab_set()
 
@@ -1278,13 +1290,16 @@ class OverlaySettingsDialog:
 
         head = ctk.CTkFrame(inner, fg_color="transparent")
         head.pack(fill="x")
-        ctk.CTkLabel(head, text=tr(f"overlay.slot.{index}"), font=ui_kit.ui(13, "bold"),
-                    text_color=pal["text"]).pack(side="left")
+        # Piktogram vizualu tym istym stetcom ako v hre, nie emoji z prekladu.
+        vizualy = ("grounding", "jaw", "release", "breath")
+        if 0 <= index < len(vizualy):
+            ui_kit.SlotIcon(head, pal, vizualy[index], size=22).pack(side="left", padx=(0, 8))
+        ctk.CTkLabel(head, text=ui_kit.bez_ikony(tr(f"overlay.slot.{index}")),
+                     font=ui_kit.ui(13, "bold"), text_color=pal["text"]).pack(side="left")
         enabled_var = tk.BooleanVar(value=cfg["enabled"])
-        ctk.CTkSwitch(head, text=tr("overlay.enable"), variable=enabled_var,
-                     progress_color=pal["accent"], text_color=pal["text_dim"],
-                     command=lambda idx=index, var=enabled_var: self.app.on_overlay_config_change(
-                         idx, enabled=var.get())).pack(side="right")
+        ui_kit.switch(head, pal, text=tr("overlay.enable"), variable=enabled_var,
+                      command=lambda idx=index, var=enabled_var: self.app.on_overlay_config_change(
+                          idx, enabled=var.get())).pack(side="right")
 
         scale_row = ctk.CTkFrame(inner, fg_color="transparent")
         scale_row.pack(fill="x", pady=(10, 0))
@@ -1361,11 +1376,11 @@ class OverlaySettingsDialog:
 
         self._rows.append({"x_label": x_label, "y_label": y_label})
 
-        ctk.CTkButton(inner, text=tr("overlay.test"), height=32,
-                     fg_color="transparent", border_width=1, border_color=pal["border"],
-                     hover_color=pal["surface_alt"], text_color=pal["text"],
-                     command=lambda idx=index: self.app.test_overlay(idx)).pack(
-            fill="x", pady=(12, 0))
+        # Vedlajsie tlacidlo prirodzenej sirky (ram >= 3:1), nie ram cez
+        # celu kartu s kontrastom 1,24:1, ktory vyzeral ako vypnuty.
+        ui_kit.button(inner, pal, tr("overlay.test"), height=32,
+                      command=lambda idx=index: self.app.test_overlay(idx)).pack(
+            anchor="w", pady=(12, 0))
 
     def _build_breath_seconds_rows(self, parent, pal):
         """Dlzka nadychu/vydychu (v sekundach) - len pri slote Dych (index 3),
@@ -1552,9 +1567,12 @@ class WatchPairingDialog:
         self.top.title(tr("hr.pair_title"))
         self.top.configure(fg_color=pal["bg"])
         # Okno bez ramu (DialogChrome) OS neumiestni - bez polohy sa otvaralo
-        # v rohu obrazovky. Stred rata ten isty pomocnik ako hlavne okno.
-        self.top.geometry(ui_kit.vycentrovana_geometria(app.root, 560, 640))
-        self.top.minsize(520, 560)
+        # v rohu obrazovky. Stred rata ten isty pomocnik ako hlavne okno
+        # (`ui_kit.vycentrovana_geometria`); na nizkej obrazovke (1366x768
+        # pri 125-150 %) je dialog nizsi, aby paticka so Zavriet ostala na
+        # ploche - kroky maju posuvnik.
+        ui_kit.umiestni_dialog(self.top, app.root, 560, 640,
+                               min_width=520, min_height=560)
         self.top.transient(app.root)
         self.top.grab_set()
         self.top.protocol("WM_DELETE_WINDOW", self.close)
@@ -1860,7 +1878,10 @@ class SlotCard:
         self.frame = ctk.CTkFrame(app.slots_container, fg_color=pal["card"],
                                   border_width=1, border_color=pal["line_soft"],
                                   corner_radius=ui_kit.RADIUS_CONTROL)
-        self.frame.pack(fill="x", padx=2, pady=5)
+        # Bez bocneho odsadenia: karta zacina aj konci na tej istej zvislici
+        # ako panel profilov nad nou a Sprievodca pod nou (PAGE_GUTTER). S
+        # `padx=2` stala o 3 px dnu - jedna zo "styroch lavych hran" z auditu.
+        self.frame.pack(fill="x", pady=5)
 
         grid = ctk.CTkFrame(self.frame, fg_color="transparent")
         grid.pack(fill="x", padx=16, pady=12)
@@ -1911,9 +1932,18 @@ class SlotCard:
         if self.guide_card is not None:
             # TEN ISTY stetec ako in-game vizual (`hud_paint.render_slot_icon`),
             # nie ilustracna ikonka: co hrac vidi v zozname, to uvidi aj v hre.
+            # Meno vizualu podla slotu, nie podla karty Sprievodcu: karta
+            # slotu 2 je "periphery" (oko), ale v hre aj v uvode je to ruka
+            # na mysi ("release") - zoznam ukazoval iny obrazok nez hra.
+            # `ui_kit.SlotIcon` sa pri zmene temy nakresli znova (zlata
+            # ikonka by inak ostala v indigovom svete Praca).
+            vizualy = ("grounding", "jaw", "release", "breath")
             try:
-                obrazok = guide_panel.sketch_or_image(
-                    col0, pal, self.guide_card["id"], size=26)
+                if 0 <= self.index < len(vizualy):
+                    obrazok = ui_kit.SlotIcon(col0, pal, vizualy[self.index], size=26)
+                else:
+                    obrazok = guide_panel.sketch_or_image(
+                        col0, pal, self.guide_card["id"], size=26)
                 obrazok.pack(side="left")
                 obrazok.bind("<Button-1>", self.toggle_detail)
                 obrazok.configure(cursor="hand2")
@@ -1950,13 +1980,12 @@ class SlotCard:
 
         # 2 - rezim (hlas / zvuk / oboje)
         self.mode_var = tk.StringVar(value=mode_labels()[self.mode])
-        self.mode_box = ctk.CTkOptionMenu(
-            grid, values=[mode_labels()[m] for m in MODE_ORDER],
-            variable=self.mode_var, width=104, height=28, corner_radius=ui_kit.RADIUS_CONTROL,
-            fg_color=pal["surface_alt"], button_color=pal["accent2"],
-            button_hover_color=pal["accent2_hover"], text_color=pal["text"],
-            dropdown_fg_color=pal["surface"], dropdown_text_color=pal["text"],
-            font=ui_kit.ui(11), command=self.on_mode_change)
+        # V rastri karty smie rozbalovacka rast s textom (dlhsie preklady,
+        # nazvy zvukov) - pevna sirka by text orezala; stlpec rastra ju drzi.
+        self.mode_box = ui_kit.option_menu(
+            grid, pal, width=104, dynamic_resizing=True,
+            values=[mode_labels()[m] for m in MODE_ORDER],
+            variable=self.mode_var, font=ui_kit.ui(11), command=self.on_mode_change)
         self.mode_box.grid(row=0, column=2, sticky="w", padx=(0, 14))
 
         # 3 - zvuk + mikrofon/subor
@@ -1964,26 +1993,21 @@ class SlotCard:
         self.sfx_group.grid(row=0, column=3, sticky="w", padx=(0, 14))
         self.sfx_options = sfx_dropdown_options()
         self.sfx_var = tk.StringVar(value=sfx_choice_display(self.sfx_key, self.audio_path))
-        self.sfx_box = ctk.CTkOptionMenu(
-            self.sfx_group, values=[d for d, _ in self.sfx_options],
-            variable=self.sfx_var, width=150, height=28, corner_radius=ui_kit.RADIUS_CONTROL,
-            fg_color=pal["surface_alt"], button_color=pal["accent2"],
-            button_hover_color=pal["accent2_hover"], text_color=pal["text"],
-            dropdown_fg_color=pal["surface"], dropdown_text_color=pal["text"],
-            font=ui_kit.ui(11), command=self.on_sfx_choice)
+        self.sfx_box = ui_kit.option_menu(
+            self.sfx_group, pal, width=150, dynamic_resizing=True,
+            values=[d for d, _ in self.sfx_options],
+            variable=self.sfx_var, font=ui_kit.ui(11), command=self.on_sfx_choice)
         self.sfx_box.pack(side="top", fill="x")
         sfx_tools = ctk.CTkFrame(self.sfx_group, fg_color="transparent")
         sfx_tools.pack(side="top", fill="x", pady=(4, 0))
-        self.rec_button = ctk.CTkButton(
-            sfx_tools, text=tr("slot.record_short"), height=22, corner_radius=ui_kit.RADIUS_CONTROL,
-            fg_color="transparent", border_width=1, border_color=pal["line_soft"],
-            hover_color=pal["surface_alt"], text_color=pal["text_dim"],
+        # Vedlajsie tlacidla (`ui_kit.button`): ram `control_border` >= 3:1.
+        # S `line_soft` (1,11:1) vyzerali vypnute. Sirku dava stlpec rastra.
+        self.rec_button = ui_kit.button(
+            sfx_tools, pal, tr("slot.record_short"), width=0, height=22,
             font=ui_kit.ui(10), command=self.record_audio)
         self.rec_button.pack(side="left", fill="x", expand=True, padx=(0, 2))
-        self.file_button = ctk.CTkButton(
-            sfx_tools, text=tr("slot.file_short"), height=22, corner_radius=ui_kit.RADIUS_CONTROL,
-            fg_color="transparent", border_width=1, border_color=pal["line_soft"],
-            hover_color=pal["surface_alt"], text_color=pal["text_dim"],
+        self.file_button = ui_kit.button(
+            sfx_tools, pal, tr("slot.file_short"), width=0, height=22,
             font=ui_kit.ui(10), command=self.choose_file)
         self.file_button.pack(side="left", fill="x", expand=True, padx=(2, 0))
 
@@ -1995,21 +2019,14 @@ class SlotCard:
         if self.removable:
             akcie.append(("✕", self.remove, True))
         for text, cmd, danger in akcie:
-            ctk.CTkButton(
-                actions, text=text, width=26 if danger else 34, height=26,
-                corner_radius=ui_kit.RADIUS_CONTROL, fg_color="transparent", border_width=1,
-                border_color=pal["line_soft"],
-                hover_color=pal["danger"] if danger else pal["surface_alt"],
-                text_color=pal["text_dim"], font=ui_kit.ui(10),
+            ui_kit.button(
+                actions, pal, text, kind="danger" if danger else "secondary",
+                width=26 if danger else 34, height=26, font=ui_kit.ui(10),
                 command=cmd).pack(side="left", padx=2)
 
         # 5 - zapnute/vypnute
         self.enabled_var = tk.BooleanVar(value=self.enabled_value)
-        ctk.CTkSwitch(grid, text="", variable=self.enabled_var, width=40,
-                      switch_width=36, switch_height=18,
-                      progress_color=pal["accent"], button_color=pal["text_faint"],
-                      button_hover_color=pal["accent_hover"],
-                      fg_color=pal["switch_off"],
+        ui_kit.switch(grid, pal, variable=self.enabled_var,
                       command=self.on_enabled_change).grid(row=0, column=5, sticky="e")
 
         # --- vysvetlivka, zabalena ---
@@ -2128,17 +2145,21 @@ class SlotCard:
         # Vysvetlivka ma vlastnu plochu a ram, aby bolo na prvy pohlad
         # vidno, kde koncia ovladace hlasky a kde zacina text o tele. Bez
         # toho sa obe casti zlievali do jedneho vysokeho obdlznika.
-        zasuvka = ctk.CTkFrame(self.detail_wrap, fg_color=pal["surface"],
-                               corner_radius=ui_kit.RADIUS_CONTROL,
-                               border_width=1, border_color=pal["line_soft"])
+        #
+        # BEZ RAMU (0.2.2, audit UX): najviac jedna uroven ramu - karta v
+        # karte bola ram v rame. Zasuvku odlisuje vypln `surface_alt` a
+        # 2 px linka v `accent` po lavej hrane (v `accent2` ju vedla
+        # vyplne nebolo vidno).
+        zasuvka = ctk.CTkFrame(self.detail_wrap, fg_color=pal["surface_alt"],
+                               corner_radius=ui_kit.RADIUS_CONTROL, border_width=0)
         zasuvka.pack(fill="x")
 
         # Tenky pruh vo farbe prizvuku po lavej hrane - viaze zasuvku k
         # hlaske nad nou, aby nevyzerala ako samostatna karta.
         pruh = ctk.CTkFrame(zasuvka, fg_color="transparent")
         pruh.pack(fill="x", padx=2, pady=2)
-        ctk.CTkFrame(pruh, fg_color=pal["accent2"], width=3,
-                     corner_radius=2).pack(side="left", fill="y")
+        ctk.CTkFrame(pruh, fg_color=pal["accent"], width=2, height=1,
+                     corner_radius=0).pack(side="left", fill="y")
 
         vnutro = ctk.CTkFrame(pruh, fg_color="transparent")
         vnutro.pack(side="left", fill="both", expand=True, padx=(14, 14),
@@ -2504,6 +2525,7 @@ class OnboardingWizard:
         # tele centruje (viz `_show_step`), takze rozdiel vysok medzi krokmi
         # uz nevytvara dieru nad patkou.
         self.top.geometry(self._centered_geometry(root, 720, 600))
+        self.top._zanshin_umiestnene = True     # DialogChrome ho uz nepresuva
         self.top.resizable(False, False)
         self.top.transient(root)
         self.top.grab_set()
@@ -2902,7 +2924,7 @@ class OnboardingWizard:
                                       font=ui_kit.ui(12, "bold"), command=self._pair_now)
         self._pair_button_look()
         self.pair_btn.pack(pady=(12, 6))
-        ctk.CTkLabel(parent, text=tr("ob.step3.later_note"), font=ui_kit.ui(9),
+        ctk.CTkLabel(parent, text=tr("ob.step3.later_note"), font=ui_kit.ui(10),
                      text_color=pal["text_faint"]).pack(pady=(6, 0))
 
     def _pair_button_look(self):

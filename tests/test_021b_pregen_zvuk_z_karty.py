@@ -152,8 +152,9 @@ def test_dokumenty_menuju_kazdy_start_a_import_profilu():
     assert "self.pregenerate()" in zdroj_metody("_apply_edge_voices")
     assert "self.schedule_pregenerate(200)" in zdroj_metody("import_profile_from_code")
 
-    readme, privacy = _plain("README.md"), _plain("PRIVACY.md")
-    assert "That happens at every start (the first time for all of them)" in readme
+    # Od 0.2.2d je zoznam v docs/HOW-IT-WORKS.md (README ma len kratku verziu).
+    ako, privacy = _plain("docs/HOW-IT-WORKS.md"), _plain("PRIVACY.md")
+    assert "That happens at every start (the first time for all of them)" in ako
     assert "only for lines that aren't in the cache yet — at every start" in privacy
-    for meno, text in (("README.md", readme), ("PRIVACY.md", privacy)):
+    for meno, text in (("docs/HOW-IT-WORKS.md", ako), ("PRIVACY.md", privacy)):
         assert "import a profile" in text, meno

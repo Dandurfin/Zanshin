@@ -222,7 +222,9 @@ def test_on_close_je_volitelny_parameter():
 
 def test_okno_je_vycentrovane_spolocnym_pomocnikom():
     init = _metoda_dialogu("__init__")
-    assert "ui_kit.vycentrovana_geometria(app.root, 560, 640)" in init
+    # 0.2.2 (audit UX): spolocny pomocnik dialogov - stred cez
+    # `vycentrovana_geometria` a rozmer zmenseny na pracovnu plochu
+    assert "ui_kit.umiestni_dialog(self.top, app.root, 560, 640" in init
     assert 'self.top.geometry("560x640")' not in init
 
 

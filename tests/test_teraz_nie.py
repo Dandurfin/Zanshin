@@ -294,8 +294,9 @@ def test_texty_o_teraz_nie_hovoria_pravdu():
     s = i18n.STRINGS
     assert "merám ďalej" in s["kamae.snoozed_sub"]["sk"]
     assert "measuring" in s["kamae.snoozed_sub"]["en"]
-    assert "Počúvanie to nezastaví" in s["log.snooze_started"]["sk"]
-    assert "doesn’t stop listening" in s["log.snooze_started"]["en"]
+    # 0.2.2: hlavny vypinac je "sledovat" (en "watching"), nie "pocuvat"
+    assert "Sledovanie to nezastaví" in s["log.snooze_started"]["sk"]
+    assert "doesn’t stop watching" in s["log.snooze_started"]["en"]
     for kluc in ("log.snooze_started", "dock.snooze_active_tip"):
         assert "merám" not in s[kluc]["sk"], kluc
         assert "measuring" not in s[kluc]["en"], kluc

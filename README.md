@@ -2,194 +2,70 @@
 
 *Alpha 0.2.1 · Windows · code under GPLv3 or later*
 
-**Calm-reminders for gamers, triggered by your body — not a keystroke.**
-Zanshin watches your **heart rate from a smartwatch** (a third-party app on your
-phone or watch sends it to your PC over your local network; see *Getting your
-heart rate in*) and, when strain stays elevated for a while, shows a picture on
-screen, usually with a spoken reminder (TTS) and a sound (SFX) timed to a short
-pause in your input — a quiet nudge to unclench your jaw, drop your shoulders,
-and breathe.
+**A free, open-source Windows app for gamers. When your heart rate shows
+you've been under strain for a while, Zanshin waits for a short lull in your
+input and gives you a calm cue: breathe out, unclench your jaw, loosen your
+grip.**
 
-> **Privacy first.** Your heart rate, sessions and insights never leave your
-> computer. There is no telemetry, no analytics, and no account. The one thing
-> that normally reaches the internet is the online TTS voice, which is **on by
-> default**: to turn your reminders into speech, it sends Microsoft the wording
-> of those in your current profile that are switched on, with their in-game
-> picture on, and set to speak (not ones that play your own recording), with
-> the voice and speed you picked (like any connection, it also shows Microsoft
-> your IP address).
-> It sends nothing new while Zanshin is listening (the state you switch with
-> Start / Stop; it has nothing to do with the microphone), and a line already
-> on its way when listening starts is finished. Switch to the
-> offline Windows voice (Settings → Sound) to keep even that local; that stops
-> any preparing at once, except a line already on its way.
-> Everything that can use the network is listed in **[PRIVACY.md](PRIVACY.md)**.
-> That includes the heart-rate port (`4455` by default). It stays closed until
-> you open the watch pairing guide or switch on *Listen for heart rate from the
-> watch*. From then on, whenever Zanshin runs (even hidden in the tray, and
-> again after a restart), it accepts connections without a password on every
-> network your PC is connected to (unless you enter one of this PC's own
-> addresses), until you switch that off again.
+**You need:** Windows 11 64-bit (Windows 10 untested) · a smartwatch and a
+phone or watch app that sends its heart rate to this PC over your home network
+(tested: Wear OS with *HeartRateOnStream for OBS*, free) · the phone and the PC
+on the same home network.
 
-> **The app does not capture the keyboard.** Pre-release builds had a global
-> keyboard hook; it was removed before the first public alpha. Whether you're
-> actively playing is read via `GetLastInputInfo` — a Win32 call that returns
-> a single number: milliseconds since the last input, not which key it was.
-> While it's listening it also watches controller activity through SDL — only
-> as a sign that you're active; which button it was is never stored. With
-> automatic profile switching on (the default), every few seconds it compares
-> the names of running processes with the games it knows (listed under that
-> switch), so it can switch the profile and start listening by itself when one
-> launches; switch it off and the process list isn't read at all.
-> Outside its own window the app hears only one key combination: the
-> "not now" shortcut, which silences its cues for half an hour while it keeps
-> measuring your heart rate (Ctrl+Alt+Z, which can't be changed in the app
-> yet; press it again to end it sooner). Windows reserves that combination for
-> Zanshin from start-up until you quit, even while it sits in the tray, so a
-> game that uses Ctrl+Alt+Z may not receive it. "Not now" is also in the tray
-> icon's menu (right-click), in case another app holds the shortcut. Stopping
-> listening altogether is a separate switch. Windows tells it when that one
-> combination is pressed, and about no other key. Details in **[SAFETY.md](SAFETY.md)** (in Slovak for now).
+[Download](https://github.com/Dandurfin/Zanshin/releases/latest) ·
+[Quick start](#quick-start) · [Pair your watch](#getting-your-heart-rate-in) ·
+[Troubleshooting](#troubleshooting) · [Known issues](KNOWN_ISSUES.md) ·
+[Privacy](PRIVACY.md) · [Anti-cheat](SAFETY.md)
 
-## Features
+![Zanshin's Today page in the Sumi theme: the main switch, the ensō, today's numbers and where the session went](docs/img/today.webp)
 
-- **Your body triggers the reminder, not a key.** When your *load* — the app's
-  measure of strain, computed from heart rate (LOAD on the HUD) — spends enough
-  time above your threshold, the app is *armed* (the Today page says so) and
-  then waits for a short pause in your input — about 2.5 s with no key, mouse
-  or controller. The moment of greatest need and the worst moment to interrupt
-  are the same second — so the voice comes only in such a pause, once your
-  load has stopped climbing, and never while your pulse is in the Peak zone
-  (at or above your high heart-rate limit). The app can't see the game itself,
-  so a still moment mid-fight can count as a pause too. If no such pause comes
-  within 90 s, it shows a silent picture instead, under the same rules;
-  otherwise it stays quiet. Some cues stay silent on purpose — about one in
-  four in your first 15 sessions (every session of a minute or more counts,
-  Work too), one in ten after that — and show only the picture. That collects
-  data for comparing voice with picture only; the app doesn't show that
-  comparison yet. At most five cues an hour (restarting the app starts that
-  count over), and at least four minutes apart within a session.
-- **It quiets itself when a cue gets in the way.** Answer "it disrupted" or
-  "it wound me up" in the questionnaire after a session — or press "not now"
-  within a minute of a cue and let the session carry on for at least two more
-  minutes, unless you then answer that it landed — and the next session in
-  the same world (Play or Work) drops one step: voice → picture only → no cues
-  for three sessions of five minutes or more (sooner if you answer after a
-  session that it should have spoken up), then the picture again. It climbs
-  back slowly, after three sessions with a cue that was actually shown and
-  none of those signals (a cue whose picture failed to draw doesn't count).
-  When it has gone quieter, History says so in one quiet line: why, and how
-  many more sessions it needs before it tries a step louder. How loud it may
-  ever get is your call: voice, a sound and the picture without words, or the
-  picture only. You can pick it during onboarding (its voice preview there
-  uses the Windows voice and sends nothing) or any time under
-  Settings → Sound; the app may still go quieter on its own, but never louder
-  than your choice.
-- **Nothing to tune by hand.** Your load threshold, resting baseline and high
-  heart-rate limit are all computed from *your own* sessions, each from at
-  least three of them. Until then the threshold and the high heart-rate limit
-  use average-player numbers, and your calm is taken from the current session
-  only. The threshold and the high heart-rate limit learn only from play
-  sessions of five minutes or more, and the load threshold needs the most: at
-  least three play sessions of five minutes or more that add up to roughly
-  half an hour of heart rate — three of about ten minutes are enough, three of
-  five are not. Imported sessions, sessions with implausible readings,
-  sessions recovered after Zanshin ended without saving them (from 0.2.2, see
-  *Your data*), sessions marked *Just setting up the app* (from 0.2.2; the
-  first one saved after the introduction gets the mark by itself, and you can
-  change it in the questions at the end) and sessions you marked afterwards
-  as affected by illness, alcohol or exercise just before playing don't
-  count.
-- **Silent while you walk — if your watch sends steps.** While the watch
-  reports steps (15 or more in the last minute, for now), the app stays quiet
-  — walking raises heart rate just like stress, and the two can't be told
-  apart from BPM alone. Not every watch app sends steps; if yours doesn't, the
-  app can't tell you're walking, so a walk can look like strain and bring a
-  cue.
-- **Two worlds, one body.** A small *Play | Work* switch in the title bar. Each
-  world keeps its own history, insights and look — *Sumi* (ink and gold) for
-  play, *Aizome* (indigo) for work — and switches without a restart. At work,
-  cues are visual only: no voice, no sound. The resting baseline is shared; the
-  load threshold and high heart-rate limit are learned from play sessions only
-  and used in both worlds, so if you only ever use Work, they stay on the
-  average-player numbers. A running session stays in the world it started in,
-  even if you flip the switch meanwhile. At the end, your answer to *Were you
-  playing or working?* has the last word: pick the other world and the session
-  moves there — in History, and in what the load threshold and high heart-rate
-  limit learn from. Skip the question and it stays where it started.
-- **Two TTS engines.** The *natural voice (Edge)* is the default: neural
-  voices, prepared ahead of time into a local cache, so in-game nothing waits
-  on the network. Preparing sends Microsoft a reminder's wording only if it is
-  one of the four, switched on with its in-game picture on, set to speak and
-  not playing your own recording, and only if its line isn't in the cache
-  yet. That happens at every start (the first time for all of them), and
-  again after you change a line (while you type, a pause of about 0.7 s is
-  enough, so a half-typed line can go too), switch it or its picture on,
-  switch it to speak or remove its own recording, change the voice, the
-  speed, the profile (or create one) or the language (when that changes the
-  voice), import a profile, and after you switch back to the voice style, to
-  Play or to the natural voice. Testing a line that isn't ready, or *Prepare
-  voice lines* in the Ctrl+K palette, sends the missing ones too; testing a
-  reminder that is switched off or has its picture off, or an extra one kept
-  from 0.1, plays the Windows voice and sends nothing. It happens only in the
-  voice style and the Play world (not in the sound or picture-only style, not
-  in Work), and it still happens while the app has quietened itself to
-  picture only or a pause. Switching a reminder or its picture off,
-  giving it your own recording, changing or creating a profile, or switching
-  to the sound or picture-only style, to Work or to the Windows voice stops
-  any preparing already running at once; only a line already on its way is
-  finished. **Nothing new is prepared while Zanshin is listening** (a line
-  already on its way when listening starts is finished): a line that isn't
-  ready then plays in the Windows voice, and preparing waits until listening
-  stops. On the very first start Zanshin (from 0.2.2) waits until those
-  lines are prepared, at most about 15 seconds (*Today* shows *Preparing the
-  voice*), and only then starts watching by itself, as if you had pressed
-  Start, so the first evening can already speak in the natural voice. Lines
-  not ready by then (offline, for example) are prepared once you press Stop,
-  or at the next start. The *Windows voice (SAPI5)* works fully offline.
-- **Built-in SFX library.** Eight short sounds in two sets of four, *Zen* and
-  *Modern*, shipped with the app. Play cues use the Zen set unless you pick
-  another sound for a reminder; Work cues make no sound. If a sound file goes
-  missing, the built app copies it back from the `.exe`. Only if that isn't
-  possible (or you run from source) are two of them downloaded from GitHub
-  (Kenney, CC0, checksum-verified) and the rest synthesised locally, those two
-  as well if the download fails.
-- **Eleven-language UI.** English, Slovak, Japanese, Chinese (Simplified),
-  Russian, Spanish, German, French, Portuguese (Brazil), Czech, Bulgarian,
-  switchable at runtime. What the app draws into the game (the HUD and the
-  captions under the pictures) stays in English unless you change *In-game
-  language*. The built-in reminder words are set in the app's language when a
-  profile is created (English ones for Slovak and Czech); switching the
-  language later doesn't translate them. With the natural voice, spoken
-  reminders keep the default English voice until you pick another. The
-  exception is reminders in Japanese, Chinese, Russian or Bulgarian, and from
-  0.2.2 also in Spanish, German, French or Portuguese, which
-  get a voice of that language while you're still on the default voice: on a
-  first start in that language, when a profile is created in it, or when you
-  switch to it and the reminders that speak in the profile you're in use its
-  built-in words (not reworded ones). The voice follows the words, not the
-  menu: switching the language with English words keeps the English voice,
-  and switching back doesn't undo a change. One voice reads all your
-  profiles, except reminders given a voice of their own. The app is written
-  in Slovak; the other languages are AI-assisted translations not yet
-  checked by a native speaker.
-- **In-game HUD & pictures.** An optional in-game heart-rate panel (the HUD,
-  which also shows your load; off by default) and the in-game pictures every
-  cue uses (on by default; a reminder whose picture you switch off never
-  fires). Both are click-through, drawn by default on the monitor of the
-  window in focus (normally your game), and scaled to that screen's height,
-  so they take the same share of a 1080p or a 4K screen (DPI-aware). Windows
-  doesn't draw them over a game in exclusive fullscreen (the voice still
-  plays); use Borderless.
-- **Guide — what's behind each cue.** Each of the four built-in reminders has
-  a short note. Open it with the ▸ arrow next to the reminder on the
-  *Triggers* page, or read them all in the Guide window. It covers what
-  happens in your body, why it may help and what to do (for breath, two
-  techniques). The breath note cites studies on breathing. The jaw note cites
-  one that competitive play raises a stress response, not that you hold it in
-  your jaw. The grounding and peripheral-vision notes say plainly they come
-  from practice or tradition. The full source list is [ZDROJE.md](ZDROJE.md)
-  (notes in Slovak); none of these studies tested Zanshin.
+*Today, with synthetic data. This page describes the code here, which is newer
+than the 0.2.1 release: the 0.2.1 ZIP still uses some older names
+([old → new](KNOWN_ISSUES.md#words-and-looks)).*
+
+**Local-first.** Your heart rate, sessions and insights never leave your PC.
+No account, no telemetry, no analytics. One exception is on by default: the
+natural voice sends Microsoft the wording of your spoken cues, to turn it into
+speech — never your heart rate — and, like any connection, your IP address.
+Nothing new is prepared while Zanshin is watching. To keep even that local,
+pick *Windows (offline)* under Settings → Sound → *Voice source*. Once you
+start pairing a watch, the heart-rate port (`4455`) is open whenever Zanshin
+runs and accepts connections without a password from every network your PC is
+on, so allow Zanshin on your home network only.
+Everything that can use the network is in [PRIVACY.md](PRIVACY.md). Zanshin is
+not a medical device.
+
+**Anti-cheat-friendly.** No keyboard hook, no injection, no reading of game
+memory or the screen, no simulated input, no administrator rights. Outside its
+own window Zanshin learns only the time since your last input (not which key),
+controller activity while it's watching, where the foreground window and the
+mouse pointer are, your monitors and this PC's network addresses, and — with
+automatic profile switching on, the default — the names of running programs.
+The microphone is used only while you record your own cue. While Zanshin runs
+it reserves one shortcut, Ctrl+Alt+Z ("not now": no cues for 30 minutes), so a
+game that uses it may not receive it. Full list: [SAFETY.md](SAFETY.md) (in
+Slovak, with an English summary at the top). Only an anti-cheat's maker can
+promise it won't flag you.
+
+## Quick start
+
+1. Download the ZIP, check its fingerprint and unpack it (see
+   [Install](#install)), then start `Zanshin.exe`.
+2. Go through the short introduction.
+3. Pair your watch: [five steps](#getting-your-heart-rate-in).
+4. Play. On the very first start Zanshin starts watching by itself after the
+   introduction (from 0.2.2 it first waits for the natural voice, at most about
+   15 seconds; *Today* shows *Preparing the voice*). After that it starts by
+   itself whenever Apex Legends, Call of Duty, CS2 or Valorant is running
+   (automatic profile switching, on by default); otherwise press ▶ in the
+   *Main switch* bar on *Today*.
+5. After a session, answer the few questions if you like: that's how Zanshin
+   learns when to go quieter.
+
+The first time you close the window, Zanshin asks whether to keep running in
+the tray; after that × only hides it there (on Windows 11 the icon is often
+under the ^ arrow by the clock). To quit: right-click the tray icon →
+**Quit**.
 
 ## Install
 
@@ -209,31 +85,37 @@ unchanged; it doesn't make the warning go away.
 0. **Had the 0.2 installer?** It shares your data folder with this ZIP. When
    you uninstall it, answer **Yes** to *Keep your settings…* — **No** deletes
    `%APPDATA%\Zanshin`, which this version uses too.
-1. On the GitHub page open **Releases** and download
-   `Zanshin-<version>-windows.zip` (for this version
-   `Zanshin-0.2.1-windows.zip`). The release lists the file's **SHA-256**
-   fingerprint.
-2. Check it: open PowerShell in the folder with the ZIP and run
-   `Get-FileHash .\Zanshin-0.2.1-windows.zip`. The long hash it prints must be
-   the same as the one in the release. If it isn't, delete the file.
-3. Unpack the ZIP into a folder that OneDrive doesn't back up, for example
-   `C:\Games`, and start `Zanshin\Zanshin.exe`. The first time, Windows shows
-   "Windows protected your PC": choose **More info → Run anyway**, only for a
-   ZIP whose fingerprint matched. Keep the whole `Zanshin` folder together:
-   the `.exe` needs the `_internal` folder next to it.
+1. On the GitHub page open
+   [**Releases**](https://github.com/Dandurfin/Zanshin/releases/latest) and
+   download `Zanshin-<version>-windows.zip` (for this version
+   `Zanshin-0.2.1-windows.zip`, about 59 MB). The release lists the file's
+   **SHA-256** fingerprint.
+2. Check it. In File Explorer open the folder with the ZIP, click the address
+   bar, type `powershell` and press Enter. In the window that opens, run this
+   with the fingerprint from the release pasted in:
+   `(Get-FileHash .\Zanshin-0.2.1-windows.zip).Hash -eq 'PASTE-THE-HASH-HERE'`.
+   It must print **True** (upper or lower case doesn't matter). If it prints
+   **False**, delete the file.
+3. Unpack it (right-click → **Extract All…**) into a folder OneDrive doesn't
+   sync, for example `C:\Games`. OneDrive would upload the whole app and can
+   make its files online-only, and then Zanshin may fail to start. Start
+   `Zanshin\Zanshin.exe`. The first time, Windows shows "Windows protected your
+   PC": choose **More info → Run anyway**, only for a ZIP whose fingerprint
+   matched. Keep the whole `Zanshin` folder together: the `.exe` needs the
+   `_internal` folder next to it.
 
 To update, quit Zanshin, delete the old folder and unpack the new ZIP the same
 way; your data stays (see *Your data* below).
 
-### B. Build it yourself (no warning)
+### B. Build it yourself (no "unknown publisher" warning for Zanshin.exe)
 
-A program you build on your own PC wasn't downloaded, so the "unknown
-publisher" warning doesn't come up for it. Zanshin's own code is then exactly
-what you can read here. The libraries it uses (`requirements.txt`) and
-PyInstaller, which packs it into an `.exe`, come from PyPI, the usual Python
-package index. The build installs the ones that are missing, in whatever
-version is newest that day, and keeps using the ones already installed without
-updating them, in later builds too.
+A program you build on your own PC wasn't downloaded, so Windows doesn't show
+the "unknown publisher" warning for it. Zanshin's own code is then exactly what
+you can read here. The libraries it uses (`requirements.txt`) and PyInstaller,
+which packs it into an `.exe`, come from PyPI, the usual Python package index.
+The build installs the ones that are missing, in whatever version is newest
+that day, and keeps using the ones already installed without updating them, in
+later builds too.
 
 This is how I install it myself. You need an internet connection. On my PC
 the first build downloaded under 100 MB and took about 550 MB on disk, Python
@@ -245,8 +127,8 @@ included.
    You don't have to pick a Python version: the first build (step 3) fetches
    the newest Python 3 by itself. I build and test with Python 3.14. Anything
    newer is untested, and until the libraries and PyInstaller support it, the
-   build may stop at a red **CHYBA:** line. If you already have Python 3.10 or newer, you can skip
-   this step, but only 3.14 is tested.
+   build may stop at a red **CHYBA:** line. If you already have Python 3.10 or
+   newer, you can skip this step, but only 3.14 is tested.
 2. **Get the source.** On the GitHub page open **Tags** and, next to the
    newest version, click **zip**. Before unpacking, right-click the ZIP →
    **Properties** → tick **Unblock** → **OK**. Windows marks everything you
@@ -284,57 +166,51 @@ included.
 sometimes flag programs packed with PyInstaller by mistake. The build is a
 folder rather than one self-unpacking `.exe`, and UPX compression is off; both
 are often blamed for these false alarms, but I can't promise it won't happen.
-And with Smart App Control on (Windows Security → App & browser
-control), Windows can block unsigned programs outright, with no "Run anyway".
-I haven't been able to test how it treats the ZIP or a Zanshin you built
-yourself. If either happens, please don't switch your protection off for Zanshin; open an
+And with Smart App Control on (Windows Security → App & browser control),
+Windows can block unsigned programs outright, with no "Run anyway". I haven't
+been able to test how it treats the ZIP or a Zanshin you built yourself. If
+either happens, please don't switch your protection off for Zanshin; open an
 issue instead, so I know.
 
-**Updating a Zanshin you built:** quit Zanshin first (right-click its tray icon → **Quit**). If it's
-still running, `build.bat` closes it without asking, and a session in progress
-isn't saved (*not released yet, 0.2.2:* the next start adds it to your history
-from the copy Zanshin keeps every 5 minutes, without its last few minutes; see
-*Your data*). Then get the new version and build it the same way. Your data
-stays, because it isn't in the build folder. Make a new shortcut to the new
+**Updating a Zanshin you built:** quit Zanshin first (right-click its tray
+icon → **Quit**). If it's still running, `build.bat` closes it without asking,
+and a session in progress isn't saved (from 0.2.2 the next start adds it to
+your history from the copy Zanshin keeps every 5 minutes, without its last few
+minutes). Then get the new version and build it the same way. Your data stays,
+because it isn't in the build folder. Make a new shortcut to the new
 `dist\Zanshin\Zanshin.exe` and delete the old folder. To Windows Firewall it's
 a new program, so it may ask again.
 
-**Your data** (settings, heart-rate history, recordings, generated speech and
-SFX) lives in `%APPDATA%\Zanshin`, not in the app's folder, so neither a new
-ZIP nor rebuilding touches it. **To remove Zanshin,** delete the folder you
-unpacked (for example `C:\Games\Zanshin`) and the shortcut; your data stays in
-`%APPDATA%\Zanshin` until you delete that folder too. If you built it
-yourself, Python stays installed: if you don't need it for anything else, uninstall *Python 3.x* first and then
-*Python install manager*, in Settings → Apps → Installed apps. pip keeps what
-it downloaded for the build in `%LOCALAPPDATA%\pip\cache` (about 45 MB on my
-PC); you can delete that folder, and `%LOCALAPPDATA%\Python` too if it's
-still there afterwards.
-
-*Not released yet (0.2.2):* shutting down, restarting or signing out of
-Windows saves a session in progress the normal way, only without the
-questions at the end. While a session runs, Zanshin also keeps a copy of it
-every 5 minutes in `hr_session_open.json`. If Zanshin ends without saving
-(a crash, Task Manager, a power cut), the next start adds that copy to your
-history, without its last few minutes, and says so in the log; the load
-threshold, high heart-rate limit and resting baseline don't learn from it.
-Before each save of your settings, the previous good file is kept as
-`dandurf_settings.json.bak`; if the settings can't be read, Zanshin sets the
-broken file aside as `dandurf_settings.json.corrupt-<date>-<time>`, loads
-that backup (or starts with the defaults if there's none) and tells you once.
+**Your data** (settings, heart-rate history, recordings, prepared voice and
+sounds) lives in `%APPDATA%\Zanshin`, not in the app's folder, so neither a new
+ZIP nor rebuilding touches it. From 0.2.2, shutting Windows down saves a
+session in progress, a running session is also copied every 5 minutes, and
+your settings keep a backup copy; details in
+[KNOWN_ISSUES.md](KNOWN_ISSUES.md).
 
 **No administrator rights,** not for Python's install manager, not for the
 build, not for the app, and don't run Zanshin as administrator. The app draws
 a window over the game, and I don't want an elevated process doing that,
 because anti-cheats (Vanguard, EAC, VAC) may treat it more harshly; only their
-makers know what they actually check. See `SAFETY.md` (in Slovak). The one
-exception is Windows Firewall's own question when Zanshin first opens its
-heart-rate port: allowing an app there takes administrator approval, because
-it changes a Windows setting.
-
-Zanshin has no Steam integration — it doesn't load the Steam SDK or talk to
-Steam in any way.
+makers know what they actually check. The one exception is Windows Firewall's
+own question when Zanshin first opens its heart-rate port: allowing an app
+there takes administrator approval, because it changes a Windows setting.
 
 ## Getting your heart rate in
+
+Zanshin has no app of its own on the phone. It takes heart rate from a
+companion app made by someone else, which runs on your phone and watch and
+sends the number straight to this PC.
+
+| Your watch | Companion app | Status |
+|---|---|---|
+| Wear OS watch with an Android phone | *HeartRateOnStream for OBS* (free) | Tested by me |
+| Apple Watch with an iPhone | *PulseOSC* (paid) | Untested: I have no Apple device |
+| Garmin, Fitbit and others | An app that sends heart rate straight to this PC over OSC, plain UDP (a bare number or simple JSON) or obs-websocket (the number written into a text source) | Untested |
+
+Cloud services (Pulsoid, HypeRate, Stromno) don't work with Zanshin: they route
+your heart rate through their own servers, and Zanshin only takes heart rate
+sent straight to this PC.
 
 1. **Same Wi‑Fi.** Phone and PC on the same Wi‑Fi: not mobile data, not a
    guest network, VPN off.
@@ -371,192 +247,168 @@ Change **Port** in **In-game → Watch and heart rate**, for example to `4456`,
 and enter the same number in the phone app; Zanshin tries the new port right
 away. You don't need OBS for Zanshin.
 
-Zanshin **listens on port `4455`** (TCP and UDP) so a phone or watch app can
-push readings to it. It replies only as much as the connection needs (on TCP
-it pretends to be OBS) and never sends your heart rate out. The port stays
-closed until you switch on *Listen for heart rate from the watch* under
-**In-game → Watch and heart rate** or open the pairing guide (*Pair your
-watch* or *How to pair your watch…*). After that it opens every time Zanshin
-starts, until you switch it off. It listens on **every network your PC is
-connected to** (unless you type one of this PC's own addresses into
+**iPhone / Apple Watch:** *PulseOSC* (paid) sends OSC, which Zanshin's code
+can receive — **but the iPhone route is untested so far: I have no Apple
+device.** PulseOSC costs money, so keep that in mind before you buy it;
+if you try it, please let me know whether it works for you (open an issue).
+The password, scene and source steps in the app's pairing guide apply to the
+Android app only; in PulseOSC you only enter this PC's IP and port.
+
+**Android / Wear OS:** the free version of *HeartRateOnStream for OBS* sends
+heart rate only; steps, which Zanshin uses to stay quiet while you walk, come
+only from its premium version.
+
+**The companion is someone else's app.** The QR codes in Zanshin are just
+download links to it (they open the App Store / Google Play). Zanshin can't
+vouch for what the companion does on its own side, so pick one you trust.
+
+**What the port does.** Zanshin **listens on port `4455`** (TCP and UDP) so a
+phone or watch app can push readings to it. It replies only as much as the
+connection needs (on TCP it pretends to be OBS) and never sends your heart
+rate out. The port stays closed until you switch on *Receive heart rate from
+the phone* under **In-game → Watch and heart rate** or open the pairing guide
+(*Pair your watch* or *How to pair your watch…*). After that it opens every
+time Zanshin starts, until you switch it off. It listens on **every network
+your PC is connected to** (unless you type one of this PC's own addresses into
 **Network address (advanced)** in that panel; an address the PC doesn't have
 falls back to all networks, and the log says so) and **without a password**,
 so anything that can reach that port could send it a heart-rate value. Only
-your firewall decides who can: allow Zanshin on your home network only, not
-on public Wi-Fi (details in [PRIVACY.md](PRIVACY.md)).
+your firewall decides who can: allow Zanshin on your home network only, not on
+public Wi-Fi (details in [PRIVACY.md](PRIVACY.md)).
 
-If another program already holds UDP port `4455` (or Windows won't open it),
-Zanshin keeps listening on TCP, so the Android route below still works. It
-says so in its log, and next to the switch it shows *Listening on TCP only —
-UDP didn’t open* until something connects. OSC and plain-UDP companions,
-PulseOSC included, can't reach it then. It doesn't retry UDP by itself: close
-that program, then switch *Listen for heart rate from the watch* off and on.
+## System requirements
 
-That app is a **third‑party companion you install on your phone or watch — made by someone else, not part of Zanshin.** It reads
-your heart rate there and sends it to Zanshin on this PC. The QR codes
-shown in Zanshin are just **download links** to those companion apps (they open
-the App Store / Google Play). **Zanshin itself has no mobile app** on any store.
-And because that companion is someone else's app, Zanshin can't vouch for what it
-does on its own side — so pick one you trust. It's your free choice.
+- **Windows 11, 64-bit.** It's the only version I've tested. Windows 10 64-bit
+  may work, but it's untested.
+- **Disk and memory:** the 0.2.1 ZIP is about 59 MB to download and about
+  125 MB unpacked. On my PC Zanshin used about 200 MB of RAM and about 0.6 % of
+  a 20-thread CPU, roughly an eighth of one core.
+- **A smartwatch and a companion app** that sends heart rate to this PC, with
+  the phone and the PC on the same home network (see the table above).
+- **Internet:** while you use Zanshin, only for the natural voice (optional).
+- **Borderless or windowed games** if you want to see the pictures. Windows
+  doesn't draw them over exclusive fullscreen; the voice still plays.
+- **No administrator rights.**
 
-**Android / Wear OS:** *HeartRateOnStream for OBS* (free). The free version
-sends heart rate only; steps, which Zanshin uses to stay quiet while you walk,
-come only from its premium version.
+## What it does
 
-**iPhone / Apple Watch:** *PulseOSC* (paid) sends OSC,
-which Zanshin's code can receive — **but the iPhone route is untested so far:
-the author has no Apple device.** PulseOSC costs money, so keep that in mind
-before you buy it; if you try it, please let me know whether it works for you
-(open an issue). The password, scene and source steps in the app's pairing guide
-apply to the Android app only; in PulseOSC you only enter this PC's IP and port.
+- **Your body decides when.** Once your load (Zanshin's measure of strain,
+  from your heart rate) has spent about 45 seconds above your threshold,
+  Zanshin waits for a pause of about 2.5 s without keyboard, mouse or
+  controller input, once your load has stopped climbing, and then gives you
+  the cue. It can't see the game, so a still moment mid-fight can count as a
+  pause too. If no such pause comes within 90 s, it shows only the picture.
+  Never in the Peak zone; at most 5 cues an hour, at least 4 minutes apart.
+- **It backs off when it gets in the way.** Tell it after a session that a
+  cue disrupted you, or press "not now" right after one, and it goes a step
+  quieter: voice → picture only → a few sessions without cues. It never gets
+  louder than the style you pick (Settings → Sound → *How I speak up*).
+- **It learns your numbers.** Your load threshold, resting baseline and high
+  heart-rate limit come from your own sessions, at least three for each (the
+  threshold and the limit only from play sessions of five minutes or more).
+  Until then Zanshin uses average-player numbers. Nothing to tune by hand.
+- **Play and Work.** A *Play | Work* switch in the title bar. Each world keeps
+  its own history and look (*Sumi*, ink and gold; *Aizome*, indigo). At work,
+  cues are pictures only.
+- **Voice and sound.** The natural voice (online, Microsoft; the default) or
+  the Windows voice (offline), eight built-in sounds, or your own recording.
+- **In-game pictures and an optional heart-rate panel.** Click-through and
+  scaled to your screen. Not over exclusive fullscreen.
+- **History.** Your sessions, and slow trends such as your resting baseline,
+  heart rate recovery and time over your heart-rate limit: rough trends from a
+  consumer watch, not a diagnosis.
+- **Guide.** A short note behind each of the four cues (Grounding, Jaw,
+  Grip & gaze, Breath): what happens in the body and why it may help, with
+  sources. None of those studies tested Zanshin.
+- **11 languages.** Slovak is the original; the others are AI-assisted
+  translations not yet checked by a native speaker.
 
-I've only tested *HeartRateOnStream for OBS* on a real watch. Another
-companion may work if it pushes heart rate **to your own network**, straight
-to this PC — over **OSC**, plain **UDP** (a bare number or simple JSON), or
-**obs‑websocket** (writing the number into a text source); see
-[PRIVACY.md](PRIVACY.md). **Zanshin deliberately doesn't connect to cloud
-services such as Pulsoid, HypeRate or Stromno (also third‑party):** they route
-your heart rate through their own servers, and Zanshin only takes heart rate
-sent straight to this PC.
+![One session in History: the heart-rate curve, two cues as triangles, a band showing when you were playing, and the session's numbers](docs/img/history-session.png)
 
-*Not released yet (0.2.2):* the heart-rate number on screen (the HUD, *Today*
-and next to the switch) is the median of the last 3 seconds of readings, so it
-doesn't jump with every message; measuring still uses every reading. If the
-companion writes two different heart rates into one source and the readings
-keep jumping between them, Zanshin says so in its log and shows *Two different
-heart rates in one source — check the watch app* next to the switch: in the
-companion's settings, let only the live heart
-rate write into the heart-rate source, or the second one ends up in your
-measurements too.
+*One session in History (synthetic data): triangles are cues, the band
+under the curve shows when you were probably playing.*
 
-## Prior art & related work
+The exact rules — when a cue comes, when Zanshin goes quieter, what it learns
+from and when the natural voice prepares its lines — are in
+[docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md).
 
-Zanshin isn't the only project near this idea. None of the ones below do the
-specific thing Zanshin is built around — *watch your heart rate while you play
-and, once your strain has been high for a while, nudge you, holding the voice
-for a short pause in your input* — but each solves a neighbouring piece, and it
-would be dishonest not to name them.
+## Privacy and anti-cheat
 
-| Project | What it does | How Zanshin differs |
-|---|---|---|
-| **[Cardia](https://github.com/uwburn/cardia)** (GPLv3) | Windows heart-rate monitor made for gamers and streamers: reads a Bluetooth heart-rate strap, **shows** your heart rate with a simulated ECG trace, and can raise an alarm (on screen, optionally with a sound) when it goes above or below limits you set. | Closest in spirit — open, runs on your own Windows PC, made for gamers. But Cardia's alarm goes off when your pulse crosses a fixed number; Zanshin looks at strain against your own calm, waits until it has spent a while above your threshold, and holds its voice for a short pause in your input. |
-| **Pulsoid · HypeRate · Stromno** | Stream heart rate to an on-screen overlay for your viewers. | Cloud-routed and closed; they exist to **show the number to an audience**. Zanshin keeps it on your machine and uses it to help *you*. (Zanshin doesn't take heart rate from them — they route it through their own servers; see above.) |
-| **Pauser** and similar stress apps | Read your heart rate from a smartwatch, alert you when it goes past a limit you set, and walk you through a breathing exercise, on your phone. | Same detect→regulate idea, but not gaming-aware: the alert comes when your pulse passes the limit, mid-fight or not. Zanshin fires only when your strain has spent enough time above a threshold (average-player numbers until it has three play sessions of five minutes or more, about half an hour of heart rate in all, then yours); the voice waits for a short pause in your input and never speaks in the Peak zone. |
-| **Unclench** and somatic-reminder scripts | Periodic "drop your shoulders, unclench your jaw" nudges. | Time-based, not body-based. In Zanshin your heart rate decides *whether* a cue is due, and the voice waits for a short pause in your input. |
+The short version is at the top of this page. In detail:
 
-**In one line:** the tools I found show your heart rate, alert you when it
-crosses a number you set, or remind you at set or random times. Zanshin is the
-only one I could find that reads your heart rate while you play and holds its
-voice for a short pause in your input — on your own PC, and only after your
-strain has spent a while above your threshold.
+- [PRIVACY.md](PRIVACY.md) lists everything that can use the network: the
+  natural voice, the heart-rate port, a download that happens only if a
+  built-in sound is missing, and links you click. There is no update checker,
+  and logs stay in local files. Your PC's IP address stays hidden on screen
+  until you click *Show IP*.
+- [SAFETY.md](SAFETY.md) lists what Zanshin does next to a game and what it
+  deliberately doesn't.
+- Zanshin has no Steam integration — it doesn't load the Steam SDK or talk to
+  Steam in any way.
 
-**What Zanshin is deliberately _not_:** a streaming overlay (the small in-game
-heart-rate panel can be shown on stream, but it's off by default and not what
-Zanshin is for), a fitness tracker, a medical device, or a cloud service. It
-shows you no scores, streaks or points, and it never sends your heart rate,
-sessions or insights anywhere. The few things that ever touch the network are
-listed honestly in [PRIVACY.md](PRIVACY.md). If you know a project that
-overlaps more than the ones above, please open an issue — credit where it's
-due.
+## Troubleshooting
 
-## Run from source (development)
+- **The watch won't connect.** See *Still waiting for the watch?* under
+  [Getting your heart rate in](#getting-your-heart-rate-in). Most often it's
+  **Cancel** in Windows Firewall's question or a network set to Public.
+- **OBS is running.** It holds port `4455`; see *Streaming with OBS?* above.
+- ***Android can connect, iPhone (PulseOSC) can’t*** next to the switch: another
+  program holds UDP port `4455`, or Windows won't open it. Zanshin keeps
+  listening on TCP, so the Android route still works, but OSC and plain-UDP
+  companions, PulseOSC included, can't reach it. It doesn't retry UDP by
+  itself: close that program, then switch *Receive heart rate from the phone*
+  off and on.
+- ***Two different heart rates in one source — check the watch app*** (from
+  0.2.2): the companion writes two heart rates into one source. In the
+  companion's settings, let only the live heart rate write into the heart-rate
+  source, or the second one ends up in your measurements too.
+- **No pictures over the game.** Exclusive fullscreen hides them (the voice
+  still plays); switch the game to borderless.
+- **A cue spoke in a robotic voice.** That's the Windows voice: the natural
+  voice wasn't ready for that line yet (offline, for example, or you changed
+  it while Zanshin was watching). Zanshin prepares it once you stop watching.
+- **A game's Ctrl+Alt+Z does nothing.** Zanshin reserves it. Quit Zanshin, then
+  in `%APPDATA%\Zanshin\dandurf_settings.json` set `"snooze_hotkey"` to another
+  combination with Ctrl, Alt, Shift or Win (for example `"ctrl+alt+x"`), or to
+  `""` to switch the shortcut off. "Not now" stays in the tray icon's menu.
+- **"Windows protected your PC", your antivirus or Smart App Control blocked
+  it.** See *If Windows blocks it* under [Install](#install). Please don't
+  switch your protection off.
 
-In the folder with `main.py`:
+## Uninstall
 
-```bash
-py -m pip install -r requirements.txt
-py main.py
-```
+1. Quit Zanshin: right-click the tray icon → **Quit** (× only hides it).
+2. Optional: keep your history with Settings → General → *Your data* →
+   **Export history (JSON)**.
+3. Delete the unpacked folder (for example `C:\Games\Zanshin`) and your
+   shortcut.
+4. Delete `%APPDATA%\Zanshin` if you don't want to keep your settings,
+   history and recordings.
+5. Optional: remove the firewall entry. Windows Security → Firewall & network
+   protection → Allow an app through firewall → Change settings → select
+   *Zanshin - heart-rate companion for gamers* (there's one for each folder
+   you ran Zanshin from) → **Remove**.
 
-It needs Windows and should run on Python 3.10 or newer (I found nothing in
-the code that needs a newer one), but I only test 3.14. Run this way, the app
-keeps its data next to `main.py`, separate from the built app's
-`%APPDATA%\Zanshin`.
+If you built it yourself, Python stays installed: if you don't need it for
+anything else, uninstall *Python 3.x* first and then *Python install manager*,
+in Settings → Apps → Installed apps. pip keeps what it downloaded for the build
+in `%LOCALAPPDATA%\pip\cache` (about 45 MB on my PC); you can delete that
+folder, and `%LOCALAPPDATA%\Python` too if it's still there afterwards.
 
-*Not released yet (0.2.2):* only one copy runs at a time, and a source run
-counts as the same app as the built one: starting it again only shows the
-window of the copy already running. To run two copies anyway (for testing),
-set the environment variable `ZANSHIN_ALLOW_MULTI=1`.
+## Known issues
 
-## Build the installer (optional)
+What doesn't work yet or works only partly: [KNOWN_ISSUES.md](KNOWN_ISSUES.md).
+Found something? [Open an issue](https://github.com/Dandurfin/Zanshin/issues).
+Please don't post heart-rate files or logs publicly.
 
-Players only need to double-click `build.bat` (see *Install* above). For
-developers, this is what it does. It runs `build_all.ps1`, which you can also
-start directly:
+## Similar projects
 
-```powershell
-powershell -ExecutionPolicy Bypass -File "build_all.ps1"
-```
-
-The script (1) checks/installs Python deps and PyInstaller, draws
-`Dandurf.ico` if it's missing, and runs `check_before_run.py` — if that finds
-a problem, nothing is built; (2) force-closes a running Zanshin without asking
-(Windows locks a running `.exe`), deletes the old `dist\Zanshin\` and packages
-the app into `dist\` (onedir, no admin manifest, UPX off); and (3) assembles
-an installer with Inno Setup 6 into `installer\`, but only if Inno Setup 6 is
-installed. I don't publish an installer (see *Install* above); without Inno
-Setup the app in `dist\Zanshin\` is ready as it is.
-
-## Tests
-
-With the app's dependencies installed (see above), install the developer
-tools first — `requirements-dev.txt` holds pytest and pyflakes — then run the
-tests:
-
-```bash
-py -m pip install -r requirements-dev.txt
-py -m pytest tests/
-```
-
-Other developer scripts, run by hand from the repository folder. None of them
-is part of the built app:
-
-- `check_before_run.py` — checks what can be checked without opening a
-  window: every module parses, every text has all 11 languages (none empty,
-  same `{placeholders}`; a text still left in English only gets a note), the
-  main window calls no method or colour token that doesn't exist, and no
-  keyboard hook or Steam code has come back. With pyflakes installed (the
-  developer tools above) it also looks for undefined names; without it, it
-  skips that check and says so. `build_all.ps1` runs it before every build but
-  doesn't install pyflakes, so unless you already have it, a build skips the
-  undefined-names check.
-- `check_translations.py` — missing languages, mismatched `{placeholders}` and
-  empty strings in the translations; exits with an error if it finds any.
-- `make_translation_todo.py` — writes `preklad_TODO.csv`, the strings still
-  waiting for a translation (it finds them where Japanese, Chinese, Russian or
-  Bulgarian is still the English text).
-- `check_sources.py` — opens the three study links shown in the Guide and
-  reports the dead ones; it doesn't check the longer list in `ZDROJE.md`. It
-  needs the internet and contacts each linked site. If no site answers and
-  every link fails on the network (name lookup, unreachable network or a
-  timeout), it says you're offline, checks nothing and exits with 0 instead of
-  reporting the links as dead.
-- `simulate.py` — plays synthetic evenings through the app's own heart-rate,
-  activity, trigger and measurement code and says what the cues would have
-  done. It checks the mechanism, not whether the thresholds fit your body. Its
-  evenings are tidier than real ones: one heart-rate reading a second with no
-  gaps (a real watch sends less often and drops some), and the pauses in your
-  input are the script's assumption, not a measurement.
-- `prepocitaj_okna.py` — re-checks measurement windows that were already
-  saved against today's rule on whether you were at the keyboard. That's the
-  one rule it can check from what's saved; rules that need the raw heart-rate
-  samples stay as they were. **It rewrites the saved `hr_windows.json`** next
-  to `main.py` (the data of Zanshin run from source, not of the built app); a
-  backup copy goes next to it first, and `--nahlad` only previews. Nothing is
-  deleted: a window that no longer passes is marked invalid, with the reason.
-
-The repository also holds three developer scripts that test the real window:
-`gui_harness_auto.py`, `gui_harness_onboarding.py` and `gui_screenshots.py`.
-You start them by hand, with Zanshin closed. The first two use the real mouse
-(move, click, drag, scroll) and press Escape, so leave the PC alone while they
-run. All three take screenshots of the app's own windows and pictures, with a
-small margin around them, into `logs\` by default. While they run, they change
-the data of Zanshin run from source next to `main.py`: its settings
-(`gui_harness_onboarding.py` deletes them for the run), and for
-`gui_harness_auto.py` and `gui_screenshots.py` also its heart-rate history.
-They put the originals back at the end. None of them is part of the built app: the build packs `main.py`,
-the modules it imports and the `assets` folder, and nothing imports these
-scripts.
+The tools I found show your heart rate, alert you when it crosses a number you
+set, or remind you at set or random times. Zanshin is the only one I could find
+that reads your heart rate while you play and holds its voice for a short pause
+in your input — on your own PC, and only after your strain has spent a while
+above your threshold. The projects I compared it with, and what Zanshin
+deliberately isn't: [docs/PRIOR_ART.md](docs/PRIOR_ART.md).
 
 ## License
 
@@ -575,101 +427,17 @@ made or endorsed by Dandurfin (additional terms under GPLv3 section 7; see
 who use Zanshin, not to make money.
 
 One thing isn't sorted out yet: `Dandurf.ico` is exactly the ensō that
-`make_icon.py` draws from the GPL code (the build redraws it from that code
-when the file is missing), and the app draws the same ensō in the tray and in
-its window. So it isn't clear yet where the free drawing ends and the icon
-that stays mine begins.
+`make_icon.py` draws from the GPL code, and the app draws the same ensō in the
+tray and in its window. So it isn't clear yet where the free drawing ends and
+the icon that stays mine begins.
 
-Author: **Dandurfin** — [Twitch](https://www.twitch.tv/dandurfin) ·
+---
+
+Made by **Dandurfin** — [Twitch](https://www.twitch.tv/dandurfin) ·
 [YouTube](https://www.youtube.com/channel/UCzZyqQfTNpiGkt_SIOmKO2w) ·
 [Kick](https://kick.com/dandurfin)
 
-## Project structure
-
-| File | Purpose |
-|---|---|
-| `main.py` | Entry point — makes the app DPI-aware, checks that `customtkinter` is installed, sets up crash logging, lets only one copy run (a second start shows the running copy's window) and starts `app.DandurfApp` |
-| `app.py` | Main window, wiring for the whole app |
-| `app_audio.py` | Part of the main window (a mixin of `DandurfApp`): preparing the built-in sound library, volume and the SFX / voice balance, choosing the voice engine and voice, preparing Edge voice lines ahead of time, and playing a cue's sound, voice or your own recording |
-| `app_controls.py` | Part of the main window (a mixin of `DandurfApp`): the command palette (Ctrl+K), "not now" (pausing cues from the shortcut or the tray menu), the collapsible log, gamepad activity, the manual Test cue and showing the introduction again |
-| `app_cues.py` | Part of the main window (a mixin of `DandurfApp`): the automatic cue's state shown in the breathing band and on "Today", the "last cue" line, the share of silent cues and the cue ladder step for a new session, and choosing how the app speaks up (cue style) |
-| `app_data.py` | Part of the main window (a mixin of `DandurfApp`): export / import / delete of your data, the Data and About panels, what is saved when a session ends and the question after it, sharing a profile as a code, and removing extra cue slots (one or several) |
-| `app_history.py` | Part of the main window (a mixin of `DandurfApp`): the "History" page — the trend chart with its metric and period chips, the sessions table, the days-played grid and the detail of one session, the "which cue works" chart, exporting sessions to a spreadsheet (CSV), and the background analysis behind the insights |
-| `app_hud.py` | Part of the main window (a mixin of `DandurfApp`): the in-game heart-rate panel (HUD) and its row of 4 icons, the language of what the app draws into the game, choosing the monitor, the heart-rate indicator in the sidebar, pairing the watch, and setting up and testing the in-game visuals |
-| `app_prefs.py` | Part of the main window (a mixin of `DandurfApp`): switching language, world (play / work) and theme; loading and saving your settings, volume and balance |
-| `app_profiles.py` | Part of the main window (a mixin of `DandurfApp`): the cue slots of the active profile, game profiles (switching, creating, deleting) and the auto-profile (switching to a game's profile while that game runs) |
-| `app_session.py` | Part of the main window (a mixin of `DandurfApp`): the heart-rate sensor (its settings, turning it on and off, receiving heart rate, steps and connection state, dropouts, a busy port (TCP is retried, a UDP port that won't open is reported), hiding this PC's IP on screen), opening a measuring session with its thresholds, and the regular ticks: four times a second whether you're at the keyboard (which also drives the cue trigger), once a second the "last cue" line |
-| `app_spolocne.py` | Names shared by `app.py` and its mixins (the app logger, language names for the switch, the "not now" shortcut defaults, PIL's `ImageTk`) |
-| `app_today.py` | Part of the main window (a mixin of `DandurfApp`): the "Today" page — drawing its animated centre, the live heart-rate, load and session block, delivering the automatic cue, and the "My stats" cards (choosing them, their values, swapping them by dragging) |
-| `paths.py` | Where data lives (`%APPDATA%\Zanshin` for the built app, next to `main.py` from source); the built app also copies data over from older versions |
-| `settings_model.py` | Slot/settings data model — defaults, normalisation |
-| `audio_engine.py` | TTS (Edge Natural + SAPI5) and SFX/recording playback |
-| `theme.py` | Colour tokens for Sumi / Aizome modes |
-| `i18n.py` | UI translations (11 languages; Czech and Bulgarian in `i18n_cs_bg.py`) |
-| `sfx_assets.py` | Built-in SFX library — copies the bundled sounds; download or synthesis only if one is missing |
-| `heart_rate.py` | Receiver for heart rate and steps from a companion app — TCP and UDP (OSC included), on port `4455` by default, on every network unless you pick one of this PC's own addresses |
-| `obs_websocket.py` | Minimal obs-websocket v5 server — what *HeartRateOnStream for OBS* writes your heart rate to |
-| `netinfo.py` | This PC's local IP addresses for pairing, hidden on screen until *Show IP* |
-| `activity.py` | Whether the player is active (`GetLastInputInfo`, **no hook**) |
-| `gamepad.py` | Controller activity through SDL (`pygame`) — only "the player is active"; which button is never stored |
-| `hotkey.py` | The one global shortcut, "not now" (`RegisterHotKey`, not a hook) |
-| `game_profiles.py` | Auto-profile — compares running process names with the known games (only while that switch is on) |
-| `trigger.py` | Reminder state machine — draw, defer to a break, silent arm |
-| `rebrik.py` | Cue ladder — voice → picture → pause, set per session from your feedback |
-| `measure.py` | Measurement windows around a reminder and their validity |
-| `hr_stats.py` | Resting baseline, strain index, session summaries & history |
-| `hr_insights.py` | Patterns across sessions — hedged notes, not diagnoses |
-| `data_io.py` | Export / import / delete — strict parser (50 MB cap, UTF-8 only, NaN/Infinity rejected, every field checked), no pickle |
-| `overlay.py`, `hud.py`, `hud_paint.py` | In-game visuals and HUD (PIL rendering) |
-| `layer_window.py` | The click-through, see-through window (`UpdateLayeredWindow`) every in-game visual is drawn in |
-| `display.py` | Monitors, DPI awareness, and which screen to draw on |
-| `ui_shell.py`, `ui_dialogs.py` | Main-window shell, dialogs, onboarding |
-| `ui_kit.py` | Building blocks of the main window — the breathing band, keycaps, stat cards, charts |
-| `theme_recolor.py` | Recolours the open window when the theme changes, without rebuilding it |
-| `color_picker.py` | The app's own colour picker (no eyedropper — it would have to capture the screen) |
-| `guided_tour.py` | The guided tour of the window after onboarding |
-| `guide_content.py`, `guide_panel.py` | The Guide — per-cue notes, philosophy and source list |
-| `background.py` | The dojo backdrop and the "Today" hero |
-| `make_icon.py` | Draws the ensō — the `Dandurf.ico` icon, and the tray mark while the app runs |
-| `logging_setup.py` | Local log files (`app.log`, `crash.log`) — no remote crash reporting |
-| `Dandurf.spec`, `build.bat`, `build_all.ps1`, `Dandurf.iss` | PyInstaller + Inno Setup build |
-
-### How the main window is split (for developers)
-
-Up to version 0.2, the whole main window was one class in one file of
-almost 9,000 lines. Since 0.2.1 it is split by topic, and nothing about how the
-app behaves has changed. `DandurfApp` is still a single class, but most of its
-methods live in the `app_*.py` modules above as *mixins* that `DandurfApp`
-inherits. A few rules keep it that way:
-
-- **State lives on `DandurfApp`.** `DandurfApp.__init__` in `app.py` sets most
-  of it up, including the window and its pages. A few things are only created
-  the first time they're needed (the "not now" timer, for example, or the
-  *My stats* picker), and the code reads those with
-  `getattr(self, name, None)`. A mixin has no `__init__` and no data of its
-  own; its methods use `self` exactly as they did in the single file.
-- **Imports go one way.** `app.py` imports the `app_*.py` modules; an
-  `app_*.py` never imports `app`, because that would be a circular import.
-  Names that `app.py` and the mixins both need live in `app_spolocne.py` and
-  stay importable from `app` too.
-- **Each method exists once.** A new method goes into the module whose topic
-  it belongs to (shared helpers stay in `app.py`). Two mixins must never
-  define the same name, because one would silently hide the other.
-- **Tests read the app's source through `tests/_zdroj_appky.py`.** Some tests
-  read the code as text, for example "there is no keyboard hook" or "the IP
-  address is masked in the log". This helper gives them `app.py` together with
-  every `app_*.py`, so a new module is covered automatically and such a check
-  can't pass just because the code moved to another file. The helper joins the
-  files into one source, so an `app_*.py` must not use
-  `from __future__ import ...`.
-- **A test that replaces a module-level name must replace it in the module
-  where the method now lives.** For example, a test that swaps out
-  `threading` for a method in `app_today.py` has to patch `app_today`, not
-  only `app`.
-
-See also **[SAFETY.md](SAFETY.md)** (anti-cheat / no-injection, in Slovak) and
-**[PRIVACY.md](PRIVACY.md)** (what is local vs. networked).
-
----
+Developers: running from source, tests, the build and the project structure
+are in [DEVELOPMENT.md](DEVELOPMENT.md).
 
 **[Soul of the app](SOUL.md)**

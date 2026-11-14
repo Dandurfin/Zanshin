@@ -291,6 +291,9 @@ class PrefsMixin:
                 prepinac.set(label)
             except Exception:
                 pass
+            # `set()` CTk meni len vypln - text zvoleneho sveta (akcent)
+            # treba prekreslit, aj po prefarbeni temy.
+            ui_kit.oznac_zvoleny_segment(prepinac, getattr(self, "pal", None) or {})
 
     # ---------- prepinanie temy ----------
 
@@ -376,8 +379,10 @@ class PrefsMixin:
         # kresli sa z vlastnej `self.pal` - po prepnuti temy tak ostaval hnedy
         # plat so zlatou linkou v indigovom okne. Je to hlavicka stranky Dnes,
         # cize prva vec, ktoru po prepnuti vidno.
+        # `SlotIcon` je obrazok vizualu so zapecenou farbou (V hre, Spustace).
         for widget in self._najdi_widgety((ui_kit.PalCanvas, ui_kit.StatCard,
-                                           ui_kit.QrReveal, ui_kit.KamaeBar)):
+                                           ui_kit.QrReveal, ui_kit.KamaeBar,
+                                           ui_kit.SlotIcon)):
             try:
                 widget.set_pal(nova_pal)
             except Exception:
@@ -404,7 +409,10 @@ class PrefsMixin:
         # widgetu uz nezanara a Collapsible by tienil vsetko, co v nom lezi -
         # graf vlozeny do zabalenej sekcie by ostal v starej teme.
         # Jeho vlastny `set_pal` sa deti nedotyka, takze zostup nic nepokazi.
-        for widget in self._najdi_widgety((ui_kit.Collapsible,), zostup=True):
+        # `SubNav` si aktivnu kartu (linka v akcente) pocita z vlastnej
+        # palety - bez novej by dalsi klik na kartu vratil staru temu.
+        for widget in self._najdi_widgety((ui_kit.Collapsible, ui_kit.SubNav),
+                                          zostup=True):
             try:
                 widget.set_pal(nova_pal)
             except Exception:
@@ -416,6 +424,12 @@ class PrefsMixin:
         # `_build_ui`, tu ho musime zavolat sami - inak by prepinac
         # ukazoval stary svet, hoci appka uz bezi v novom.
         self._sync_world_switches()
+        # Obdobie trendu v Historii je tiez segmentovy prepinac: prefarbenie
+        # stromu mu prepise text vsetkych segmentov na jednu farbu, zvoleny
+        # segment treba zvyraznit znova.
+        obdobie = getattr(self, "history_period_switch", None)
+        if obdobie is not None:
+            ui_kit.oznac_zvoleny_segment(obdobie, nova_pal)
 
         self._redraw_dnes_preview(nova_pal)
 

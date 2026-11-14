@@ -53,6 +53,17 @@ _UI = ["Segoe UI Variable Text", "Segoe UI", "Inter", "DejaVu Sans", "TkDefaultF
 _DISPLAY = ["Bahnschrift", "Segoe UI Semibold", "Segoe UI", "DejaVu Sans"]
 _MONO = ["Cascadia Mono", "Consolas", "DejaVu Sans Mono", "Courier New"]
 
+# JAPONCINA A CINSTINA maju vlastne pismo (0.2.2, audit UX). Segoe UI
+# kanji nema, takze Tk kazdy znak dohladal v inom nahradnom pisme -
+# "メインスイッチ" vyslo tenko, "心拍と負荷" inym rezom, v jednom riadku dve
+# pisma. Pismo s CJK znakmi od Windows (Yu Gothic UI / Microsoft YaHei UI)
+# kresli latinku aj znaky jednym rezom. Plati pre texty aj nadpisy;
+# cisla (mono) ostavaju.
+_UI_LANG = {
+    "ja": ["Yu Gothic UI", "Meiryo UI", "MS UI Gothic"],
+    "zh": ["Microsoft YaHei UI", "Microsoft YaHei", "SimHei"],
+}
+
 _resolved = {}
 
 
@@ -67,16 +78,44 @@ def _pick(candidates):
     return candidates[-1]
 
 
+def _jazyk_pisma():
+    """Jazyk rozhrania, ak ma vlastne pismo (ja/zh), inak "".
+
+    Cita sa pri kazdom volani: prepnutie jazyka stavia okno znova, takze
+    nove widgety si nove pismo vezmu samy."""
+    try:
+        import i18n
+        kod = i18n._lang.get("code", "")
+    except Exception:
+        return ""
+    return kod if kod in _UI_LANG else ""
+
+
 def fonts():
-    """Nazvy pisiem - zisti sa raz, az ked existuje Tk root."""
-    if not _resolved:
-        _resolved["ui"] = _pick(_UI)
-        _resolved["display"] = _pick(_DISPLAY)
-        _resolved["mono"] = _pick(_MONO)
-    return _resolved
+    """Nazvy pisiem - zisti sa raz pre kazdy jazyk, az ked existuje Tk root."""
+    kod = _jazyk_pisma()
+    if kod not in _resolved:
+        sada = {"mono": _pick(_MONO)}
+        if kod:
+            cjk = _pick(_UI_LANG[kod] + _UI)
+            sada["ui"] = cjk
+            sada["display"] = cjk
+        else:
+            sada["ui"] = _pick(_UI)
+            sada["display"] = _pick(_DISPLAY)
+        _resolved[kod] = sada
+    return _resolved[kod]
+
+
+# Kanji a hanzi maju v jednom znaku viac tahov nez latinka - pri 10 px sa
+# zlievaju (audit: "kanji v 9 pt"). V japoncine a cinstine je preto
+# najmensie pismo rozhrania 11.
+_CJK_MIN_SIZE = 11
 
 
 def ui(size, weight="normal"):
+    if _jazyk_pisma() and size < _CJK_MIN_SIZE:
+        size = _CJK_MIN_SIZE
     return (fonts()["ui"], size, weight)
 
 
@@ -121,6 +160,237 @@ RADIUS_CONTROL = 8
 
 
 # --------------------------------------------------------------------------
+# Jedna miera pre celu appku (0.2.2, audit UX)
+# --------------------------------------------------------------------------
+#
+# Audit nasiel styri lave hrany (karty na x=161, obsah na 171, nadpisy raz
+# na 170, raz na 179) a zubaty pravy stlpec: rozbalovacky koncili na inej
+# x nez posuvniky, lebo CTkOptionMenu bez `dynamic_resizing=False` rastie s
+# textom zvolenej polozky. Odteraz:
+#   * PAGE_GUTTER - lavy a pravy okraj kazdej stranky, radu kariet (SubNav)
+#     aj dychajuceho pasu, nech vsetko zacina na jednej zvislici,
+#   * CONTROL_W - sirka ovladaca v pravom stlpci riadku nastavenia
+#     (rozbalovacka, posuvnik), nech maju jednu pravu hranu.
+
+PAGE_GUTTER = 24
+CONTROL_W = 250
+# Sirka zvisleho posuvnika CTkScrollableFrame vratane jeho 1 px okraja
+# (CTkScrollbar ma 16 px). Prvok NAD posuvanou plochou (dychajuci pas na
+# Dnes) si ju nechava vpravo volnu, aby koncil tam, kde karty pod nim.
+SCROLLBAR_W = 17
+
+
+def linka(master, pal, token="rule"):
+    """Vodorovna deliaca linka 1 px vo farbe `pal[token]`.
+
+    PRECO NIE HOLY `CTkFrame(height=1)`: CTk pri vyske 1 px nakresli
+    obdlznik s nulovou vyskou (y0 == y1) a platno pod nim ma farbu RODICA -
+    linka nebola vidno vobec, bez ohladu na kontrast (overene na CTk 6.0).
+    Odtial "nevysvetlene medzery" z auditu. `bg_color` v tej istej farbe
+    zafarbi samotne platno, takze linka ma vzdy presne 1 px. Aby ju pri zmene
+    temy neprepisal rodic, drzi `_drz_pozadie_linky`."""
+    farba = pal[token]
+    ciara = ctk.CTkFrame(master, fg_color=farba, bg_color=farba, height=1,
+                         corner_radius=0)
+    _drz_pozadie_linky(ciara)
+    return ciara
+
+
+def _drz_pozadie_linky(ciara):
+    """Pozadie linky ostane VZDY v jej vlastnej farbe (`bg_color` = `fg_color`).
+
+    PRECO: CTkFrame pri zmene svojho `fg_color` posle vsetkym CTk detom
+    `configure(bg_color=<svoja vypln>)` (a priehladny ramec posiela
+    "transparent"). `theme_recolor` prefarbuje rodica SKOR nez dieta, takze
+    po prepnuti sveta Hra <-> Praca dostala linka pozadie panela a zase
+    zmizla - na snimkach 09/09b ziadna linka pod nadpisom panela, kym sa
+    okno neprestavalo. Kazde `bg_color` sa tu preto nahradi vyplnou linky
+    (nova vypln, ak prisla v tom istom volani). Vlastna metoda na INSTANCII,
+    nie podtrieda: `ctk.CTkFrame` ide v testoch nahradit atrapou."""
+    povodne = getattr(ciara, "configure", None)
+    if povodne is None:
+        return
+
+    def configure(require_redraw=False, **kw):
+        if "fg_color" in kw:
+            kw["bg_color"] = kw["fg_color"]
+        elif "bg_color" in kw:
+            kw["bg_color"] = getattr(ciara, "_fg_color", None) or kw["bg_color"]
+        return povodne(require_redraw=require_redraw, **kw)
+
+    try:
+        ciara.configure = configure
+    except Exception:
+        pass
+
+
+def stranka_scroll(master, pal):
+    """Posuvana plocha stranky so spolocnym vzhladom.
+
+    `corner_radius=0` nie je kozmetika: CTkScrollableFrame odsadzuje obsah
+    o svoj radius (predvolene 6 px), takze karty v nom zacinali o 6 px
+    dalej nez rad kariet a pas nad nimi - odtial "styri lave hrany" z
+    auditu. Volajuci ju packuje s `padx=PAGE_GUTTER`."""
+    return ctk.CTkScrollableFrame(
+        master, fg_color="transparent", corner_radius=0,
+        scrollbar_button_color=pal["surface_alt"],
+        scrollbar_button_hover_color=pal["accent"])
+
+
+def switch(master, pal, text="", **kw):
+    """Jediny prepinac appky.
+
+    Zapnuty ma drahu v `accent`, vypnuty v `switch_off`, gombik je vzdy
+    svetly (`text`). Do 0.2.2 malo sedem z deviatich prepinacov zapnutu
+    drahu v `accent2` - proti vypnutej to bol kontrast 1,07:1, takze
+    zapnute "Tazisko" vyzeralo presne ako vypnute (nahlasene v audite). Dva
+    zvysne mali zlatu drahu, cize appka mala dva styly naraz.
+
+    Bez textu je prepinac kompaktny (36x18), ako v pravom stlpci riadku
+    nastavenia; s textom ma predvolenu velkost CTk. Vsetko ide prepisat cez
+    `kw`, len farby stavu nie - tie su pravidlo, nie vkus.
+    """
+    style = {
+        "progress_color": pal["accent"],
+        "fg_color": pal["switch_off"],
+        "button_color": pal["text"],
+        "button_hover_color": pal["accent_hover"],
+        "text_color": pal["text_dim"],
+        "font": ui(12),
+    }
+    if not text:
+        style.update(width=40, switch_width=36, switch_height=18)
+    style.update(kw)
+    return ctk.CTkSwitch(master, text=text, **style)
+
+
+def nastav_prepinac_aktivny(sw, pal, aktivny):
+    """Zosedivi prepinac, ktory prave nema co ovladat (napr. ikonky HUD-u,
+    kym je panel s tepom vypnuty).
+
+    `state="disabled"` v CTk zosedivi len text - zapnuta zlata draha by
+    dalej tvrdila "zapnute a funguje". Preto sa ztlmi aj draha a gombik."""
+    try:
+        if aktivny:
+            sw.configure(state="normal", progress_color=pal["accent"],
+                         button_color=pal["text"])
+        else:
+            sw.configure(state="disabled", progress_color=pal["control_border"],
+                         button_color=pal["text_faint"])
+    except Exception:
+        pass
+
+
+# Styri druhy tlacidla. Kazde miesto si predtym skladalo farby samo, takze
+# "Exportovat" malo vypln, "Zmazat historiu" vyzeralo ako "Importovat" a
+# ram "Nahrat"/"Subor" mal kontrast 1,11:1 - tlacidla vyzerali vypnute.
+BUTTON_KINDS = ("primary", "secondary", "quiet", "danger")
+_BUTTON_PAD_X = 14          # vnutorny okraj textu pri prirodzenej sirke
+
+
+def _sirka_textu(text, font):
+    """Sirka textu v LOGICKYCH px (CTk pismo ma velkost v px, nie v bodoch).
+
+    Bez Tk rootu (testy) vrati odhad - presnost tu nie je funkcia, len
+    vzhlad."""
+    try:
+        family, size = font[0], font[1]
+        weight = font[2] if len(font) > 2 else "normal"
+        return tkfont.Font(family=family, size=-abs(int(size)),
+                           weight=weight).measure(str(text))
+    except Exception:
+        return int(len(str(text)) * float(font[1]) * 0.6)
+
+
+def button(master, pal, text, command=None, kind="secondary", width=None,
+           height=30, font=None, **kw):
+    """Tlacidlo jedneho zo styroch druhov (`BUTTON_KINDS`).
+
+      primary   - vypln `accent`; najviac jedno na kartu, je to "hlavna
+                  vec, kvoli ktorej tu si",
+      secondary - ram `control_border` (>= 3:1), text `text`,
+      quiet     - bez ramu, text `text_dim` (pomocne akcie),
+      danger    - ram aj text v `danger_text` (zmazat, odobrat).
+
+    `width=None` = PRIRODZENA sirka podla textu. Tlacidlo roztiahnute cez
+    celu kartu (napr. "Ako sparovat hodinky..." cez ~1500 px) kricalo
+    hlasnejsie nez obsah karty. Radius je ten isty ako pri ostatnych
+    ovladacoch (`RADIUS_CONTROL`), nie vlastny.
+    """
+    if kind not in BUTTON_KINDS:
+        kind = "secondary"
+    font = font or ui(12)
+    if kind == "primary":
+        style = {"fg_color": pal["accent"], "hover_color": pal["accent_hover"],
+                 "text_color": pal["bg"], "border_width": 0}
+    elif kind == "danger":
+        style = {"fg_color": "transparent", "hover_color": pal["surface_alt"],
+                 "text_color": pal["danger_text"], "border_width": 1,
+                 "border_color": pal["danger_text"]}
+    elif kind == "quiet":
+        style = {"fg_color": "transparent", "hover_color": pal["surface_alt"],
+                 "text_color": pal["text_dim"], "border_width": 0}
+    else:
+        style = {"fg_color": "transparent", "hover_color": pal["surface_alt"],
+                 "text_color": pal["text"], "border_width": 1,
+                 "border_color": pal["control_border"]}
+    if width is None:
+        width = _sirka_textu(text, font) + 2 * _BUTTON_PAD_X
+    style.update(corner_radius=RADIUS_CONTROL, height=height, width=width, font=font)
+    style.update(kw)
+    return ctk.CTkButton(master, text=text, command=command, **style)
+
+
+_MENU_CHROME_W = 56        # lavy okraj textu + sipka vpravo + rezerva
+
+
+def option_menu(master, pal, width=CONTROL_W, **kw):
+    """Rozbalovacka pevnej sirky (`CONTROL_W`), aby vsetky v jednom stlpci
+    koncili na tej istej pravej hrane - CTk ju inak nafukuje podla textu
+    zvolenej polozky a pri kazdom vybere by poskocila.
+
+    Pevna, ale nie orezavajuca: ked je niektora z `values` dlhsia, nez sa do
+    `width` zmesti (dlhy preklad, nazov motora hlasu), sirka sa raz nastavi
+    podla najdlhsej - text sa nikdy neodreze a pri vybere uz neposkoci.
+    Prava hrana ostava rovnaka, lebo riadok nastavenia drzi ovladac vpravo."""
+    font = kw.get("font") or ui(12)
+    hodnoty = kw.get("values") or []
+    if hodnoty and not kw.get("dynamic_resizing"):
+        najdlhsia = max(_sirka_textu(h, font) for h in hodnoty)
+        width = max(width, najdlhsia + _MENU_CHROME_W)
+    style = {
+        "width": width, "height": 28, "corner_radius": RADIUS_CONTROL,
+        "dynamic_resizing": False,
+        "fg_color": pal["surface_alt"], "button_color": pal["accent2"],
+        "button_hover_color": pal["accent2_hover"], "text_color": pal["text"],
+        "dropdown_fg_color": pal["surface"], "dropdown_text_color": pal["text"],
+        "dropdown_hover_color": pal["surface_alt"], "font": font,
+    }
+    style.update(kw)
+    style["width"] = width
+    return ctk.CTkOptionMenu(master, **style)
+
+
+def oznac_zvoleny_segment(seg, pal):
+    """Zvoleny segment CTkSegmentedButton ma text v `accent_hover`, ostatne
+    v `text_dim`.
+
+    Vypln zvoleneho segmentu (`accent2`) mala proti nezvolenemu kontrast
+    1,15:1 - v liste "Hra | Praca" nebolo vidno, v ktorom svete si. CTk
+    nevie farbu textu po segmentoch, tak sa nastavi priamo na tlacidlach
+    (`_buttons_dict`, to iste, cez co ide bublina v `ui_shell.TitleBar`).
+    `set()` CTk meni len vypln, takze text treba prekreslit po kazdom
+    `set()` aj po prefarbeni temy. Nikdy nevyhodi vynimku."""
+    try:
+        zvolene = seg.get()
+        for hodnota, tlacidlo in getattr(seg, "_buttons_dict", {}).items():
+            tlacidlo.configure(text_color=pal["accent_hover"] if hodnota == zvolene
+                               else pal["text_dim"])
+    except Exception:
+        pass
+
+
+# --------------------------------------------------------------------------
 # Panel
 # --------------------------------------------------------------------------
 
@@ -146,11 +416,14 @@ class Panel(ctk.CTkFrame):
             head.pack(fill="x", padx=16, pady=(11, 0))
             ctk.CTkLabel(head, text=title, font=ui(13, "bold"),
                          text_color=pal["text"]).pack(side="left")
+            # Veta vpravo ("3 relacie", "Analyza z ...") je proza, nie
+            # cislo v tabulke - monospace jej davalo vzhlad vypisu z konzoly.
             self.right_label = ctk.CTkLabel(head, text=right or "",
-                                            font=mono(10), text_color=pal["text_faint"])
+                                            font=ui(11), text_color=pal["text_dim"])
             self.right_label.pack(side="right")
-            rule = ctk.CTkFrame(self, fg_color=pal["line_soft"], height=1,
-                                corner_radius=0)
+            # `rule` (>= 1,5:1), nie `line_soft` (1,11:1): linka, ktoru
+            # nevidno, nechava len nevysvetlenu medzeru pod nadpisom.
+            rule = linka(self, pal)
             rule.pack(fill="x", pady=(9, 0))
 
         self.body = ctk.CTkFrame(self, fg_color="transparent")
@@ -546,6 +819,80 @@ def umiestni_pevne_okno(window, width, height, mon=None):
     return faktor, mon
 
 
+def rozmer_dialogu(window, width, height, mon=None):
+    """(sirka, vyska, monitor) dialogu v LOGICKYCH px, zmensene tak, aby sa
+    cele okno zmestilo do pracovnej plochy monitora `mon` (s okrajom
+    `display.WINDOW_FIT_MARGIN_PX`).
+
+    Hlavne okno sa zmesti vdaka zmenseniu celej appky
+    (`prisposob_mierku_monitoru`), lenze to sa zastavi na 70 %. Na 1366x768
+    pri 125-150 % je dialog 640 px vysoky aj po zmenseni vyssi nez plocha a
+    jeho spodok s tlacidlom Zavriet skoncil pod listou uloh - pri okne bez
+    ramu, ktore sa neda zmensit tahanim za okraj. Dialog tu preto radsej
+    ostane nizsi; obsah ma posuvnik, paticka s tlacidlami ostane vidno.
+    Pri akejkolvek chybe vrati rozmer nezmeneny a monitor None."""
+    try:
+        if mon is None:
+            mon = display_mod.monitor_at_cursor(window)
+        try:
+            okna = float(_ctk_tracker().window_scaling or 1.0)
+        except Exception:
+            okna = 1.0
+        mierka = dpi_mierka_monitora(mon) * okna
+        if not mierka > 0:
+            mierka = 1.0
+        okraj = display_mod.WINDOW_FIT_MARGIN_PX
+        max_w = int((mon.work_width - okraj) / mierka)
+        max_h = int((mon.work_height - okraj) / mierka)
+        return max(1, min(int(width), max_w)), max(1, min(int(height), max_h)), mon
+    except Exception:
+        return int(width), int(height), None
+
+
+def umiestni_dialog(top, owner, width, height, min_width=None, min_height=None):
+    """Dialog bez ramu (DialogChrome) na stred pracovnej plochy a cely na nej.
+
+    Okno bez ramu OS neumiestni ani nezmensi: bez polohy sa otvaralo v rohu
+    obrazovky, a vyssie nez plocha malo tlacidla mimo nej. Rozmer zmensi
+    `rozmer_dialogu`, stred rata `vycentrovana_geometria` (ten isty vypocet
+    ako hlavne okno a sprievodca). `minsize` nikdy nie je vacsi nez rozmer,
+    ktory sa na plochu zmesti - inak by ho Tk natiahol spat cez okraj.
+    Vracia (sirka, vyska) v logickych px."""
+    w, h, mon = rozmer_dialogu(owner, width, height)
+    try:
+        top._zanshin_umiestnene = True      # DialogChrome ho uz nepresuva
+    except Exception:
+        pass
+    try:
+        if min_width or min_height:
+            top.minsize(min(int(min_width or w), w), min(int(min_height or h), h))
+        if mon is not None:
+            top.geometry(vycentrovana_geometria(owner, w, h, mon))
+        else:
+            top.geometry(f"{w}x{h}")
+    except Exception:
+        pass
+    return w, h
+
+
+def vycentruj_podla_obsahu(top, owner=None):
+    """Dialog, ktory si velkost urci obsahom (bez pevnej geometrie), posunie
+    na stred pracovnej plochy monitora pod kurzorom.
+
+    Bezramove okno bez polohy Tk polozi do laveho horneho rohu - pri dvoch
+    monitoroch aj na iny, nez na ktorom clovek prave je. Rozmer sa necha
+    taky, aky si obsah vypytal; meni sa len poloha (CTk ju neskaluje)."""
+    try:
+        top.update_idletasks()
+        sirka = max(top.winfo_reqwidth(), top.winfo_width())
+        vyska = max(top.winfo_reqheight(), top.winfo_height())
+        mon = display_mod.monitor_at_cursor(owner or top)
+        x, y = display_mod.center_in_work_area(mon, sirka, vyska)
+        top.geometry(f"+{x}+{y}")
+    except Exception:
+        pass
+
+
 class Collapsible(ctk.CTkFrame):
     """Panel, ktory sa da zabalit. Zvonka sa sprava ako `Panel` - ma `.body`,
     do ktoreho sa sype obsah, takze sa da za `Panel` priamo vymenit.
@@ -624,6 +971,53 @@ class Collapsible(ctk.CTkFrame):
             pass
 
 
+class SlotIcon(ctk.CTkLabel):
+    """Piktogram vizualu (grounding / jaw / release / breath ...) tym istym
+    stetcom, ktory kresli hru (`hud_paint.render_slot_icon`).
+
+    Je to OBRAZOK so zapecenou farbou, takze pri zmene temy ho
+    `theme_recolor` neprefarbi - `set_pal` ho nakresli znova (vola ho
+    `DandurfApp._recolor_ui`). Bez toho by po prepnuti sveta ostali zlate
+    ikonky v indigovom okne."""
+
+    def __init__(self, master, pal, name, size=26):
+        super().__init__(master, text="", width=size, height=size)
+        self._name = name
+        self._size = size
+        self._photo = None
+        self.set_pal(pal)
+
+    def set_pal(self, pal):
+        try:
+            import hud_paint      # lazy: ui_kit sa importuje aj bez GUI
+            img = hud_paint.render_slot_icon(self._name, self._size,
+                                             hud_paint.Style(pal))
+            self._photo = ctk.CTkImage(light_image=img, dark_image=img,
+                                       size=(self._size, self._size))
+            self.configure(image=self._photo)
+        except Exception:
+            pass
+
+
+def bez_ikony(text):
+    """Text bez uvodneho symbolu: "🥾 Tazisko (drep/slide)" -> "Tazisko ...".
+
+    Nazvy vizualov v prekladoch nesu emoji (🥾 💀 🖱️ 🫁). Vedla obrazka,
+    ktory appka kresli sama (`hud_paint.render_slot_icon`), boli emoji
+    treti styl ikon v tichom rozhrani - a lebka pri celusti najhlasnejsi
+    symbol celej appky. Prvy "token" sa odstrani len vtedy, ked v nom nie je
+    ziadne pismeno ani cislica, takze text bez emoji ostane cely (aj ked
+    preklad emoji raz strati, nazov sa neodreze)."""
+    text = str(text or "")
+    prvy, medzera, zvysok = text.partition(" ")
+    # Len symbol mimo ASCII (emoji, piktogram) - "+ Novy" si svoje plus necha.
+    if (medzera and zvysok.strip() and prvy
+            and not any(ch.isalnum() for ch in prvy)
+            and any(ord(ch) > 0x2000 for ch in prvy)):
+        return zvysok.strip()
+    return text
+
+
 class SettingRow(ctk.CTkFrame):
     """Riadok nastavenia: nazov, vysvetlenie pod nim, ovladac vpravo.
 
@@ -644,7 +1038,7 @@ class SettingRow(ctk.CTkFrame):
     ICON_W = 40      # aj sirsie emoji (🖱️ s variacnym selektorom) sa zmesti
 
     def __init__(self, master, pal, title, sub=None, wrap=430, icon=None,
-                 note=None, note_wrap=560):
+                 note=None, note_wrap=560, icon_slot=None):
         super().__init__(master, fg_color="transparent")
         self.pack(fill="x")
         inner = ctk.CTkFrame(self, fg_color="transparent")
@@ -653,7 +1047,16 @@ class SettingRow(ctk.CTkFrame):
         self.control = ctk.CTkFrame(inner, fg_color="transparent")
         self.control.pack(side="right", padx=(14, 0))
 
-        if icon:
+        # `icon_slot` (meno vizualu) ma prednost pred textovou ikonou:
+        # obrazok z `hud_paint` je to, co hrac uvidi v hre - emoji nie.
+        if icon_slot:
+            ikona_wrap = ctk.CTkFrame(inner, fg_color="transparent",
+                                      width=self.ICON_W, height=26)
+            ikona_wrap.pack(side="left")
+            ikona_wrap.pack_propagate(False)
+            self.icon = SlotIcon(ikona_wrap, pal, icon_slot, size=26)
+            self.icon.pack(side="left")
+        elif icon:
             self.icon = ctk.CTkLabel(inner, text=icon, width=self.ICON_W, anchor="w",
                                      font=ui(13), text_color=pal["text"])
             self.icon.pack(side="left")
@@ -666,8 +1069,10 @@ class SettingRow(ctk.CTkFrame):
         # popisuje (ukazka zvuku ide za stylom hlasky).
         self.sub_label = None
         if sub:
+            # Vysvetlenie je OBSAH (preco a co to robi), nie dekoracia -
+            # preto `text_dim` (5,75:1), nie `text_faint`.
             self.sub_label = ctk.CTkLabel(
-                text_col, text=sub, font=ui(11), text_color=pal["text_faint"],
+                text_col, text=sub, font=ui(11), text_color=pal["text_dim"],
                 anchor="w", justify="left", wraplength=wrap)
             self.sub_label.pack(fill="x", pady=(2, 0))
 
@@ -678,8 +1083,7 @@ class SettingRow(ctk.CTkFrame):
                 anchor="w", justify="left", wraplength=note_wrap)
             self.note_label.pack(fill="x", pady=(0, 9))
 
-        ctk.CTkFrame(self, fg_color=pal["line_soft"], height=1,
-                     corner_radius=0).pack(fill="x")
+        linka(self, pal).pack(fill="x")
 
 
 def chip(master, pal, text, command=None, pressed=False, width=0):
@@ -1318,15 +1722,22 @@ class TrendChart(PalCanvas):
     PAD_B = 20      # popisky osi x
     MAX_X_LABELS = 8
 
+    # PRAZDNY STAV (0.2.2, audit UX): bez dat bola na mieste grafu prazdna
+    # plocha ~230 px a veta "zatial nic" az pod nou. Teraz graf zmensi na
+    # EMPTY_H a vetu napise do svojho stredu.
+    EMPTY_H = 80
+
     def __init__(self, master, pal, height=150):
         super().__init__(master, pal, height)
+        self._full_height = height
         self._values, self._labels = [], []
         self._color, self._band, self._band_label = None, None, ""
         self._bars = False
         self._decimals = 0
+        self._empty_text = ""
 
     def set_series(self, values, labels=None, color=None, band=None,
-                   band_label="", bars=False, decimals=0):
+                   band_label="", bars=False, decimals=0, empty_text=""):
         self._values = list(values or [])
         self._labels = list(labels or [])
         self._color = color
@@ -1334,6 +1745,16 @@ class TrendChart(PalCanvas):
         self._band_label = band_label or ""
         self._bars = bool(bars)
         self._decimals = int(decimals)
+        self._empty_text = empty_text or ""
+        prazdny = not [v for v in self._values if v is not None]
+        vyska = self.EMPTY_H if (prazdny and self._empty_text) else self._full_height
+        if vyska != self.height:
+            # `self.height` je zaroven zaklad mierky v `_canvas_size`
+            self.height = vyska
+            try:
+                self.configure(height=vyska)
+            except Exception:
+                pass
         self._redraw()
 
     def _fmt(self, value):
@@ -1370,7 +1791,7 @@ class TrendChart(PalCanvas):
             indexy.append(n - 1)
         for i in indexy:
             c.create_text(x0 + slot * (i + 0.5), h - 5 * s, text=self._labels[i],
-                          anchor="s", fill=pal["text_faint"], font=mono(9))
+                          anchor="s", fill=pal["text_faint"], font=mono(10))
 
     def _redraw(self):
         pal, c = self.pal, self.canvas
@@ -1381,7 +1802,12 @@ class TrendChart(PalCanvas):
         x0, x1 = self.PAD_L * s, w - self.PAD_R * s
         y0, y1 = self.PAD_T * s, h - self.PAD_B * s
         if not [v for v in self._values if v is not None]:
-            c.create_line(x0, y1, x1, y1, fill=pal["line_soft"], width=1)
+            if self._empty_text:
+                c.create_text(w / 2.0, h / 2.0, text=self._empty_text,
+                              fill=pal["text_dim"], font=ui(12),
+                              width=max(40, int(w - 2 * self.PAD_L * s)))
+            else:
+                c.create_line(x0, y1, x1, y1, fill=pal["line_soft"], width=1)
             return
 
         lo, hi = self._bounds()
@@ -1407,7 +1833,7 @@ class TrendChart(PalCanvas):
             y = y_of(value)
             c.create_line(x0, y, x1, y, fill=pal["line_soft"], width=1)
             c.create_text(x0 - 7 * s, y, text=self._fmt(value), anchor="e",
-                          fill=pal["text_faint"], font=mono(9))
+                          fill=pal["text_faint"], font=mono(10))
 
         color = self._color or pal["accent_hover"]
         n = len(self._values)
@@ -1459,6 +1885,10 @@ class SessionTrace(PalCanvas):
     STRIP_H = 9
     ACT_H = 7        # pruh 'kde sa hralo'
     TIME_H = 14
+    # Prava rezerva na cisla hranice a zakladne (0.2.2, audit UX). Popisky
+    # lezali NA krivke, ktora po vecere s tepom pri hranici "110" aj "76"
+    # prekryla. Krivka, pasy aj znacky koncia pred rezervou, cisla su v nej.
+    LABEL_W = 28
 
     def __init__(self, master, pal, height=88):
         super().__init__(master, pal, height)
@@ -1574,43 +2004,49 @@ class SessionTrace(PalCanvas):
             lo, hi = mid - 6, mid + 6
         span = float(hi - lo)
         vrch, spodok = 4 * s, strip_top - 10 * s
+        pw = max(10.0, w - self.LABEL_W * s)     # sirka krivky bez rezervy
+        obsadene = []                             # y uz nakreslenych cisel
 
         def y_of(value):
             return spodok - (value - lo) / span * (spodok - vrch)
 
         def popisok(y, hodnota, farba):
-            """Cislo k ciare. Ked ciara lezi pri hornom okraji, popisok ide
-            POD nu - nad nou by ho orezal okraj platna (a prave hranica
-            konci hore vzdy, ked ju relacia neprekrocila)."""
-            nad = y >= 14 * s
-            c.create_text(w - 4 * s, y - 2 * s if nad else y + 2 * s,
-                          text=str(int(round(hodnota))), anchor="se" if nad else "ne",
-                          fill=farba, font=mono(9))
+            """Cislo k ciare v pravej rezerve, na vysku ciary. Dve blizke
+            ciary (hranica tesne nad zakladnou) by si cisla prekryli - druhe
+            sa odsunie o riadok."""
+            riadok = 11 * s
+            for ine in obsadene:
+                if abs(y - ine) < riadok:
+                    y = ine - riadok if y <= ine else ine + riadok
+            y = min(max(y, 6 * s), spodok)
+            obsadene.append(y)
+            c.create_text(w - 1 * s, y, text=str(int(round(hodnota))), anchor="e",
+                          fill=farba, font=mono(10))
 
         if self._baseline and lo <= self._baseline <= hi:
             y = y_of(self._baseline)
-            c.create_line(0, y, w, y, fill=pal["text_faint"], width=1)
+            c.create_line(0, y, pw, y, fill=pal["text_faint"], width=1)
             popisok(y, self._baseline, pal["text_faint"])
         if self._threshold and lo <= self._threshold <= hi:
             y = y_of(self._threshold)
-            c.create_line(0, y, w, y, fill=pal["danger"], width=1, dash=(4, 4))
+            c.create_line(0, y, pw, y, fill=pal["danger"], width=1, dash=(4, 4))
             popisok(y, self._threshold, pal["danger"])
 
-        krok = w / float(len(values) - 1)
+        krok = pw / float(len(values) - 1)
         body = []
         for i, value in enumerate(values):
             body.extend((i * krok, y_of(value)))
         c.create_line(*body, fill=pal["accent_hover"], width=max(1, round(2 * s)),
                       smooth=True, capstyle="round", joinstyle="round")
 
-        self._draw_triggers(w, strip_top - 2 * s, s)
-        self._draw_activity(w, strip_top - self.ACT_H - 2, self.ACT_H)
-        self._draw_strip(w, strip_top, strip_h)
+        self._draw_triggers(pw, strip_top - 2 * s, s)
+        self._draw_activity(pw, strip_top - self.ACT_H - 2, self.ACT_H)
+        self._draw_strip(pw, strip_top, strip_h)
         if self._duration > 0:
             c.create_text(0, h - 2 * s, text="0:00", anchor="sw",
-                          fill=pal["text_faint"], font=mono(9))
-            c.create_text(w, h - 2 * s, text=self._mmss(self._duration), anchor="se",
-                          fill=pal["text_faint"], font=mono(9))
+                          fill=pal["text_faint"], font=mono(10))
+            c.create_text(pw, h - 2 * s, text=self._mmss(self._duration), anchor="se",
+                          fill=pal["text_faint"], font=mono(10))
 
 
 # POZN: tu bola trieda `MicroChart` - mikrograf pri cisle na karte
@@ -1821,8 +2257,7 @@ class StatList(ctk.CTkFrame):
         label = ctk.CTkLabel(row, text=str(value), font=mono(13),
                              text_color=pal["text"], anchor="e")
         label.pack(side="right", pady=7)
-        ctk.CTkFrame(self, fg_color=pal["line_soft"], height=1,
-                     corner_radius=0).pack(fill="x")
+        linka(self, pal).pack(fill="x")
         self._values[key] = label
         return label
 
@@ -1891,13 +2326,13 @@ class StatCard(ctk.CTkFrame):
         # ⓘ hned za textom - patri k popisku, nie do rohu.
         head = ctk.CTkFrame(body, fg_color="transparent")
         head.pack(fill="x", pady=(2, 0))
-        self.tag_label = ctk.CTkLabel(head, text=tag.upper(), font=ui(9, "bold"),
+        self.tag_label = ctk.CTkLabel(head, text=tag.upper(), font=ui(10, "bold"),
                                       text_color=pal["text_faint"], anchor="w")
         self.tag_label.pack(side="left")
         self._info_btn = ctk.CTkButton(
             head, text="ⓘ", width=16, height=16, corner_radius=8,
             fg_color="transparent", hover_color=pal["surface_alt"],
-            text_color=pal["text_faint"], font=ui(9), command=self._toggle_info)
+            text_color=pal["text_faint"], font=ui(10), command=self._toggle_info)
         self._info_btn.pack(side="left", padx=(5, 0))
 
         self._remove_btn = None
@@ -2138,12 +2573,20 @@ class QrReveal(ctk.CTkFrame):
 # --------------------------------------------------------------------------
 
 class SubNav(ctk.CTkFrame):
-    """Rad kariet (chipov) nad obsahom - Spustace | Zvuk | V hre | ...
+    """Rad kariet nad obsahom - Spustace | Zvuk | Vseobecne.
 
     Bocne menu ma po feedbacku len 3 hlavne polozky; vsetko ostatne su
     karty tu. Kazda karta ma kluc, ktory je zaroven kluc stranky, takze
     `app.navigate(key)` funguje pre karty rovnako ako pre hlavne polozky.
-    Odznak (pocet spustacov, bodka senzora) sa pripaja k textu karty."""
+    Odznak (pocet spustacov, bodka senzora) sa pripaja k textu karty.
+
+    KARTY SU TEXT, NIE CHIPY (0.2.2, audit UX). Oramovany chip v appke
+    znamenal styri rozne veci naraz (karta, filter, akcia, odkaz), takze
+    karty nevyzerali ako karty. Teraz je karta holy text a aktivnu nesie
+    2 px linka v `accent` pod nou plus plny `text` - dva signaly, nie len
+    farba. Lavu hranu radu urcuje volajuci (`PAGE_GUTTER`)."""
+
+    LINE_H = 2
 
     def __init__(self, master, pal, items, on_select):
         """items: [(key, label)]"""
@@ -2151,17 +2594,28 @@ class SubNav(ctk.CTkFrame):
         self.pal = pal
         self.on_select = on_select
         self.buttons = {}
+        self._lines = {}
         self._labels = {}
         self._badges = {}
         self.active = None
-        for key, label in items:
+        for poradie, (key, label) in enumerate(items):
+            tab = ctk.CTkFrame(self, fg_color="transparent", width=1, height=1)
+            # prva karta zacina presne na lavej hrane stranky, dalsie maju
+            # medzi sebou 20 px - text bez ramu potrebuje vzduch, nie ram
+            tab.pack(side="left", padx=(0 if poradie == 0 else 20, 0))
             btn = ctk.CTkButton(
-                self, text=label, height=30, corner_radius=8, border_width=1,
-                border_color=pal["border"], fg_color="transparent",
+                tab, text=label, height=30, width=0, corner_radius=RADIUS_CONTROL,
+                border_width=0, fg_color="transparent",
                 hover_color=pal["surface_alt"], text_color=pal["text_dim"],
-                font=ui(12), command=lambda k=key: self.select(k))
-            btn.pack(side="left", padx=(0, 6))
+                font=ui(13), command=lambda k=key: self.select(k))
+            btn.pack(side="top")
+            # width=1: CTkFrame si inak pyta predvolenych 200 px a kazda
+            # karta by bola siroka 200 px bez ohladu na text
+            line = ctk.CTkFrame(tab, fg_color="transparent", height=self.LINE_H,
+                                width=1, corner_radius=0)
+            line.pack(side="top", fill="x", padx=8)
             self.buttons[key] = btn
+            self._lines[key] = line
             self._labels[key] = label
 
     def select(self, key, notify=True):
@@ -2175,11 +2629,17 @@ class SubNav(ctk.CTkFrame):
         for k, btn in self.buttons.items():
             active = (k == key)
             try:
-                btn.configure(fg_color=pal["accent2"] if active else "transparent",
-                              border_color=pal["accent"] if active else pal["border"],
-                              text_color=pal["text"] if active else pal["text_dim"])
+                btn.configure(text_color=pal["text"] if active else pal["text_dim"])
+                self._lines[k].configure(
+                    fg_color=pal["accent"] if active else "transparent")
             except Exception:
                 pass
+
+    def set_pal(self, pal):
+        """Prefarbi linku aj text aktivnej karty z novej palety (pri zmene
+        temy) - aktivny stav sa pocita z `self.pal`, nie z widgetu."""
+        self.pal = pal
+        self.set_active(self.active)
 
     def set_badge(self, key, text=""):
         btn = self.buttons.get(key)
@@ -2206,12 +2666,19 @@ class InfoRow(ctk.CTkFrame):
     otaznikom a hrac ho vacsinou nikdy nenajde. Veta pri cisle je vzdy
     vidno, podrobnosti su na jeden klik a ostanu otvorene."""
 
-    def __init__(self, master, pal, short, more, more_label, less_label, wrap=420):
+    def __init__(self, master, pal, short, more, more_label, less_label, wrap=420,
+                 title=None):
         super().__init__(master, fg_color="transparent")
         self.pal = pal
         self._more_label, self._less_label = more_label, less_label
         self._open = False
-        ctk.CTkLabel(self, text=short, font=ui(11), text_color=pal["text_faint"],
+        # Meno metriky nad vetou (volitelne): tri vysvetlivky pod sebou bez
+        # mena boli tri rovnake "ⓘ co to znamena" bez adresata.
+        if title:
+            ctk.CTkLabel(self, text=title, font=ui(11, "bold"), text_color=pal["text"],
+                         anchor="w", justify="left", wraplength=wrap).pack(fill="x")
+        # Veta je obsah, nie dekoracia - `text_dim` (>= 4,5:1).
+        ctk.CTkLabel(self, text=short, font=ui(11), text_color=pal["text_dim"],
                      anchor="w", justify="left", wraplength=wrap).pack(fill="x")
         self.toggle = ctk.CTkButton(
             self, text=more_label, height=22, corner_radius=RADIUS_CONTROL, anchor="w",
@@ -2304,7 +2771,7 @@ class DialogChrome:
                 text_color=pal["text_dim"], font=ui(12), command=on_close)
             self.close_btn.pack(side="right")
 
-        rule = ctk.CTkFrame(top, fg_color=pal["line_soft"], height=1, corner_radius=0)
+        rule = linka(top, pal)
         rule.pack(fill="x", side="top")
 
         # tahanie za listu - aj za jej popisok (label prekryva vacsinu listy)
@@ -2332,6 +2799,20 @@ class DialogChrome:
         except Exception:
             pass
 
+        # POLOHA (0.2.2, audit UX). Dialog, ktory si rozmer neurcil sam cez
+        # `umiestni_dialog` (velkost mu dava obsah: novy profil, import,
+        # nahravanie, vyber farby...), sa po postaveni obsahu vycentruje v
+        # pracovnej ploche monitora pod kurzorom. Bezramove okno bez polohy
+        # Tk polozi do laveho horneho rohu hlavneho monitora.
+        def _vycentruj():
+            if not getattr(top, "_zanshin_umiestnene", False):
+                vycentruj_podla_obsahu(top)
+
+        try:
+            top.after(15, _vycentruj)
+        except Exception:
+            pass
+
         self.body = ctk.CTkFrame(top, fg_color="transparent")
         self.body.pack(fill="both", expand=True)
 
@@ -2344,6 +2825,63 @@ class DialogChrome:
             return
         sx, sy, wx, wy = self._drag
         self.top.geometry(f"+{wx + event.x_root - sx}+{wy + event.y_root - sy}")
+
+
+def confirm(owner, pal, title, text, ok_label, cancel_label, danger=False):
+    """Otazka ano/nie v okne appky (DialogChrome), nie systemovy messagebox.
+
+    PRECO (0.2.2, audit UX): biely systemovy dialog v tmavej appke mal
+    tlacidla v jazyku Windows ("Ano / Nie"), nie appky - a prave
+    najcitlivejsia akcia, zmazanie celej historie, sa potvrdzovala v okne,
+    ktore nevyzeralo ako sucast appky. Tlacidla tu nesu sloveso akcie
+    (`ok_label`), destruktivna akcia je `danger`, nie hlavne tlacidlo.
+    Escape aj krizik = nie. Modalne: vrati True/False az po zavreti."""
+    vysledok = {"ok": False}
+    top = ctk.CTkToplevel(owner)
+    top.title(title)
+    top.configure(fg_color=pal["bg"])
+    top.resizable(False, False)
+
+    def zavri(ok):
+        vysledok["ok"] = bool(ok)
+        try:
+            top.grab_release()
+        except Exception:
+            pass
+        try:
+            top.destroy()
+        except Exception:
+            pass
+
+    top.protocol("WM_DELETE_WINDOW", lambda: zavri(False))
+    chrome = DialogChrome(top, pal, title, on_close=lambda: zavri(False))
+    telo = ctk.CTkFrame(chrome.body, fg_color="transparent")
+    telo.pack(fill="both", expand=True, padx=24, pady=(18, 14))
+    ctk.CTkLabel(telo, text=text, font=ui(12), text_color=pal["text"],
+                 anchor="w", justify="left", wraplength=460).pack(fill="x")
+    paticka = ctk.CTkFrame(chrome.body, fg_color="transparent")
+    paticka.pack(fill="x", padx=24, pady=(0, 18))
+    zrusit = button(paticka, pal, cancel_label, command=lambda: zavri(False))
+    zrusit.pack(side="right")
+    button(paticka, pal, ok_label, kind="danger" if danger else "primary",
+           command=lambda: zavri(True)).pack(side="right", padx=(0, 8))
+    # Kazdy krok zvlast: ked zlyha len `grab_set` (iny grab, okno este nie je
+    # namapovane), dialog uz na obrazovke JE - keby sa hned vratilo False,
+    # ostal by tam s tlacidlom "Zmazat", ktore nic neurobi. Bez grabu je
+    # dialog len nemodalny, na odpoved sa aj tak pocka.
+    for krok in (lambda: top.transient(owner), top.grab_set,
+                 # Fokus na "nie": Enter omylom nesmie zmazat.
+                 lambda: top.after(30, zrusit.focus_set)):
+        try:
+            krok()
+        except Exception:
+            pass
+    try:
+        owner.wait_window(top)
+    except Exception:
+        zavri(False)          # nepockali sme - neviditelne "ano" nesmie ostat
+        return False
+    return vysledok["ok"]
 
 
 # --------------------------------------------------------------------------

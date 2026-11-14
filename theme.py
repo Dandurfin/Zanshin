@@ -8,9 +8,26 @@ zotavenie tepu), nie ako ozdoba.
 AIZOME - indigo variant. Rovnaka architektura, len iny podklad a modry
 akcent. Od 0.2 je to vzhlad PRACOVNEHO sveta (viz `WORLD_THEME`).
 
-Stavova farba enso tlacidla (spusti/zastavi pocuvanie) je vzdy `success`
-(pocuva) alebo `danger` (nepocuva) - to je jej JEDINA uloha v
-celom rozhrani, aby farba vzdy jednoznacne znamenala stav.
+STAVOVE FARBY (0.2.2, audit UX). Bodka stavu v bocnom paneli
+(`ui_shell._StateDot`) je pri sledovani plna `success`, zastavena je len
+duty kruzok v `text_faint` a "teraz nie" ma jantarovy prstenec (`warn`).
+Zastavena appka je BEZNY stav, nie poplach - cervena (`danger`) by tam
+kricala pri kazdom spusteni PC. `danger` je len pre chybu a pre
+destruktivnu akciu (zmazat), nikdy pre "zastavene" ani pre maximum tepu.
+
+PRAVIDLA, ktore z tokenov vyplyvaju (aby ich kazde miesto neriesilo samo):
+  * ZAPNUTE a ZVOLENE = `accent` (prepinac, aktivna karta, zvoleny svet).
+    `accent2` je len tlmena vypln POD ramom v `accent`, sama nic neznaci -
+    zapnuty prepinac v `accent2` mal proti vypnutemu kontrast 1,07:1.
+  * Obsahovy text (vysvetlivky, osi, legendy) ma kontrast aspon 4,5:1 na
+    `surface`; preto je `text_faint` od 0.2.2 svetlejsi (2,85 -> 4,72 v
+    Sumi, 3,01 -> 4,76 v Aizome). Hierarchiu nesie velkost a hrubka, nie
+    neviditelnost.
+  * Deliace linky (`rule`) maju aspon 1,5:1, inak su to len nevysvetlene
+    medzery. Ram panela ostava tichy (`line_soft`) - ram nema kricat.
+  * Ram vedlajsieho tlacidla (`control_border`) ma aspon 3:1, inak tlacidlo
+    vyzera vypnute. Text destruktivnej akcie (`danger_text`) ma 4,5:1;
+    samotny `danger` je na drobny text pritmavy.
 
 POZOR NA KLUCE: `ZEN` a `MODERN` NIE SU nazvy farebnych schem - su to aj
 identifikatory SFX sad (`sfx_key` v nastaveniach ma tvar "zen:earth_thud").
@@ -54,17 +71,25 @@ THEMES = {
         "accent2_hover": "#35507F",
         "text": "#E7EAF2",
         "text_dim": "#8F99B2",
-        "text_faint": "#5A6480",
+        # 4,76:1 na surface (predtym #5A6480 = 3,01:1 - vysvetlivky pod
+        # nastaveniami a osi grafov sa citali s namahou)
+        "text_faint": "#7A84A0",
         "success": "#7FB39A",
         "danger": "#C04A3E",
+        "danger_text": "#D86A5E",    # text/ram "Zmazat": 5,19:1 na surface
         "warn": "#C9A24D",
         "entry_bg": "#0B0F17",
         "switch_off": "#212B41",
+        "rule": "#2C3854",           # deliace linky: 1,52:1 na surface
+        "control_border": "#56658A",  # ram vedlajsieho tlacidla: 3,06:1
         # --- prvky noveho rozhrania ---
         "plate": "#101725",          # pokojny stav dychajuceho pasu
         "plate_glow": "#1B2740",     # vrchol nadychu
-        "plate_idle": "#131013",     # zastavene - pas nedycha
-        "plate_idle_border": "#3A2320",
+        # Zastaveny pas bol v Aizome jedina tepla plocha okna (#131013 s
+        # hnedym ramom) - vyzeral ako vystrihnuty zo Sumi. Teraz je to
+        # tmave indigo, pas "nedycha" tym, ze je tmavsi nez `plate`.
+        "plate_idle": "#0F131C",
+        "plate_idle_border": "#26324A",
         "keycap_face": "#1C2536",
         "keycap_edge": "#2C374F",
         "keycap_text": "#8FB0E8",
@@ -98,12 +123,16 @@ THEMES = {
         "accent2_hover": "#3A342A",
         "text": "#ECE8E0",
         "text_dim": "#9A9488",
-        "text_faint": "#66625A",
+        # 4,72:1 na surface (predtym #66625A = 2,85:1)
+        "text_faint": "#8A857B",
         "success": "#8FBF9F",
         "danger": "#C1553D",
+        "danger_text": "#D46F57",    # text/ram "Zmazat": 5,12:1 na surface
         "warn": "#C9A24D",
         "entry_bg": "#0A0B0F",
         "switch_off": "#2A2B36",
+        "rule": "#393A46",           # deliace linky: 1,54:1 na surface
+        "control_border": "#66676F",  # ram vedlajsieho tlacidla: 3,08:1
         "plate": "#17181F",
         "plate_glow": "#29241A",
         "plate_idle": "#131319",

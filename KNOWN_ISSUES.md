@@ -1,22 +1,81 @@
 # Known issues — Zanshin alpha 0.2.1
 
-Zanshin 0.1 was my first public release. In places it promised more than it could
-keep, and some things didn't work the way it said they did. Here are the main
-points of what I've found so far: what 0.2 fixes, what 0.2.1 fixes after a
-review of the 0.2 code, and what's still open. The seven problems named in the
-0.1 version of this file are all below.
+What doesn't work yet, or works only partly, comes first. Below it is what
+each version fixed: 0.2.2 (in the code here, not released yet), 0.2.1, and
+what 0.1 got wrong.
 
 I'm not a programmer. I build Zanshin with AI and learn as I go. If you spot
 something, or know a better way, I'd be glad to hear it. **0.2, partly** means
 only part is fixed. Where something stays as it was, such as the online voice
 being the default, I say so.
 
-**About 0.1 in this repository's history.** Along with the 0.1 code, some
-things went into the repository that didn't belong in public. Nothing
-terrible, but not meant to be there. So I set the repository up again: 0.1 is
-in the history as it was, only without those things, and 0.2 follows it. That
-was the lesson: work stays work, private stays private, and I check every file
-before publishing. What 0.1 got wrong in the app itself is written down below.
+## Still open (some planned for 0.3, some by design)
+
+As far as I know, none of these is harmful. Some are limits you should know
+about, and a few will stay.
+
+- **Zanshin can't see the game.** A pause is about 2.5 s without input, so a still
+  moment mid-fight counts, and aiming with gyro means no pause at all.
+  Controllers were tested on one PC.
+- **Exclusive fullscreen hides the pictures and the heart-rate panel** (voice
+  still plays), and the app can only guess it. It still counts such a picture
+  as shown, which skews the data on cues that stay silent on purpose (see
+  below) and the "HUD seen %" export column. Use Borderless.
+- **Port 4455 accepts connections from every network your PC is connected to,
+  without a password** (only your firewall limits who can reach it), so anything
+  that reaches it could send a fake heart rate, or keep all its connections
+  busy so your watch can't get in. Allow it on your home network only.
+- **Ctrl+Alt+Z is reserved.** While Zanshin runs, even in the tray, a game
+  that uses that one key combination may not receive it. In 0.1 the start-up
+  log line said input is read with "no blocking"; in 0.2 it names the
+  shortcut as the one exception.
+- **Zanshin isn't code-signed.** The ready-made ZIP gets Windows' "unknown
+  publisher" warning (*More info → Run anyway*); building it yourself avoids
+  it. With Smart App Control on, Windows can block unsigned programs
+  outright, with no "Run anyway" button. The README says so, but how it
+  treats the ZIP or a Zanshin you built yourself is untested.
+- **Not a medical device.** Load, heart rate recovery and HR persistence (one
+  number for how high your pulse ran and for how long) are rough trends from a
+  consumer watch, not diagnoses, and nothing is clinically validated. This
+  stays.
+- **Your data:** imported history never feeds calibration (by design).
+  Steps from the watch only keep cues quiet: time you spend walking still
+  counts in your saved sessions and in what the app learns from them
+  (resting baseline, load threshold, high heart-rate limit).
+- **Languages:** no translation has been checked by a native speaker, and
+  SAFETY.md is in Slovak apart from its English summary at the top.
+  *In-game language* (what the heart-rate panel and captions show; English by
+  default, on purpose) is separate from the app language and sits in the panel
+  about which screen to draw on, so the two are easy to mix up.
+- **The iPhone / Apple Watch route** is still untested.
+- **The voice-versus-picture comparison isn't shown yet**, though some cues stay
+  silent on purpose to collect it (about one in four in the first 15 sessions,
+  then one in ten). When it comes, it will compare voice plus picture with
+  picture only, not a cue with no cue.
+- **Numbers and labels:** the cue chart colours a pulse drop as good, some notes
+  are simpler than the math or name the wrong time span or unit, and the CSV
+  export is half-translated. A cue whose picture failed to draw (rare; the log
+  says so) is counted two ways: History, the CSV "breathing" column, insights
+  and the cue card on *Today* count it, while the questionnaire, the cue
+  ladder and "not now" treat it as not shown, even if its voice played.
+- **Texts and controls:** a few explanations and settings texts may still
+  claim a bit more than the code does (0.2.2 rewrote many of them), and the
+  "not now" shortcut can't be changed in the app (since 0.2.1, "Not now" is
+  also in the tray icon's menu). If Windows is slow at start-up, the log can
+  say another app holds the shortcut even though it works a moment later.
+  Most questions and messages still come in Windows' own boxes, with buttons
+  in the language of Windows rather than the app's.
+
+## How to help
+
+Found something that doesn't work as it says, or know a better way? Please open
+an issue: <https://github.com/Dandurfin/Zanshin/issues>. A plain description is
+enough. I'd especially welcome native speakers for the translations, anyone who
+tries the iPhone route, reports from other controllers, and advice on code
+signing, anti-cheat or heart-rate data.
+
+Please don't post heart-rate files or logs publicly: heart-rate files are health
+data, and logs can name your devices and files. Describe what you saw instead.
 
 ## What 0.2.2 changes (not released yet)
 
@@ -28,22 +87,22 @@ have them.
 - **The heart-rate number could jump by several BPM within one second.** Some
   companion setups write two different heart rates into the same source; in
   mine, one ran 5 to 10 BPM below the other. The number showed whichever came
-  last. **0.2.2:** the HUD, *Today* and the line next to the switch show the
-  median of the last 3 seconds of readings. Measuring doesn't change: load,
-  zones and saved sessions still use every reading.
+  last. **0.2.2:** the heart-rate panel in the game, *Today* and the line next
+  to the switch show the median of the last 3 seconds of readings. Measuring
+  doesn't change: load, zones and saved sessions still use every reading.
 - **Nothing told you the companion was sending two heart rates**, and both
   went into your measurements. **0.2.2:** when the readings in one source keep
   jumping between two values, Zanshin says so in its log and shows *Two
   different heart rates in one source — check the watch app* next to the
-  switch while heart rate comes in, until the sensor is switched off or
-  restarted. It doesn't separate the two; the fix is in the companion's
+  switch while heart rate comes in, until heart-rate receiving is switched off
+  or restarted. It doesn't separate the two; the fix is in the companion's
   settings: only the live heart rate should write into the heart-rate source.
 - **Starting Zanshin a second time could switch heart rate off for good.** ×
   only hides Zanshin in the tray, and on Windows 11 the tray icon is often
   hidden under the ^ arrow, so it was easy to start it again. The second copy
   couldn't open the heart-rate port (the first one held it), gave up and saved
-  *Listen for heart rate from the watch* as off, so the next start didn't
-  listen either. Any other port error saved it as off too. **0.2.2:** a second
+  heart-rate receiving as off, so the next start didn't receive heart rate
+  either. Any other port error saved it as off too. **0.2.2:** a second
   start just shows the window of the copy already running (if it can't, it
   says where to find it). If the port is busy or won't open, the switch goes
   off for that run only: your setting stays on and the next start tries
@@ -73,7 +132,7 @@ have them.
   high heart-rate limit and resting baseline don't learn from it: its end is
   cut off and it never got the questions where you could mark illness or
   alcohol. *Delete history* deletes the copy too.
-- **One bad byte in the settings file reset everything**: profiles, reminder
+- **One bad byte in the settings file reset everything**: profiles, cue
   wording and positions went back to the defaults, and the broken file was
   overwritten a second later. **0.2.2:** before each save, Zanshin keeps the
   previous good file as `dandurf_settings.json.bak`. If the settings can't be
@@ -112,29 +171,29 @@ have them.
   voice and says so: the intro sends nothing to Microsoft. Choosing Work
   shows a note that the question is about Play, and the Play / Work step says
   the app learns your own limits from Play only.
-- **The tour described the ensō wrong.** It said green while listening and
-  red when stopped, but the ensō is always in the theme's accent colour.
-  **0.2.2:** the tour says what really shows the state: the ensō breathes
-  while the app is watching and is still when stopped, a slow ring inside
-  means it's waiting for a good moment, a click starts or stops it, and the
-  dot at the top left shows the state too.
+- **The tour described the ensō wrong.** It said the ensō turns green when the
+  app runs and red when it's stopped, but the ensō is always in the theme's
+  accent colour. **0.2.2:** the tour says what really shows the state: the
+  ensō breathes while the app is watching and is still when stopped, a slow
+  ring inside means it's waiting for a good moment, a click starts or stops
+  it, and the dot at the top left shows the state too.
 - **The tour had 10 bubbles and promised "a few seconds".** **0.2.2:** it
   shows five places in about a minute: the ensō, heart-rate receiving (with a
-  *Pair your watch* button; the tour goes on after pairing), triggers,
-  history and the end. Without heart rate coming in, the last bubble points
-  at the watch icon and says the app stays silent without a watch. A tour
-  place saved by 0.2.1 is capped to the new last step.
+  *Pair your watch* button; the tour goes on after pairing), cues, history
+  and the end. Without heart rate coming in, the last bubble points at the
+  watch icon and says the app stays silent without a watch. A tour place
+  saved by 0.2.1 is capped to the new last step.
 - **The first evening spoke mostly in the Windows voice.** Zanshin started
   watching a quarter of a second after the intro, and while it watches it
   prepares nothing new, so preparing the natural voice stopped almost at
   once. Spanish, German, French and Portuguese players also heard the
-  English default voice read reminder words in their own language.
+  English default voice read cue words in their own language.
   **0.2.2:** on the very first start, watching begins once the lines are
   prepared or after 15 seconds, whichever comes first (*Today* shows
   *Preparing the voice*). Spanish, German, French and Portuguese (Brazil)
-  reminders get a voice of their language (Elvira, Katja, Denise, Francisca)
+  cues get a voice of their language (Elvira, Katja, Denise, Francisca)
   by the same rule as Japanese, Chinese, Russian and Bulgarian: only while
-  you're on the default voice, and only when the reminders that speak use
+  you're on the default voice, and only when the cues that speak use
   that language's built-in words.
 - **Setting the app up at the desk counted as play.** The intro, pairing and
   the tour easily take more than five minutes, and that calm session was
@@ -185,6 +244,53 @@ have them.
   it reads "THIS PC’S ADDRESS AND PORT — enter it in the phone app", and
   `check_translations.py` fails on any literal `\uXXXX` in a translation.
 
+### Words and looks
+
+- **One thing had several names.** The main switch was called *listening*
+  (in the Slovak original, also a word for eavesdropping), a cue was also a
+  reminder, a line, a trigger or a slot, and *limit* and *threshold* were
+  mixed up. **0.2.2:** one word each. Zanshin is *watching* or stopped, and
+  the tray menu says *Start watching* or *Stop watching* (it said *Start /
+  Stop*). The heart-rate switch is *Receive heart rate from the phone* (it
+  was *Listen for heart rate from the watch*). A cue is always a cue; a
+  *limit* is for heart rate (BPM), a *threshold* for load (x/100). Other new
+  names: *Triggers* → *Cues*, *Spoken lines* → *Cue voice*, *Voice comes
+  from* → *Voice source*, *Visuals in game* → *In-game pictures*, *▶ Test
+  visual* → *▶ Show*, *In-game HR* → *On-screen HR panel*, the sound sets
+  *Zen* / *Modern* → *Sumi* / *Aizome*, *HRPI* → *HR persistence*. The
+  README already uses the new names.
+- **After a session Zanshin could say that 0 of its cues stayed silent on
+  purpose**, and the intro never said that some cues are picture-only on
+  purpose, so whoever chose the voice could think it was broken. **0.2.2:**
+  with none silent the line just counts the cues; otherwise it says how many
+  were picture-only on purpose. The speak-up step of the intro says that at
+  first about one cue in four is picture-only.
+- **A switch that was on looked like one that was off** (the two tracks
+  differed by 1.07:1), and the state dot in the sidebar was red whenever
+  Zanshin was stopped, which is a normal state. **0.2.2:** a switch that is on
+  is in the theme's accent colour. The dot is filled green while Zanshin is
+  watching, a hollow ring when it's stopped and an amber ring during "not
+  now".
+- **The sidebar highlighted the wrong page** after ⓘ, ⚙, Ctrl+K or the tour
+  opened another one, and ⚙ next to the heart-rate panel switch led to a page
+  without its settings. **0.2.2:** the sidebar marks the page you're on, and
+  ⚙ opens the panel's settings.
+- **Small text was hard to read.** Explanations, axes and legends had a
+  contrast of 2.85:1, some text was very small, and the thin dividers were
+  never actually drawn. **0.2.2:** that text has at least 4.5:1, the
+  smallest text is bigger, the dividers show, and Japanese and Chinese use
+  one Windows UI font throughout.
+- **Empty pages looked like measurements, and some dialogs had no place on
+  the screen.** Before any heart rate, tiles on *Today* showed numbers, and
+  History offered *Recompute* when there was nothing to compute yet; the
+  slider in the questions after a session stood at 0 before you touched it,
+  which looked like an answer. The pairing guide and the Guide could open in
+  a corner. **0.2.2:** tiles fed by heart rate show "—" until it comes,
+  *Recompute* waits for the first insight, and the slider stays neutral until
+  you move it. The in-game pictures dialog, the pairing guide, the questions
+  after a session and the Guide open centred and shrink to fit the screen.
+  Deleting your history asks in Zanshin's own window, with *Cancel* focused.
+
 ## What 0.2.1 fixes
 
 0.2.1 is a bug-fix release after a review of the 0.2 code: in a few places it
@@ -196,25 +302,25 @@ its SHA-256 fingerprint, or you build the app yourself (see the README).
 ### The online voice
 
 - **The natural voice also sent lines it would never speak in a game**: the
-  wording of switched-off reminders, of ones whose in-game picture is off, of
-  ones that play your own recording, and of extra reminders kept from 0.1,
-  which the app never fires by itself. **0.2.1:** only the four reminders are
+  wording of switched-off cues, of ones whose in-game picture is off, of
+  ones that play your own recording, and of extra cues kept from 0.1,
+  which the app never fires by itself. **0.2.1:** only the four cues are
   sent, and of those only the ones switched on, with their picture on, set to
   speak and without your own recording. Switching one or its picture on, or
   removing its recording, prepares it then.
 - **Switching to the Windows voice didn't stop preparing that was already
   running**, so its remaining lines still went to Microsoft. The same after
   switching to the sound or picture-only style or to Work, switching a
-  reminder or its picture off or creating a profile. **0.2.1:** preparing
+  cue or its picture off or creating a profile. **0.2.1:** preparing
   stops at once; only a line already on its way is finished. A new profile's
   lines are now prepared right away too; before, a line not yet in the cache
   played in the Windows voice until something else started preparing.
 - **Switching the language to Japanese, Chinese, Russian or Bulgarian also
   switched the natural voice to that language** (while you were on the
-  default voice), but your reminders kept their words, for most people
+  default voice), but your cues kept their words, for most people
   English ones. The new voice then read English words it may mangle or not
   say at all. **0.2.1:** the voice follows the words, not the menu. Switching
-  the language changes it only if the reminders that speak in your current
+  the language changes it only if the cues that speak in your current
   profile use that language's built-in words, and a profile created in one of
   these languages gets its voice. A voice other than the default is never
   changed, so if an earlier switch already changed yours, pick it again under
@@ -256,17 +362,17 @@ its SHA-256 fingerprint, or you build the app yourself (see the README).
 ### "Not now"
 
 - **If another app held Ctrl+Alt+Z, the only way to quiet the cues was to
-  stop listening**, which also stops measuring. **0.2.1:** "Not now" is also
+  stop watching**, which also stops measuring. **0.2.1:** "Not now" is also
   in the tray icon's menu (right-click), and the start-up log line points
   there.
 
 ### The heart-rate port
 
-- **Port 4455 could stop taking heart rate until you restarted the sensor.**
-  Once its connection limit was full (a port scanner, or a watch that kept
-  reconnecting over bad Wi-Fi and left dead connections behind), it stopped
-  accepting new ones, even after the old ones closed. **0.2.1:** only the
-  extra connection is refused, and heart rate keeps coming in. Silent
+- **Port 4455 could stop taking heart rate until you restarted heart-rate
+  receiving.** Once its connection limit was full (a port scanner, or a watch
+  that kept reconnecting over bad Wi-Fi and left dead connections behind), it
+  stopped accepting new ones, even after the old ones closed. **0.2.1:** only
+  the extra connection is refused, and heart rate keeps coming in. Silent
   connections are closed: 10 s to finish connecting, and after a minute of
   silence the app pings the other side and closes the connection only if
   nothing answers within another minute, so a quiet but connected watch
@@ -274,13 +380,15 @@ its SHA-256 fingerprint, or you build the app yourself (see the README).
 - **If another program held UDP port 4455, heart rate over UDP or OSC (the
   iPhone route) never arrived, and nothing said why**: the status stayed at
   "Connecting...". **0.2.1:** Zanshin keeps listening on TCP, so the Android
-  route still works. It says so in its log and shows *Listening on TCP only —
-  UDP didn’t open* next to the switch until something connects. It doesn't
-  retry UDP: close the other program, then switch *Listen for heart rate
-  from the watch* off and on.
-- **The log file kept the first 40 raw messages from the watch every time the
-  sensor started.** **0.2.1:** 5, which is enough to see what the companion
-  sends when pairing doesn't work.
+  route still works. It says so in its log and shows a note next to the
+  switch until something connects: in 0.2.1 *Listening on TCP only — UDP
+  didn’t open*, from 0.2.2 *Android can connect, iPhone (PulseOSC) can’t*. It
+  doesn't retry UDP: close the other program, then switch *Receive heart rate
+  from the phone* off and on (in 0.2.1 it's called *Listen for heart rate
+  from the watch*).
+- **The log file kept the first 40 raw messages from the watch every time
+  heart-rate receiving started.** **0.2.1:** 5, which is enough to see what
+  the companion sends when pairing doesn't work.
 
 ### Your data
 
@@ -304,7 +412,7 @@ its SHA-256 fingerprint, or you build the app yourself (see the README).
 ### Smaller fixes
 
 - **The line under the language picker said switching the language also
-  changes the sample phrases.** It doesn't: reminders you already have keep
+  changes the sample phrases.** It doesn't: cues you already have keep
   their wording. **0.2.1:** the line says so.
 - **If Zanshin failed while starting, before its window opened, `crash.log`
   recorded nothing**, and a crash while the main window was being built was
@@ -313,6 +421,20 @@ its SHA-256 fingerprint, or you build the app yourself (see the README).
 - **For people who build from source:** on a Windows PC without internet,
   `check_sources.py` reported every study link as dead. **0.2.1:** it says
   you're offline and checks nothing.
+
+## Before 0.2
+
+Zanshin 0.1 was my first public release. In places it promised more than it
+could keep, and some things didn't work the way it said they did. Below are
+the main points of what I've found: what 0.2 fixed and what it left open. The
+seven problems named in the 0.1 version of this file are all below.
+
+**About 0.1 in this repository's history.** Along with the 0.1 code, some
+things went into the repository that didn't belong in public. Nothing
+terrible, but not meant to be there. So I set the repository up again: 0.1 is
+in the history as it was, only without those things, and 0.2 follows it. That
+was the lesson: work stays work, private stays private, and I check every file
+before publishing. What 0.1 got wrong in the app itself is written down below.
 
 ## What 0.1 got wrong, and what 0.2 changed
 
@@ -324,7 +446,7 @@ its SHA-256 fingerprint, or you build the app yourself (see the README).
   right after you changed it; only PRIVACY.md listed it. **0.2:** it's still the
   default, but the docs and the app say so, and say when text is sent: after the
   first start and after you change a line, the voice, the speed or the language.
-  Nothing is sent while Zanshin is listening; a line that isn't ready plays in
+  Nothing is sent while Zanshin is watching; a line that isn't ready plays in
   the Windows voice and is prepared after you stop.
 - **Two unneeded downloads.** With the online voice, every launch fetched
   Microsoft's voice list (undocumented), and the first launch fetched two sounds
@@ -353,8 +475,8 @@ its SHA-256 fingerprint, or you build the app yourself (see the README).
 - **"Anti-cheat safe" was a promise only anti-cheat makers can give.** The
   technical part (no injection, no hooks, no reading game memory) was true.
   **0.2:** the tag reads "Built to stay out of the game". The panel lists what
-  the app does and doesn't do, names the one exception (during the visual test
-  the pictures take mouse clicks so you can drag them), and says only the
+  the app does and doesn't do, names the one exception (while you preview a
+  picture, it takes mouse clicks so you can drag it), and says only the
   anti-cheat's maker can guarantee it won't flag you.
 - **The names of running programs were read even with auto-profile off**, every
   4 seconds; nothing was sent. The *Today* page also said the app starts "when a
@@ -365,7 +487,7 @@ its SHA-256 fingerprint, or you build the app yourself (see the README).
   (used only while you record your own cue), your PC's IP addresses (shown for
   pairing) and the monitor list, and misdescribed the controller and walking.
   **0.2, partly:** SAFETY.md and PRIVACY.md have the full list, but SAFETY.md is
-  still only in Slovak.
+  still mostly in Slovak (it now starts with an English summary).
 - **Players already on Borderless got a log line telling them to switch to
   Borderless**, because the check can't tell borderless from exclusive
   fullscreen. **0.2, partly:** the log line is now a hedged guess; the check is
@@ -416,11 +538,11 @@ its SHA-256 fingerprint, or you build the app yourself (see the README).
   the wrong picture.** **0.2, partly:** the four categories are fixed and you
   switch one off instead. In a 0.1 profile where you had removed a cue, a text
   can still sit under the wrong picture; a new profile avoids it.
-- **The HUD looked confident before it had a baseline.** **0.2:** for the first
-  ~30 readings it shows "calibrating…", and cues can't fire.
+- **The heart-rate panel looked confident before it had a baseline.** **0.2:**
+  for the first ~30 readings it shows "calibrating…", and cues can't fire.
 - **Smaller display bugs.** The cue counter on *Today* always showed 0×, zone
   words meant different things in different places, a dropout looked like not
-  being paired, and some choices got reset (visuals you switched off came back
+  being paired, and some choices got reset (pictures you switched off came back
   at every start; replaying the intro reset theme and volume). **0.2:** fixed,
   except that the counter and the *Cues* card can still show different numbers.
 
@@ -485,7 +607,7 @@ its SHA-256 fingerprint, or you build the app yourself (see the README).
   keys) and an unused module with its own port; none was part of the app or the
   installer. **0.2:** fixed, and those scripts and the module are gone. The
   three GUI test scripts that remain (two of them move the mouse, all three take
-  screenshots of the app's own windows) are described in the README and
+  screenshots of the app's own windows) are described in DEVELOPMENT.md and
   SAFETY.md.
 
 ### Corrections to the 0.1 version of this file
@@ -498,69 +620,5 @@ its SHA-256 fingerprint, or you build the app yourself (see the README).
   PC; the voice was the default and sent your cue texts out. It also said a
   "Steam build" sends a fixed presence token; no Steam build was released, and
   nothing was sent to Steam.
-
-## Still open — planned for 0.3
-
-As far as I know, none of these is harmful. Some are limits you should know
-about, and a few will stay.
-
-- **Zanshin can't see the game.** A pause is about 2.5 s without input, so a still
-  moment mid-fight counts, and aiming with gyro means no pause at all.
-  Controllers were tested on one PC.
-- **Exclusive fullscreen hides the pictures and the HUD** (voice still plays),
-  and the app can only guess it. It still counts such a picture as shown, which
-  skews the data on cues that stay silent on purpose (see below) and the "HUD
-  seen %" export column. Use Borderless.
-- **Port 4455 accepts connections from every network your PC is connected to,
-  without a password** (only your firewall limits who can reach it), so anything
-  that reaches it could send a fake heart rate, or keep all its connections
-  busy so your watch can't get in. Allow it on your home network only.
-- **Ctrl+Alt+Z is reserved.** While Zanshin runs, even in the tray, a game
-  that uses that one key combination may not receive it. In 0.1 the start-up
-  log line said input is read with "no blocking"; in 0.2 it names the
-  shortcut as the one exception.
-- **Zanshin isn't code-signed.** The ready-made ZIP gets Windows' "unknown
-  publisher" warning (*More info → Run anyway*); building it yourself avoids
-  it. With Smart App Control on, Windows can block unsigned programs
-  outright, with no "Run anyway" button. The README says so, but how it
-  treats the ZIP or a Zanshin you built yourself is untested.
-- **Not a medical device.** Load, recovery and HRPI (one number for how high your
-  pulse ran and for how long) are rough trends from a consumer watch, not
-  diagnoses, and nothing is clinically validated. This stays.
-- **Your data:** imported history never feeds calibration (by design).
-  Steps from the watch only keep cues quiet: time you spend walking still
-  counts in your saved sessions and in what the app learns from them
-  (resting baseline, load threshold, high heart-rate limit).
-- **Languages:** no translation has been checked by a native speaker, and
-  SAFETY.md is Slovak-only. *In-game language* (what the HUD and captions show;
-  English by default, on purpose) is separate from the app language and sits in
-  the panel about which screen to draw on, so the two are easy to mix up.
-- **The iPhone / Apple Watch route** is still untested.
-- **The voice-versus-picture comparison isn't shown yet**, though some cues stay
-  silent on purpose to collect it (about one in four in the first 15 sessions,
-  then one in ten). When it comes, it will compare voice plus picture with
-  picture only, not a cue with no cue.
-- **Numbers and labels:** the cue chart colours a pulse drop as good, some notes
-  are simpler than the math or name the wrong time span or unit, and the CSV
-  export is half-translated. A cue whose picture failed to draw (rare; the log
-  says so) is counted two ways: History, the CSV "breathing" column, insights
-  and the cue card on *Today* count it, while the questionnaire, the cue
-  ladder and "not now" treat it as not shown, even if its voice played.
-- **Texts and controls:** a few explanations and settings texts claim a bit more
-  than the code does, onboarding misdescribes where the pictures sit, and the
-  "not now" shortcut can't be changed in the app (since 0.2.1, "Not now" is
-  also in the tray icon's menu). If Windows is slow at start-up, the log can
-  say another app holds the shortcut even though it works a moment later.
-
-## How to help
-
-Found something that doesn't work as it says, or know a better way? Please open
-an issue: <https://github.com/Dandurfin/Zanshin/issues>. A plain description is
-enough. I'd especially welcome native speakers for the translations, anyone who
-tries the iPhone route, reports from other controllers, and advice on code
-signing, anti-cheat or heart-rate data.
-
-Please don't post heart-rate files or logs publicly: heart-rate files are health
-data, and logs can name your devices and files. Describe what you saw instead.
 
 — **Dandurfin** · GPLv3 or later

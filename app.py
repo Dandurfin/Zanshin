@@ -37,7 +37,6 @@ import hr_insights
 import hr_stats
 import rebrik
 import trigger
-import guide_content
 import netinfo
 from heart_rate import HeartRateMonitor
 from hud import StatsHud
@@ -239,20 +238,27 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
     HISTORY_ROWS = 30          # najnovsich relacii v tabulke
 
     # (id, i18n kluc nazvu, theme token farby) - poradie chipov aj vo vybere
+    #
+    # FARBA ZNACI STAV, NIE METRIKU (0.2.2, audit UX). Detail relacie mal
+    # 7 farieb v 11 bunkach a "najvyssi tep" v `danger` - bezne herne
+    # maximum vyzeralo ako poplach, co ide proti "nie je to zdravotnicka
+    # pomocka". Teraz: cislo je `text`; farbu pasma (`zone_*`) ma len
+    # hodnota, ktora pasmom JE (pokoj, cas nad hranicou); `blue` len
+    # zotavenie (HRR), lebo modra = pokojne/nizke (viz `theme.py`).
     HISTORY_METRICS = (
         # farby z radu pasiem (theme.ZONE_TOKENS), nie success/warn - graf
         # a pas pasiem vedla neho musia hovorit tou istou farebnou recou
         ("baseline", "metric.baseline.title", "zone_calm"),
         ("hrr", "metric.hrr.title", "blue"),
         ("over", "metric.over.title", "zone_high"),
-        ("peak", "metric.peak.title", "accent"),
+        ("peak", "metric.peak.title", "text"),
         # 0.2 - Historia ma ukazat cely obraz, nielen tep: ako dlho sa
         # hralo, kolko z toho v pokoji, ako dobre appka pocula a kolko
         # hlasok poslala. Id a farby su tie iste ako karty na Dnes.
-        ("session_len", "metric.session_len.title", "text_dim"),
+        ("session_len", "metric.session_len.title", "text"),
         ("calm_time", "metric.calm_time.title", "zone_calm"),
-        ("signal", "metric.signal.title", "blue"),
-        ("breath", "metric.breath.title", "murasaki"),
+        ("signal", "metric.signal.title", "text"),
+        ("breath", "metric.breath.title", "text"),
     )
     _METRIC_BUCKET_KEY = {"baseline": "baseline", "hrr": "hrr", "over": "over_s", "peak": "peak",
                           "session_len": "duration_s", "calm_time": "calm_s",
@@ -272,23 +278,24 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
     # Desatinne miesta na osi a v "prvy -> posledny". Hlasky su priemer na
     # relaciu (1,5 je poctivejsie nez zaokruhlenych 2).
     _METRIC_DECIMALS = {"over": 1, "breath": 1}
-    HISTORY_METRIC_CHIPS_PER_ROW = 4
 
     # Detail jednej relacie: (kluc bunky, i18n kluc popisku, token farby).
     # Popisky su tie iste slova ako v tabulke a na kartach - nove len tam,
     # kde take slovo este nebolo.
     HISTORY_DETAIL_COLS = 4
+    # Farby podla pravidla pri HISTORY_METRICS: cislo `text`, pasmo `zone_*`,
+    # zotavenie `blue`. Maximum tepu uz NIE JE `danger`.
     HISTORY_DETAIL_CELLS = (
-        ("duration", "history.col_duration", "text_dim"),
+        ("duration", "history.col_duration", "text"),
         ("avg", "history.col_avg", "text"),
-        ("max", "history.detail_peak", "danger"),
+        ("max", "history.detail_peak", "text"),
         ("calm", "history.detail_calm", "zone_calm"),
         ("over", "history.col_over", "zone_high"),
-        ("breath", "history.detail_breath", "murasaki"),
-        ("peak", "history.col_peak", "accent"),
+        ("breath", "history.detail_breath", "text"),
+        ("peak", "history.col_peak", "text"),
         ("hrr", "history.detail_hrr", "blue"),
-        ("hrpi", "history.detail_hrpi", "accent"),
-        ("signal", "history.detail_signal", "blue"),
+        ("hrpi", "history.detail_hrpi", "text"),
+        ("signal", "history.detail_signal", "text"),
         ("felt", "history.detail_felt", "text"),
     )
 
@@ -987,7 +994,7 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         rozhranie hybe.
         """
         wrap = ctk.CTkFrame(page, fg_color="transparent")
-        wrap.pack(fill="both", expand=True, padx=24, pady=(20, 20))
+        wrap.pack(fill="both", expand=True, padx=ui_kit.PAGE_GUTTER, pady=(20, 20))
 
         # --- banner o chybajucom edge-tts (skryty, kym ho refresh_edge_banner nezapne) ---
         self.banner = ctk.CTkFrame(wrap, fg_color=pal["danger"], corner_radius=ui_kit.RADIUS_CONTROL)
@@ -1006,7 +1013,9 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         self.kamae = ui_kit.KamaeBar(anchor, pal, on_toggle=self.toggle_listening)
         # Znacka (enso) dycha PRESNE s dychovou linkou tejto hlavicky -
         # jedno okno, jeden rytmus. Viz `KamaeBar.phase()`.
-        self.kamae.pack(fill="x")
+        # Vpravo nechava miesto posuvnika pod nim, aby pas koncil na tej istej
+        # pravej hrane ako karty (audit: pas siahal o ~25 px dalej).
+        self.kamae.pack(fill="x", padx=(0, ui_kit.SCROLLBAR_W))
         self.kamae.set_texts(tr("kamae.bar_title"), tr("kamae.bar_sub"))
 
         # Kedy sa appka naposledy ozvala. Zamerne tlmene: je to kontext k
@@ -1021,9 +1030,7 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         # panelom uz nie a dennik by z okna vypadol. Pas ostava PEVNE hore
         # (jeho rytmus je stav appky a nesmie odrolovat), vsetko pod nim sa
         # posuva - rovnako ako na Historii.
-        body = ctk.CTkScrollableFrame(
-            wrap, fg_color="transparent", scrollbar_button_color=pal["surface_alt"],
-            scrollbar_button_hover_color=pal["accent"])
+        body = ui_kit.stranka_scroll(wrap, pal)
         body.pack(fill="both", expand=True)
         self.dnes_body = body
 
@@ -1060,7 +1067,7 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         self.dnes_canvas.bind("<Leave>",
                               lambda _e: self._dnes_set_cursor(""))
         self._dnes_tk_imgs = {}      # drzi ImageTk referencie (Tk ich inak zahodi)
-        self._dnes_hit = {}          # klikacie zony: "enso"/"credit" -> (x0,y0,x1,y1)
+        self._dnes_hit = {}          # klikacia zona: "enso" -> (x0,y0,x1,y1)
         self._dnes_cursor = ""
         self._dnes_fonts = {}
         # Trvale polozky canvasu (dojo, enso) a podpisy proti zbytocnemu
@@ -1073,9 +1080,6 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         self._dnes_titul = ""
         self._dnes_veta = ""
         self._dnes_lastcue_text = ""
-        # Twitch odkaz pre kredit (klik na "Dandurfin" v strede).
-        self._dnes_twitch = next(
-            (u for n, u in guide_content.COMMUNITY_LINKS if n == "Twitch"), None)
 
         # ZNACKA (残 v ense) + spinac stavu. Uz to NIE JE widget, ale kresba na
         # Canvase (`ui_shell._EnsoHero`). API ostava rovnake, takze alias
@@ -1145,8 +1149,7 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         # cely vecer: kde tep vyskocil, ako dlho tam ostal a kedy appka
         # spustila dychanie. Dovtedy sa dala relacia precitat az v
         # Historii, a aj tam len ako riadok cisel.
-        ctk.CTkFrame(live, fg_color=pal["line_soft"], height=1,
-                     corner_radius=0).pack(fill="x", pady=(14, 0))
+        ui_kit.linka(live, pal).pack(fill="x", pady=(14, 0))
         trace_head = ctk.CTkFrame(live, fg_color="transparent")
         trace_head.pack(fill="x", pady=(10, 0))
         ctk.CTkLabel(trace_head, text=tr("dnes.trace_title"), font=ui_kit.ui(12),
@@ -1200,7 +1203,8 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         # Vpravo hore, hned po ruke: zapnut/vypnut widget tepu bez chodenia do
         # Nastaveni. Ci ho hrac ma zapnuty, ovplyvnuje vysledok (biofeedback -
         # videny tep sa podvedome reguluje), preto sa oplati mat to na ocaich.
-        # ⚙ vedla presmeruje do plnych HUD nastaveni ("V hre").
+        # ⚙ vedla otvori plne HUD nastavenia (Nastavenia -> Vseobecne, sekcia
+        # panela s tepom) - do 0.2.2 viedlo na stranku V hre, kde HUD nie je.
         hud_row = ctk.CTkFrame(stats_wrap, fg_color="transparent")
         hud_row.pack(fill="x", pady=(0, 12))
         ctk.CTkLabel(hud_row, text=tr("hud.quick_label").upper(), font=ui_kit.ui(11, "bold"),
@@ -1209,13 +1213,10 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
             hud_row, text="⚙︎", width=26, height=26, corner_radius=ui_kit.RADIUS_CONTROL,
             fg_color="transparent", hover_color=pal["surface_alt"],
             text_color=pal["text_dim"], font=ui_kit.ui(13),
-            command=lambda: self._navigate("vhre")).pack(side="right")
+            command=self.show_hud_settings).pack(side="right")
         self.hud_quick_var = tk.BooleanVar(value=self.hud_config["enabled"])
-        ctk.CTkSwitch(
-            hud_row, text="", variable=self.hud_quick_var, width=40,
-            switch_width=36, switch_height=18,
-            progress_color=pal["accent2"], fg_color=pal["switch_off"],
-            button_hover_color=pal["accent_hover"],
+        ui_kit.switch(
+            hud_row, pal, variable=self.hud_quick_var,
             command=lambda: self.on_hud_config_change(
                 enabled=self.hud_quick_var.get())).pack(side="right", padx=(0, 8))
 
@@ -1341,17 +1342,14 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         #
         # Teraz scrolluje celok a `slots_container` je obycajny ramec, ktory
         # `rebuild_slots` bez problemu vyprazdni.
-        wrap = ctk.CTkScrollableFrame(
-            page, fg_color="transparent",
-            scrollbar_button_color=pal["surface_alt"],
-            scrollbar_button_hover_color=pal["accent"])
-        wrap.pack(fill="both", expand=True, padx=24, pady=(20, 20))
+        wrap = ui_kit.stranka_scroll(page, pal)
+        wrap.pack(fill="both", expand=True, padx=ui_kit.PAGE_GUTTER, pady=(20, 20))
         self.spustace_scroll = wrap
 
         ctk.CTkLabel(wrap, text=tr("slots.title"), font=ui_kit.ui(17, "bold"),
                      text_color=pal["text"], anchor="w").pack(fill="x")
         ctk.CTkLabel(wrap, text=tr("slots.hint"), font=ui_kit.ui(11),
-                     text_color=pal["text_faint"], wraplength=680, anchor="w",
+                     text_color=pal["text_dim"], wraplength=680, anchor="w",
                      justify="left").pack(fill="x", pady=(3, 0))
 
         self._build_citlivost_card(wrap, pal)
@@ -1364,20 +1362,22 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         inner.pack(fill="x", padx=14, pady=11)
 
         self.profile_var = tk.StringVar(value=self.active_profile_name)
-        self.profile_switch = ctk.CTkOptionMenu(
-            inner, values=[p["name"] for p in self.profiles],
-            variable=self.profile_var, width=168, height=28, corner_radius=ui_kit.RADIUS_CONTROL,
-            fg_color=pal["surface_alt"], button_color=pal["accent2"],
-            button_hover_color=pal["accent2_hover"], text_color=pal["text"],
-            dropdown_fg_color=pal["surface"], dropdown_text_color=pal["text"],
-            font=ui_kit.ui(12), command=self.on_profile_switch)
+        self.profile_switch = ui_kit.option_menu(
+            inner, pal, width=200, values=[p["name"] for p in self.profiles],
+            variable=self.profile_var, command=self.on_profile_switch)
         self.profile_switch.pack(side="left", padx=(0, 6))
 
+        # Vedlajsie akcie profilu ako vedlajsie tlacidla (ram >= 3:1), bez
+        # emoji z prekladu (`bez_ikony`). Zmazanie NIE JE hned vedla
+        # "+ Novy" - stoji ako destruktivna akcia na konci radu, aby sa
+        # nedalo trafit omylom pri zakladani profilu.
         for text, command in ((tr("profile.new"), self.new_profile_dialog),
-                              (tr("profile.delete"), self.delete_current_profile),
-                              (tr("profile.export"), self.export_profile_code),
-                              (tr("profile.import"), self.import_profile_dialog)):
-            ui_kit.chip(inner, pal, text, command).pack(side="left", padx=3)
+                              (ui_kit.bez_ikony(tr("profile.export")), self.export_profile_code),
+                              (ui_kit.bez_ikony(tr("profile.import")), self.import_profile_dialog)):
+            ui_kit.button(inner, pal, text, command=command,
+                          height=28).pack(side="left", padx=3)
+        ui_kit.button(inner, pal, tr("profile.delete"), kind="danger", width=28,
+                      height=28, command=self.delete_current_profile).pack(side="right")
 
         self.auto_profile_var = tk.BooleanVar(value=self.auto_profile_enabled)
         auto_text = tr("settings.auto_profile") if PSUTIL_AVAILABLE \
@@ -1387,11 +1387,9 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         # procesy necita - vedla styroch tlacidiel profilu by sa nezmestila.
         auto_row = ctk.CTkFrame(bar, fg_color="transparent")
         auto_row.pack(fill="x", padx=14, pady=(0, 11))
-        auto_switch = ctk.CTkSwitch(auto_row, text=auto_text, variable=self.auto_profile_var,
-                                    progress_color=pal["accent2"],
-                                    fg_color=pal["switch_off"],
-                                    button_hover_color=pal["accent_hover"],
-                                    text_color=pal["text_dim"], font=ui_kit.ui(11),
+        auto_switch = ui_kit.switch(auto_row, pal, text=auto_text,
+                                    variable=self.auto_profile_var,
+                                    font=ui_kit.ui(11),
                                     command=self.on_auto_profile_toggle)
         auto_switch.pack(anchor="w")
         if not PSUTIL_AVAILABLE:
@@ -1430,15 +1428,11 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         self.bulk_label = ctk.CTkLabel(bulk_inner, text="", font=ui_kit.ui(12),
                                        text_color=pal["text"], anchor="w")
         self.bulk_label.pack(side="left")
-        ctk.CTkButton(bulk_inner, text=tr("slots.remove_selected"), height=28,
-                      corner_radius=ui_kit.RADIUS_CONTROL, fg_color="transparent", border_width=1,
-                      border_color=pal["danger"], hover_color=pal["danger"],
-                      text_color=pal["text"], font=ui_kit.ui(11),
+        ui_kit.button(bulk_inner, pal, tr("slots.remove_selected"), kind="danger",
+                      height=28, font=ui_kit.ui(11),
                       command=self.remove_selected_slots).pack(side="right")
-        ctk.CTkButton(bulk_inner, text=tr("slots.clear_selection"), height=28,
-                      corner_radius=ui_kit.RADIUS_CONTROL, fg_color="transparent", border_width=1,
-                      border_color=pal["line_soft"], hover_color=pal["surface"],
-                      text_color=pal["text_dim"], font=ui_kit.ui(11),
+        ui_kit.button(bulk_inner, pal, tr("slots.clear_selection"), kind="quiet",
+                      height=28, font=ui_kit.ui(11),
                       command=self.clear_slot_selection).pack(side="right", padx=(0, 8))
         # zabalene NEbude - pack az v _on_slot_selection_change
 
@@ -1461,8 +1455,7 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         # VYSVETLIVKY A TEORIA PATRIA SEM, nie o dve karty dalej.
         # Clovek ich hlada prave vtedy, ked cita, co ktora hlaska hovori -
         # "preco zrovna celust" sa pyta pri celusti.
-        ctk.CTkFrame(wrap, fg_color=pal["line_soft"], height=1,
-                     corner_radius=0).pack(fill="x", pady=(22, 0))
+        ui_kit.linka(wrap, pal).pack(fill="x", pady=(22, 0))
         self._build_guide_into(wrap, pal)
 
     def _build_zvuk_page(self, page, pal):
@@ -1478,10 +1471,8 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         ovladac vpravo) v troch panelocch, a na konci tlacidlo, ktore to
         da naozaj pocut - hlas sa podla nazvu vybrat neda.
         """
-        wrap = ctk.CTkScrollableFrame(
-            page, fg_color="transparent", scrollbar_button_color=pal["surface_alt"],
-            scrollbar_button_hover_color=pal["accent"])
-        wrap.pack(fill="both", expand=True, padx=24, pady=(20, 20))
+        wrap = ui_kit.stranka_scroll(page, pal)
+        wrap.pack(fill="both", expand=True, padx=ui_kit.PAGE_GUTTER, pady=(20, 20))
         self.zvuk_scroll = wrap
 
         # Vysvetlenia maju na tejto stranke vela miesta (ovladace su uzke),
@@ -1489,23 +1480,30 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         # na tri riadky a stranka dvojnasobne dlha.
         WRAP = 560
 
+        # Blok posuvnika (posuvnik + popisok hodnoty) ma presne
+        # `ui_kit.CONTROL_W` ako rozbalovacky nad nim a popisok je zarovnany
+        # doprava - vsetky ovladace stranky tak koncia na jednej pravej hrane
+        # (audit: rozbalovacky koncili o ~110 px dalej nez posuvniky).
+        HODNOTA_W = 96
+        SLIDER_W = ui_kit.CONTROL_W - HODNOTA_W - 10
+
         def _slider(parent, **kw):
             """Slider + popisok hodnoty vpravo od neho. Koliesko je zamerne
             zablokovane: stranka sa posuva a bez toho by rolovanie menilo
             hodnotu, nad ktorou prave stoji kurzor."""
             box = ctk.CTkFrame(parent, fg_color="transparent")
             slider = ui_kit.block_slider_wheel(ctk.CTkSlider(
-                box, width=150, progress_color=pal["accent"], button_color=pal["accent"],
-                button_hover_color=pal["accent_hover"], **kw))
+                box, width=SLIDER_W, progress_color=pal["accent"], button_color=pal["accent"],
+                button_hover_color=pal["accent_hover"], fg_color=pal["switch_off"], **kw))
             slider.pack(side="left")
             return box
 
         def _hodnota(box, text):
-            """Popisok hodnoty. Sirsi, nez by cislo potrebovalo - je v nom
-            aj slovo ("vyvazene", "pomaly"), lebo holé "5.0 s" nepovie,
-            ci je to vela alebo malo."""
-            label = ctk.CTkLabel(box, text=text, text_color=pal["text_dim"], width=132,
-                                 font=ui_kit.ui(11), anchor="w")
+            """Popisok hodnoty. Je v nom aj slovo ("vyvazene", "pomaly"),
+            lebo holé "5.0 s" nepovie, ci je to vela alebo malo. Dlhsi
+            preklad popisok roztiahne dolava, prava hrana ostane."""
+            label = ctk.CTkLabel(box, text=text, text_color=pal["text_dim"],
+                                 width=HODNOTA_W, font=ui_kit.ui(11), anchor="e")
             label.pack(side="left", padx=(10, 0))
             return label
 
@@ -1519,13 +1517,9 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
                                 tr("settings.cue_style_sub"), wrap=WRAP)
         self.cue_style_var = tk.StringVar(
             value=self._cue_style_label(getattr(self, "cue_style", None)))
-        ctk.CTkOptionMenu(
-            row.control, values=self._cue_style_labels(),
-            variable=self.cue_style_var, width=250, height=28,
-            corner_radius=ui_kit.RADIUS_CONTROL, fg_color=pal["surface_alt"],
-            button_color=pal["accent2"], button_hover_color=pal["accent2_hover"],
-            text_color=pal["text"], dropdown_fg_color=pal["surface"],
-            dropdown_text_color=pal["text"], font=ui_kit.ui(12),
+        ui_kit.option_menu(
+            row.control, pal, values=self._cue_style_labels(),
+            variable=self.cue_style_var,
             command=self._on_cue_style_label).pack()
 
         # --- hlas ---
@@ -1535,13 +1529,10 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         row = ui_kit.SettingRow(voice_panel.body, pal, tr("settings.engine"),
                                 tr("settings.engine_sub"), wrap=WRAP)
         self.engine_var = tk.StringVar(value=engine_labels()[self.engine])
-        self.engine_box = ctk.CTkOptionMenu(
-            row.control, values=[engine_labels()[ENGINE_EDGE], engine_labels()[ENGINE_SAPI]],
-            variable=self.engine_var, width=250, height=28,
-            corner_radius=ui_kit.RADIUS_CONTROL, fg_color=pal["surface_alt"],
-            button_color=pal["accent2"], button_hover_color=pal["accent2_hover"],
-            text_color=pal["text"], dropdown_fg_color=pal["surface"],
-            dropdown_text_color=pal["text"], font=ui_kit.ui(12),
+        self.engine_box = ui_kit.option_menu(
+            row.control, pal,
+            values=[engine_labels()[ENGINE_EDGE], engine_labels()[ENGINE_SAPI]],
+            variable=self.engine_var,
             command=lambda _v: self.on_engine_change())
         self.engine_box.pack()
         # Stav pripravy Edge hlasok - patri pod prepinac motora, nie vedla
@@ -1554,13 +1545,9 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         row = ui_kit.SettingRow(voice_panel.body, pal, tr("settings.voice"),
                                 tr("settings.voice_sub"), wrap=WRAP)
         self.voice_var = tk.StringVar()
-        self.voice_box = ctk.CTkOptionMenu(
-            row.control, values=[tr("voice.loading")], variable=self.voice_var,
-            width=250, height=28, corner_radius=ui_kit.RADIUS_CONTROL,
-            fg_color=pal["surface_alt"], button_color=pal["accent2"],
-            button_hover_color=pal["accent2_hover"], text_color=pal["text"],
-            dropdown_fg_color=pal["surface"], dropdown_text_color=pal["text"],
-            font=ui_kit.ui(12), command=lambda _v: self.on_voice_change())
+        self.voice_box = ui_kit.option_menu(
+            row.control, pal, values=[tr("voice.loading")], variable=self.voice_var,
+            command=lambda _v: self.on_voice_change())
         self.voice_box.pack()
 
         row = ui_kit.SettingRow(voice_panel.body, pal, tr("settings.rate"),
@@ -1596,8 +1583,8 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         row = ui_kit.SettingRow(loud_panel.body, pal, tr("settings.preview"),
                                 self._preview_sub_text(), wrap=WRAP)
         self.preview_sub_label = row.sub_label
-        ui_kit.chip(row.control, pal, tr("settings.preview_btn"),
-                    self.preview_sound, width=130).pack()
+        ui_kit.button(row.control, pal, tr("settings.preview_btn"),
+                      command=self.preview_sound).pack(anchor="e")
 
         # POZN: tu bol panel "Casovanie" s posuvnikom "Pauza medzi
         # pripomienkami" (0,2-30 s) a prepinacom "Hlasky sa mozu prekryvat".
@@ -1619,12 +1606,12 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         # nedostane (hlasitost 3 %, pauza 30 s) a nevie, co bolo povodne.
         # Jedno tlacidlo, ziadne "naozaj?" - vsetkych pat hodnot je vidno
         # hned nad nim a spat sa daju posunut rukou.
-        reset_panel = ui_kit.Panel(wrap, pal)
-        reset_panel.pack(fill="x", pady=(14, 0))
-        row = ui_kit.SettingRow(reset_panel.body, pal, tr("settings.audio_reset"),
+        # Posledny riadok panela Hlasitost, nie vlastna karta pre jednu vetu
+        # (audit: karta pre jednu vetu = ram bez obsahu).
+        row = ui_kit.SettingRow(loud_panel.body, pal, tr("settings.audio_reset"),
                                 tr("settings.audio_reset_sub"), wrap=WRAP)
-        ui_kit.chip(row.control, pal, tr("settings.audio_reset_btn"),
-                    self.reset_audio_settings, width=130).pack()
+        ui_kit.button(row.control, pal, tr("settings.audio_reset_btn"), kind="quiet",
+                      command=self.reset_audio_settings).pack(anchor="e")
 
     def _rate_label_text(self):
         """Rychlost reci ako "+3 · rýchlo". Holé číslo -10..10 nepovie ani
@@ -1732,10 +1719,8 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         (`_build_ingame_sections_into`) - su to veci, ktore clovek nastavi
         raz a uz sa k nim nevracia.
         """
-        scroll = ctk.CTkScrollableFrame(
-            page, fg_color="transparent", scrollbar_button_color=pal["surface_alt"],
-            scrollbar_button_hover_color=pal["accent"])
-        scroll.pack(fill="both", expand=True, padx=24, pady=(20, 20))
+        scroll = ui_kit.stranka_scroll(page, pal)
+        scroll.pack(fill="both", expand=True, padx=ui_kit.PAGE_GUTTER, pady=(20, 20))
         self.vhre_scroll = scroll
 
         # Sparovanie je prve: bez hodiniek nema widget co kreslit.
@@ -1749,23 +1734,22 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
                      justify="left").pack(fill="x", pady=(0, 8))
         self.vhre_vis_switches = []
         self.vhre_test_buttons = {}
+        vizualy = ("grounding", "jaw", "release", "breath")
         for index in range(4):
             cfg = self.overlay_configs[index]
-            # emoji ide do stlpca pevnej sirky, inak nazvy zacinaju kazdy
-            # inde (emoji maju rozne sirky) a prepinace vyzeraju "mimo"
-            raw = tr(f"overlay.slot.{index}")
-            icon, _, title = raw.partition(" ")
-            if not title:
-                icon, title = "", raw
-            row = ui_kit.SettingRow(vis_panel.body, pal, title, icon=icon)
+            # Ikona je TEN ISTY obrazok, ktory hrac uvidi v hre
+            # (`ui_kit.SlotIcon` -> `hud_paint.render_slot_icon`), nie emoji z
+            # prekladu - 🥾 💀 🖱️ sa v hre nikdy neukazu a lebka bola
+            # najhlasnejsi symbol tichej appky. Stlpec ma pevnu sirku, takze
+            # nazvy zacinaju na jednej zvislici.
+            title = ui_kit.bez_ikony(tr(f"overlay.slot.{index}"))
+            row = ui_kit.SettingRow(vis_panel.body, pal, title,
+                                    icon_slot=vizualy[index])
             if index == 0:
                 self.vhre_slot_rows = []
             self.vhre_slot_rows.append(row)
-            test_btn = ctk.CTkButton(
-                row.control, text=tr("overlay.test"), width=78, height=26,
-                corner_radius=ui_kit.RADIUS_CONTROL, fg_color="transparent", border_width=1,
-                border_color=pal["line_soft"], hover_color=pal["surface_alt"],
-                text_color=pal["text_dim"], font=ui_kit.ui(10),
+            test_btn = ui_kit.button(
+                row.control, pal, tr("overlay.test"), height=26, font=ui_kit.ui(11),
                 command=lambda i=index: self.toggle_overlay_test(i))
             test_btn.pack(side="left", padx=(0, 6))
             self.vhre_test_buttons[index] = test_btn
@@ -1779,19 +1763,15 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
             self.vhre_color_swatches = getattr(self, "vhre_color_swatches", {})
             self.vhre_color_swatches[index] = swatch
             var = tk.BooleanVar(value=cfg["enabled"])
-            ctk.CTkSwitch(row.control, text="", variable=var, width=40,
-                          switch_width=36, switch_height=18,
-                          progress_color=pal["accent2"], fg_color=pal["switch_off"],
-                          button_hover_color=pal["accent_hover"],
+            ui_kit.switch(row.control, pal, variable=var,
                           command=lambda i=index, v=var: self.on_overlay_config_change(
                               i, enabled=v.get())).pack(side="left")
             self.vhre_vis_switches.append(var)
 
-        ctk.CTkButton(vis_panel.body, text=tr("overlay.fine_tune"), height=32,
-                      corner_radius=ui_kit.RADIUS_CONTROL, fg_color="transparent", border_width=1,
-                      border_color=pal["border"], hover_color=pal["surface_alt"],
-                      text_color=pal["text"], font=ui_kit.ui(12),
-                      command=self.open_overlay_settings).pack(fill="x", pady=(12, 0))
+        # Prirodzena sirka, nie cez celu kartu: tlacidlo na ~1500 px kricalo
+        # hlasnejsie nez zoznam vizualov, ktory doladuje.
+        ui_kit.button(vis_panel.body, pal, tr("overlay.fine_tune"),
+                      command=self.open_overlay_settings).pack(anchor="w", pady=(12, 0))
 
     def _build_ingame_sections_into(self, parent, pal):
         """Styri sekcie stiahnute zo stranky hodiniek do Vseobecnych.
@@ -1813,14 +1793,10 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         row = ui_kit.SettingRow(mon_panel.body, pal, tr("settings.game_lang"),
                                 tr("settings.game_lang_sub"), wrap=520)
         self.game_lang_var = tk.StringVar(value=self._game_lang_label(self.game_lang))
-        ctk.CTkOptionMenu(
-            row.control, values=[tr("settings.game_lang_same")]
+        ui_kit.option_menu(
+            row.control, pal, values=[tr("settings.game_lang_same")]
             + list(LANG_NATIVE_LABELS.values()),
-            variable=self.game_lang_var, width=210, height=28,
-            corner_radius=ui_kit.RADIUS_CONTROL, fg_color=pal["surface_alt"],
-            button_color=pal["accent2"], button_hover_color=pal["accent2_hover"],
-            text_color=pal["text"], dropdown_fg_color=pal["surface"],
-            dropdown_text_color=pal["text"], font=ui_kit.ui(12),
+            variable=self.game_lang_var,
             command=self.on_game_lang_change).pack()
 
         row = ui_kit.SettingRow(mon_panel.body, pal, tr("overlay.monitor.pick"),
@@ -1829,12 +1805,9 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         self._monitor_labels = {label: value for label, value in options}
         current = next((label for label, value in options
                         if value == self.monitor_target), options[0][0])
-        self.monitor_box = ctk.CTkOptionMenu(
-            row.control, values=[label for label, _ in options], width=230, height=28,
-            corner_radius=ui_kit.RADIUS_CONTROL, fg_color=pal["surface_alt"], button_color=pal["accent2"],
-            button_hover_color=pal["accent2_hover"], text_color=pal["text"],
-            dropdown_fg_color=pal["surface"], dropdown_text_color=pal["text"],
-            font=ui_kit.ui(12), command=self._on_monitor_pick)
+        self.monitor_box = ui_kit.option_menu(
+            row.control, pal, values=[label for label, _ in options],
+            command=self._on_monitor_pick)
         self.monitor_box.set(current)
         self.monitor_box.pack()
 
@@ -1842,17 +1815,14 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         hud_panel = ui_kit.Collapsible(parent, pal,
                                        title=tr("hud.section_title"))
         hud_panel.pack(fill="x", pady=(10, 0))
+        # ⚙ pri "Tep v hre" na Dnes sem skoci a sekciu rozbali
+        # (`show_hud_settings`).
+        self.hud_section = hud_panel
         row = ui_kit.SettingRow(hud_panel.body, pal, tr("hud.enable"), tr("hud.hint"))
-        ctk.CTkButton(row.control, text=tr("hud.test"), width=104, height=26,
-                      corner_radius=ui_kit.RADIUS_CONTROL, fg_color="transparent", border_width=1,
-                      border_color=pal["line_soft"], hover_color=pal["surface_alt"],
-                      text_color=pal["text_dim"], font=ui_kit.ui(10),
+        ui_kit.button(row.control, pal, tr("hud.test"), height=26, font=ui_kit.ui(11),
                       command=self.test_hud).pack(side="left", padx=(0, 8))
         self.hud_enabled_var = tk.BooleanVar(value=self.hud_config["enabled"])
-        ctk.CTkSwitch(row.control, text="", variable=self.hud_enabled_var, width=40,
-                      switch_width=36, switch_height=18,
-                      progress_color=pal["accent2"], fg_color=pal["switch_off"],
-                      button_hover_color=pal["accent_hover"],
+        ui_kit.switch(row.control, pal, variable=self.hud_enabled_var,
                       command=lambda: self.on_hud_config_change(
                           enabled=self.hud_enabled_var.get())).pack(side="left")
 
@@ -1866,8 +1836,7 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         #
         # Teraz sedia pod svojim rodicom a kym je panel vypnuty, su
         # zosedivene - vtedy je hned vidno, co treba zapnut najprv.
-        ctk.CTkFrame(hud_panel.body, fg_color=pal["line_soft"], height=1,
-                     corner_radius=0).pack(fill="x", pady=(12, 0))
+        ui_kit.linka(hud_panel.body, pal).pack(fill="x", pady=(12, 0))
         ctk.CTkLabel(hud_panel.body, text=tr("hud.trigger_row.sub"),
                      font=ui_kit.ui(10), text_color=pal["text_faint"],
                      wraplength=440, anchor="w", justify="left").pack(
@@ -1875,11 +1844,8 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
 
         row = ui_kit.SettingRow(hud_panel.body, pal, tr("hud.trigger_row.toggle"))
         self.hud_trigger_var = tk.BooleanVar(value=self.hud_config["show_triggers"])
-        self.hud_trigger_switch = ctk.CTkSwitch(
-            row.control, text="", variable=self.hud_trigger_var, width=40,
-            switch_width=36, switch_height=18,
-            progress_color=pal["accent2"], fg_color=pal["switch_off"],
-            button_hover_color=pal["accent_hover"],
+        self.hud_trigger_switch = ui_kit.switch(
+            row.control, pal, variable=self.hud_trigger_var,
             command=lambda: self.on_hud_config_change(
                 show_triggers=self.hud_trigger_var.get()))
         self.hud_trigger_switch.pack(side="left")
@@ -1949,13 +1915,17 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         Prah si appka rata z vlastnych relacii (80. percentil zataze), tak
         ako uz ratala zakladnu a hranicu vysokeho tepu. Tu sa to len UKAZE.
         """
-        panel = ui_kit.Panel(parent, pal, title=tr("cue_rate.title"))
-        panel.pack(fill="x", pady=(16, 0))
+        # BEZ KARTY (0.2.2, audit UX): ram okolo jedinej vety bol karta pre
+        # nic - nadpis a veta stoja priamo na stranke, ako uvod nad nimi.
+        panel = ctk.CTkFrame(parent, fg_color="transparent")
+        panel.pack(fill="x", pady=(18, 0))
+        ctk.CTkLabel(panel, text=tr("cue_rate.title"), font=ui_kit.ui(13, "bold"),
+                     text_color=pal["text"], anchor="w").pack(fill="x")
         self.citlivost_detail = ctk.CTkLabel(
-            panel.body, text=self._citlivost_detail_text(), font=ui_kit.ui(11),
+            panel, text=self._citlivost_detail_text(), font=ui_kit.ui(11),
             text_color=pal["text_dim"], anchor="w", justify="left",
             wraplength=640)
-        self.citlivost_detail.pack(fill="x")
+        self.citlivost_detail.pack(fill="x", pady=(4, 0))
         return panel
 
     def _citlivost_detail_text(self):
@@ -2015,6 +1985,12 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
             self.settings_nav.set_active(tab)
         else:
             self.pages.show(key)
+        # Bocny panel musi svietit tam, kde naozaj si - aj ked stranku
+        # prepol kod (ⓘ O appke, ⚙ pri Tep v hre, Ctrl+K, prehliadka), nie
+        # klik v paneli. Inak bol obsah Nastavenia a panel ukazoval "Dnes".
+        sidebar = getattr(self, "sidebar", None)
+        if sidebar is not None and hasattr(sidebar, "mark_active"):
+            sidebar.mark_active(key)
 
     def _build_settings_group(self, page, pal):
         """Skupina Nastavenia: rad kariet hore (Spustace | Zvuk | Sprievodca |
@@ -2024,7 +2000,11 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         (redizajn "Sumi noc"), pretoze je to najvacsia cast appky.
         """
         head = ctk.CTkFrame(page, fg_color="transparent")
-        head.pack(fill="x", padx=24, pady=(16, 0))
+        # Karta je text s 8 px vnutornym okrajom (zaoblenie tlacidla) - rad sa
+        # posuva o tych 8 px dolava, aby TEXT prvej karty zacinal na lavej
+        # hrane stranky, presne nad kartami pod nim.
+        head.pack(fill="x", padx=(ui_kit.PAGE_GUTTER - ui_kit.RADIUS_CONTROL,
+                                   ui_kit.PAGE_GUTTER), pady=(16, 0))
         self.settings_nav = ui_kit.SubNav(
             head, pal, [(k, tr(f"nav.nastavenia_tabs.{k}")) for k in self.SETTINGS_TABS],
             on_select=self.sidebar._select)
@@ -2056,10 +2036,8 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         "Minimalisticky rezim" - oba boli medzitym odstranene, takze uz
         nie su dovodom pre scroll.
         """
-        wrap = ctk.CTkScrollableFrame(
-            page, fg_color="transparent", scrollbar_button_color=pal["surface_alt"],
-            scrollbar_button_hover_color=pal["accent"])
-        wrap.pack(fill="both", expand=True, padx=24, pady=(20, 20))
+        wrap = ui_kit.stranka_scroll(page, pal)
+        wrap.pack(fill="both", expand=True, padx=ui_kit.PAGE_GUTTER, pady=(20, 20))
 
         # POZN: prvym panelom tu bolo "Pozadie dojo" - posuvnik intenzity
         # fotopasu nad titulkovou listou, so zivou spatnou vazbou o
@@ -2104,6 +2082,8 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
             font=ui_kit.ui(12), command=self._on_world_label)
         self.world_switch.set(self._world_label(self.world))
         self.world_switch.pack()
+        # zvoleny svet nesie text v akcente (vypln `accent2` sama nestaci)
+        ui_kit.oznac_zvoleny_segment(self.world_switch, pal)
 
         # Veta pod vyberom jazyka hovori poctivo, co je zdroj a co preklad:
         # appka je pisana po slovensky, ostatne jazyky su preklady s AI,
@@ -2113,13 +2093,9 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
                                 tr("settings.language_sub"),
                                 note=tr("settings.language_note"))
         self.lang_var = tk.StringVar(value=self._lang_switch_value(self.lang))
-        self.lang_switch = ctk.CTkOptionMenu(
-            row.control, values=list(LANG_NATIVE_LABELS.values()), variable=self.lang_var,
-            width=170, height=28, corner_radius=ui_kit.RADIUS_CONTROL, fg_color=pal["surface_alt"],
-            button_color=pal["accent2"], button_hover_color=pal["accent2_hover"],
-            text_color=pal["text"], dropdown_fg_color=pal["surface"],
-            dropdown_text_color=pal["text"], font=ui_kit.ui(12),
-            command=self.on_lang_switch)
+        self.lang_switch = ui_kit.option_menu(
+            row.control, pal, values=list(LANG_NATIVE_LABELS.values()),
+            variable=self.lang_var, command=self.on_lang_switch)
         self.lang_switch.pack()
 
         # POZN: tu bol panel "Spravanie" s jedinym prepinacom "Naraz len
@@ -2139,14 +2115,13 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         guide.pack(fill="x", pady=(14, 0))
         row = ui_kit.SettingRow(guide.body, pal, tr("settings.guide_row"),
                                 tr("settings.guide_sub"))
-        ui_kit.chip(row.control, pal, tr("common.open"),
-                    self.open_guide_panel, width=104).pack()
+        ui_kit.button(row.control, pal, tr("common.open"),
+                      command=self.open_guide_panel).pack(anchor="e")
         self.tour_row = ui_kit.SettingRow(guide.body, pal, tr("settings.tour_row"),
                                           tr("settings.tour_sub"))
-        self.tour_btn = ui_kit.chip(self.tour_row.control, pal,
-                                    tr("settings.tour_btn"), self.start_tour,
-                                    width=140)
-        self.tour_btn.pack()
+        self.tour_btn = ui_kit.button(self.tour_row.control, pal,
+                                      tr("settings.tour_btn"), command=self.start_tour)
+        self.tour_btn.pack(anchor="e")
         self._refresh_tour_row()      # rozpracovana prehliadka ponuka Pokracovat
 
     def _build_heart_rate_card(self, page, pal, pady=(14, 0)):
@@ -2174,15 +2149,15 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         # videl, a zvadzalo zadat to cislo do telefonu - parovanie potom
         # zlyhalo bez jedinej hlasky. Adresu PC ukazuje navod, nie pole.
         self.hr_enabled_var = tk.BooleanVar(value=self.hr_monitoring_enabled)
-        ctk.CTkSwitch(inner, text=tr("settings.hr_enable_switch"),
-                     variable=self.hr_enabled_var,
-                     progress_color=pal["accent"], text_color=pal["text"],
-                     command=self.on_hr_toggle).grid(
+        ui_kit.switch(inner, pal, text=tr("settings.hr_enable_switch"),
+                      variable=self.hr_enabled_var, text_color=pal["text"],
+                      font=ui_kit.ui(13),
+                      command=self.on_hr_toggle).grid(
             row=0, column=0, columnspan=2, sticky="w", pady=(0, 8))
 
         # Zalomenie ako popis kritickeho tepu nizsie: od 0.2.2 moze za tepom
         # stat aj veta o dvoch radoch tepu v jednom zdroji.
-        self.hr_status_label = ctk.CTkLabel(inner, text="", font=("Segoe UI", 13, "bold"),
+        self.hr_status_label = ctk.CTkLabel(inner, text="", font=ui_kit.ui(13, "bold"),
                                             anchor="w", wraplength=430, justify="left")
         self.hr_status_label.grid(row=1, column=0, columnspan=2, sticky="w")
         self.refresh_hr_status_label()
@@ -2191,12 +2166,12 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         # musi vediet, ze appka predstiera OBS a ze si v telefone nastavuje
         # OBS spojenie. Preto samostatny krokovy navod, nie len hint pod
         # polickom (viz WatchPairingDialog).
-        ctk.CTkButton(inner, text=tr("hr.pair_button"), height=32,
-                      corner_radius=ui_kit.RADIUS_CONTROL, fg_color="transparent", border_width=1,
-                      border_color=pal["accent"], hover_color=pal["surface_alt"],
-                      text_color=pal["accent_hover"], font=ui_kit.ui(12),
+        # Vedlajsie tlacidlo prirodzenej sirky (`ui_kit.button`), nie zlaty
+        # ram cez celu kartu (~1500 px) - ten bol najhlasnejsim prvkom
+        # stranky a prebijal stav prijmu nad sebou.
+        ui_kit.button(inner, pal, tr("hr.pair_button"), height=32,
                       command=self.open_watch_pairing).grid(
-            row=2, column=0, columnspan=2, sticky="ew", pady=(14, 0))
+            row=2, column=0, columnspan=2, sticky="w", pady=(14, 0))
 
         # QR na appku do telefonu aj tu, nielen v krokovom navode - kto uz
         # vie, co robi, si ju chce stiahnut bez otvarania sprievodcu.
@@ -2234,9 +2209,8 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         # nemal co odkryt a hrac cakal, ze mu ukaze adresu PC. Ukazuje ju az
         # `_apply_hr_ip_mask` (pri kazdej zmene pola).
         def _prepinac_ip(bunka):
-            self.hr_ip_show_switch = ctk.CTkSwitch(
-                bunka, text=tr("hr.ip_show"), variable=self.show_ip_var,
-                progress_color=pal["accent"], text_color=pal["text_dim"],
+            self.hr_ip_show_switch = ui_kit.switch(
+                bunka, pal, text=tr("hr.ip_show"), variable=self.show_ip_var,
                 font=ui_kit.ui(11),
                 command=lambda: self.set_show_ip(self.show_ip_var.get()))
 
@@ -2745,6 +2719,9 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
             self.kamae.set_texts(tr("kamae.bar_title"), tr("kamae.bar_sub"))
             self.kamae.set_live(self.listening)
         self._refresh_dnes_state_text()
+        # jas fotky za ensom ide za stavom sledovania, nie za hodinkami
+        if hasattr(self, "_sync_dnes_hero"):
+            self._sync_dnes_hero()
         if getattr(self, "sidebar", None) is not None:
             try:
                 # Kontrolka v paneli je jedina informacia o stave na piatich
@@ -2798,8 +2775,13 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
     def setup_tray(self):
         menu = pystray.Menu(
             pystray.MenuItem(lambda _item: tr("tray.show"), self.show_window, default=True),
-            pystray.MenuItem(lambda _item: tr("tray.toggle"), lambda *_: self.ui_call(
-                self.toggle_listening)),
+            # Polozka hovori, co sa po kliku STANE (0.2.2, audit UX): staticke
+            # "Start / Stop" nepovedalo, ci appka prave sleduje. Text sa
+            # prepocita pri `update_menu` v `update_tray_icon`.
+            pystray.MenuItem(
+                lambda _item: (tr("tray.stop") if getattr(self, "listening", False)
+                               else tr("tray.start")),
+                lambda *_: self.ui_call(self.toggle_listening)),
             # "TERAZ NIE" AJ BEZ SKRATKY (0.2.1). Ked Ctrl+Alt+Z drzi ina
             # appka, `RegisterHotKey` zlyha - a hlasky sa potom dali stisit
             # jedine zastavenim pocuvania, co zastavi aj meranie. Polozka
@@ -2821,6 +2803,12 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
                 self.tray_icon.icon = self.make_tray_image()
             except Exception:
                 pass
+            # Pystray na Windows postavi texty menu len pri `update_menu` -
+            # bez toho by "Spustit / Zastavit sledovanie" ostalo po starom.
+            try:
+                self.tray_icon.update_menu()
+            except Exception:
+                app_log.exception("lista: menu sa nepodarilo obnovit")
         self._apply_window_icon()
 
     def _apply_window_icon(self):

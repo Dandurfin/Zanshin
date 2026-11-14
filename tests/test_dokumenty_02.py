@@ -12,9 +12,14 @@
   * Dandurf.iss: verzia v Podrobnostiach setup.exe a [InstallDelete] len
     pre súbory z 0.1 v {app}.
   * LICENSE-DESIGN.md: CC0 zvuky sú pribalené, nie sťahované.
-  * 0.2.1: tabuľka modulov v README pokrýva všetko, čo build balí, vývojárske
+  * 0.2.1: tabuľka modulov pokrýva všetko, čo build balí, vývojárske
     skripty sú opísané, a čísla v README / SAFETY / PRIVACY / KNOWN_ISSUES
     (stropy, časové limity, rozsah dátumov) sú tie z kódu.
+
+0.2.2d (audit „Testy zamykajú README v dĺžke“): presné dlhé vety sa
+presťahovali spolu s textom - pravidlá do docs/HOW-IT-WORKS.md, moduly,
+skripty a build do DEVELOPMENT.md. Stráž ide s vetou, nie s README; README
+si necháva len to podstatné (port, inštalácia, Peak, „watching“).
 """
 import ast
 import hashlib
@@ -32,7 +37,12 @@ from _zdroj_appky import zdroj_metody  # noqa: E402
 ROOT = os.path.join(os.path.dirname(__file__), "..")
 
 DOKUMENTY = ("README.md", "SOUL.md", "PRIVACY.md", "SAFETY.md",
-             "KNOWN_ISSUES.md", "ZDROJE.md")
+             "KNOWN_ISSUES.md", "ZDROJE.md", "DEVELOPMENT.md",
+             "docs/HOW-IT-WORKS.md", "docs/PRIOR_ART.md")
+# Kam sa v 0.2.2d presunuli podrobnosti z README (pravidla appky a cast pre
+# vyvojarov) - stráže idú za vetou.
+AKO = "docs/HOW-IT-WORKS.md"
+VYVOJ = "DEVELOPMENT.md"
 GUI_SKRIPTY = ("gui_harness_auto.py", "gui_harness_onboarding.py",
                "gui_screenshots.py")
 
@@ -95,8 +105,10 @@ def _relacia(sekundy):
 
 
 def test_readme_minima_kalibracie_sedia_s_kodom():
-    """README: „three of about ten minutes are enough, three of five are
-    not“ a „roughly half an hour of heart rate“ - prepočítané kódom."""
+    """HOW-IT-WORKS (do 0.2.2d README): „three of about ten minutes are
+    enough, three of five are not“ a „roughly half an hour of heart rate“ -
+    prepočítané kódom. README skrátene: hranice len z herných relácií
+    s piatimi minútami a viac."""
     assert hr_stats.PRAH_MIN_RELACII == 3
     assert hr_stats.KRITICKY_MIN_RELACII == 3
     assert hr_stats.DLHODOBA_MIN_RELACII == 3
@@ -105,8 +117,10 @@ def test_readme_minima_kalibracie_sedia_s_kodom():
     assert prah([_relacia(600)] * 3, baseline=70.0, critical=110) is not None
     assert prah([_relacia(300)] * 3, baseline=70.0, critical=110) is None
     assert prah([_relacia(900)] * 2, baseline=70.0, critical=110) is None
-    r = _plain("README.md")
-    assert "three of at least five minutes" not in r
+    for meno in ("README.md", AKO):
+        assert "three of at least five minutes" not in _plain(meno), meno
+    assert "only from play sessions of five minutes or more" in _plain("README.md")
+    r = _plain(AKO)
     assert "three play sessions of five minutes or more" in r
     assert "roughly half an hour of heart rate" in r
     assert "three of about ten minutes are enough, three of five are not" in r
@@ -123,7 +137,7 @@ STARE_PASMO = re.compile(r"critical zone|kritick\w* pásm|pásm\w* kritick",
 def test_dokumenty_menuju_pasmo_po_novom():
     for meno in DOKUMENTY:
         assert not STARE_PASMO.search(_plain(meno)), meno
-    for meno in ("README.md", "SOUL.md", "KNOWN_ISSUES.md"):
+    for meno in ("README.md", "SOUL.md", "KNOWN_ISSUES.md", AKO):
         assert "Peak zone" in _plain(meno), meno
     assert "pásme Špička" in _plain("ZDROJE.md")
 
@@ -133,21 +147,25 @@ def test_dokumenty_menuju_pasmo_po_novom():
 # --------------------------------------------------------------------------
 
 def test_priprava_hlasu_nikdy_pocas_pocuvania():
+    """Hlavny vypinac je od 0.2.2d „watching“ (slovnik appky) - dokumenty
+    ho volaju rovnako. README to povie raz, v odseku o sukromi; vynimka
+    (veta, ktora uz leti, sa dopossle) je v HOW-IT-WORKS a PRIVACY."""
     readme = _plain("README.md")
-    assert "Nothing new is prepared while Zanshin is listening" in readme
-    assert "never while Zanshin is listening" not in readme
-    # Výnimka ako v PRIVACY: hláška, ktorá už letí, sa dopošle (raz v úvodnom
-    # citáte - bez znakov „>“ na začiatku riadkov - a raz pri hlasoch).
-    bez_citatu = " ".join(" ".join(riadok.lstrip(">") for riadok
-                                   in _read("README.md").splitlines()).split())
-    assert bez_citatu.count("a line already on its way when listening starts "
-                            "is finished") == 2
-    assert "On the very first start" in readme
+    assert readme.count("Nothing new is prepared while Zanshin is watching") == 1
+    ako = _plain(AKO)
+    assert "**Nothing new is prepared while Zanshin is watching**" in ako
+    assert "a line already on its way when watching starts is finished" in ako
+    assert "On the very first start" in ako
     privacy = _plain("PRIVACY.md")
-    assert "**Never while Zanshin is listening**" in privacy
+    assert "**Never while Zanshin is watching**" in privacy
     assert "only the line already on its way is finished" in privacy
     assert "**On the very first start**" in privacy
     assert "Never because a reminder fired during play" not in privacy
+    # stare slovo pre hlavny vypinac sa nevracia
+    for meno, text in (("README.md", readme), (AKO, ako), ("PRIVACY.md", privacy)):
+        for stare in ("while Zanshin is listening", "when listening starts",
+                      "stop listening", "start listening", "listening stops"):
+            assert stare not in text.lower(), (meno, stare)
 
 
 def test_cesta_k_hlasu_je_nastavenia_zvuk():
@@ -155,18 +173,20 @@ def test_cesta_k_hlasu_je_nastavenia_zvuk():
     „Sound / Audio“ je len položka palety Ctrl+K."""
     import i18n
     assert i18n.STRINGS["nav.nastavenia_tabs.zvuk"]["en"] == "Sound"
-    assert i18n.STRINGS["settings.engine"]["en"] == "Voice comes from"
+    assert i18n.STRINGS["settings.engine"]["en"] == "Voice source"
     for meno in ("README.md", "PRIVACY.md"):
         assert "Sound / Audio" not in _plain(meno), meno
     assert "Settings → Sound" in _plain("README.md")
-    assert _plain("PRIVACY.md").count("Settings → Sound → Voice comes from") == 2
+    assert _plain("PRIVACY.md").count("Settings → Sound → Voice source") == 2
 
 
 def test_ziadny_dokument_netvrdi_ze_appka_uz_porovnava():
     zdroje = _plain("ZDROJE.md")
     assert "zisťuje appka sama" not in zdroje
     assert "Samotné porovnanie zatiaľ neukazuje" in zdroje
-    assert "so the app can compare whether the cues help" not in _plain("README.md")
+    for meno in ("README.md", AKO):
+        assert "so the app can compare whether the cues help" not in _plain(meno), meno
+    assert "doesn't show that comparison yet" in _plain(AKO)
     assert "finds out whether cues help" not in _plain("KNOWN_ISSUES.md")
 
 
@@ -175,10 +195,13 @@ def test_ziadny_dokument_netvrdi_ze_appka_uz_porovnava():
 # --------------------------------------------------------------------------
 
 def test_gui_skripty_su_spomenute_a_build_ich_nebali():
+    # Od 0.2.2d su vyvojarske skripty v DEVELOPMENT.md (README na neho
+    # odkazuje); SAFETY ich meno necha, lebo hybu skutocnou mysou.
     for meno in GUI_SKRIPTY:
         assert os.path.isfile(os.path.join(ROOT, meno)), meno
-        for doc in ("README.md", "SAFETY.md"):
+        for doc in (VYVOJ, "SAFETY.md"):
             assert meno in _read(doc), (doc, meno)
+    assert "](DEVELOPMENT.md)" in _read("README.md")
     spec = _read("Dandurf.spec")
     assert re.search(r"Analysis\(\s*\['main\.py'\]", spec)
     skryte = spec[spec.index("hiddenimports=["):spec.index("hookspath=")]
@@ -296,19 +319,22 @@ def _sekcia(text, nadpis):
 
 def test_readme_tabulka_modulov_pokryva_build():
     """Review 0.2.1: tabuľke „Project structure“ chýbalo ~14 modulov, ktoré
-    appka naozaj používa (display, ui_kit, hotkey, obs_websocket, ...)."""
-    tabulka = _sekcia(_read("README.md"), "Project structure")
+    appka naozaj používa (display, ui_kit, hotkey, obs_websocket, ...).
+    Od 0.2.2d je tabuľka v DEVELOPMENT.md, nie v README."""
+    assert "\n## Project structure" not in _read("README.md")
+    tabulka = _sekcia(_read(VYVOJ), "Project structure")
     moduly = _moduly_z_main()
     assert {"app", "display", "ui_kit", "hotkey", "obs_websocket",
             "netinfo", "make_icon"} <= moduly     # poistka: prechod nieco nasiel
     chyba = sorted(m for m in moduly if "`%s.py`" % m not in tabulka)
-    assert not chyba, "README 'Project structure' nemá: %s" % chyba
+    assert not chyba, "DEVELOPMENT.md 'Project structure' nemá: %s" % chyba
 
 
 def test_readme_opisuje_vyvojarske_skripty_a_zavislosti():
     """Každý .py v koreni, ktorý appka nenaťahuje, je vývojársky skript -
-    README ho musí menovať. Testy potrebujú requirements-dev.txt."""
-    readme = _read("README.md")
+    DEVELOPMENT.md (do 0.2.2d README) ho musí menovať. Testy potrebujú
+    requirements-dev.txt."""
+    readme = _read(VYVOJ)
     skripty = sorted(_lokalne_moduly() - _moduly_z_main())
     assert {"simulate", "prepocitaj_okna", "check_sources"} <= set(skripty)
     for meno in skripty:
@@ -326,8 +352,17 @@ def test_readme_opisuje_vyvojarske_skripty_a_zavislosti():
 
 def test_readme_build_hovori_co_skript_robi():
     """build_all.ps1 spustí check_before_run.py a zatvorí bežiaci Zanshin -
-    README to hovorí, a skript to naozaj robí."""
-    build = " ".join(_sekcia(_read("README.md"), "Build the installer").split())
+    DEVELOPMENT.md to hovorí, a skript to naozaj robí.
+
+    Audit 0.2.2d: nadpis „Build the installer (optional)“ klamal (inštalačka
+    sa nevydáva) a „Build it yourself (no warning)“ tiež (krok Unblock je
+    tam práve kvôli varovaniu). Nadpisy sa nesmú vrátiť."""
+    for meno in ("README.md", VYVOJ):
+        assert "Build the installer" not in _read(meno), meno
+    assert "Build it yourself (no warning)" not in _read("README.md")
+    assert ('### B. Build it yourself (no "unknown publisher" warning for '
+            'Zanshin.exe)') in _read("README.md")
+    build = " ".join(_sekcia(_read(VYVOJ), "What build.bat does").split())
     skript = _read("build_all.ps1")
     assert "Invoke-Py 'check_before_run.py'" in skript
     assert "Stop-Process -Force" in skript
@@ -336,11 +371,12 @@ def test_readme_build_hovori_co_skript_robi():
 
 
 def test_readme_svet_relacie_urci_dotaznik():
-    """Odpoveď v dotazníku reláciu presunie do iného sveta (hr_stats) - README
-    už netvrdí len, že relácia ostane vo svete, kde začala."""
+    """Odpoveď v dotazníku reláciu presunie do iného sveta (hr_stats) -
+    HOW-IT-WORKS (do 0.2.2d README) už netvrdí len, že relácia ostane vo
+    svete, kde začala."""
     import i18n
     otazka = i18n.STRINGS["session.context.activity_question"]["en"]
-    readme = _plain("README.md")
+    readme = _plain(AKO)
     assert "*%s*" % otazka in readme
     assert "Skip the question and it stays where it started" in readme
 

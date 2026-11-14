@@ -96,7 +96,8 @@ def test_hlasove_slovo_celuste_je_jaw():
 
 def test_zh_uvolnenie_je_povol():
     assert i18n.STRINGS["slot.default.release"]["zh"] == "松开"
-    assert i18n.STRINGS["cue.category.release"]["zh"] == "松开"
+    # 0.2.2: kategoria slotu 2 je "ruka a pohlad" (audit UX), nie len stisk
+    assert i18n.STRINGS["cue.category.release"]["zh"] == "手与视线"
 
 
 def test_ru_popisok_celuste_je_razozmi():

@@ -139,7 +139,10 @@ class TitleBar(ctk.CTkFrame):
         # (odmerane: x=235 namiesto 0 pri sirke listy 1770 px) a pod znakom
         # 残 by chybala. Ako prva dostane celu sirku a zvysok sa deli az pod
         # nou.
-        self.divider = ctk.CTkFrame(self, fg_color=c("line_soft", "border"), height=1,
+        # `bg_color` tou istou farbou: CTkFrame vysoky 1 px inak nakresli
+        # obdlznik s nulovou vyskou a linka nie je vidno (viz `ui_kit.linka`).
+        self.divider = ctk.CTkFrame(self, fg_color=c("line_soft", "border"),
+                                    bg_color=c("line_soft", "border"), height=1,
                                     corner_radius=0)
         self.divider.pack(side="bottom", fill="x")
 
@@ -150,14 +153,14 @@ class TitleBar(ctk.CTkFrame):
         ctk.CTkLabel(left, text="残", text_color=c("washi", "accent"),
                      font=("Yu Mincho", 15)).pack(side="left", padx=(0, 8))
         ctk.CTkLabel(left, text=app_name, text_color=c("text", "text"),
-                     font=("Segoe UI", 10, "bold")).pack(side="left")
+                     font=ui_kit.ui(10, "bold")).pack(side="left")
         if version:
             # Patnast klikov na cislo verzie otvori vyvojarsku vrstvu.
             # Je to LOKALNA Tk vazba na jeden widget, nie globalny hook -
             # funguje len ked ma okno appky fokus a mimo neho o klikoch nevie.
             self.version_label = ctk.CTkLabel(
                 left, text=f"   {version}", text_color=c("text_faint", "text_3"),
-                font=("Consolas", 9))
+                font=ui_kit.ui(10))
             self.version_label.pack(side="left")
             self._secret_clicks = 0
             self.version_label.bind("<Button-1>", self._on_version_click)
@@ -175,7 +178,7 @@ class TitleBar(ctk.CTkFrame):
             # spustalo aj klikanie na licenciu.
             self.licence_label = ctk.CTkLabel(
                 left, text=f"  ·  {licence}",
-                text_color=c("text_faint", "text_3"), font=("Consolas", 9))
+                text_color=c("text_faint", "text_3"), font=ui_kit.ui(10))
             self.licence_label.pack(side="left")
 
         controls = ctk.CTkFrame(self, fg_color="transparent")
@@ -193,7 +196,7 @@ class TitleBar(ctk.CTkFrame):
         if on_world is not None and world_values:
             self.world_switch = ctk.CTkSegmentedButton(
                 controls, values=list(world_values), height=22,
-                font=("Segoe UI", 10), fg_color=c("surface", "bg"),
+                font=ui_kit.ui(11), fg_color=c("surface", "bg"),
                 selected_color=c("accent2", "bg_hover"),
                 selected_hover_color=c("accent2_hover", "bg_hover"),
                 unselected_color=c("surface", "bg"),
@@ -204,6 +207,9 @@ class TitleBar(ctk.CTkFrame):
             self.world_switch.pack(side="left", padx=(0, 8), pady=5)
             for segment in getattr(self.world_switch, "_buttons_dict", {}).values():
                 _HoverTip(segment, lambda: world_tip, below=True)
+            # Zvoleny svet nesie TEXT v akcente - vypln `accent2` mala proti
+            # nezvolenemu segmentu 1,15:1 a svet sa z listy precitat nedal.
+            ui_kit.oznac_zvoleny_segment(self.world_switch, self.pal or PAL)
         # About VLAVO od minimalizacie a zatvorenia.
         #
         # Kto appku prvykrat otvori, hlada "kto to spravil" v titulkovej
@@ -255,9 +261,12 @@ class TitleBar(ctk.CTkFrame):
         self.pal = pal or {}
         try:
             self.configure(fg_color=self._c("surface", "bg"))
-            self.divider.configure(fg_color=self._c("line_soft", "border"))
+            self.divider.configure(fg_color=self._c("line_soft", "border"),
+                                   bg_color=self._c("line_soft", "border"))
         except Exception:
             pass
+        if self.world_switch is not None:
+            ui_kit.oznac_zvoleny_segment(self.world_switch, self.pal)
 
     def set_world(self, label):
         """Oznaci segment sveta bez toho, aby sa zavolal `on_world` - svet
@@ -268,6 +277,7 @@ class TitleBar(ctk.CTkFrame):
             self.world_switch.set(label)
         except Exception:
             pass
+        ui_kit.oznac_zvoleny_segment(self.world_switch, self.pal)
 
     def _make_btn(self, parent, symbol, cmd, danger=False):
         c = self._c
@@ -437,6 +447,9 @@ class Sidebar(ctk.CTkFrame):
             try:
                 cmdk.configure(hover_color=self.pal["hover"],
                                text_color=self.pal["text_2"])
+                if getattr(self, "_cmdk_img", None) is not None:
+                    self._cmdk_img = nav_ikona("search", self.pal["text_2"])
+                    cmdk.configure(image=self._cmdk_img)
             except Exception:
                 pass
         # kontrolka tepu je OBRAZOK - farby su do nej zapecene, musi sa
@@ -555,8 +568,12 @@ class Sidebar(ctk.CTkFrame):
         # ploche, bez ramceka) a posobila ako vlozene vyhladavacie policko,
         # nie ako ikona. Teraz ma rovnaky plochy vzhlad aj rozmery ako
         # tlacidla doku pod nou.
+        # Lupa je nakreslena tym istym perom ako ikony navigacie (znak bol z
+        # ineho pisma a tenky ako vlas); znak ostava len ako zaloha.
+        self._cmdk_img = nav_ikona("search", self.pal["text_2"])
         cmdk_hint = ctk.CTkButton(
-            self, text="⌕", width=24, height=28,
+            self, text="" if self._cmdk_img is not None else "⌕",
+            image=self._cmdk_img, width=34, height=30,
             corner_radius=8, fg_color="transparent", border_width=0,
             hover_color=self.pal["hover"],
             text_color=self.pal["text_2"], font=("Segoe UI", 13),
@@ -584,10 +601,98 @@ class Sidebar(ctk.CTkFrame):
             row.set_badge(text)
 
     def _select(self, key):
+        self.mark_active(key)
+        self.on_navigate(key)
+
+    def mark_active(self, key):
+        """Zvyrazni polozku stranky `key` (karta Nastaveni zvyrazni
+        "Nastavenia") BEZ navigacie.
+
+        Do 0.2.2 zvyraznoval len klik v paneli (`_select`). Cesty, ktore
+        stranku prepinaju z kodu - ⓘ v liste (O appke), ⚙ pri "Tep v hre",
+        paleta Ctrl+K, prehliadka - isli rovno na `app._navigate`, takze
+        obsah bol Nastavenia -> Vseobecne a panel dalej svietil na "Dnes".
+        Teraz to vola `_navigate` na konci kazdej navigacie."""
         active = self.GROUPS.get(key, key)
         for k, row in self.rows.items():
             row.set_active(k == active)
-        self.on_navigate(key)
+
+
+# ---------------------------------------------------------------------------
+# Ikony bocneho panela - JEDEN STETEC (0.2.2, audit UX)
+# ---------------------------------------------------------------------------
+#
+# Panel mal styri Unicode znaky a lupu - kazdy z ineho pisma, s inou hrubkou
+# ciary a inym optickym stredom, a koliesko sa podla verzie Windows kreslilo
+# aj ako farebne emoji. Tu su vsetky nakreslene tym istym perom: obrys, tah
+# 1,5 px v 20 px stvorci, rovnaky okraj. Dnes = enso (znacka appky),
+# Historia = hodiny, V hre = obrazovka, Nastavenia = koliesko, Hladat = lupa.
+
+NAV_ICON_PX = 20
+_NAV_ICON_SS = 3          # kresli sa trojnasobne, CTk zmensi podla mierky
+
+# kluc polozky -> meno ikony (polozky bez ikony ostavaju pri znaku z PAGES)
+NAV_ICON_FOR = {"dnes": "enso", "historia": "clock", "vhre": "screen",
+                "nastavenia": "gear"}
+
+
+def kresli_nav_ikonu(meno, farba, px=NAV_ICON_PX, ss=_NAV_ICON_SS):
+    """PIL RGBA ikona `meno` (enso/clock/screen/gear/search) vo farbe
+    `farba`, velkost `px` * `ss`. Vrati None, ked PIL chyba alebo meno
+    nepozna - volajuci potom ostane pri znaku."""
+    try:
+        import math
+        from PIL import Image, ImageDraw
+    except Exception:
+        return None
+    S = px * ss
+    k = S / 20.0                       # suradnice nizsie su v 20 px stvorci
+    w = max(1, int(round(1.5 * k)))   # tah 1,5 px
+    img = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+
+    def box(x0, y0, x1, y1):
+        return [x0 * k, y0 * k, x1 * k, y1 * k]
+
+    def ciara(*body):
+        d.line([(x * k, y * k) for x, y in body], fill=farba, width=w, joint="curve")
+
+    if meno == "enso":
+        # kruh s medzerou vpravo hore - stetcovy tah, ktory sa neuzavrie
+        d.arc(box(2.5, 2.5, 17.5, 17.5), start=-35, end=275, fill=farba, width=w)
+    elif meno == "clock":
+        d.ellipse(box(2.5, 2.5, 17.5, 17.5), outline=farba, width=w)
+        ciara((10, 5.8), (10, 10), (13.4, 12))
+    elif meno == "screen":
+        d.rounded_rectangle(box(2.5, 3.5, 17.5, 13.5), radius=2 * k,
+                            outline=farba, width=w)
+        ciara((10, 13.5), (10, 16.5))
+        ciara((6.5, 16.8), (13.5, 16.8))
+    elif meno == "gear":
+        cx = cy = 10.0
+        for i in range(8):
+            u = math.radians(i * 45 + 22.5)
+            ciara((cx + 5.6 * math.cos(u), cy + 5.6 * math.sin(u)),
+                  (cx + 8.0 * math.cos(u), cy + 8.0 * math.sin(u)))
+        d.ellipse(box(cx - 5.6, cy - 5.6, cx + 5.6, cy + 5.6), outline=farba, width=w)
+        d.ellipse(box(cx - 2.2, cy - 2.2, cx + 2.2, cy + 2.2), outline=farba, width=w)
+    elif meno == "search":
+        d.ellipse(box(3, 3, 13.5, 13.5), outline=farba, width=w)
+        ciara((12, 12), (17, 17))
+    else:
+        return None
+    return img
+
+
+def nav_ikona(meno, farba, px=NAV_ICON_PX):
+    """`kresli_nav_ikonu` ako CTkImage (alebo None)."""
+    img = kresli_nav_ikonu(meno, farba, px)
+    if img is None:
+        return None
+    try:
+        return ctk.CTkImage(light_image=img, dark_image=img, size=(px, px))
+    except Exception:
+        return None
 
 
 class _NavRow(ctk.CTkFrame):
@@ -630,14 +735,26 @@ class _NavRow(ctk.CTkFrame):
             # Popisok sa vratil v 2.1: v ~78 px paneli sa kratke sk/en nazvy
             # zmestia a hrac nemusi hadat, co ktora ikona znamena. Tooltip
             # ostava pre dlhsie preklady, ktore by sa orezali.
-            self.icon = ctk.CTkLabel(self.box, text=icon, anchor="center",
-                                     font=("Segoe UI", 18), text_color=pal["text_2"])
-            self.icon.pack(side="top", pady=(5, 0))
+            # Kreslena ikona (jeden stetec pre cely panel); znak z PAGES
+            # ostava len ako zaloha, ked by PIL chybal.
+            self._icon_name = NAV_ICON_FOR.get(key)
+            self._icon_imgs = {}
+            obrazok = self._ikona(pal["text_2"])
+            if obrazok is not None:
+                self.icon = ctk.CTkLabel(self.box, text="", image=obrazok,
+                                         anchor="center", width=NAV_ICON_PX + 4,
+                                         height=NAV_ICON_PX + 4)
+                self.icon.pack(side="top", pady=(6, 1))
+            else:
+                self._icon_name = None
+                self.icon = ctk.CTkLabel(self.box, text=icon, anchor="center",
+                                         font=("Segoe UI", 18), text_color=pal["text_2"])
+                self.icon.pack(side="top", pady=(5, 0))
             self.label = ctk.CTkLabel(self.box, text=label, anchor="center",
-                                      font=("Segoe UI", 9), text_color=pal["text_2"])
+                                      font=ui_kit.ui(10), text_color=pal["text_2"])
             self.label.pack(side="top", pady=(0, 2))
             self.badge = ctk.CTkLabel(self.box, text="", anchor="e",
-                                      font=("Segoe UI", 9, "bold"), text_color=pal["text_3"])
+                                      font=ui_kit.ui(10, "bold"), text_color=pal["text_3"])
             _HoverTip(self.box, lambda: self.text)
         else:
             self.icon = ctk.CTkLabel(self.box, text=icon, width=self.ICON_W,
@@ -645,10 +762,10 @@ class _NavRow(ctk.CTkFrame):
                                      text_color=pal["text_2"])
             self.icon.pack(side="left", padx=(6, 6))
             self.badge = ctk.CTkLabel(self.box, text="", anchor="e",
-                                      font=("Segoe UI", 11), text_color=pal["text_3"])
+                                      font=ui_kit.ui(11), text_color=pal["text_3"])
             # odznak sa pack-uje az v set_badge (prazdny nezabera miesto)
             self.label = ctk.CTkLabel(self.box, text=label, anchor="w",
-                                      font=("Segoe UI", 12), text_color=pal["text_2"])
+                                      font=ui_kit.ui(12), text_color=pal["text_2"])
             self.label.pack(side="left", fill="x", expand=True)
 
         for widget in (self.box, self.icon, self.label, self.badge):
@@ -693,6 +810,17 @@ class _NavRow(ctk.CTkFrame):
         self.pal = pal
         self._paint(hover=False)
 
+    def _ikona(self, farba):
+        """Kreslena ikona vo farbe `farba` (z cache), alebo None, ked riadok
+        kreslenu ikonu nema (zaloha na znak)."""
+        meno = getattr(self, "_icon_name", None)
+        if not meno:
+            return None
+        kluc = str(farba).lower()
+        if kluc not in self._icon_imgs:
+            self._icon_imgs[kluc] = nav_ikona(meno, farba)
+        return self._icon_imgs[kluc]
+
     # ---- vnutro ----
 
     def _clicked(self, _event=None):
@@ -724,7 +852,11 @@ class _NavRow(ctk.CTkFrame):
             bg, fg = "transparent", pal["text_2"]
         try:
             self.box.configure(fg_color=bg)
-            self.icon.configure(text_color=fg)
+            obrazok = self._ikona(fg)
+            if obrazok is not None:
+                self.icon.configure(image=obrazok)
+            else:
+                self.icon.configure(text_color=fg)
             self.label.configure(text_color=fg)
             self.badge.configure(text_color=pal["text_2"] if self.active else pal["text_3"])
         except Exception:
@@ -747,8 +879,14 @@ class _StateDot(ctk.CTkFrame):
 
     Bodka je najmensia vec, ktora tu schopnost vrati. Zamerne NIE je to
     druhe enso: dve znacky v jednom okne by si konkurovali a platilo by sa
-    za druhu sadu snimok. Farba podla `theme.py` znamena to iste co na
-    znacke - zelena pocuva, cervena nie.
+    za druhu sadu snimok.
+
+    TVAR, NIE LEN FARBA (0.2.2, audit UX): sleduje = plna bodka `success`;
+    zastavena = len duty kruzok v `text_faint`. Do 0.2.2 bola zastavena
+    appka plna CERVENA bodka - trvaly "poplach" pri uplne beznom stave, na
+    ktory sa clovek pozera pri kazdom spusteni. Cervena (`danger`) patri
+    chybe, nie pokoju (viz `theme.py`). Plna vs. duta sa da rozlisit aj bez
+    farieb.
 
     TRETI STAV: ODLOZENA
     --------------------
@@ -817,13 +955,19 @@ class _StateDot(ctk.CTkFrame):
         r = self.SIZE / 2.0
         stred = (self.SIZE + 8) / 2.0
         if self._snoozed:
-            farba = pal.get("warn", pal["danger"])
-            # Prstenec, nie len ina farba: jantarova a cervena su v
-            # periferii takmer to iste, kym nemaju iny TVAR.
+            farba = pal.get("warn", pal["success"])
+            # Prstenec, nie len ina farba: jantarova a zelena su v
+            # periferii blizko, kym nemaju iny TVAR.
             c.create_oval(stred - r - 3, stred - r - 3, stred + r + 3, stred + r + 3,
                           outline=farba, width=1)
+        elif not self._live:
+            # zastavene: duty kruzok, ziadna vypln - pokoj, nie poplach
+            farba = pal.get("text_faint", pal.get("text_dim", "#888888"))
+            c.create_oval(stred - r + 1, stred - r + 1, stred + r - 1, stred + r - 1,
+                          outline=farba, width=1.5)
+            return
         else:
-            farba = pal["success"] if self._live else pal["danger"]
+            farba = pal["success"]
         c.create_oval(stred - r, stred - r, stred + r, stred + r,
                       fill=farba, outline="")
 
@@ -1649,7 +1793,7 @@ class CommandPalette:
             search, textvariable=self.entry_var, placeholder_text=self.placeholder,
             fg_color="transparent", border_width=0, text_color=c("text", "text"),
             placeholder_text_color=c("text_faint", "text_3"), height=40,
-            font=("Segoe UI", 13),
+            font=ui_kit.ui(13),
         )
         self.entry.pack(side="left", fill="x", expand=True)
         self.entry_var.trace_add("write", lambda *a: self._refresh())
@@ -1657,7 +1801,8 @@ class CommandPalette:
         # Deliaca linka pod vyhladavanim - rovnaky vzor ako hlavicka karty
         # (`ui_kit.Panel`) a titulkova lista, aby paleta vyzerala ako kus
         # tej istej appky, nie ako cudzie okno.
-        ctk.CTkFrame(card, fg_color=c("line_soft", "border"), height=1,
+        ctk.CTkFrame(card, fg_color=c("line_soft", "border"),
+                     bg_color=c("line_soft", "border"), height=1,
                      corner_radius=0).pack(fill="x", padx=1, pady=(8, 0))
 
         # Zoznam + posuvnik v jednom riadku. Posuvnik tu predtym NEBOL:
@@ -1836,7 +1981,7 @@ class _HoverTip:
         frame.pack()
         ctk.CTkLabel(frame, text=self.text_fn(), fg_color="transparent",
                      text_color=pal.get("text", PAL["text"]),
-                     font=("Segoe UI", 10), padx=10, pady=5).pack()
+                     font=ui_kit.ui(10), padx=10, pady=5).pack()
         self._arm_watchdog()
 
     def _arm_watchdog(self):

@@ -52,20 +52,40 @@ class HudMixin:
     # kresleny ako riadok pod HUD panelom v hre (`hud_paint.render_hud_
     # trigger_row`), nie ako samostatne okno appky.
 
+    def show_hud_settings(self):
+        """⚙ pri "Tep v hre" na Dnes: Nastavenia -> Vseobecne, sekcia panela
+        s tepom rozbalena a posunuta hore.
+
+        Do 0.2.2 viedlo ⚙ na stranku V hre - tam ziadne nastavenia HUD-u
+        nie su, a bocny panel pritom dalej svietil na "Dnes". Posun az po
+        prekresleni, rovnako ako `show_about`."""
+        self._navigate("vseobecne")
+        sekcia = getattr(self, "hud_section", None)
+        try:
+            if sekcia is not None and not sekcia.expanded:
+                sekcia.toggle()
+        except Exception:
+            pass
+        self.root.after(80, lambda: self._posun_vseobecne_na(sekcia))
+
     def _sync_hud_trigger_state(self):
         """Zosedivi ikonky, kym je panel s tepom vypnuty.
 
         Bez toho je to prepinac, ktory sa da zapnut a nic nespravi - a to je
-        horsie nez prepinac, ktory sa zapnut neda.
+        horsie nez prepinac, ktory sa zapnut neda. Prepinac sa tlmi cely
+        (draha aj gombik), nie len text - zapnuta zlata draha by inak dalej
+        tvrdila "funguje".
         """
-        stav = "normal" if self.hud_config.get("enabled") else "disabled"
-        for widget in (getattr(self, "hud_trigger_switch", None),
-                       getattr(self, "hud_trigger_swatch", None)):
-            try:
-                if widget is not None:
-                    widget.configure(state=stav)
-            except Exception:
-                pass
+        aktivny = bool(self.hud_config.get("enabled"))
+        prepinac = getattr(self, "hud_trigger_switch", None)
+        if prepinac is not None:
+            ui_kit.nastav_prepinac_aktivny(prepinac, self.pal, aktivny)
+        vzorka = getattr(self, "hud_trigger_swatch", None)
+        try:
+            if vzorka is not None:
+                vzorka.configure(state="normal" if aktivny else "disabled")
+        except Exception:
+            pass
 
     def _hud_trigger_info(self):
         """[(nazov vizualu, enabled)] pre riadok 4 zakladnych funkcii pod HUD
@@ -599,11 +619,14 @@ class HudMixin:
         btn = getattr(self, "vhre_test_buttons", {}).get(index)
         if btn is None:
             return
+        # Prave bezi test = ZAPNUTE, teda ram v `accent` a pod nim tlmena
+        # vypln `accent2`; inak vedlajsie tlacidlo (`ui_kit.button`).
         try:
             btn.configure(
                 text=tr("overlay.test_done") if testing else tr("overlay.test"),
                 fg_color=self.pal["accent2"] if testing else "transparent",
-                text_color=self.pal["text"] if testing else self.pal["text_dim"])
+                border_color=self.pal["accent"] if testing else self.pal["control_border"],
+                text_color=self.pal["text"])
         except Exception:
             pass
 

@@ -609,7 +609,7 @@ def test_historia_priznava_spolocny_graf_hlasok(sk):
     veta = i18n.tr("history.world_note", world=i18n.tr("world.work"),
                    chart=i18n.tr("history.effect_title"))
     assert i18n.tr("history.effect_title") in veta
-    assert "len hlášky z hry" in veta
+    assert "len pripomienky z hry" in veta
     assert "oboch svetov" not in veta
     assert "both worlds" not in i18n.STRINGS["history.world_note"]["en"]
     for jazyk in i18n.LANGUAGES:
