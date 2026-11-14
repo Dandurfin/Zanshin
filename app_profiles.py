@@ -94,9 +94,9 @@ class ProfilesMixin:
         self.active_profile_name = name
         self.rebuild_slots(new_slots)
         self.refresh_profile_switch()
-        # Slova noveho profilu su v jazyku appky: v japoncine, cinstine,
-        # rustine ci bulharcine dostane hrac s predvolenym hlasom hlas toho
-        # jazyka (anglicky by ich nevyslovil). Ulozi sa nizsie a priprava
+        # Slova noveho profilu su v jazyku appky: v jazyku z VOICE_HINTS
+        # (napr. japoncina, nemcina) dostane hrac s predvolenym hlasom hlas
+        # toho jazyka (anglicky by ich nevyslovil). Ulozi sa nizsie a priprava
         # hlasok uz ide novym hlasom.
         if self._hlas_k_hlaskam(new_slots):
             self.refresh_voice_box()

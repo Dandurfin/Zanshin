@@ -65,6 +65,12 @@ class CuesMixin:
         to staci.
         """
         if not self.listening:
+            # PRVY START (0.2.2): sledovanie sa zapne samo, len co bude hlas
+            # pripraveny (`app._zacni_sledovat_po_priprave_hlasu`, najviac
+            # 15 s). "Zastavene, spustis ma tlacidlom" by hraca poslalo
+            # klikat - a klik by pripravu hlasu zastavil.
+            if getattr(self, "_prvy_start_caka", False):
+                return tr("kamae.voice_prep"), tr("kamae.voice_prep_sub")
             return self._kamae_zastavene()
         # STVRTY STAV: pocuvam, ale nemam z coho.
         #
@@ -89,6 +95,12 @@ class CuesMixin:
             # doprostred vecera, ked tep chodil a prestal.
             if getattr(self, "_hr_lost", False):
                 return tr("kamae.no_hr"), tr("kamae.lost_sub")
+            # PRIJEM BEZI, ALE TELEFON SA ZA ~20 S NEPRIPOJIL (`_hr_no_client`).
+            # "Cakam na tep" by tu cakalo cely vecer bez jedinej rady, hoci
+            # pricina je takmer vzdy na strane siete (firewall, Verejna siet,
+            # nova adresa PC) - veta povie ktora a kde je postup.
+            if getattr(self, "_hr_state", None) == "no_client":
+                return tr("kamae.no_client"), tr("kamae.no_client_sub")
             return tr("kamae.no_hr"), tr("kamae.no_hr_sub")
         # "TERAZ NIE" (24. 9.): pocuva a meria sa dalej, ale hlaska neprijde.
         # "Cakam na spravnu chvilu" by slubovalo presne to, co hrac vypol.

@@ -162,7 +162,15 @@ class SessionMixin:
         self._hr_overlay_warned = False
         self._hr_retry_job = None
         self._hr_bind_retries = 0
-        self._hr_client_linked = False
+        # Telefon drzi spojenie dalej, ked sa siete nedotykame (`prepoj=False`).
+        # Zhodit priznak aj vtedy znamenalo, ze po dalsom vypadku tepu
+        # (`disconnected`) by okno, Dnes aj navod tvrdili "odpojene / cakam na
+        # pripojenie telefonu", hoci je pripojeny. Od 0.2.2 sa to deje aj na
+        # prvom starte: navod na parovanie zapne prijem a sledovanie zacne az
+        # po priprave hlasu, uprostred parovania. Odchod klienta zhodi priznak
+        # sam (`client_gone`).
+        if prepoj:
+            self._hr_client_linked = False
         self.hr_stats.critical_bpm = self.hr_critical_bpm
         # SVET RELACIE SA PECATI TU (B3-worlds), pri otvoreni - nie pri
         # zatvoreni. Kto si uprostred hry len prepne na Pracu, aby videl
@@ -294,6 +302,11 @@ class SessionMixin:
         self.hud.set_connected(False)
         self.hr_stats.clear_live()
         self.refresh_hr_status_label()
+        # Dnes aj pas pisu stav podla prijmu ("prijem tepu vypnuty"), nie
+        # "cakam na hodinky" - po vypnuti sa musia prepisat hned, nie az pri
+        # dalsej udalosti z hodiniek, ktora uz nepride.
+        self._refresh_dnes_stats()
+        self._refresh_kamae_state_text()
         self.log(tr("log.hr_disabled"))
 
     def _schedule_no_client_check(self):
@@ -319,7 +332,10 @@ class SessionMixin:
         if self._hr_state == "connecting" and self.hr_monitoring_enabled:
             self._hr_state = "no_client"
             self.refresh_hr_status_label()
+            # Pas a Dnes povedia "telefon sa nepripojil" a kam pre radu -
+            # predtym sa menil len stitok pri prepinaci na stranke V hre.
             self._refresh_kamae_state_text()
+            self._refresh_dnes_stats()
 
     def _hr_ip_display(self):
         """IP pre riadok v denniku appky - skryta, kym ju hrac neodkryje
@@ -343,15 +359,31 @@ class SessionMixin:
 
     def _apply_hr_ip_mask(self):
         """Pole IP v Nastaveniach kresli skutocnu adresu bodkami, kym nie je
-        `show_ip`. Prazdne pole a 0.0.0.0 ostavaju citatelne."""
+        `show_ip`. Prazdne pole a 0.0.0.0 ostavaju citatelne.
+
+        Prepinac "Ukazat IP" vedla pola je viditelny LEN pri skutocnej
+        adrese (0.2.2). Pri predvolenom 0.0.0.0 nemal co odkryt - hrac ho
+        zapol, cakal adresu PC a nestalo sa nic. Adresu PC ukazuje navod na
+        parovanie (ma vlastne "Ukazat IP"), nie toto pole."""
         entry = getattr(self, "hr_ip_entry", None)
         var = getattr(self, "hr_ip_var", None)
         if entry is None or var is None:
             return
         try:
-            maska = netinfo.entry_mask(var.get(), self.show_ip)
+            hodnota = var.get()
+            maska = netinfo.entry_mask(hodnota, self.show_ip)
             if str(entry.cget("show")) != maska:
                 entry.configure(show=maska)
+            prepinac = getattr(self, "hr_ip_show_switch", None)
+            if prepinac is not None:
+                # `entry_mask(..., False)` je prazdne presne vtedy, ked v poli
+                # nie je co skryt - ta ista definicia "adresy" ako maska.
+                ukaz = netinfo.entry_mask(hodnota, False) != ""
+                zobrazeny = bool(prepinac.winfo_manager())
+                if ukaz and not zobrazeny:
+                    prepinac.pack(side="left", padx=(12, 0))
+                elif not ukaz and zobrazeny:
+                    prepinac.pack_forget()
         except Exception:
             pass            # pole uz neexistuje (prestavba UI)
 

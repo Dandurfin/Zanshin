@@ -245,7 +245,9 @@ def test_novy_profil_v_jazyku_s_navrhom_dostane_jeho_hlas(monkeypatch, jazyk):
     assert a.priprava == [hlas], "priprava hlasok ide novym hlasom"
 
 
-@pytest.mark.parametrize("jazyk", ["sk", "en", "cs", "de", "es", "fr", "pt"])
+# Od 0.2.2 maju navrh aj es/de/fr/pt (ich vstavane slova nie su anglicke) -
+# bez navrhu ostali len jazyky s anglickymi vstavanymi slovami.
+@pytest.mark.parametrize("jazyk", ["sk", "en", "cs"])
 def test_novy_profil_v_latinke_hlas_necha(monkeypatch, jazyk):
     a = _profilova(monkeypatch, jazyk, SONIA)
     a.create_profile("Novy")

@@ -269,10 +269,18 @@ def ciste_relacie(sessions):
     `je_confounded` vylucuje. Prahy sa z nich teda neucia (ani promocia),
     v Historii a v exporte su ako kazda ina relacia. Deje sa to len vynimocne
     - vypnutie Windows ulozi relaciu normalne (`app._pri_vypinani_windows`).
+
+    NASTAVOVANIE APPKY (`setup`, 0.2.2) z rovnakeho dovodu ako pokles 110 -> 80
+    pri parovani: uvod, parovanie a prehliadka lahko trvaju viac nez 5 minut
+    a su to minuty pokoja pri stole, nie hranie. Taka relacia by prah aj
+    hranicu stiahla k pokoju. Znacku dostane prva ulozena relacia po uvode
+    (`app._relacia_nastavovania`) a hociktora relacia, pri ktorej hrac v
+    dotazniku oznaci "Len nastavovanie appky" (`attach_context`). V Historii
+    ostava.
     """
     return [x for x in (sessions or [])
             if isinstance(x, dict) and not x.get("imported")
-            and not x.get("recovered")
+            and not x.get("recovered") and not x.get("setup")
             and not je_podozriva(x) and not je_confounded(x)]
 
 
@@ -2261,7 +2269,7 @@ def je_confounded(session):
 
 def attach_context(path, started, context, activity=None, note=None,
                    sleep=None, felt_load=None, valence=None, body_peak=None,
-                   cue_verdict=None, log=None):
+                   cue_verdict=None, log=None, setup=None):
     """Doplni kontext k uz ulozenej relacii. Vracia True pri uspechu.
 
     Relacia sa uklada pri zatvoreni, dotaznik sa pyta az potom - preto sa
@@ -2308,6 +2316,14 @@ def attach_context(path, started, context, activity=None, note=None,
                     nova = norm(hodnota)
                     if nova is not None:
                         s[kluc] = nova
+                # "Len nastavovanie appky" (0.2.2, `ciste_relacie`). Cip je
+                # prepinac, nie viacero moznosti: True ho zapne, False ho
+                # zrusi (prva relacia po uvode ho ma zapnuty od appky a hrac,
+                # ktory pritom naozaj hral, ho vypne), None = nemenit.
+                if setup is True:
+                    s["setup"] = True
+                elif setup is False:
+                    s.pop("setup", None)
                 zmenene = True
                 break
         if not zmenene:

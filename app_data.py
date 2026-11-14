@@ -331,7 +331,7 @@ class DataMixin:
 
     def save_session_context(self, summary, context, activity=None, note=None,
                              sleep=None, felt_load=None, valence=None,
-                             body_peak=None, cue_verdict=None):
+                             body_peak=None, cue_verdict=None, setup=None):
         """Doplni kontext k prave ulozenej relacii. Vola dialog.
 
         Vracia True pri uspechu. Kontext (kava/alkohol/spanok - najvacsi
@@ -347,7 +347,7 @@ class DataMixin:
                 context, activity=activity, note=note,
                 sleep=sleep, felt_load=felt_load, valence=valence,
                 body_peak=body_peak, cue_verdict=cue_verdict,
-                log=self.log_threadsafe)
+                log=self.log_threadsafe, setup=setup)
         except Exception:
             app_log.exception("kontext relacie sa nepodarilo ulozit")
             ok = False
@@ -507,6 +507,11 @@ class DataMixin:
         # kratka relacia, ktora by neprisla ani tak, ho maze tiez.
         if ulozena or not hr_stats.je_ulozitelna(summary):
             hr_stats.zahod_rozpracovanu(self.hr_sessions_path)
+        if ulozena:
+            # Znacku nastavovania nesie len PRVA relacia, ktora sa naozaj
+            # ulozila. Kratka (pod minutu, bez tepu - napr. pred sparovanim
+            # hodiniek) sa neulozi, takze znacka pocka na dalsiu.
+            self._relacia_nastavovania = False
         if ulozena and not pri_vypnuti:
             self._maybe_graduate(summary)
             self._ask_session_context(summary)
@@ -542,6 +547,12 @@ class DataMixin:
         # ju nesmel prekryt - neskor sa musi dat rozlisit, co hrac naozaj
         # potvrdil. Ktory plati, rozhoduje `hr_stats.session_world`.
         summary["world"] = getattr(self, "_session_world", hr_stats.WORLD_DEFAULT)
+        # NASTAVOVANIE APPKY (0.2.2): kym sa po uvode neulozi prva relacia,
+        # je to sedenie pri stole (parovanie, prehliadka), nie hranie - prahy
+        # sa z nej neucia (`hr_stats.ciste_relacie`). Aj do kontrolneho bodu,
+        # aby to platilo aj po obnove. Hrac to v dotazniku moze zrusit.
+        if getattr(self, "_relacia_nastavovania", False):
+            summary["setup"] = True
         # PRECO SA TOTO PRILEPUJE K SUHRNU
         # Prvy skutocny vecer skoncil s nulou hlasok, hoci spicka zataze bola
         # 87 pri prahu 55. Zo suhrnu sa nedalo rozlisit, ci bolo pravidlo

@@ -72,14 +72,16 @@ update-checker** anywhere in the app.
        stop listening; a reminder whose line isn't ready plays in the Windows
        voice. If listening starts while lines are being prepared, only the
        line already on its way is finished.
-     - **On the very first start** Zanshin starts listening by itself right
-       after the introduction, so preparing stops almost at once and the rest
-       of the lines are prepared after you stop listening for the first time.
-       Until then they play in the Windows voice.
+     - **On the very first start** Zanshin starts watching by itself after
+       the introduction, but (from 0.2.2) only once the lines are prepared,
+       or after about 15 seconds at most. Lines that aren't ready by then
+       (for example offline) are prepared after you stop it for the first
+       time or at the next start; until then they play in the Windows voice.
      - The list of voices is built into the app; it is not downloaded.
    - **Windows voice (works offline)** — synthesises entirely on your PC, so
      **nothing leaves at all**. Choose it in *Settings → Sound → Voice comes
-     from* if you want even your reminder wording to stay local.
+     from* if you want even your reminder wording to stay local. The voice
+     preview in the introduction always uses it (from 0.2.2).
 
 2. **Built-in sounds — normally nothing.** The eight sound effects ship with
    the app; on first launch the built app copies them into its data folder.
@@ -98,9 +100,9 @@ update-checker** anywhere in the app.
 4. **The heart-rate port on your network.** To receive your heart rate, Zanshin
    **listens** on port `4455` — TCP (obs-websocket) and UDP (OSC / plain UDP)
    — on **all of your PC's network interfaces** (unless you enter one of this
-   PC's own addresses under **IP address** in *In-game → Watch and heart
-   rate*; an address the PC doesn't have falls back to all interfaces, and the
-   log says so), and **without a password**:
+   PC's own addresses under **Network address (advanced)** in *In-game →
+   Watch and heart rate*; an address the PC doesn't have falls back to all
+   interfaces, and the log says so), and **without a password**:
    anything that can reach that port could send it a heart-rate value.
    - **When it's open:** the port stays closed until you switch on *Listen
      for heart rate from the watch* (*In-game → Watch and heart rate*) or open

@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Kontrola prekladov: chybajuce kluce, chybajuce jazyky, nezhodne
-placeholdery, a kolko retazcov ostava len anglicky (na dopreklad)."""
+placeholdery, doslovne \\uXXXX v texte, a kolko retazcov ostava len
+anglicky (na dopreklad)."""
 import re, sys
 sys.path.insert(0, ".")
 import i18n
@@ -11,10 +12,23 @@ S = i18n.STRINGS
 def placeholders(text):
     return set(re.findall(r"\{(\w+)\}", str(text)))
 
+# Doslovne lomitko + "u2019" v HODNOTE namiesto znaku ’: v zdroji bolo
+# zdvojene lomitko, takze okno ukazovalo "THIS PC" + lomitko + "u2019S"
+# (hr.pair_this_pc, opravene v 0.2.2).
+# Ziadny iny test to nechytil - text je neprazdny a placeholdery sedia.
+_ESCAPE = re.compile(r"\\u[0-9a-fA-F]{4}")
+
+
+def literal_escapes(text):
+    """Vsetky doslovne `\\uXXXX` v texte (prazdny zoznam = v poriadku)."""
+    return _ESCAPE.findall(str(text))
+
+
 missing_lang = {}          # kluc -> [chybajuce jazyky]
 ph_mismatch = []           # (kluc, jazyk, ocakavane, najdene)
 english_fallback = {}      # jazyk -> pocet retazcov zhodnych s EN (pravdepodobne nepreloz.)
 empty = []
+escapes = []               # (kluc, jazyk, najdene) - doslovne \uXXXX namiesto znaku
 
 for key, entry in S.items():
     if "sk" not in entry:
@@ -29,6 +43,8 @@ for key, entry in S.items():
             empty.append((key, lang))
         if placeholders(val) != ref_ph:
             ph_mismatch.append((key, lang, ref_ph, placeholders(val)))
+        if literal_escapes(val):
+            escapes.append((key, lang, literal_escapes(val)))
 
 # kolko retazcov je v danom jazyku doslovne rovnakych ako anglictina
 for lang in LANGS:
@@ -60,11 +76,19 @@ else:
 print("\n== Prazdne retazce ==")
 print("  " + (", ".join(f"{k}[{l}]" for k,l in empty) if empty else "ziadne"))
 
+print("\n== Doslovne \\uXXXX v texte (zdvojene lomitko v zdroji) ==")
+if escapes:
+    for k, lang, found in escapes[:40]:
+        print(f"  {k} [{lang}]: {', '.join(found)}")
+    print(f"  ... spolu {len(escapes)}")
+else:
+    print("  ziadne")
+
 print("\n== Retazce zhodne s anglictinou (pravdepodobne na dopreklad) ==")
 for lang, n in english_fallback.items():
     pct = round(100*n/len(S))
     print(f"  {lang}: {n} z {len(S)} ({pct}%)")
 
-problems = len(missing_lang) + len(ph_mismatch) + len(empty)
+problems = len(missing_lang) + len(ph_mismatch) + len(empty) + len(escapes)
 print(f"\n{'CHYBY: ' + str(problems) if problems else 'OK - ziadne strukturalne chyby v prekladoch'}")
 sys.exit(1 if problems else 0)

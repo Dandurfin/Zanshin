@@ -81,7 +81,8 @@ and breathe.
   When it has gone quieter, History says so in one quiet line: why, and how
   many more sessions it needs before it tries a step louder. How loud it may
   ever get is your call: voice, a sound and the picture without words, or the
-  picture only. You can pick it during onboarding or any time under
+  picture only. You can pick it during onboarding (its voice preview there
+  uses the Windows voice and sends nothing) or any time under
   Settings → Sound; the app may still go quieter on its own, but never louder
   than your choice.
 - **Nothing to tune by hand.** Your load threshold, resting baseline and high
@@ -94,8 +95,11 @@ and breathe.
   half an hour of heart rate — three of about ten minutes are enough, three of
   five are not. Imported sessions, sessions with implausible readings,
   sessions recovered after Zanshin ended without saving them (from 0.2.2, see
-  *Your data*) and sessions you marked afterwards as affected by illness,
-  alcohol or exercise just before playing don't count.
+  *Your data*), sessions marked *Just setting up the app* (from 0.2.2; the
+  first one saved after the introduction gets the mark by itself, and you can
+  change it in the questions at the end) and sessions you marked afterwards
+  as affected by illness, alcohol or exercise just before playing don't
+  count.
 - **Silent while you walk — if your watch sends steps.** While the watch
   reports steps (15 or more in the last minute, for now), the app stays quiet
   — walking raises heart rate just like stress, and the two can't be told
@@ -137,10 +141,12 @@ and breathe.
   finished. **Nothing new is prepared while Zanshin is listening** (a line
   already on its way when listening starts is finished): a line that isn't
   ready then plays in the Windows voice, and preparing waits until listening
-  stops. On the very first start Zanshin begins listening by itself right
-  after the introduction, so most lines are prepared only after you stop
-  listening for the first time, or at the next start if you quit while
-  listening. The *Windows voice (SAPI5)* works fully offline.
+  stops. On the very first start Zanshin (from 0.2.2) waits until those
+  lines are prepared, at most about 15 seconds (*Today* shows *Preparing the
+  voice*), and only then starts watching by itself, as if you had pressed
+  Start, so the first evening can already speak in the natural voice. Lines
+  not ready by then (offline, for example) are prepared once you press Stop,
+  or at the next start. The *Windows voice (SAPI5)* works fully offline.
 - **Built-in SFX library.** Eight short sounds in two sets of four, *Zen* and
   *Modern*, shipped with the app. Play cues use the Zen set unless you pick
   another sound for a reminder; Work cues make no sound. If a sound file goes
@@ -156,7 +162,8 @@ and breathe.
   profile is created (English ones for Slovak and Czech); switching the
   language later doesn't translate them. With the natural voice, spoken
   reminders keep the default English voice until you pick another. The
-  exception is reminders in Japanese, Chinese, Russian or Bulgarian, which
+  exception is reminders in Japanese, Chinese, Russian or Bulgarian, and from
+  0.2.2 also in Spanish, German, French or Portuguese, which
   get a voice of that language while you're still on the default voice: on a
   first start in that language, when a profile is created in it, or when you
   switch to it and the reminders that speak in the profile you're in use its
@@ -329,20 +336,54 @@ Steam in any way.
 
 ## Getting your heart rate in
 
+1. **Same Wi‑Fi.** Phone and PC on the same Wi‑Fi: not mobile data, not a
+   guest network, VPN off.
+2. **Install the companion app** on your phone and watch: for Android / Wear
+   OS *HeartRateOnStream for OBS* (free). Its store link is the QR code under
+   *Scan with your phone* in **In-game → Watch and heart rate**. iPhone: see
+   below.
+3. **Open the pairing guide:** **How to pair your watch…** in that panel, or
+   the watch icon in the sidebar. This switches heart-rate receiving on. If
+   Windows Firewall asks now, allow Zanshin on **private networks** only, and
+   check that your home network is private itself: Settings → Network &
+   internet → Wi‑Fi (or Ethernet) → your network → *Network profile type*:
+   *Private network*.
+4. **Enter the address.** Click **Show IP** in the guide and type the address
+   and port it shows into the phone app, not the `0.0.0.0` from the *Network
+   address (advanced)* field. Leave the password empty.
+5. **Pick the scene and source.** In the phone app pick the scene "Zanshin"
+   and the source "Tep". Within seconds *Today* shows your heart rate (from
+   0.2.2 the guide does too, under the address).
+
+**Still waiting for the watch?** If the phone hasn't connected after about 20
+seconds, *Today* and the guide say so (from 0.2.2), and the guide's *Watch
+won’t connect at all?* box lists what to check. The usual causes: **Cancel**
+in Windows Firewall's question (fix: Windows Security → Firewall & network
+protection → Allow an app through firewall → Change settings → tick
+**Private** next to Zanshin), a network set to Public (step 3), a guest Wi‑Fi
+or the router's "client isolation", which keeps devices apart, or a VPN.
+After a router restart the PC can get a new address: check the one in the
+phone again.
+
+**Streaming with OBS?** OBS Studio's own WebSocket server also uses port
+`4455`. While it holds the port, Zanshin can't open it, and its log says so.
+Change **Port** in **In-game → Watch and heart rate**, for example to `4456`,
+and enter the same number in the phone app; Zanshin tries the new port right
+away. You don't need OBS for Zanshin.
+
 Zanshin **listens on port `4455`** (TCP and UDP) so a phone or watch app can
 push readings to it. It replies only as much as the connection needs (on TCP
 it pretends to be OBS) and never sends your heart rate out. The port stays
 closed until you switch on *Listen for heart rate from the watch* under
-**In-game → Watch and heart rate**; opening the pairing guide (*Pair your
-watch* or *How to pair your watch…*) switches it on too. After that it opens
-every time Zanshin starts, until you switch it off. `4455` is the default; you
-can change it in the same panel. It listens on **every network your PC is
-connected to** (unless you type one of this PC's own addresses into **IP
-address** in that panel; an address the PC doesn't have falls back to all
-networks, and the log says so) and **without a password**, so anything that
-can reach that port could send it a heart-rate value. Only your firewall
-decides who can: allow Zanshin on your home network only, not on public Wi-Fi
-(details in [PRIVACY.md](PRIVACY.md)).
+**In-game → Watch and heart rate** or open the pairing guide (*Pair your
+watch* or *How to pair your watch…*). After that it opens every time Zanshin
+starts, until you switch it off. It listens on **every network your PC is
+connected to** (unless you type one of this PC's own addresses into
+**Network address (advanced)** in that panel; an address the PC doesn't have
+falls back to all networks, and the log says so) and **without a password**,
+so anything that can reach that port could send it a heart-rate value. Only
+your firewall decides who can: allow Zanshin on your home network only, not
+on public Wi-Fi (details in [PRIVACY.md](PRIVACY.md)).
 
 If another program already holds UDP port `4455` (or Windows won't open it),
 Zanshin keeps listening on TCP, so the Android route below still works. It
@@ -354,9 +395,7 @@ that program, then switch *Listen for heart rate from the watch* off and on.
 That app is a **third‑party companion you install on your phone or watch — made by someone else, not part of Zanshin.** It reads
 your heart rate there and sends it to Zanshin on this PC. The QR codes
 shown in Zanshin are just **download links** to those companion apps (they open
-the App Store / Google Play). *Pairing* then means pointing the companion at this
-PC on your LAN — port `4455`, unless you changed it in Zanshin. **Zanshin
-itself has no mobile app** on any store.
+the App Store / Google Play). **Zanshin itself has no mobile app** on any store.
 And because that companion is someone else's app, Zanshin can't vouch for what it
 does on its own side — so pick one you trust. It's your free choice.
 

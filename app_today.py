@@ -55,6 +55,27 @@ from settings_model import (dashboard_stat_clickable, swap_dashboard_stats,
 from app_spolocne import _ImageTk, app_log
 
 
+def _text_bez_tepu(app):
+    """Text vpravo v hlavicke "Tep a zataz", kym tep nechodi (0.2.2).
+
+    Predtym tam bolo vzdy "cakam na hodinky" - aj pri vypnutom prijme, pri
+    obsadenom porte a ked sa telefon vobec nepripojil, teda vtedy, ked
+    hodinky prist NEMOHLI. "Cakam" ostava len pre pripajanie a pre telefon,
+    ktory je pripojeny, ale tep este neposlal.
+
+    Funkcia modulu, nie metoda: `_refresh_dnes_stats` bezi v testoch aj na
+    atrapach (SimpleNamespace), ktore by novu metodu nemali.
+    """
+    stav = getattr(app, "_hr_state", None)
+    if stav in ("busy", "busy_gave_up"):
+        return tr("dnes.hr_busy")
+    if not getattr(app, "hr_monitoring_enabled", True):
+        return tr("dnes.hr_off")
+    if stav == "no_client":
+        return tr("dnes.hr_no_client")
+    return tr("dnes.hr_waiting")
+
+
 class TodayMixin:
     """Stred a karty stranky Dnes, dorucenie hlasky (mixin DandurfApp)."""
 
@@ -482,7 +503,7 @@ class TodayMixin:
                 elif lost:
                     vpravo = tr("dnes.hr_lost")
                 else:
-                    vpravo = tr("dnes.hr_waiting")
+                    vpravo = _text_bez_tepu(self)
                 self.hr_panel.set_right(vpravo)
             empty, live = getattr(self, "dnes_empty", None), getattr(self, "dnes_live", None)
             if empty is not None and live is not None:

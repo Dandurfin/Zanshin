@@ -23,6 +23,8 @@ before publishing. What 0.1 got wrong in the app itself is written down below.
 These are in the code here, not in a release yet: the 0.2.1 ZIP doesn't
 have them.
 
+### Heart rate, the window and your data
+
 - **The heart-rate number could jump by several BPM within one second.** Some
   companion setups write two different heart rates into the same source; in
   mine, one ran 5 to 10 BPM below the other. The number showed whichever came
@@ -86,6 +88,102 @@ have them.
   **No** deletes that folder, with this version's history in it. Answer
   **Yes**. **0.2.2:** if Zanshin finds 0.2 still installed, it tells you this
   once.
+
+### The first start
+
+- **"Pair a watch now" in the intro skipped the rest of it.** The intro
+  ended on the spot, so the Play / Work step, the step where you choose how
+  the app speaks up (and where the intro says what the natural voice sends
+  to Microsoft) and the tour never showed. **0.2.2:** the intro carries on;
+  pairing opens after it, and the tour starts when you close the pairing
+  guide.
+- **"Skip intro" also skipped the watch step.** **0.2.2:** on steps 1–2 it
+  is *Skip to the watch* and lands on that step; after that it's hidden.
+- **The intro couldn't be closed.** ✕, Esc and Alt+F4 did nothing, and with
+  no taskbar button another window could hide it. **0.2.2:** closing it asks
+  *Quit Zanshin?*. Quit saves nothing, so the intro shows again at the next
+  start. On the first start the intro stays on top while it's the app's only
+  window. The intro replayed from the Ctrl+K palette just closes and changes
+  nothing.
+- **The intro asked how the app should speak up, but its only test played a
+  sound, one step earlier.** **0.2.2:** the test is gone from the Play / Work
+  step. The speak-up step has a preview that matches your answer (voice,
+  sound or picture) and the volume slider. The voice preview uses the Windows
+  voice and says so: the intro sends nothing to Microsoft. Choosing Work
+  shows a note that the question is about Play, and the Play / Work step says
+  the app learns your own limits from Play only.
+- **The tour described the ensō wrong.** It said green while listening and
+  red when stopped, but the ensō is always in the theme's accent colour.
+  **0.2.2:** the tour says what really shows the state: the ensō breathes
+  while the app is watching and is still when stopped, a slow ring inside
+  means it's waiting for a good moment, a click starts or stops it, and the
+  dot at the top left shows the state too.
+- **The tour had 10 bubbles and promised "a few seconds".** **0.2.2:** it
+  shows five places in about a minute: the ensō, heart-rate receiving (with a
+  *Pair your watch* button; the tour goes on after pairing), triggers,
+  history and the end. Without heart rate coming in, the last bubble points
+  at the watch icon and says the app stays silent without a watch. A tour
+  place saved by 0.2.1 is capped to the new last step.
+- **The first evening spoke mostly in the Windows voice.** Zanshin started
+  watching a quarter of a second after the intro, and while it watches it
+  prepares nothing new, so preparing the natural voice stopped almost at
+  once. Spanish, German, French and Portuguese players also heard the
+  English default voice read reminder words in their own language.
+  **0.2.2:** on the very first start, watching begins once the lines are
+  prepared or after 15 seconds, whichever comes first (*Today* shows
+  *Preparing the voice*). Spanish, German, French and Portuguese (Brazil)
+  reminders get a voice of their language (Elvira, Katja, Denise, Francisca)
+  by the same rule as Japanese, Chinese, Russian and Bulgarian: only while
+  you're on the default voice, and only when the reminders that speak use
+  that language's built-in words.
+- **Setting the app up at the desk counted as play.** The intro, pairing and
+  the tour easily take more than five minutes, and that calm session was
+  saved like play and pulled the high heart-rate limit and the load
+  threshold down, the same problem as 110 → 80 BPM in 0.2.1. **0.2.2:** the
+  first session saved after the intro is marked *Just setting up the app*. It
+  stays in History, but the load threshold, high heart-rate limit and resting
+  baseline don't learn from it. The questions at the end show the mark:
+  untick it if you actually played, or tick it for any later session spent
+  only setting things up. Export and import keep it.
+
+### Pairing your watch
+
+- **The pairing guide never showed whether pairing worked, and its last step
+  switched heart rate off.** Opening the guide already switches heart-rate
+  receiving on, but step 5 said to switch it on, so anyone who did turned it
+  off. Whether heart rate came in showed only behind the guide. **0.2.2:**
+  under the address the guide shows the live state, from *Waiting for the
+  phone to connect…* to *Heart rate is coming in: N BPM*, and says when the
+  phone hasn't connected yet, another program holds the port or receiving
+  didn't start. Step 5 says nothing needs switching, and step 1 that Windows
+  may now ask about the network: allow private (home) networks only. The
+  guide opens centred on the screen with the mouse pointer.
+- **When the phone never connected, Zanshin said "Waiting for heart rate"
+  all evening.** The only firewall hint sat under *Watch connects but no
+  heart rate?*, the opposite case. **0.2.2:** if nothing connects within
+  about 20 seconds, *Today* says *The phone didn’t connect*, names the usual
+  causes (Windows Firewall, a network set to Public, a new PC address after a
+  router restart) and points to the watch icon on the left. The guide has a
+  new box, *Watch won’t connect at all?*, with four checks, including where
+  to set your network to Private and allow Zanshin through the firewall.
+- **"Waiting for watch" on *Today* even when the watch couldn't come.**
+  **0.2.2:** the *Heart rate and load* header says *heart-rate receiving
+  off*, *port is busy* or *phone didn’t connect*; *waiting for watch* is left
+  for while it connects, or while the phone is connected but no heart rate
+  has come yet. With receiving off, *Today* points to the watch icon instead
+  of a switch on another page.
+- **The `0.0.0.0` field invited you to type `0.0.0.0` into the phone.** It
+  was the first control on *In-game → Watch and heart rate*, its *Show IP*
+  switch did nothing at `0.0.0.0`, and the QR captions said to enter "this
+  PC's IP", which the page didn't show. **0.2.2:** the card starts with the
+  receiving switch, the status and *How to pair your watch…*. The field comes
+  last, is called *Network address (advanced)* and says not to type its
+  number into the phone; *Show IP* next to it appears only when it holds a
+  real address. The QR captions point to the pairing guide for the address
+  and port.
+- **The English pairing guide showed `THIS PC\u2019S` literally.** **0.2.2:**
+  it reads "THIS PC’S ADDRESS AND PORT — enter it in the phone app", and
+  `check_translations.py` fails on any literal `\uXXXX` in a translation.
 
 ## What 0.2.1 fixes
 

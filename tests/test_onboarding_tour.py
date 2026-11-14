@@ -50,8 +50,14 @@ def test_onboarding_has_watch_step():
     assert "wants_pairing = True" in ud, "pair_now musi nastavit wants_pairing"
 
 def test_tour_steps_have_translations():
+    """Kazdy krok prehliadky ma nadpis aj text - kluce sa skladaju za behu
+    (tr(f"tour.{key}.title")), takze test_i18n_keys ich nevidi."""
     import i18n
-    for k in ("tour.welcome.title","tour.kamae.body","tour.done.body","tour.step_of"):
+    import guided_tour
+    for key, *_ in guided_tour._STEPS:
+        for cast in ("title", "body"):
+            assert f"tour.{key}.{cast}" in i18n.STRINGS, f"chyba tour.{key}.{cast}"
+    for k in ("tour.step_of", "tour.done.no_watch", "tour.sensor.pair"):
         assert k in i18n.STRINGS, f"chyba {k}"
 
 def test_tour_marks_seen_and_is_replayable():
@@ -77,7 +83,7 @@ def test_first_run_window_reappears_after_wizard():
     withdrawn -> hrac po onboardingu nevidel appku. Musi byt update() +
     druhy deiconify()."""
     app=zdroj_metody("__init__")
-    block=app[app.index("wizard = OnboardingWizard(self.root)"):]
+    block=app[app.index("wizard = OnboardingWizard(self.root"):]
     block=block[:block.index("self.monitor_target = settings")]
     assert block.count("self.root.deiconify()") >= 2 and "self.root.update()" in block
 
@@ -100,20 +106,31 @@ def test_tour_bubble_clamped_to_app_monitor():
     assert "display.monitors" in pos
 
 
-def test_onboarding_uses_dialog_chrome_without_close():
-    """Onboarding ma rovnaku vlastnu listu ako ostatne dialogy (DialogChrome)
-    a NESMIE mat krizik/Escape - nesmie sa dat zavriet do prazdna."""
+def test_onboarding_uses_dialog_chrome_and_closes_through_question():
+    """Onboarding ma rovnaku vlastnu listu ako ostatne dialogy (DialogChrome).
+    Od 0.2.2 sa da zavriet - krizik, Esc aj krizik OS idu cez jednu otazku
+    (`_on_close_request`), nie "do prazdna" a nie nikam (predtym nic)."""
     ud=_read("ui_dialogs.py")
     w=ud[ud.index("class OnboardingWizard"):]
     init=w[w.index("def __init__"):w.index("\n    def ", w.index("def __init__")+5)]
-    assert "ui_kit.DialogChrome(" in init and "closable=False" in init
+    assert "ui_kit.DialogChrome(" in init and "closable=False" not in init
+    assert "on_close=self._on_close_request" in init
     assert "chrome.body" in init, "obsah musi ist do chrome.body, nie do top"
-    assert 'protocol("WM_DELETE_WINDOW", lambda: None)' in init
+    assert 'protocol("WM_DELETE_WINDOW", self._on_close_request)' in init
+    assert "lambda: None" not in init, "zavretie sa nesmie prehltnut"
     kit=_read("ui_kit.py")
     assert "closable=True" in kit and "if self.closable:" in kit
 
 
-def test_tour_does_not_clash_with_pairing():
-    """Tour sa nespusti, ak hrac isiel rovno parovat (aby sa neprekryvali)."""
-    app=zdroj_appky()
-    assert "elif settings[\"first_run\"] and not self.tour_seen" in app
+def test_tour_runs_after_pairing_not_instead_of_it():
+    """Prvy start s "Sparovat hodinky teraz": najprv parovanie, prehliadka
+    az po jeho zavreti (on_close) - predtym ju elif vynechal uplne. Bez
+    parovania ide prehliadka hned ako doteraz."""
+    init=zdroj_metody("__init__")
+    blok=init[init.index('prehliadka = settings["first_run"] and not self.tour_seen'):]
+    assert "self._prehliadka_po_parovani if prehliadka else None" in blok
+    assert "self.open_watch_pairing(on_close=po_parovani)" in blok
+    assert "elif prehliadka:" in blok and "self.start_tour" in blok
+    po=zdroj_metody("_prehliadka_po_parovani")
+    assert "self.tour_seen" in po and "self.start_tour" in po
+    assert "on_close" in zdroj_metody("open_watch_pairing")

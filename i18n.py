@@ -435,17 +435,6 @@ STRINGS = {
         'fr': 'Suivant →',
         'pt': 'Próximo →',
     },
-    'onboarding.test_sound': {
-        'sk': '🔊 Vyskúšať zvuk a hlasitosť',
-        'en': '🔊 Test sound and volume',
-        'ja': '🔊 音とボリュームを試す',
-        'zh': '🔊 测试声音与音量',
-        'ru': '🔊 Проверить звук и громкость',
-        'es': '🔊 Probar sonido y volumen',
-        'de': '🔊 Ton und Lautstärke testen',
-        'fr': '🔊 Tester le son et le volume',
-        'pt': '🔊 Testar som e volume',
-    },
     'assets.preparing': {
         'sk': 'Pripravujem audio balíčky (Zen & Modern)...',
         'en': 'Preparing audio packages (Zen & Modern)...',
@@ -1022,27 +1011,18 @@ STRINGS = {
         'fr': 'Capteur de fréquence cardiaque (Wi-Fi)',
         'pt': 'Sensor de frequência cardíaca (Wi-Fi)',
     },
+    # 0.2.2: "(pokrocile)" - pole nie je adresa do telefonu. Ako
+    # "IP adresa" zvadzalo prepisat 0.0.0.0 do telefonu (audit).
     'settings.hr_ip_label': {
-        'sk': 'IP adresa',
-        'en': 'IP address',
-        'ja': 'IPアドレス',
-        'zh': 'IP 地址',
-        'ru': 'IP-адрес',
-        'es': 'Dirección IP',
-        'de': 'IP-Adresse',
-        'fr': 'Adresse IP',
-        'pt': 'Endereço IP',
-    },
-    'settings.hr_ip_hint': {
-        'sk': 'Nechaj 0.0.0.0 — appka počúva na všetkých sieťach. Toto je adresa tvojho počítača, nie hodiniek. Nevieš, čo sem dať? Klikni na „Ako spárovať hodinky“ nižšie.',
-        'en': "Leave 0.0.0.0 — the app listens on every network. This is your PC's address, not the watch's. Not sure what goes here? Click “How to pair your watch“ below.",
-        'ja': "Leave 0.0.0.0 — the app listens on every network. This is your PC's address, not the watch's. Not sure what goes here? Click “How to pair your watch“ below.",
-        'zh': "Leave 0.0.0.0 — the app listens on every network. This is your PC's address, not the watch's. Not sure what goes here? Click “How to pair your watch“ below.",
-        'ru': "Leave 0.0.0.0 — the app listens on every network. This is your PC's address, not the watch's. Not sure what goes here? Click “How to pair your watch“ below.",
-        'es': "Leave 0.0.0.0 — the app listens on every network. This is your PC's address, not the watch's. Not sure what goes here? Click “How to pair your watch“ below.",
-        'de': "Leave 0.0.0.0 — the app listens on every network. This is your PC's address, not the watch's. Not sure what goes here? Click “How to pair your watch“ below.",
-        'fr': "Leave 0.0.0.0 — the app listens on every network. This is your PC's address, not the watch's. Not sure what goes here? Click “How to pair your watch“ below.",
-        'pt': "Leave 0.0.0.0 — the app listens on every network. This is your PC's address, not the watch's. Not sure what goes here? Click “How to pair your watch“ below.",
+        'sk': 'Sieťová adresa (pokročilé)',
+        'en': 'Network address (advanced)',
+        'ja': 'ネットワークアドレス（上級）',
+        'zh': '网络地址（高级）',
+        'ru': 'Сетевой адрес (дополнительно)',
+        'es': 'Dirección de red (avanzado)',
+        'de': 'Netzwerkadresse (erweitert)',
+        'fr': 'Adresse réseau (avancé)',
+        'pt': 'Endereço de rede (avançado)',
     },
     'settings.hr_port_label': {
         'sk': 'Port',
@@ -1771,16 +1751,18 @@ STRINGS = {
         'fr': "J'écoute, mais je n'ai pas de pouls",
         'pt': 'Ouvindo, mas sem pulso',
     },
+    # 0.2.2: posiela na ikonu hodiniek (zapne prijem a otvori navod),
+    # nie na holy prepinac - bez parovania by prepinac nepomohol.
     'kamae.no_watch_sub': {
-        'sk': 'Bez hodiniek neviem, kedy ti záťaž stúpa — ozvať sa nemám ako. Na stránke „V hre“ zapni „Počúvať tep z hodiniek“.',
-        'en': 'Without a watch I cannot tell when your load rises — I have no way to speak up. Turn on “Listen for heart rate from the watch” on the “In-game” page.',
-        'ja': '時計がないと、負荷が上がったことがわかりません — 声をかけようがありません。「ゲーム中」ページで「時計から心拍を受け取る」をオンにしてください。',
-        'zh': '没有手表，我就不知道你的负荷什么时候升高——也就没办法出声。请在“游戏中”页面打开“接收手表的心率”。',
-        'ru': 'Без часов я не знаю, когда растёт твоя нагрузка, — так что подать голос я не могу. На странице «В игре» включи «Слушать пульс с часов».',
-        'es': 'Sin reloj no sé cuándo te sube la carga — no tengo cómo avisarte. En la página «En el juego», activa «Escuchar el pulso del reloj».',
-        'de': 'Ohne Uhr weiß ich nicht, wann deine Last steigt — ich habe keine Möglichkeit, mich zu melden. Schalte auf der Seite „Im Spiel“ „Puls von der Uhr empfangen“ ein.',
-        'fr': 'Sans montre, je ne sais pas quand ta charge monte — je n’ai aucun moyen de me manifester. Sur la page « En jeu », active « Écouter le pouls de la montre ».',
-        'pt': 'Sem relógio, não sei quando a sua carga sobe — não tenho como avisar. Na página “No jogo”, ative “Ouvir o pulso do relógio”.',
+        'sk': 'Bez hodiniek neviem, kedy ti záťaž stúpa, tak mlčím. Spáruj ich — ikona hodiniek vľavo.',
+        'en': 'Without a watch I can’t tell when your load rises, so I stay quiet. Pair it — the watch icon on the left.',
+        'ja': '時計がないと負荷が上がったのがわからないので、黙っています。ペアリングして — 左の時計アイコンから。',
+        'zh': '没有手表，我不知道你的负荷什么时候升高，所以保持安静。去配对吧——左侧的手表图标。',
+        'ru': 'Без часов я не знаю, когда растёт твоя нагрузка, поэтому молчу. Подключи их — значок часов слева.',
+        'es': 'Sin reloj no sé cuándo te sube la carga, así que me callo. Vincúlalo: el icono del reloj a la izquierda.',
+        'de': 'Ohne Uhr weiß ich nicht, wann deine Last steigt, also schweige ich. Verbinde sie — das Uhr-Symbol links.',
+        'fr': 'Sans montre, je ne sais pas quand ta charge monte, alors je me tais. Connecte-la — l’icône de la montre à gauche.',
+        'pt': 'Sem relógio, não sei quando a sua carga sobe, então fico calada. Pareie o relógio — o ícone do relógio à esquerda.',
     },
     # Senzor POCUVA, ale tep nechodi (vypadok, obsadeny port, este sa nic
     # nepripojilo). Odlisene od `kamae.no_watch`, co je vypnuty senzor.
@@ -1810,6 +1792,31 @@ STRINGS = {
         'de': 'Der Sensor hört zu, aber von der Uhr kommt noch nichts an. Prüfe, ob die Uhr misst und beim Handy ist (Bluetooth) und ob das Handy im selben WLAN ist wie der PC.',
         'fr': 'Le capteur écoute, mais rien n’arrive encore de la montre. Vérifie que la montre mesure et qu’elle est près du téléphone (Bluetooth), et que le téléphone est sur le même Wi‑Fi que l’ordinateur.',
         'pt': 'O sensor está ouvindo, mas nada chegou do relógio ainda. Verifique se o relógio está medindo e perto do celular (Bluetooth) e se o celular está no mesmo Wi‑Fi que o PC.',
+    },
+    # Prijem bezi, ale za ~20 s sa nikto nepripojil (`_hr_no_client`).
+    # "Cakam na tep" by cakalo cely vecer bez rady - pricina je takmer
+    # vzdy v sieti, tak veta povie ktora a kde je postup (0.2.2).
+    'kamae.no_client': {
+        'sk': 'Telefón sa nepripojil',
+        'en': 'The phone didn’t connect',
+        'ja': '電話がつながりませんでした',
+        'zh': '手机没有连上',
+        'ru': 'Телефон не подключился',
+        'es': 'El móvil no se conectó',
+        'de': 'Das Handy hat sich nicht verbunden',
+        'fr': 'Le téléphone ne s’est pas connecté',
+        'pt': 'O celular não se conectou',
+    },
+    'kamae.no_client_sub': {
+        'sk': 'Najčastejšie ho zastaví firewall Windows, sieť nastavená ako Verejná alebo nová adresa PC po reštarte routera. Postup nájdeš v návode na párovanie — klikni na ikonu hodiniek vľavo.',
+        'en': 'Most often it’s stopped by Windows Firewall, a network set to Public, or a new PC address after a router restart. The steps are in the pairing guide — click the watch icon on the left.',
+        'ja': 'よくある原因は Windows ファイアウォール、「パブリック」に設定されたネットワーク、ルーターの再起動で変わった PC のアドレス。手順はペアリングのガイドにある — 左の時計アイコンをクリックして。',
+        'zh': '最常见的原因是 Windows 防火墙、被设为“公用”的网络，或者路由器重启后电脑地址变了。步骤在配对指南里——点击左侧的手表图标。',
+        'ru': 'Чаще всего мешает брандмауэр Windows, сеть с профилем «Общедоступная» или новый адрес ПК после перезапуска роутера. Что делать — в руководстве по подключению: нажми значок часов слева.',
+        'es': 'Lo más habitual es que lo frene el firewall de Windows, una red configurada como Pública o una nueva dirección del PC tras reiniciar el router. Los pasos están en la guía de vinculación: haz clic en el icono del reloj a la izquierda.',
+        'de': 'Meist blockiert die Windows-Firewall, ein als „Öffentlich“ eingestelltes Netzwerk oder eine neue PC-Adresse nach einem Router-Neustart. Die Schritte stehen in der Anleitung zum Verbinden — klick links auf das Uhr-Symbol.',
+        'fr': 'Le plus souvent, c’est le pare-feu Windows, un réseau réglé sur Public ou une nouvelle adresse du PC après un redémarrage de la box. Les étapes sont dans le guide de connexion — clique sur l’icône de la montre à gauche.',
+        'pt': 'Na maioria das vezes, o bloqueio vem do firewall do Windows, de uma rede definida como Pública ou de um novo endereço do PC depois de reiniciar o roteador. Os passos estão no guia de pareamento — clique no ícone do relógio à esquerda.',
     },
     'dev.min_gap_clamped': {
         'sk': 'Odstup som zdvihla na {s} s — nižšie by si dve hlášky zneplatnili meracie okná.',
@@ -4212,6 +4219,31 @@ STRINGS.update({
         'fr': 'Stopped',
         'pt': 'Stopped',
     },
+    # 0.2.2: prvy start caka so sledovanim, kym sa pripravi prirodzeny hlas
+    # (`app._zacni_sledovat_po_priprave_hlasu`, najviac 15 s). Bez vyzvy
+    # klikat - klik by pripravu zastavil.
+    'kamae.voice_prep': {
+        'sk': 'Pripravujem hlas',
+        'en': 'Preparing the voice',
+        'ja': '声を準備しています',
+        'zh': '正在准备语音',
+        'ru': 'Готовлю голос',
+        'es': 'Preparando la voz',
+        'de': 'Ich bereite die Stimme vor',
+        'fr': 'Je prépare la voix',
+        'pt': 'Preparando a voz',
+    },
+    'kamae.voice_prep_sub': {
+        'sk': 'O chvíľu začnem sledovať sama.',
+        'en': "I'll start watching by myself in a moment.",
+        'ja': 'まもなく自分で見守りを始めます。',
+        'zh': '我很快会自己开始留意。',
+        'ru': 'Скоро начну отслеживать сама.',
+        'es': 'En un momento empiezo a vigilar yo sola.',
+        'de': 'Gleich fange ich von selbst an zu beobachten.',
+        'fr': 'Je commence à surveiller toute seule dans un instant.',
+        'pt': 'Daqui a pouco começo a acompanhar sozinha.',
+    },
     # DVE ZNENIA, nie jedno. Appka sa vie spustit sama pri starte hry, ale
     # len ked je zapnute automaticke prepinanie profilov - inak by veta
     # slubovala nieco, co sa nestane.
@@ -4697,14 +4729,9 @@ STRINGS.update({
     },
     'hr.pair_this_pc': {
         'sk': 'ADRESA A PORT TOHTO POČÍTAČA — prepíš do telefónu',
-        'en': 'THIS PC\\u2019S ADDRESS AND PORT — type it into your phone',
-        'ja': 'THIS PC\\u2019S ADDRESS AND PORT — type it into your phone',
-        'zh': 'THIS PC\\u2019S ADDRESS AND PORT — type it into your phone',
-        'ru': 'THIS PC\\u2019S ADDRESS AND PORT — type it into your phone',
-        'es': 'THIS PC\\u2019S ADDRESS AND PORT — type it into your phone',
-        'de': 'THIS PC\\u2019S ADDRESS AND PORT — type it into your phone',
-        'fr': 'THIS PC\\u2019S ADDRESS AND PORT — type it into your phone',
-        'pt': 'THIS PC\\u2019S ADDRESS AND PORT — type it into your phone',
+        # 0.2.2: en mal v zdroji zdvojene lomitko pred u2019, takze okno
+        # ukazovalo doslova lomitko a 'u2019'. ja..pt doplna _tr7 nizsie.
+        'en': 'THIS PC’S ADDRESS AND PORT — enter it in the phone app',
     },
     'hr.pair_ip_unknown': {
         'sk': 'IP sa nepodarilo zistiť',
@@ -4729,26 +4756,8 @@ STRINGS.update({
         'pt': 'Open Command Prompt and type ipconfig — look for “IPv4 Address” (usually 192.168.x.x). Phone and PC must be on the same Wi‑Fi.',
     },
     'hr.step1_title': {
-        'sk': 'Rovnaká Wi‑Fi',
-        'en': 'Same Wi‑Fi',
-        'ja': 'Same Wi‑Fi',
-        'zh': 'Same Wi‑Fi',
-        'ru': 'Same Wi‑Fi',
-        'es': 'Same Wi‑Fi',
-        'de': 'Same Wi‑Fi',
-        'fr': 'Same Wi‑Fi',
-        'pt': 'Same Wi‑Fi',
-    },
-    'hr.step1_body': {
-        'sk': 'Telefón s hodinkami aj tento počítač musia byť na tej istej sieti. Cez mobilné dáta to nefunguje.',
-        'en': 'The phone paired with your watch and this PC must be on the same network. Mobile data will not work.',
-        'ja': 'The phone paired with your watch and this PC must be on the same network. Mobile data will not work.',
-        'zh': 'The phone paired with your watch and this PC must be on the same network. Mobile data will not work.',
-        'ru': 'The phone paired with your watch and this PC must be on the same network. Mobile data will not work.',
-        'es': 'The phone paired with your watch and this PC must be on the same network. Mobile data will not work.',
-        'de': 'The phone paired with your watch and this PC must be on the same network. Mobile data will not work.',
-        'fr': 'The phone paired with your watch and this PC must be on the same network. Mobile data will not work.',
-        'pt': 'The phone paired with your watch and this PC must be on the same network. Mobile data will not work.',
+        'sk': 'Rovnaká Wi‑Fi a povolenie siete',
+        'en': 'Same Wi‑Fi and network permission',
     },
     'hr.step2_title': {
         'sk': 'Nainštaluj appku do telefónu',
@@ -4783,17 +4792,6 @@ STRINGS.update({
         'fr': 'Enter the address and port',
         'pt': 'Enter the address and port',
     },
-    'hr.step3_body': {
-        'sk': 'V appke na telefóne nájdi nastavenie OBS / WebSocket a zadaj adresu a port tohto počítača (hore v rámiku). Heslo nechaj prázdne.',
-        'en': 'In the phone app, find the OBS / WebSocket setting and enter this PC\\u2019s address and port (in the box above). Leave the password empty.',
-        'ja': 'In the phone app, find the OBS / WebSocket setting and enter this PC\\u2019s address and port (in the box above). Leave the password empty.',
-        'zh': 'In the phone app, find the OBS / WebSocket setting and enter this PC\\u2019s address and port (in the box above). Leave the password empty.',
-        'ru': 'In the phone app, find the OBS / WebSocket setting and enter this PC\\u2019s address and port (in the box above). Leave the password empty.',
-        'es': 'In the phone app, find the OBS / WebSocket setting and enter this PC\\u2019s address and port (in the box above). Leave the password empty.',
-        'de': 'In the phone app, find the OBS / WebSocket setting and enter this PC\\u2019s address and port (in the box above). Leave the password empty.',
-        'fr': 'In the phone app, find the OBS / WebSocket setting and enter this PC\\u2019s address and port (in the box above). Leave the password empty.',
-        'pt': 'In the phone app, find the OBS / WebSocket setting and enter this PC\\u2019s address and port (in the box above). Leave the password empty.',
-    },
     'hr.step4_title': {
         'sk': 'Vyber scénu a zdroj',
         'en': 'Pick the scene and source',
@@ -4817,26 +4815,8 @@ STRINGS.update({
         'pt': 'Once the phone app connects, it will offer a scene named “Zanshin“ and a text source named “Tep“. Select exactly those two — that is how your heart rate comes through.',
     },
     'hr.step5_title': {
-        'sk': 'Zapni senzor tu',
-        'en': 'Turn the sensor on here',
-        'ja': 'Turn the sensor on here',
-        'zh': 'Turn the sensor on here',
-        'ru': 'Turn the sensor on here',
-        'es': 'Turn the sensor on here',
-        'de': 'Turn the sensor on here',
-        'fr': 'Turn the sensor on here',
-        'pt': 'Turn the sensor on here',
-    },
-    'hr.step5_body': {
-        'sk': 'Vráť sa sem, prepni „Zapnúť senzor tepu“ a sleduj stav dole. Keď sa hodinky pripoja, uvidíš svoj tep v BPM.',
-        'en': 'Come back here, flip “Turn on the heart-rate sensor“ and watch the status below. When the watch connects, you will see your live BPM.',
-        'ja': 'Come back here, flip “Turn on the heart-rate sensor“ and watch the status below. When the watch connects, you will see your live BPM.',
-        'zh': 'Come back here, flip “Turn on the heart-rate sensor“ and watch the status below. When the watch connects, you will see your live BPM.',
-        'ru': 'Come back here, flip “Turn on the heart-rate sensor“ and watch the status below. When the watch connects, you will see your live BPM.',
-        'es': 'Come back here, flip “Turn on the heart-rate sensor“ and watch the status below. When the watch connects, you will see your live BPM.',
-        'de': 'Come back here, flip “Turn on the heart-rate sensor“ and watch the status below. When the watch connects, you will see your live BPM.',
-        'fr': 'Come back here, flip “Turn on the heart-rate sensor“ and watch the status below. When the watch connects, you will see your live BPM.',
-        'pt': 'Come back here, flip “Turn on the heart-rate sensor“ and watch the status below. When the watch connects, you will see your live BPM.',
+        'sk': 'Skontroluj stav pod adresou',
+        'en': 'Check the status under the address',
     },
     'hr.trouble_title': {
         'sk': 'Hodinky sa pripoja, ale tep nechodí?',
@@ -4848,17 +4828,6 @@ STRINGS.update({
         'de': 'Watch connects but no heart rate?',
         'fr': 'Watch connects but no heart rate?',
         'pt': 'Watch connects but no heart rate?',
-    },
-    'hr.trouble_body': {
-        'sk': 'Skontroluj, či máš v appke na telefóne vybranú scénu „Zanshin“ a zdroj „Tep“, a či hodinky naozaj merajú (v ich appke vidíš aktuálny tep). Ak port obsadí iný program, zmeň ho tu aj v telefóne na rovnaké číslo.',
-        'en': 'Check that the phone app has the “Zanshin“ scene and “Tep“ source selected, and that the watch is actually measuring (you can see a live reading in its own app). If another program takes the port, change it here and on the phone to the same number.',
-        'ja': 'Check that the phone app has the “Zanshin“ scene and “Tep“ source selected, and that the watch is actually measuring (you can see a live reading in its own app). If another program takes the port, change it here and on the phone to the same number.',
-        'zh': 'Check that the phone app has the “Zanshin“ scene and “Tep“ source selected, and that the watch is actually measuring (you can see a live reading in its own app). If another program takes the port, change it here and on the phone to the same number.',
-        'ru': 'Check that the phone app has the “Zanshin“ scene and “Tep“ source selected, and that the watch is actually measuring (you can see a live reading in its own app). If another program takes the port, change it here and on the phone to the same number.',
-        'es': 'Check that the phone app has the “Zanshin“ scene and “Tep“ source selected, and that the watch is actually measuring (you can see a live reading in its own app). If another program takes the port, change it here and on the phone to the same number.',
-        'de': 'Check that the phone app has the “Zanshin“ scene and “Tep“ source selected, and that the watch is actually measuring (you can see a live reading in its own app). If another program takes the port, change it here and on the phone to the same number.',
-        'fr': 'Check that the phone app has the “Zanshin“ scene and “Tep“ source selected, and that the watch is actually measuring (you can see a live reading in its own app). If another program takes the port, change it here and on the phone to the same number.',
-        'pt': 'Check that the phone app has the “Zanshin“ scene and “Tep“ source selected, and that the watch is actually measuring (you can see a live reading in its own app). If another program takes the port, change it here and on the phone to the same number.',
     },
 })
 
@@ -5073,15 +5042,59 @@ STRINGS.update({
         'pt': 'Back',
     },
     'ob.skip': {
-        'sk': 'Preskočiť úvod',
-        'en': 'Skip intro',
-        'ja': 'Skip intro',
-        'zh': 'Skip intro',
-        'ru': 'Skip intro',
-        'es': 'Skip intro',
-        'de': 'Skip intro',
-        'fr': 'Skip intro',
-        'pt': 'Skip intro',
+        'sk': 'Preskočiť na hodinky',
+        'en': 'Skip to the watch',
+        'ja': 'Skip to the watch',
+        'zh': 'Skip to the watch',
+        'ru': 'Skip to the watch',
+        'es': 'Skip to the watch',
+        'de': 'Skip to the watch',
+        'fr': 'Skip to the watch',
+        'pt': 'Skip to the watch',
+    },
+    'ob.quit.title': {
+        'sk': 'Ukončiť Zanshin?',
+        'en': 'Quit Zanshin?',
+        'ja': 'Zanshin を終了しますか？',
+        'zh': '退出 Zanshin？',
+        'ru': 'Закрыть Zanshin?',
+        'es': '¿Salir de Zanshin?',
+        'de': 'Zanshin beenden?',
+        'fr': 'Quitter Zanshin ?',
+        'pt': 'Sair do Zanshin?',
+    },
+    'ob.quit.body': {
+        'sk': 'Úvod sa ukáže pri ďalšom spustení.',
+        'en': 'The intro will show again next time you start the app.',
+        'ja': '次に起動したとき、この案内がもう一度表示されます。',
+        'zh': '下次启动时会再次显示这个介绍。',
+        'ru': 'Вступление появится снова при следующем запуске.',
+        'es': 'La introducción volverá a aparecer la próxima vez que abras la app.',
+        'de': 'Die Einführung erscheint beim nächsten Start wieder.',
+        'fr': 'L’intro s’affichera de nouveau au prochain lancement.',
+        'pt': 'A introdução vai aparecer de novo na próxima vez que você abrir o app.',
+    },
+    'ob.quit.yes': {
+        'sk': 'Ukončiť',
+        'en': 'Quit',
+        'ja': '終了',
+        'zh': '退出',
+        'ru': 'Выйти',
+        'es': 'Salir',
+        'de': 'Beenden',
+        'fr': 'Quitter',
+        'pt': 'Sair',
+    },
+    'ob.quit.no': {
+        'sk': 'Pokračovať',
+        'en': 'Continue',
+        'ja': '続ける',
+        'zh': '继续',
+        'ru': 'Продолжить',
+        'es': 'Continuar',
+        'de': 'Fortsetzen',
+        'fr': 'Continuer',
+        'pt': 'Continuar',
     },
     'ob.step2.kicker': {
         'sk': 'KROK 2 z 5',
@@ -5170,6 +5183,17 @@ STRINGS.update({
         'de': 'Pair a watch now',
         'fr': 'Pair a watch now',
         'pt': 'Pair a watch now',
+    },
+    'ob.step3.pair_queued': {
+        'sk': 'Párovanie otvorím po úvode',
+        'en': "I'll open pairing after the intro",
+        'ja': '案内のあとで時計のつなぎ方を開きます',
+        'zh': '介绍结束后，我会打开手表连接',
+        'ru': 'Открою подключение часов после вступления',
+        'es': 'Abriré la vinculación al terminar la introducción',
+        'de': 'Ich öffne das Verbinden nach der Einführung',
+        'fr': 'J’ouvrirai la connexion après l’intro',
+        'pt': 'Abro o pareamento depois da introdução',
     },
     'ob.step3.later': {
         'sk': 'Preskočiť — spárujem neskôr',
@@ -5264,37 +5288,15 @@ STRINGS.update({
         'pt': 'Quick tour',
     },
     'tour.welcome.body': {
-        'sk': 'Ukážem ti, kde čo je — trvá to pár sekúnd. Kedykoľvek môžeš kliknúť Preskočiť.',
-        'en': 'Let me show you where things are — it takes a few seconds. You can hit Skip any time.',
-        'ja': 'Let me show you where things are — it takes a few seconds. You can hit Skip any time.',
-        'zh': 'Let me show you where things are — it takes a few seconds. You can hit Skip any time.',
-        'ru': 'Let me show you where things are — it takes a few seconds. You can hit Skip any time.',
-        'es': 'Let me show you where things are — it takes a few seconds. You can hit Skip any time.',
-        'de': 'Let me show you where things are — it takes a few seconds. You can hit Skip any time.',
-        'fr': 'Let me show you where things are — it takes a few seconds. You can hit Skip any time.',
-        'pt': 'Let me show you where things are — it takes a few seconds. You can hit Skip any time.',
-    },
-    'tour.kamae.title': {
-        'sk': 'Spustiť a zastaviť',
-        'en': 'Start and stop',
-        'ja': 'Start and stop',
-        'zh': 'Start and stop',
-        'ru': 'Start and stop',
-        'es': 'Start and stop',
-        'de': 'Start and stop',
-        'fr': 'Start and stop',
-        'pt': 'Start and stop',
-    },
-    'tour.kamae.body': {
-        'sk': 'Tento pás je hlavný vypínač. Vľavo má tlačidlo ▶ / ▮▮ — tým sa appka spúšťa a zastavuje. Keď počúva, pás jemne dýcha; keď stojí, je pokojný.',
-        'en': 'This bar is the main switch. The ▶ / ▮▮ button on the left starts and stops the app. While it listens the bar breathes gently; when stopped it is still.',
-        'ja': 'This bar is the main switch. The ▶ / ▮▮ button on the left starts and stops the app. While it listens the bar breathes gently; when stopped it is still.',
-        'zh': 'This bar is the main switch. The ▶ / ▮▮ button on the left starts and stops the app. While it listens the bar breathes gently; when stopped it is still.',
-        'ru': 'This bar is the main switch. The ▶ / ▮▮ button on the left starts and stops the app. While it listens the bar breathes gently; when stopped it is still.',
-        'es': 'This bar is the main switch. The ▶ / ▮▮ button on the left starts and stops the app. While it listens the bar breathes gently; when stopped it is still.',
-        'de': 'This bar is the main switch. The ▶ / ▮▮ button on the left starts and stops the app. While it listens the bar breathes gently; when stopped it is still.',
-        'fr': 'This bar is the main switch. The ▶ / ▮▮ button on the left starts and stops the app. While it listens the bar breathes gently; when stopped it is still.',
-        'pt': 'This bar is the main switch. The ▶ / ▮▮ button on the left starts and stops the app. While it listens the bar breathes gently; when stopped it is still.',
+        'sk': 'Ukážem ti päť miest v appke — asi minúta. Preskočiť môžeš kedykoľvek.',
+        'en': "I'll show you five places in the app — about a minute. You can skip any time.",
+        'ja': "I'll show you five places in the app — about a minute. You can skip any time.",
+        'zh': "I'll show you five places in the app — about a minute. You can skip any time.",
+        'ru': "I'll show you five places in the app — about a minute. You can skip any time.",
+        'es': "I'll show you five places in the app — about a minute. You can skip any time.",
+        'de': "I'll show you five places in the app — about a minute. You can skip any time.",
+        'fr': "I'll show you five places in the app — about a minute. You can skip any time.",
+        'pt': "I'll show you five places in the app — about a minute. You can skip any time.",
     },
     'tour.triggers.title': {
         'sk': 'Spúšťače',
@@ -5321,78 +5323,35 @@ STRINGS.update({
         'fr': 'Ici, tu règles CE QUE l’app dit — la phrase, la voix et le son. QUAND elle se manifeste, c’est ton corps qui le décide : l’app attend que ta charge reste haute un moment, puis se manifeste pendant une pause, quand la charge ne monte plus ; tant que ton pouls est en zone de pic, elle se tait. En haut, tu vois sur quels chiffres elle se base en ce moment — tu ne les règles pas, l’app affine son seuil à partir de tes séances. Pourquoi justement ces quatre choses, tu peux le déplier avec la flèche à côté de chaque rappel.',
         'pt': 'Aqui você define O QUE o app diz — a frase, a voz e o som. QUANDO ele avisa, quem decide é o seu corpo: o app espera até a sua carga se manter alta por um tempo e avisa numa pausa, quando a carga já não está subindo; enquanto o pulso está na zona de pico, fica em silêncio. No topo você vê com que números ele está trabalhando agora — você não os define; o app ajusta o limiar a partir das suas sessões. Por que justamente essas quatro coisas, você descobre abrindo a seta ao lado de cada aviso.',
     },
-    'tour.sound.title': {
-        'sk': 'Zvuk',
-        'en': 'Sound',
-        'ja': 'Sound',
-        'zh': 'Sound',
-        'ru': 'Sound',
-        'es': 'Sound',
-        'de': 'Sound',
-        'fr': 'Sound',
-        'pt': 'Sound',
-    },
-    'tour.sound.body': {
-        'sk': 'Hlas, rýchlosť reči a hlasitosť pripomienok — aj pomer medzi zvukom a hlasom. Vlastnú nahrávku pridáš pri konkrétnej hláške na stránke Spúšťače.',
-        'en': 'The voice, speech speed and volume of the cues — and the mix between sound and voice. You add your own recording on a specific cue, on the Triggers page.',
-        'ja': '音声、話す速さ、リマインダーの音量 — そして効果音と音声のバランスも。自分の録音は、「トリガー」ページで個々の合図に追加します。',
-        'zh': '提醒的语音、语速和音量——还有音效与语音之间的比例。自己的录音可以在“触发器”页面里对应的提示上添加。',
-        'ru': 'Голос, скорость речи и громкость напоминаний — и баланс между звуком и голосом. Свою запись добавляешь у конкретной подсказки на странице «Триггеры».',
-        'es': 'La voz, la velocidad del habla y el volumen de los recordatorios — y también la mezcla entre sonido y voz. Tu propia grabación la añades en un aviso concreto, en la página Disparadores.',
-        'de': 'Stimme, Sprechtempo und Lautstärke der Erinnerungen — auch das Verhältnis zwischen Ton und Stimme. Eine eigene Aufnahme fügst du bei einem bestimmten Hinweis auf der Seite Trigger hinzu.',
-        'fr': 'La voix, la vitesse de parole et le volume des rappels — et aussi l’équilibre entre le son et la voix. Tu ajoutes ton propre enregistrement sur un rappel précis, dans la page Déclencheurs.',
-        'pt': 'A voz, a velocidade da fala e o volume dos lembretes — e também a mistura entre som e voz. Uma gravação sua você adiciona num aviso específico, na página Gatilhos.',
-    },
-    'tour.ingame.title': {
-        'sk': 'V hre',
-        'en': 'In game',
-        'ja': 'In game',
-        'zh': 'In game',
-        'ru': 'In game',
-        'es': 'In game',
-        'de': 'In game',
-        'fr': 'In game',
-        'pt': 'In game',
-    },
-    'tour.ingame.body': {
-        'sk': 'Tu spáruješ hodinky a nastavíš piktogramy, ktoré appka kreslí počas hrania — a potiahneš si ich tam, kam chceš. Panel s tepom v hre nájdeš v Nastaveniach → Všeobecné.',
-        'en': 'Here you pair your watch and set up the icons the app draws while you play — and drag them wherever you want. The in-game heart-rate panel is in Settings → General.',
-        'ja': 'ここで時計をつなぎ、プレイ中にアプリが描くアイコンを設定します — そして好きな場所へドラッグできます。ゲーム中の心拍パネルは「設定」→「全般」にあります。',
-        'zh': '在这里配对手表，设置应用在你玩游戏时绘制的图标——还能把它们拖到你想要的位置。游戏中的心率面板在“设置 → 通用”里。',
-        'ru': 'Здесь ты подключаешь часы и настраиваешь значки, которые приложение рисует во время игры, — и перетаскиваешь их, куда хочешь. Панель с пульсом в игре найдёшь в Настройках → Общие.',
-        'es': 'Aquí vinculas el reloj y configuras los iconos que la app dibuja mientras juegas — y los arrastras adonde quieras. El panel de pulso en el juego está en Ajustes → General.',
-        'de': 'Hier verbindest du die Uhr und stellst die Symbole ein, die die App beim Spielen zeichnet — und ziehst sie dahin, wo du sie haben willst. Das Puls-Panel im Spiel findest du unter Einstellungen → Allgemein.',
-        'fr': 'Ici, tu connectes ta montre et tu règles les icônes que l’app dessine pendant que tu joues — et tu les fais glisser où tu veux. Le panneau de pouls en jeu se trouve dans Paramètres → Général.',
-        'pt': 'Aqui você pareia o relógio e configura os ícones que o app desenha enquanto você joga — e os arrasta para onde quiser. O painel de pulso no jogo fica em Configurações → Geral.',
-    },
-    # Predtym opisoval QuickDock tlacidlo Spustit/Zastavit, ktore redizajn
-    # "Sumi noc" zrusil - jedinym ovladacom spusti/zastav je teraz enso v
-    # strede sidebaru. Text prepisany na enso (klucove mena ostavaju,
-    # aby sa nemenili odkazy na tento krok). `_sk_en` este nie je v tomto
-    # bode suboru definovane (definuje sa nizsie), preto plny slovnik ako
-    # ostatne zaznamy v tomto bloku - ostatne jazyky su docasne = en, viz
-    # preklad_TODO.csv (rovnaky stav ako predtym).
+    # Krok o znacke (enso na strede Dnes; kluc "dock" ostal z cias QuickDocku).
+    # 0.2.2: text tvrdil zelene/cervene enso, lenze kod ho kresli vzdy vo
+    # farbe akcentu temy (`hud_paint.render_enso`) - stav nesie POHYB: pri
+    # sledovani dycha, zastavene stoji, natiahnuty spustac = vnutorny
+    # prstenec. Klik na enso naozaj prepina (`_dnes_canvas_click`) a bodka
+    # stavu je hore v bocnom paneli (`_StateDot`). Farbu bodky text zamerne
+    # nemenuje. `_sk_en` este nie je v tomto bode suboru definovane, preto
+    # plny slovnik; ostatne jazyky tu su = en a preklad dava `_tr7` nizsie.
     'tour.dock.title': {
-        'sk': 'Spusti a zastav',
-        'en': 'Start and stop',
-        'ja': 'Start and stop',
-        'zh': 'Start and stop',
-        'ru': 'Start and stop',
-        'es': 'Start and stop',
-        'de': 'Start and stop',
-        'fr': 'Start and stop',
-        'pt': 'Start and stop',
+        'sk': 'Ensō — stav appky',
+        'en': "The ensō — the app's state",
+        'ja': "The ensō — the app's state",
+        'zh': "The ensō — the app's state",
+        'ru': "The ensō — the app's state",
+        'es': "The ensō — the app's state",
+        'de': "The ensō — the app's state",
+        'fr': "The ensō — the app's state",
+        'pt': "The ensō — the app's state",
     },
     'tour.dock.body': {
-        'sk': 'Toto je ensō — značka appky a zároveň jej stav. Zelené a dýchajúce znamená, že appka počúva; červené a nehybné, že je zastavená. Keď telo drží hore, objaví sa vnútri pomalý prstenec — to znamená, že appka čaká na vhodnú chvíľu. Žije na tejto stránke; na ostatných nájdeš stav ako farebnú bodku v paneli vľavo.',
-        'en': "This is the ensō — the app's mark and its state in one. Green and breathing means it is listening; red and still means it is stopped. When your body stays up, a slow ring appears inside it — that means the app is waiting for a good moment. It lives on this page; elsewhere the coloured dot in the left rail carries the state.",
-        'ja': "This is the ensō — the app's mark and its state in one. Green and breathing means it is listening; red and still means it is stopped. When your body stays up, a slow ring appears inside it — that means the app is waiting for a good moment. It lives on this page; elsewhere the coloured dot in the left rail carries the state.",
-        'zh': "This is the ensō — the app's mark and its state in one. Green and breathing means it is listening; red and still means it is stopped. When your body stays up, a slow ring appears inside it — that means the app is waiting for a good moment. It lives on this page; elsewhere the coloured dot in the left rail carries the state.",
-        'ru': "This is the ensō — the app's mark and its state in one. Green and breathing means it is listening; red and still means it is stopped. When your body stays up, a slow ring appears inside it — that means the app is waiting for a good moment. It lives on this page; elsewhere the coloured dot in the left rail carries the state.",
-        'es': "This is the ensō — the app's mark and its state in one. Green and breathing means it is listening; red and still means it is stopped. When your body stays up, a slow ring appears inside it — that means the app is waiting for a good moment. It lives on this page; elsewhere the coloured dot in the left rail carries the state.",
-        'de': "This is the ensō — the app's mark and its state in one. Green and breathing means it is listening; red and still means it is stopped. When your body stays up, a slow ring appears inside it — that means the app is waiting for a good moment. It lives on this page; elsewhere the coloured dot in the left rail carries the state.",
-        'fr': "This is the ensō — the app's mark and its state in one. Green and breathing means it is listening; red and still means it is stopped. When your body stays up, a slow ring appears inside it — that means the app is waiting for a good moment. It lives on this page; elsewhere the coloured dot in the left rail carries the state.",
-        'pt': "This is the ensō — the app's mark and its state in one. Green and breathing means it is listening; red and still means it is stopped. When your body stays up, a slow ring appears inside it — that means the app is waiting for a good moment. It lives on this page; elsewhere the coloured dot in the left rail carries the state.",
+        'sk': 'Toto je ensō, značka appky. Keď sledujem, pomaly dýcha; keď stojím, je nehybné. Pomalý prstenec vnútri znamená, že čakám na vhodnú chvíľu. Klikom ma spustíš alebo zastavíš. Stav ukazuje aj bodka vľavo hore.',
+        'en': "This is the ensō, the app's mark. While I'm watching, it slowly breathes; when stopped, it is still. A slow ring inside means I'm waiting for a good moment. Click it to start or stop me. The dot at the top left shows the state too.",
+        'ja': "This is the ensō, the app's mark. While I'm watching, it slowly breathes; when stopped, it is still. A slow ring inside means I'm waiting for a good moment. Click it to start or stop me. The dot at the top left shows the state too.",
+        'zh': "This is the ensō, the app's mark. While I'm watching, it slowly breathes; when stopped, it is still. A slow ring inside means I'm waiting for a good moment. Click it to start or stop me. The dot at the top left shows the state too.",
+        'ru': "This is the ensō, the app's mark. While I'm watching, it slowly breathes; when stopped, it is still. A slow ring inside means I'm waiting for a good moment. Click it to start or stop me. The dot at the top left shows the state too.",
+        'es': "This is the ensō, the app's mark. While I'm watching, it slowly breathes; when stopped, it is still. A slow ring inside means I'm waiting for a good moment. Click it to start or stop me. The dot at the top left shows the state too.",
+        'de': "This is the ensō, the app's mark. While I'm watching, it slowly breathes; when stopped, it is still. A slow ring inside means I'm waiting for a good moment. Click it to start or stop me. The dot at the top left shows the state too.",
+        'fr': "This is the ensō, the app's mark. While I'm watching, it slowly breathes; when stopped, it is still. A slow ring inside means I'm waiting for a good moment. Click it to start or stop me. The dot at the top left shows the state too.",
+        'pt': "This is the ensō, the app's mark. While I'm watching, it slowly breathes; when stopped, it is still. A slow ring inside means I'm waiting for a good moment. Click it to start or stop me. The dot at the top left shows the state too.",
     },
     'tour.done.title': {
         'sk': 'To je všetko',
@@ -5415,6 +5374,17 @@ STRINGS.update({
         'de': 'You can replay this tour any time in Settings. Enjoy your game.',
         'fr': 'You can replay this tour any time in Settings. Enjoy your game.',
         'pt': 'You can replay this tour any time in Settings. Enjoy your game.',
+    },
+    'tour.done.no_watch': {
+        'sk': 'Ešte jedno: bez hodiniek mlčím. Spáruj ich, keď budeš mať chvíľu.',
+        'en': 'One more thing: without a watch I stay silent. Pair it when you have a moment.',
+        'ja': 'もうひとつ：時計がないと、私は黙ったままです。時間のあるときにつないでください。',
+        'zh': '还有一件事：没有手表，我就不出声。有空的时候把它连上吧。',
+        'ru': 'И ещё: без часов я молчу. Подключи их, когда будет минутка.',
+        'es': 'Una cosa más: sin reloj me quedo callada. Vincúlalo cuando tengas un momento.',
+        'de': 'Noch etwas: Ohne Uhr bleibe ich still. Verbinde sie, wenn du kurz Zeit hast.',
+        'fr': 'Encore une chose : sans montre, je reste silencieuse. Connecte-la quand tu auras un moment.',
+        'pt': 'Mais uma coisa: sem relógio, eu fico em silêncio. Pareie quando tiver um tempinho.',
     },
     'settings.tour_row': {
         'sk': 'Prehliadka appky',
@@ -5895,8 +5865,8 @@ STRINGS.update({
     'settings.hr_section_title': _sk_en('Hodinky a tep', 'Watch and heart rate'),
     'settings.hr_enable_switch': _sk_en('Počúvať tep z hodiniek', 'Listen for heart rate from the watch'),
     'settings.hr_ip_hint': _sk_en(
-        'Nechaj 0.0.0.0 (počúva všade) — nevieš čo dať? Pozri „Ako spárovať hodinky“ nižšie.',
-        "Leave 0.0.0.0 (listens everywhere) — not sure? See “How to pair your watch” below."),
+        'Nechaj 0.0.0.0. Do telefónu toto číslo nepíš — správnu adresu nájdeš v „Ako spárovať hodinky…“.',
+        'Leave 0.0.0.0. Don’t type this number into the phone — the right address is in “How to pair your watch…”.'),
     'settings.hr_port_hint': _sk_en('Nechaj 4455, ak nevieš — rovnaké číslo musí byť aj v appke na hodinkách.',
                                     "Leave 4455 unless you know better — the watch app needs the same number."),
 
@@ -5921,19 +5891,31 @@ STRINGS.update({
     'hr.pair_intro': _sk_en(
         'Appka sa tvári ako OBS — telefón jej posiela tep cez appku „HeartRateOnStream for OBS“. Nastavíš raz, potom to chodí samo.',
         'The app pretends to be OBS — your phone sends heart rate through the “HeartRateOnStream for OBS” app. Set it up once, then it just runs.'),
-    'hr.step1_body': _sk_en('Telefón s hodinkami aj tento počítač na tej istej Wi‑Fi (nie cez mobilné dáta).',
-                            'Phone with the watch and this PC on the same Wi‑Fi (not mobile data).'),
+    'hr.step1_body': _sk_en(
+        'Telefón aj počítač na tej istej Wi‑Fi (nie mobilné dáta). Windows sa teraz môže spýtať, či Zanshin pustiť do siete — povoľ len súkromné (domáce) siete.',
+        'Phone and PC on the same Wi‑Fi (not mobile data). Windows may now ask whether to let Zanshin onto the network — allow private (home) networks only.'),
     'hr.step2_body': _sk_en('Stiahni „HeartRateOnStream for OBS“ (Google Play / App Store) a prepoj ju s hodinkami.',
                             'Get “HeartRateOnStream for OBS” (Google Play / App Store) and connect it to your watch.'),
     'hr.step3_body': _sk_en('V appke na telefóne zadaj adresu a port z rámika hore. Heslo nechaj prázdne.',
                             'In the phone app enter the address and port from the box above. Leave the password empty.'),
     'hr.step4_body': _sk_en('Po pripojení vyber scénu „Zanshin“ a zdroj „Tep“. Ak vieš posielať aj kroky a rýchlosť, sú tam zdroje „Kroky“ a „Rychlost“.',
                             'Once connected, pick the scene “Zanshin” and the source “Tep”. If you can also send steps and speed, the sources “Kroky” and “Rychlost” are there too.'),
-    'hr.step5_body': _sk_en('Vráť sa sem a zapni „Počúvať tep z hodiniek“. Tep uvidíš do pár sekúnd.',
-                            'Come back here and turn on “Listen for heart rate from the watch”. You will see it within seconds.'),
+    'hr.step5_body': _sk_en(
+        'Otvorením tohto návodu sa príjem tepu zapol — netreba nič prepínať. Keď pod adresou uvidíš tep v BPM, je hotovo.',
+        'Opening this guide switched heart-rate receiving on — no need to flip anything. When you see your heart rate in BPM under the address, you’re done.'),
+    # 0.2.2: telefon sa VOBEC nepripoji - iny pripad nez trouble_*
+    # (pripoji sa, tep nechodi). Mena ponuk: sk overene v slovenskych
+    # Windows 11 (Nastavenia, Windows Zabezpecenie), ostatne jazyky
+    # podla terminologie Microsoftu - pri hlaseni od hraca opravit.
+    'hr.noconnect_title': _sk_en(
+        'Hodinky sa vôbec nepripoja?',
+        'Watch won’t connect at all?'),
+    'hr.noconnect_body': _sk_en(
+        '1) Telefón aj PC na tej istej Wi‑Fi — nie mobilné dáta, hosťovská sieť ani VPN.\n2) Adresa v telefóne musí sedieť s tou hore — po reštarte routera sa mení.\n3) Nastavenia → Sieť a internet → Wi‑Fi (alebo Ethernet) → tvoja sieť → Typ profilu siete: Súkromná sieť.\n4) Windows Zabezpečenie → Firewall a ochrana siete → Povoliť aplikáciu v bráne firewall → Zmeniť nastavenie → pri Zanshin zaškrtni Súkromné.',
+        '1) Phone and PC on the same Wi‑Fi — not mobile data, a guest network or a VPN.\n2) The address in the phone must match the one above — it changes after a router restart.\n3) Settings → Network & internet → Wi‑Fi (or Ethernet) → your network → Network profile type: Private network.\n4) Windows Security → Firewall & network protection → Allow an app through firewall → Change settings → tick Private next to Zanshin.'),
     'hr.trouble_body': _sk_en(
-        'Skontroluj scénu „Zanshin“ a zdroj „Tep“ v telefóne a či hodinky naozaj merajú. Pri prvom spustení Windows spýta, či appku pustiť do siete — ak si to odmietol, hodinky sa nepripoja (povoľ ju vo firewalle). Ak port obsadil iný program, zmeň ho tu aj v telefóne.',
-        'Check the “Zanshin” scene and “Tep” source on the phone, and that the watch is actually measuring. On first run Windows asks whether to allow the app on the network — if you declined, the watch cannot connect (allow it in the firewall). If another program took the port, change it here and on the phone.'),
+        'Skontroluj scénu „Zanshin“ a zdroj „Tep“ v telefóne a či hodinky naozaj merajú. Ak port obsadil iný program, zmeň ho tu aj v telefóne.',
+        'Check the “Zanshin” scene and “Tep” source on the phone, and that the watch is actually measuring. If another program took the port, change it here and on the phone.'),
     'hr.pair_other_ips': _sk_en('Ďalšie adresy tohto PC (ak prvá nejde): {ips}',
                                 'Other addresses of this PC (if the first does not work): {ips}'),
     'hr.pair_ip_note': _sk_en('V nastaveniach nechaj 0.0.0.0 — toto číslo ide len do telefónu.',
@@ -5945,6 +5927,28 @@ STRINGS.update({
     'hr.ip_hidden_note': _sk_en(
         'Adresu skrývam, aby ju nebolo vidno na streame ani na screenshote. Do telefónu ju prepíšeš po kliku na „Ukázať IP“.',
         'I keep the address hidden so it does not show up on a stream or in a screenshot. Click “Show IP” to copy it into the phone.'),
+    # 0.2.2: zivy stav pod adresou v okne parovania (`ui_dialogs.stav_parovania`).
+    'hr.pair_status_waiting': _sk_en(
+        '● Čakám, kým sa telefón pripojí…',
+        '● Waiting for the phone to connect…'),
+    'hr.pair_status_no_client': _sk_en(
+        '● Telefón sa zatiaľ nepripojil. Čo skontrolovať, je nižšie.',
+        '● The phone hasn’t connected yet. What to check is below.'),
+    'hr.pair_status_linked': _sk_en(
+        '● Telefón pripojený — čakám na tep…',
+        '● Phone connected — waiting for heart rate…'),
+    'hr.pair_status_ok': _sk_en(
+        '✓ Tep chodí: {bpm} BPM. Okno môžeš zavrieť.',
+        '✓ Heart rate is coming in: {bpm} BPM. You can close this window.'),
+    'hr.pair_status_busy': _sk_en(
+        '● Port {port} drží iný program — skúšam znova…',
+        '● Another program holds port {port} — trying again…'),
+    'hr.pair_status_gave_up': _sk_en(
+        '✕ Port {port} drží iný program. Zmeň ho na stránke „V hre“ a rovnaké číslo zadaj v telefóne.',
+        '✕ Another program holds port {port}. Change it on the “In-game” page and enter the same number on the phone.'),
+    'hr.pair_status_off': _sk_en(
+        '✕ Príjem tepu sa nezapol. Zavri toto okno a otvor ho znova — skúsim to ešte raz.',
+        '✕ Heart-rate receiving didn’t start. Close this window and open it again — I’ll try once more.'),
 
     # --- dychovy cyklus nastavitelny v sekundach (Vizuály v hre -> slot Dych) ---
     'overlay.breath_seconds': _sk_en('Dychový cyklus (v sekundách)',
@@ -6161,14 +6165,17 @@ STRINGS.update({
         'rate and it gives you a cue on its own when your load holds up for a '
         'while — you do not have to think of it yourself mid-game. Without a '
         'watch it will not speak up on its own.'),
-    'tour.today.title': _sk_en('Čo z tepu uvidíš', 'What you see from your pulse'),
-    'tour.today.body': _sk_en(
-        'Stopa relácie ukazuje celý večer naraz — kde tep vyskočil a ako dlho '
-        'tam ostal. Vedľa nej vidíš, koľko času si strávil v ktorom pásme. '
-        'Karty hore si vieš vymeniť za tie, ktoré ťa zaujímajú.',
-        'The session trace shows the whole evening at once — where your pulse '
-        'spiked and how long it stayed. Next to it you see how much time you '
-        'spent in each zone. The cards above can be swapped for the ones you care about.'),
+    'tour.sensor.pair': {
+        'sk': 'Spárovať hodinky',
+        'en': 'Pair your watch',
+        'ja': '時計をつなぐ',
+        'zh': '连接手表',
+        'ru': 'Подключить часы',
+        'es': 'Vincular el reloj',
+        'de': 'Uhr verbinden',
+        'fr': 'Connecter la montre',
+        'pt': 'Parear o relógio',
+    },
     'tour.history.title': _sk_en('História relácií', 'Session history'),
     'tour.history.body': _sk_en(
         'Po pár reláciách tu uvidíš vývoj — pokojovú základňu, zotavenie tepu '
@@ -6188,18 +6195,20 @@ STRINGS.update({
     'hr.qr_show': _sk_en('Naskenovať telefónom', 'Scan with your phone'),
     'hr.qr_hide': _sk_en('Skryť kódy', 'Hide the codes'),
     'hr.qr_android': _sk_en(
-        'Android / Wear OS\n„HeartRateOnStream for OBS“ (zdarma).\n'
-        'V nej nastav IP a port tohto PC.',
-        'Android / Wear OS\n"HeartRateOnStream for OBS" (free).\n'
-        'Set this PC\'s IP and port inside it.'),
+        'Android / Wear OS\n„HeartRateOnStream for OBS“ (zdarma).\nAdresu a port nájdeš v „Ako spárovať hodinky…“.',
+        'Android / Wear OS\n"HeartRateOnStream for OBS" (free).\nThe address and port are in “How to pair your watch…”.'),
     # iPhone (0.2): cesta je v kode, ale nevyskusana - autor nema zariadenie
     # od Apple a PulseOSC je platena. Hrac si ju nesmie kupit na zaklade
     # vety, ktoru nikto neoveril.
     'hr.qr_ios': _sk_en(
-        'iPhone / Apple Watch\n„PulseOSC“ (platená).\nZatiaľ nevyskúšané.\n'
-        'V nej nastav IP a port tohto PC.',
-        'iPhone / Apple Watch\n"PulseOSC" (paid).\nNot tested yet.\n'
-        'Set this PC\'s IP and port inside it.'),
+        'iPhone / Apple Watch\n„PulseOSC“ (platená).\nZatiaľ nevyskúšané.\nAdresu a port nájdeš v „Ako spárovať hodinky…“.',
+        'iPhone / Apple Watch\n"PulseOSC" (paid).\nNot tested yet.\nThe address and port are in “How to pair your watch…”.'),
+    # Posledny riadok oboch popisov QR v SAMOTNOM navode na parovanie
+    # (`ui_dialogs._qr_popis`): odkaz na „Ako sparovat hodinky…“ by tam
+    # posielal na tlacidlo, ktore toto okno otvorilo.
+    'hr.qr_addr_above': _sk_en(
+        'Adresu a port nájdeš v rámiku hore.',
+        'The address and port are in the box above.'),
     'hr.qr_note': _sk_en(
         'Obe appky sú cudzie, nie naše — my ich len vieme počúvať.',
         'Both apps belong to someone else, not us — we just listen to them.'),
@@ -6362,7 +6371,7 @@ _tr7('nav.vhre', '時計とゲーム中', '手表与游戏中', 'Часы и в 
 _tr7('nav.zvuk', 'サウンド / オーディオ', '声音 / 音频', 'Звук / Аудио', 'Sonido / Audio', 'Ton / Audio', 'Son / Audio', 'Som / Áudio')
 _tr7('ob.back', '戻る', '返回', 'Назад', 'Atrás', 'Zurück', 'Retour', 'Voltar')
 _tr7('ob.next', '次へ', '下一步', 'Далее', 'Siguiente', 'Weiter', 'Suivant', 'Próximo')
-_tr7('ob.skip', 'イントロをスキップ', '跳过介绍', 'Пропустить вступление', 'Saltar la introducción', 'Intro überspringen', "Passer l'intro", 'Pular a introdução')
+_tr7('ob.skip', '時計へスキップ', '跳到手表', 'Сразу к часам', 'Saltar al reloj', 'Weiter zur Uhr', 'Passer à la montre', 'Pular para o relógio')
 _tr7('ob.step1.title', 'ゲーム中にアプリが思い出させてくれること', '游戏中，应用会提醒你这些', 'Вот о чём приложение напомнит тебе в игре', 'Esto es lo que la app te recuerda en plena partida', 'Daran erinnert dich die App mitten im Spiel', 'Voici ce que l’app te rappelle en pleine partie', 'É disso que o app te lembra no meio do jogo')
 _tr7('ob.step1.cap_grounding', '重心', '重心', 'Центр тяжести', 'Centro', 'Schwerpunkt', 'Ancrage', 'Centro')
 _tr7('ob.step1.cap_jaw', '顎をゆるめる', '松开下巴', 'Расслабь челюсть', 'Afloja la mandíbula', 'Kiefer lockern', 'Relâche la mâchoire', 'Solta o maxilar')
@@ -6413,20 +6422,14 @@ _tr7('tour.skip', 'スキップ', '跳过', 'Пропустить', 'Saltar', '�
 _tr7('tour.done_btn', 'わかった', '知道了', 'Понятно', 'Entendido', 'Alles klar', 'Compris', 'Entendido')
 _tr7('tour.step_of', 'ステップ {n} / {total}', '第 {n} 步，共 {total} 步', 'ШАГ {n} из {total}', 'PASO {n} de {total}', 'SCHRITT {n} von {total}', 'ÉTAPE {n} sur {total}', 'PASSO {n} de {total}')
 _tr7('tour.welcome.title', 'かんたんツアー', '快速导览', 'Быстрая экскурсия', 'Recorrido rápido', 'Kurze Tour', 'Visite rapide', 'Visita rápida')
-_tr7('tour.welcome.body', 'どこに何があるか案内する — 数秒で終わる。いつでもスキップできる。', '带你看看东西都在哪儿 — 只要几秒。随时可以跳过。', 'Покажу, где что находится — это пара секунд. Пропустить можно в любой момент.', 'Te enseño dónde está cada cosa: son unos segundos. Puedes saltarlo cuando quieras.', 'Ich zeige dir, wo was ist — dauert ein paar Sekunden. Du kannst jederzeit überspringen.', 'Je te montre où se trouve quoi — quelques secondes. Tu peux passer à tout moment.', 'Vou te mostrar onde fica cada coisa — leva uns segundos. Você pode pular quando quiser.')
-_tr7('tour.kamae.title', '開始と停止', '开始与停止', 'Запуск и остановка', 'Iniciar y detener', 'Starten und stoppen', 'Démarrer et arrêter', 'Iniciar e parar')
+_tr7('tour.welcome.body', 'アプリの中の5か所を案内します — 1分ほどです。いつでもスキップできます。', '带你看看应用里的五个地方——大约一分钟。随时可以跳过。', 'Покажу пять мест в приложении — примерно минута. Пропустить можно в любой момент.', 'Te enseño cinco lugares de la app: cerca de un minuto. Puedes saltarlo cuando quieras.', 'Ich zeige dir fünf Stellen in der App — etwa eine Minute. Du kannst jederzeit überspringen.', 'Je te montre cinq endroits de l’app — environ une minute. Tu peux passer à tout moment.', 'Vou te mostrar cinco lugares do app — cerca de um minuto. Você pode pular quando quiser.')
 _tr7('tour.triggers.title', 'トリガー', '触发器', 'Триггеры', 'Disparadores', 'Trigger', 'Déclencheurs', 'Gatilhos')
-_tr7('tour.sound.title', 'サウンド', '声音', 'Звук', 'Sonido', 'Ton', 'Son', 'Som')
-_tr7('tour.ingame.title', 'ゲーム中', '游戏中', 'В игре', 'En el juego', 'Im Spiel', 'En jeu', 'No jogo')
 _tr7('tour.sensor.title', '時計と心拍', '手表与心率', 'Часы и пульс', 'Reloj y pulso', 'Uhr und Puls', 'Montre et pouls', 'Relógio e pulso')
-_tr7('tour.today.title', '心拍から見えるもの', '从心率里能看到什么', 'Что видно по пульсу', 'Qué ves desde tu pulso', 'Was du vom Puls siehst', 'Ce que tu vois de ton pouls', 'O que você vê do seu pulso')
-_tr7('tour.today.body', 'セッションの軌跡は一晩まるごとを一度に見せる — どこで心拍が跳ね、どれだけ続いたか。隣にはどの帯にどれだけいたかが出る。上のカードは自分の見たいものに入れ替えられる。', '轨迹把整晚一次看完 — 心率在哪里飙升、又持续了多久。旁边显示你在各区间待了多久。上面的卡片可以换成你关心的指标。', 'След сессии показывает весь вечер сразу — где пульс подскочил и как долго держался. Рядом видно, сколько времени ты провёл в каждой зоне. Карточки сверху можно заменить на те, что тебя интересуют.', 'El rastro muestra la velada entera de una vez: dónde se disparó el pulso y cuánto se mantuvo. Al lado ves cuánto tiempo pasaste en cada zona. Las tarjetas de arriba se pueden cambiar por las que te interesen.', 'Die Spur zeigt den ganzen Abend auf einmal — wo der Puls hochging und wie lange er blieb. Daneben siehst du, wie viel Zeit du in welcher Zone verbracht hast. Die Karten oben lassen sich gegen die tauschen, die dich interessieren.', 'La trace montre toute la soirée d’un coup — où le pouls a bondi et combien de temps il est resté. À côté, tu vois le temps passé dans chaque zone. Les cartes du haut se remplacent par celles qui t’intéressent.', 'O rastro mostra a noite inteira de uma vez — onde o pulso disparou e quanto tempo ficou. Ao lado, você vê quanto tempo passou em cada zona. Os cartões de cima podem ser trocados pelos que te interessam.')
 _tr7('tour.history.title', 'セッション履歴', '记录历史', 'История сессий', 'Historial de sesiones', 'Sitzungsverlauf', 'Historique des séances', 'Histórico de sessões')
 _tr7('tour.history.body', '何回かセッションを重ねると、ここに推移が出る — 安静時ベースライン、心拍回復、そして遊んだ日のグリッド。行をクリックすれば、どのセッションもじっくり見られる。', '几次记录之后，这里会显示趋势 — 静息基线、心率恢复，以及你游玩日期的格子图。点击某一行就能细看那一次。', 'После нескольких сессий здесь появится динамика — базовая линия покоя, восстановление пульса и сетка дней, когда ты играл. Клик по строке открывает любую сессию вблизи.', 'Tras unas cuantas sesiones verás aquí la evolución: línea base en reposo, recuperación del pulso y una cuadrícula de los días que jugaste. Haz clic en una fila para ver cualquier sesión de cerca.', 'Nach ein paar Sitzungen siehst du hier den Verlauf — Ruhebasislinie, Herzfrequenz-Erholung und ein Raster der Tage, an denen du gespielt hast. Ein Klick auf eine Zeile zeigt jede Sitzung aus der Nähe.', 'Après quelques séances, tu verras ici l’évolution — ligne de base au repos, récupération cardiaque et une grille des jours joués. Clique sur une ligne pour voir une séance de près.', 'Depois de algumas sessões, você vê aqui a evolução — linha de base em repouso, recuperação do pulso e uma grade dos dias em que jogou. Clique numa linha para ver qualquer sessão de perto.')
-_tr7('tour.dock.title', '開始と停止', '开始与停止', 'Запуск и остановка', 'Iniciar y detener', 'Starten und stoppen', 'Démarrer et arrêter', 'Iniciar e parar')
+_tr7('tour.dock.title', '円相（ensō）— アプリの状態', '圆相（ensō）—— 应用的状态', 'Энсо — состояние приложения', 'El ensō: el estado de la app', 'Das Ensō — der Zustand der App', 'L’ensō — l’état de l’app', 'O ensō — o estado do app')
 _tr7('tour.done.title', 'これで終わり', '就这些', 'Вот и всё', 'Eso es todo', 'Das war’s', 'C’est tout', 'É tudo')
-_tr7('tour.kamae.body', 'このバーが主スイッチです。左の ▶ / ▮▮ ボタンでアプリを開始・停止します。監視中はバーがゆっくり呼吸し、停止中は静かです。', '这条横条是主开关。左边的 ▶ / ▮▮ 按钮用来启动和停止应用。监听时横条会缓缓呼吸，停止时保持安静。', 'Эта полоса — главный переключатель. Кнопка ▶ / ▮▮ слева запускает и останавливает приложение. Когда оно слушает, полоса мягко дышит; когда стоит — спокойна.', 'Esta barra es el interruptor principal. El botón ▶ / ▮▮ de la izquierda inicia y detiene la app. Mientras escucha, la barra respira suavemente; parada, está quieta.', 'Diese Leiste ist der Hauptschalter. Der Knopf ▶ / ▮▮ links startet und stoppt die App. Während sie zuhört, atmet die Leiste sanft; gestoppt ist sie ruhig.', 'Cette barre est l’interrupteur principal. Le bouton ▶ / ▮▮ à gauche démarre et arrête l’app. Quand elle écoute, la barre respire doucement ; à l’arrêt, elle est immobile.', 'Esta barra é o interruptor principal. O botão ▶ / ▮▮ à esquerda inicia e para o app. Enquanto ele ouve, a barra respira devagar; parado, ela fica quieta.')
-_tr7('tour.dock.body', 'これは円相（ensō）— アプリの印であり状態でもあります。緑で呼吸していれば監視中、赤で静止していれば停止中。体が高いままだと内側にゆっくりした環が現れ、いい頃合いを待っている合図です。円相はこのページにあり、他のページでは左の帯の色つきの点が状態を示します。', '这是圆相（ensō）—— 既是应用的标志，也是它的状态。绿色并在呼吸表示正在监听；红色且静止表示已停止。当身体持续紧绷时，内部会出现一个缓慢的环，表示应用正在等待合适的时机。它只在本页；在其他页面，左侧栏的彩色圆点表示状态。', 'Это энсо — знак приложения и его состояние одновременно. Зелёное и дышащее — слушает; красное и неподвижное — остановлено. Когда тело долго держится на взводе, внутри появляется медленное кольцо: приложение ждёт подходящего момента. Энсо живёт на этой странице; на остальных состояние показывает цветная точка в левой панели.', 'Esto es el ensō: la marca de la app y su estado a la vez. Verde y respirando significa que escucha; rojo e inmóvil, que está detenida. Cuando el cuerpo se mantiene tenso, aparece dentro un anillo lento: la app espera un buen momento. Vive en esta página; en las demás, el punto de color de la barra izquierda lleva el estado.', 'Das ist das Ensō — Zeichen der App und ihr Zustand zugleich. Grün und atmend heißt, sie hört zu; rot und still heißt, sie ist gestoppt. Bleibt dein Körper oben, erscheint darin ein langsamer Ring: die App wartet auf einen guten Moment. Es lebt auf dieser Seite; auf den anderen trägt der farbige Punkt in der linken Leiste den Zustand.', 'Voici l’ensō — la marque de l’app et son état à la fois. Vert et respirant : elle écoute ; rouge et immobile : elle est arrêtée. Quand ton corps reste tendu, un anneau lent apparaît à l’intérieur : l’app attend le bon moment. Il vit sur cette page ; ailleurs, le point coloré de la barre de gauche porte l’état.', 'Este é o ensō — a marca do app e o estado dele ao mesmo tempo. Verde e respirando significa que ele está ouvindo; vermelho e imóvel, que está parado. Quando o corpo se mantém em tensão, aparece lá dentro um anel lento: o app está esperando um bom momento. Ele fica nesta página; nas outras, o ponto colorido da barra à esquerda mostra o estado.')
+_tr7('tour.dock.body', 'これは円相（ensō）、アプリの印です。見守っている間はゆっくり呼吸し、止まっているときは動きません。内側のゆっくりした環は、いい頃合いを待っている合図です。クリックすると開始・停止できます。状態は左上の点でもわかります。', '这是圆相（ensō），应用的标志。我在关注时，它会缓慢呼吸；停下时，它静止不动。内部缓慢的环表示我在等待合适的时机。点击它即可开始或停止。左上角的圆点也会显示状态。', 'Это энсо, знак приложения. Пока я слежу, оно медленно дышит; когда я остановлена, оно неподвижно. Медленное кольцо внутри значит, что я жду подходящего момента. Щёлкни по нему, чтобы запустить или остановить меня. Состояние показывает и точка слева вверху.', 'Esto es el ensō, la marca de la app. Mientras observo, respira despacio; cuando estoy detenida, se queda quieto. Un anillo lento por dentro significa que espero un buen momento. Haz clic en él para iniciarme o detenerme. El punto de arriba a la izquierda también muestra el estado.', 'Das ist das Ensō, das Zeichen der App. Solange ich aufpasse, atmet es langsam; wenn ich gestoppt bin, steht es still. Ein langsamer Ring darin heißt, dass ich auf einen guten Moment warte. Klick darauf, um mich zu starten oder zu stoppen. Den Zustand zeigt auch der Punkt oben links.', 'Voici l’ensō, la marque de l’app. Quand je veille, il respire lentement ; quand je suis arrêtée, il reste immobile. Un anneau lent à l’intérieur signifie que j’attends le bon moment. Clique dessus pour me démarrer ou m’arrêter. Le point en haut à gauche montre aussi l’état.', 'Este é o ensō, a marca do app. Enquanto estou de olho, ele respira devagar; quando estou parada, fica imóvel. Um anel lento por dentro quer dizer que estou esperando um bom momento. Clique nele para me iniciar ou parar. O ponto no canto superior esquerdo também mostra o estado.')
 _tr7('tour.done.body', 'このツアーは設定からいつでもやり直せる。よいゲームを。', '这个导览随时可以在设置里重看。玩得开心。', 'Эту экскурсию можно повторить в настройках когда угодно. Хорошей игры.', 'Puedes repetir este recorrido cuando quieras en Ajustes. Que disfrutes la partida.', 'Diese Tour kannst du jederzeit in den Einstellungen wiederholen. Viel Spaß beim Spielen.', 'Tu peux rejouer cette visite à tout moment dans les réglages. Bon jeu.', 'Você pode repetir esta visita quando quiser em Configurações. Bom jogo.')
 _tr7('metric.bpm.title', '現在の心拍', '当前心率', 'Пульс сейчас', 'Pulso ahora', 'Puls jetzt', 'Pouls actuel', 'Pulso agora')
 _tr7('metric.bpm.short', '今、心臓が1分間に何回打っているか。', '你的心脏此刻每分钟跳多少下。', 'Сколько раз в минуту сейчас бьётся твоё сердце.', 'Cuántas veces por minuto late ahora tu corazón.', 'Wie oft dein Herz gerade pro Minute schlägt.', 'Combien de fois par minute ton cœur bat en ce moment.', 'Quantas vezes por minuto o seu coração bate agora.')
@@ -6533,20 +6536,22 @@ _tr7('hr.pair_ip_unknown', 'IP を検出できなかった', '无法检测到 IP
 _tr7('hr.pair_ip_help', 'コマンドプロンプトを開いて ipconfig と入力 — 「IPv4 アドレス」を探す（たいてい 192.168.x.x）。電話と PC は同じ Wi‑Fi にいる必要がある。', '打开命令提示符输入 ipconfig — 找到 “IPv4 地址”（通常是 192.168.x.x）。手机和电脑必须在同一个 Wi‑Fi 上。', 'Открой командную строку и набери ipconfig — найди «IPv4-адрес» (обычно 192.168.x.x). Телефон и ПК должны быть в одном Wi‑Fi.', 'Abre el símbolo del sistema y escribe ipconfig: busca «Dirección IPv4» (suele ser 192.168.x.x). El móvil y el PC deben estar en el mismo Wi‑Fi.', 'Öffne die Eingabeaufforderung und tippe ipconfig — such nach „IPv4-Adresse“ (meist 192.168.x.x). Handy und PC müssen im selben WLAN sein.', 'Ouvre l’invite de commandes et tape ipconfig — cherche « Adresse IPv4 » (souvent 192.168.x.x). Le téléphone et le PC doivent être sur le même Wi‑Fi.', 'Abra o Prompt de Comando e digite ipconfig — procure “Endereço IPv4” (normalmente 192.168.x.x). O celular e o PC precisam estar no mesmo Wi‑Fi.')
 _tr7('hr.pair_other_ips', 'この PC の他のアドレス（最初のが効かない場合）：{ips}', '这台电脑的其他地址（如果第一个不行）：{ips}', 'Другие адреса этого ПК (если первый не работает): {ips}', 'Otras direcciones de este PC (si la primera no funciona): {ips}', 'Weitere Adressen dieses PCs (falls die erste nicht geht): {ips}', 'Autres adresses de ce PC (si la première ne marche pas) : {ips}', 'Outros endereços deste PC (se o primeiro não funcionar): {ips}')
 _tr7('hr.pair_ip_note', '設定では 0.0.0.0 のままにする — この番号は電話に入れるためだけのもの。', '设置里保持 0.0.0.0 — 这个号码只用来填进手机。', 'В настройках оставь 0.0.0.0 — это число идёт только в телефон.', 'Deja 0.0.0.0 en los ajustes: este número solo se escribe en el móvil.', 'Lass in den Einstellungen 0.0.0.0 — diese Zahl kommt nur ins Handy.', 'Laisse 0.0.0.0 dans les réglages — ce numéro ne sert qu’au téléphone.', 'Deixe 0.0.0.0 nas configurações — este número vai só para o celular.')
-_tr7('hr.step1_title', '同じ Wi‑Fi', '同一个 Wi‑Fi', 'Один Wi‑Fi', 'El mismo Wi‑Fi', 'Dasselbe WLAN', 'Le même Wi‑Fi', 'O mesmo Wi‑Fi')
-_tr7('hr.step1_body', '時計とつながった電話と、この PC が同じ Wi‑Fi にいること（モバイル通信ではない）。', '连着手表的手机和这台电脑要在同一个 Wi‑Fi 上（不是移动数据）。', 'Телефон с часами и этот ПК — в одном Wi‑Fi (не в мобильном интернете).', 'El móvil con el reloj y este PC en el mismo Wi‑Fi (no datos móviles).', 'Handy mit der Uhr und dieser PC im selben WLAN (nicht mobile Daten).', 'Le téléphone avec la montre et ce PC sur le même Wi‑Fi (pas en données mobiles).', 'O celular com o relógio e este PC no mesmo Wi‑Fi (não nos dados móveis).')
+_tr7('hr.step1_title', '同じ Wi‑Fi とネットワークの許可', '同一个 Wi‑Fi 和网络许可', 'Один Wi‑Fi и доступ к сети', 'El mismo Wi‑Fi y permiso de red', 'Dasselbe WLAN und Netzwerkzugriff', 'Le même Wi‑Fi et l’accès réseau', 'O mesmo Wi‑Fi e a permissão de rede')
+_tr7('hr.step1_body', '電話と PC を同じ Wi‑Fi に（モバイル通信ではなく）。Windows が Zanshin のネットワーク接続を許可するか尋ねてくることがある — プライベート（自宅）ネットワークだけ許可して。', '手机和电脑连在同一个 Wi‑Fi 上（不是移动数据）。Windows 现在可能会询问是否允许 Zanshin 访问网络——只允许专用（家庭）网络。', 'Телефон и ПК — в одном Wi‑Fi (не мобильный интернет). Windows сейчас может спросить, пускать ли Zanshin в сеть, — разреши только частные (домашние) сети.', 'El móvil y el PC en el mismo Wi‑Fi (no datos móviles). Windows puede preguntar ahora si deja entrar a Zanshin en la red: permite solo redes privadas (de casa).', 'Handy und PC im selben WLAN (keine mobilen Daten). Windows fragt jetzt vielleicht, ob Zanshin ins Netzwerk darf — erlaube nur private (Heim-)Netzwerke.', 'Le téléphone et le PC sur le même Wi‑Fi (pas en données mobiles). Windows peut maintenant demander s’il faut autoriser Zanshin sur le réseau — n’autorise que les réseaux privés (domestiques).', 'Celular e PC no mesmo Wi‑Fi (não nos dados móveis). O Windows pode perguntar agora se deve liberar o Zanshin na rede — libere só redes privadas (de casa).')
 _tr7('hr.step2_title', '電話にアプリを入れる', '安装手机应用', 'Установи приложение на телефон', 'Instala la app del móvil', 'Handy-App installieren', 'Installe l’app du téléphone', 'Instale o app no celular')
 _tr7('hr.step3_title', 'アドレスとポートを入れる', '输入地址和端口', 'Введи адрес и порт', 'Escribe la dirección y el puerto', 'Adresse und Port eintragen', 'Saisis l’adresse et le port', 'Digite o endereço e a porta')
 _tr7('hr.step3_body', '電話のアプリに、上の枠のアドレスとポートを入力する。パスワードは空のままでいい。', '在手机应用里填入上方框里的地址和端口。密码留空。', 'В приложении на телефоне введи адрес и порт из рамки выше. Пароль оставь пустым.', 'En la app del móvil introduce la dirección y el puerto del recuadro de arriba. Deja la contraseña vacía.', 'Trag in der Handy-App die Adresse und den Port aus dem Feld oben ein. Das Passwort bleibt leer.', 'Dans l’app du téléphone, saisis l’adresse et le port du cadre ci-dessus. Laisse le mot de passe vide.', 'No app do celular, digite o endereço e a porta do quadro acima. Deixe a senha em branco.')
 _tr7('hr.step4_title', 'シーンとソースを選ぶ', '选择场景和来源', 'Выбери сцену и источник', 'Elige la escena y la fuente', 'Szene und Quelle wählen', 'Choisis la scène et la source', 'Escolha a cena e a fonte')
 _tr7('hr.step4_body', 'つながったら、シーン「Zanshin」とソース「Tep」を選ぶ。歩数と速度も送れるなら、ソース「Kroky」と「Rychlost」もある。', '连接之后，选择场景 “Zanshin” 和来源 “Tep”。如果还能发送步数和速度，那里也有来源 “Kroky” 和 “Rychlost”。', 'После подключения выбери сцену «Zanshin» и источник «Tep». Если можешь отправлять ещё шаги и скорость, там есть и источники «Kroky» и «Rychlost».', 'Una vez conectado, elige la escena «Zanshin» y la fuente «Tep». Si también puedes enviar pasos y velocidad, ahí están además las fuentes «Kroky» y «Rychlost».', 'Sobald verbunden, wähle die Szene „Zanshin“ und die Quelle „Tep“. Wenn du auch Schritte und Tempo senden kannst, gibt es dort außerdem die Quellen „Kroky“ und „Rychlost“.', 'Une fois connecté, choisis la scène « Zanshin » et la source « Tep ». Si tu peux aussi envoyer les pas et la vitesse, les sources « Kroky » et « Rychlost » sont là aussi.', 'Depois de conectado, escolha a cena “Zanshin” e a fonte “Tep”. Se você também puder enviar passos e velocidade, as fontes “Kroky” e “Rychlost” também estão lá.')
-_tr7('hr.step5_title', 'ここでセンサーを入れる', '在这里打开传感器', 'Включи датчик здесь', 'Activa el sensor aquí', 'Sensor hier einschalten', 'Active le capteur ici', 'Ative o sensor aqui')
-_tr7('hr.step5_body', 'ここに戻って「時計から心拍を受け取る」を入れる。数秒で見えるはず。', '回到这里，打开“接收手表的心率”。几秒内就能看到。', 'Вернись сюда и включи «Слушать пульс с часов». Увидишь его через пару секунд.', 'Vuelve aquí y activa «Escuchar el pulso del reloj». Lo verás en unos segundos.', 'Komm hierher zurück und schalte „Puls von der Uhr empfangen“ ein. Du siehst ihn in Sekunden.', 'Reviens ici et active « Écouter le pouls de la montre ». Tu le verras en quelques secondes.', 'Volte aqui e ative “Ouvir o pulso do relógio”. Você vai vê-lo em segundos.')
+_tr7('hr.step5_title', 'アドレスの下の状態を確認', '查看地址下方的状态', 'Проверь состояние под адресом', 'Mira el estado bajo la dirección', 'Prüf den Status unter der Adresse', 'Vérifie l’état sous l’adresse', 'Confira o status abaixo do endereço')
+_tr7('hr.step5_body', 'このガイドを開いた時点で心拍の受信はオンになっている — 何も切り替えなくていい。アドレスの下に BPM で心拍が出たら完了。', '打开这个指南时，心率接收就已经打开了——不用再切换任何东西。地址下方显示出以 BPM 计的心率，就完成了。', 'Открыв это руководство, ты уже включил приём пульса — ничего переключать не нужно. Когда под адресом появится пульс в BPM, всё готово.', 'Al abrir esta guía se activó la recepción del pulso: no hace falta cambiar nada. Cuando veas tu pulso en BPM bajo la dirección, ya está.', 'Mit dem Öffnen dieser Anleitung ist der Pulsempfang eingeschaltet — du musst nichts umschalten. Sobald du unter der Adresse deinen Puls in BPM siehst, ist alles fertig.', 'En ouvrant ce guide, tu as activé la réception du pouls — rien à basculer. Quand tu vois ton pouls en BPM sous l’adresse, c’est bon.', 'Ao abrir este guia, o recebimento do pulso foi ligado — não precisa mudar nada. Quando aparecer seu pulso em BPM abaixo do endereço, está pronto.')
 _tr7('hr.trouble_title', '時計はつながるのに心拍が来ない？', '手表连上了却没有心率？', 'Часы подключаются, а пульса нет?', '¿El reloj conecta pero no llega el pulso?', 'Uhr verbindet sich, aber kein Puls?', 'La montre se connecte mais pas de pouls ?', 'O relógio conecta, mas o pulso não chega?')
-_tr7('hr.trouble_body', '電話側でシーン「Zanshin」とソース「Tep」を確認し、時計が実際に測っているかも見て。初回起動時、Windows はアプリにネットワークを許可するか尋ねる — 拒否していたら時計はつながらない（ファイアウォールで許可して）。別のプログラムがポートを取っているなら、ここと電話の両方で番号を変える。', '检查手机上的场景 “Zanshin” 和来源 “Tep”，并确认手表确实在测量。首次运行时，Windows 会询问是否允许应用访问网络——如果你拒绝了，手表就连不上（请在防火墙中允许它）。如果端口被别的程序占用，就在这里和手机上一起改。', 'Проверь на телефоне сцену «Zanshin» и источник «Tep», а также что часы действительно измеряют. При первом запуске Windows спрашивает, пускать ли приложение в сеть, — если ты отказал, часы не подключатся (разреши его в брандмауэре). Если порт занят другой программой, поменяй его здесь и в телефоне.', 'Comprueba en el móvil la escena «Zanshin» y la fuente «Tep», y que el reloj esté midiendo de verdad. La primera vez, Windows pregunta si permitir la app en la red: si lo rechazaste, el reloj no puede conectarse (permítela en el firewall). Si otro programa ocupó el puerto, cámbialo aquí y en el móvil.', 'Prüfe am Handy die Szene „Zanshin“ und die Quelle „Tep“ und ob die Uhr wirklich misst. Beim ersten Start fragt Windows, ob die App ins Netzwerk darf — wenn du abgelehnt hast, kann sich die Uhr nicht verbinden (erlaube sie in der Firewall). Wenn ein anderes Programm den Port belegt, ändere ihn hier und am Handy.', 'Vérifie sur le téléphone la scène « Zanshin » et la source « Tep », et que la montre mesure vraiment. Au premier lancement, Windows demande s’il faut autoriser l’app sur le réseau — si tu as refusé, la montre ne peut pas se connecter (autorise-la dans le pare-feu). Si un autre programme a pris le port, change-le ici et sur le téléphone.', 'Verifique no celular a cena “Zanshin” e a fonte “Tep”, e se o relógio está medindo de verdade. Na primeira execução, o Windows pergunta se deve liberar o app na rede — se você recusou, o relógio não consegue se conectar (libere-o no firewall). Se outro programa ocupou a porta, mude-a aqui e no celular.')
+_tr7('hr.noconnect_title', '時計がまったくつながらない？', '手表完全连不上？', 'Часы вообще не подключаются?', '¿El reloj no conecta en absoluto?', 'Uhr verbindet sich gar nicht?', 'La montre ne se connecte pas du tout ?', 'O relógio não conecta de jeito nenhum?')
+_tr7('hr.noconnect_body', '1) 電話と PC を同じ Wi‑Fi に — モバイル通信、ゲスト用ネットワーク、VPN は不可。\n2) 電話に入れたアドレスが上のものと同じであること — ルーターを再起動すると変わる。\n3) 設定 → ネットワークとインターネット → Wi‑Fi（またはイーサネット）→ 使っているネットワーク → ネットワーク プロファイルの種類：プライベート ネットワーク。\n4) Windows セキュリティ → ファイアウォールとネットワーク保護 → ファイアウォールによるアプリケーションの許可 → 設定の変更 → Zanshin の「プライベート」にチェック。', '1) 手机和电脑连在同一个 Wi‑Fi 上——不能是移动数据、访客网络或 VPN。\n2) 手机里的地址必须和上面的一致——路由器重启后它会变。\n3) 设置 → 网络和 Internet → Wi‑Fi（或以太网）→ 你的网络 → 网络配置文件类型：专用网络。\n4) Windows 安全中心 → 防火墙和网络保护 → 允许应用通过防火墙 → 更改设置 → 勾选 Zanshin 的“专用”。', '1) Телефон и ПК — в одном Wi‑Fi: не мобильный интернет, не гостевая сеть и не VPN.\n2) Адрес в телефоне должен совпадать с адресом выше — после перезапуска роутера он меняется.\n3) Параметры → Сеть и Интернет → Wi‑Fi (или Ethernet) → твоя сеть → Тип сетевого профиля: Частная сеть.\n4) Безопасность Windows → Брандмауэр и защита сети → Разрешить работу с приложением через брандмауэр → Изменить параметры → у Zanshin отметь «Частная».', '1) El móvil y el PC en el mismo Wi‑Fi: ni datos móviles, ni red de invitados, ni VPN.\n2) La dirección del móvil debe coincidir con la de arriba: cambia al reiniciar el router.\n3) Configuración → Red e Internet → Wi‑Fi (o Ethernet) → tu red → Tipo de perfil de red: Red privada.\n4) Seguridad de Windows → Firewall y protección de red → Permitir una aplicación a través del firewall → Cambiar la configuración → marca «Privada» en Zanshin.', '1) Handy und PC im selben WLAN — keine mobilen Daten, kein Gastnetz und kein VPN.\n2) Die Adresse im Handy muss mit der oben übereinstimmen — nach einem Router-Neustart ändert sie sich.\n3) Einstellungen → Netzwerk und Internet → WLAN (oder Ethernet) → dein Netzwerk → Netzwerkprofiltyp: Privates Netzwerk.\n4) Windows-Sicherheit → Firewall- & Netzwerkschutz → Zugriff von App durch Firewall zulassen → Einstellungen ändern → bei Zanshin „Privat“ anhaken.', '1) Le téléphone et le PC sur le même Wi‑Fi — pas de données mobiles, de réseau invité ni de VPN.\n2) L’adresse dans le téléphone doit correspondre à celle du haut — elle change après un redémarrage de la box.\n3) Paramètres → Réseau et Internet → Wi‑Fi (ou Ethernet) → ton réseau → Type de profil réseau : Réseau privé.\n4) Sécurité Windows → Pare-feu et protection du réseau → Autoriser une application via le pare-feu → Modifier les paramètres → coche « Privé » pour Zanshin.', '1) Celular e PC no mesmo Wi‑Fi — nada de dados móveis, rede de convidados ou VPN.\n2) O endereço no celular precisa ser igual ao de cima — ele muda depois de reiniciar o roteador.\n3) Configurações → Rede e Internet → Wi‑Fi (ou Ethernet) → sua rede → Tipo de perfil de rede: Rede privada.\n4) Segurança do Windows → Firewall e proteção de rede → Permitir um aplicativo pelo firewall → Alterar configurações → marque “Privada” no Zanshin.')
+_tr7('hr.trouble_body', '電話側でシーン「Zanshin」とソース「Tep」を確認し、時計が実際に測っているかも見て。別のプログラムがポートを取っているなら、ここと電話の両方で番号を変える。', '检查手机上的场景 “Zanshin” 和来源 “Tep”，并确认手表确实在测量。如果端口被别的程序占用，就在这里和手机上一起改。', 'Проверь на телефоне сцену «Zanshin» и источник «Tep», а также что часы действительно измеряют. Если порт занят другой программой, поменяй его здесь и в телефоне.', 'Comprueba en el móvil la escena «Zanshin» y la fuente «Tep», y que el reloj esté midiendo de verdad. Si otro programa ocupó el puerto, cámbialo aquí y en el móvil.', 'Prüfe am Handy die Szene „Zanshin“ und die Quelle „Tep“ und ob die Uhr wirklich misst. Wenn ein anderes Programm den Port belegt, ändere ihn hier und am Handy.', 'Vérifie sur le téléphone la scène « Zanshin » et la source « Tep », et que la montre mesure vraiment. Si un autre programme a pris le port, change-le ici et sur le téléphone.', 'Verifique no celular a cena “Zanshin” e a fonte “Tep”, e se o relógio está medindo de verdade. Se outro programa ocupou a porta, mude-a aqui e no celular.')
 _tr7('hr.qr_show', '電話で読み取る', '用手机扫描', 'Отсканировать телефоном', 'Escanear con el móvil', 'Mit dem Handy scannen', 'Scanner avec le téléphone', 'Ler com o celular')
 _tr7('hr.qr_hide', 'コードを隠す', '隐藏二维码', 'Скрыть коды', 'Ocultar los códigos', 'Codes ausblenden', 'Masquer les codes', 'Esconder os códigos')
-_tr7('hr.qr_android', 'Android / Wear OS\n「HeartRateOnStream for OBS」（無料）。\nこの PC の IP とポートをその中で設定。', 'Android / Wear OS\n“HeartRateOnStream for OBS”（免费）。\n在里面填上这台电脑的 IP 和端口。', 'Android / Wear OS\n«HeartRateOnStream for OBS» (бесплатно).\nВнутри укажи IP и порт этого ПК.', 'Android / Wear OS\n«HeartRateOnStream for OBS» (gratis).\nDentro pon la IP y el puerto de este PC.', 'Android / Wear OS\n„HeartRateOnStream for OBS“ (kostenlos).\nDarin IP und Port dieses PCs eintragen.', 'Android / Wear OS\n« HeartRateOnStream for OBS » (gratuit).\nY saisir l’IP et le port de ce PC.', 'Android / Wear OS\n“HeartRateOnStream for OBS” (grátis).\nNele, defina o IP e a porta deste PC.')
+_tr7('hr.qr_android', 'Android / Wear OS\n「HeartRateOnStream for OBS」（無料）。\nアドレスとポートは「時計のつなぎ方…」にある。', 'Android / Wear OS\n“HeartRateOnStream for OBS”（免费）。\n地址和端口在“如何连接手表…”里。', 'Android / Wear OS\n«HeartRateOnStream for OBS» (бесплатно).\nАдрес и порт — в «Как подключить часы…».', 'Android / Wear OS\n«HeartRateOnStream for OBS» (gratis).\nLa dirección y el puerto están en «Cómo vincular tu reloj…».', 'Android / Wear OS\n„HeartRateOnStream for OBS“ (kostenlos).\nAdresse und Port findest du unter „Uhr verbinden…“.', 'Android / Wear OS\n« HeartRateOnStream for OBS » (gratuit).\nL’adresse et le port sont dans « Comment connecter ta montre… ».', 'Android / Wear OS\n“HeartRateOnStream for OBS” (grátis).\nO endereço e a porta estão em “Como parear o seu relógio…”.')
 _tr7('hr.qr_note', 'どちらも他社のアプリで、うちのものではない — こちらはただ受け取れるだけ。', '这两个都是别人的应用，不是我们的 — 我们只是能接收它们。', 'Оба приложения чужие, не наши — мы просто умеем их слушать.', 'Ambas apps son de otros, no nuestras: nosotros solo sabemos escucharlas.', 'Beide Apps gehören anderen, nicht uns — wir können ihnen nur zuhören.', 'Les deux apps appartiennent à d’autres, pas à nous — on sait juste les écouter.', 'Os dois apps são de terceiros, não nossos — nós só sabemos ouvi-los.')
 _tr7('settings.title', 'サウンドと音声', '声音与语音', 'Звук и голос', 'Sonido y voz', 'Ton und Stimme', 'Son et voix', 'Som e voz')
 _tr7('settings.auto_profile_unavailable', 'ゲームによる自動切り替えは今は使えない（psutil ライブラリがない）', '目前无法按游戏自动切换（缺少 psutil 库）', 'Автопереключение по игре сейчас недоступно (нет библиотеки psutil)', 'El cambio automático por juego no está disponible ahora (falta la librería psutil)', 'Automatischer Wechsel nach Spiel ist gerade nicht verfügbar (Bibliothek psutil fehlt)', 'Le changement automatique par jeu n’est pas disponible (bibliothèque psutil manquante)', 'A troca automática por jogo não está disponível agora (falta a biblioteca psutil)')
@@ -6555,7 +6560,7 @@ _tr7('settings.strict_global_lock', '一度にリマインダーは一つ', '同
 _tr7('settings.strict_global_lock_short', '一度にリマインダーは一つ', '同一时间只有一个提醒', 'Одно напоминание за раз', 'Un recordatorio a la vez', 'Eine Erinnerung auf einmal', 'Un rappel à la fois', 'Um lembrete de cada vez')
 _tr7('settings.strict_global_lock_sub', '一つが鳴っているあいだ、他は黙る — でないと激しい撃ち合いで重なってしまう。', '一个在播放时其他保持安静 — 否则激烈交火时会叠在一起。', 'Пока играет одно, остальные молчат — иначе в плотной перестрелке они наложатся.', 'Mientras suena uno, los demás callan; de lo contrario se solapan en un tiroteo intenso.', 'Während eine läuft, schweigen die anderen — sonst überlagern sie sich im hitzigen Gefecht.', 'Pendant qu’un joue, les autres se taisent — sinon ils se chevauchent dans une fusillade dense.', 'Enquanto um toca, os outros ficam em silêncio — senão eles se sobrepõem num tiroteio intenso.')
 _tr7('settings.hr_section_title', '時計と心拍', '手表与心率', 'Часы и пульс', 'Reloj y pulso', 'Uhr und Puls', 'Montre et pouls', 'Relógio e pulso')
-_tr7('settings.hr_ip_hint', '0.0.0.0 のままでいい（すべてで待ち受ける） — 迷ったら下の「時計のつなぎ方」を見て。', '保持 0.0.0.0（在所有网卡上监听）— 不确定就看下面的“如何连接手表”。', 'Оставь 0.0.0.0 (слушает везде) — не уверен? Смотри «Как подключить часы» ниже.', 'Deja 0.0.0.0 (escucha en todas partes); ¿no estás seguro? Mira «Cómo vincular tu reloj» abajo.', 'Lass 0.0.0.0 (lauscht überall) — unsicher? Siehe unten „Uhr verbinden“.', 'Laisse 0.0.0.0 (écoute partout) — pas sûr ? Vois « Comment connecter ta montre » ci-dessous.', 'Deixe 0.0.0.0 (escuta em todo lugar) — na dúvida, veja “Como parear o seu relógio” abaixo.')
+_tr7('settings.hr_ip_hint', '0.0.0.0 のままに。この番号は電話に入れない — 正しいアドレスは「時計のつなぎ方…」にある。', '保持 0.0.0.0。不要把这个号码填进手机——正确的地址在“如何连接手表…”里。', 'Оставь 0.0.0.0. В телефон это число не вводи — правильный адрес есть в «Как подключить часы…».', 'Deja 0.0.0.0. No escribas este número en el móvil: la dirección correcta está en «Cómo vincular tu reloj…».', 'Lass 0.0.0.0. Diese Zahl nicht ins Handy eintippen — die richtige Adresse steht unter „Uhr verbinden…“.', 'Laisse 0.0.0.0. Ne tape pas ce numéro dans le téléphone — la bonne adresse est dans « Comment connecter ta montre… ».', 'Deixe 0.0.0.0. Não digite este número no celular — o endereço certo está em “Como parear o seu relógio…”.')
 _tr7('settings.hr_port_hint', '分からなければ 4455 のまま — 時計のアプリにも同じ番号が必要。', '不清楚就保持 4455 — 手表应用里也要填同一个号码。', 'Оставь 4455, если не знаешь лучше — в приложении часов нужен тот же номер.', 'Deja 4455 salvo que sepas otra cosa: la app del reloj necesita el mismo número.', 'Lass 4455, wenn du es nicht besser weißt — die Uhr-App braucht dieselbe Nummer.', 'Laisse 4455 sauf si tu sais mieux — l’app de la montre a besoin du même numéro.', 'Deixe 4455, a não ser que você saiba o que está fazendo — o app do relógio precisa do mesmo número.')
 _tr7('settings.hr_enable_switch', '時計から心拍を受け取る', '接收手表的心率', 'Слушать пульс с часов', 'Escuchar el pulso del reloj', 'Puls von der Uhr empfangen', 'Écouter le pouls de la montre', 'Ouvir o pulso do relógio')
 _tr7('settings.cooldown', 'リマインダーの間隔', '提醒之间的间隔', 'Пауза между напоминаниями', 'Pausa entre recordatorios', 'Pause zwischen Erinnerungen', 'Pause entre les rappels', 'Pausa entre lembretes')
@@ -6734,6 +6739,11 @@ STRINGS.update({
 # hovoria tú istú.
 STRINGS.update({
     'dnes.hr_lost': _sk_en('tep vypadol', 'heart rate lost'),
+    # 0.2.2: namiesto "cakam na hodinky" tam, kde hodinky prist nemozu
+    # (`app_today._text_bez_tepu`).
+    'dnes.hr_off': _sk_en('príjem tepu vypnutý', 'heart-rate receiving off'),
+    'dnes.hr_busy': _sk_en('port je obsadený', 'port is busy'),
+    'dnes.hr_no_client': _sk_en('telefón sa nepripojil', 'phone didn’t connect'),
     'kamae.lost_sub': _sk_en(
         'Tep prestal chodiť (hodinky, telefón alebo Wi‑Fi). Kým sa nevráti, nič nemeriam a sama sa neozvem.',
         'Your heart rate stopped coming in (watch, phone or Wi‑Fi). Until it is back, I measure nothing and will not speak up on my own.'),
@@ -7014,6 +7024,13 @@ _DOPLNENE_PREKLADY = {
     "session.context.activity_question": {"sk": "Hral si, alebo pracoval?", "en": "Were you playing or working?", "ja": "遊んでいた？それとも作業していた？", "zh": "你是在玩，还是在工作？", "ru": "Ты играл или работал?", "es": "¿Estabas jugando o trabajando?", "de": "Hast du gespielt oder gearbeitet?", "fr": "Tu jouais ou tu travaillais ?", "pt": "Você estava jogando ou trabalhando?"},
     "session.context.activity.play": {"sk": "Hral som", "en": "Playing", "ja": "ゲーム", "zh": "在玩", "ru": "Играл", "es": "Jugando", "de": "Gespielt", "fr": "Je jouais", "pt": "Jogando"},
     "session.context.activity.work": {"sk": "Pracoval som", "en": "Working", "ja": "作業", "zh": "在工作", "ru": "Работал", "es": "Trabajando", "de": "Gearbeitet", "fr": "Je travaillais", "pt": "Trabalhando"},
+    # 0.2.2: relacia, v ktorej sa appka len nastavovala, sa z prahov neuci
+    # (`hr_stats.ciste_relacie`, `setup`). Po uvode je cip zapnuty od appky.
+    "session.context.setup": {"sk": "Len nastavovanie appky", "en": "Just setting up the app", "ja": "アプリの設定だけ", "zh": "只是在设置应用", "ru": "Только настройка приложения", "es": "Solo configurando la app", "de": "Nur die App eingerichtet", "fr": "Juste la configuration de l'app", "pt": "Só configurando o app"},
+    "session.context.setup_hint": {"sk": "Z takej relácie sa neučím, čo je u teba pokoj a záťaž. V histórii ostane.", "en": "I won't learn your calm or your load from it. It stays in History.", "ja": "このセッションからは、あなたの平静や負荷を学びません。履歴には残ります。", "zh": "我不会从这次记录里学习你的平静和负荷。它仍会留在历史中。", "ru": "По такой сессии я не учусь, что для тебя покой и нагрузка. В истории она останется.", "es": "De una sesión así no aprendo tu calma ni tu carga. Se queda en el historial.", "de": "Aus so einer Sitzung lerne ich weder deine Ruhe noch deine Belastung. Im Verlauf bleibt sie.", "fr": "Je n'apprends ni ton calme ni ta charge d'une telle session. Elle reste dans l'historique.", "pt": "Com uma sessão assim, não aprendo sua calma nem sua carga. Ela continua no histórico."},
+    # Ta ista veta, ked cip zapla appka sama (prva relacia po uvode): hrac
+    # musi vediet preco - a ze ho ma vypnut, ak pritom naozaj hral.
+    "session.context.setup_hint_first": {"sk": "Prvú reláciu po úvode som označila sama: neučím sa z nej, čo je u teba pokoj a záťaž, a v histórii ostane. Ak si v nej naozaj hral, odznač to.", "en": "I marked the first session after the intro myself: I won't learn your calm or your load from it, and it stays in History. If you actually played, untick it.", "ja": "案内のあとの最初のセッションは、私が自分で印を付けました。ここからはあなたの平静や負荷を学ばず、履歴には残ります。実際に遊んでいたなら、印を外してください。", "zh": "介绍之后的第一次记录是我自己标记的：我不会从中学习你的平静和负荷，它仍会留在历史中。如果你其实在玩，请取消标记。", "ru": "Первую сессию после вступления я отметила сама: по ней я не учусь, что для тебя покой и нагрузка, а в истории она останется. Если ты на самом деле играл, сними отметку.", "es": "La primera sesión después de la introducción la marqué yo misma: no aprendo de ella tu calma ni tu carga, y se queda en el historial. Si en realidad jugaste, desmárcala.", "de": "Die erste Sitzung nach der Einführung habe ich selbst markiert: Aus ihr lerne ich weder deine Ruhe noch deine Belastung, und im Verlauf bleibt sie. Wenn du wirklich gespielt hast, nimm die Markierung weg.", "fr": "J'ai marqué moi-même la première session après l'intro : je n'en apprends ni ton calme ni ta charge, et elle reste dans l'historique. Si tu as vraiment joué, décoche-la.", "pt": "Marquei sozinha a primeira sessão depois da introdução: não aprendo com ela sua calma nem sua carga, e ela continua no histórico. Se você jogou de verdade, desmarque."},
     "session.context.note_label": {"sk": "Vlastná poznámka (nepovinné)", "en": "Your own note (optional)", "ja": "自由メモ（任意）", "zh": "自己的备注（可选）", "ru": "Своя заметка (необязательно)", "es": "Nota propia (opcional)", "de": "Eigene Notiz (optional)", "fr": "Note perso (facultatif)", "pt": "Sua nota (opcional)"},
     "hud.quick_label": {"sk": "Tep v hre", "en": "In-game HR", "ja": "ゲーム内の心拍", "zh": "游戏内心率", "ru": "Пульс в игре", "es": "Pulso en juego", "de": "Puls im Spiel", "fr": "FC en jeu", "pt": "Pulso no jogo"},
     "history.export_col.activity": {"sk": "činnosť", "en": "activity", "ja": "活動", "zh": "活动", "ru": "активность", "es": "actividad", "de": "Aktivität", "fr": "activité", "pt": "atividade"},
@@ -7102,11 +7119,13 @@ STRINGS.update({
         'The “{chart}” chart counts only play cues that made a sound — at '
         'work I only show a picture.'),
     'ob.step4.title': _sk_en('Vyber si hlavný svet', 'Pick your main world'),
+    # 0.2.2: posledna veta - hranicu aj prah appka rata len z Hry
+    # (`DandurfApp.ALGORITMUS_SVET`), Praca ich nikdy neuci.
     'ob.step4.body': _sk_en(
         'Prepneš ho kedykoľvek vpravo hore. Každý svet má vlastnú históriu '
-        'aj vzhľad.',
+        'aj vzhľad. Vlastné hranice sa učím len z Hry.',
         'Switch it any time at the top right. Each world keeps its own history '
-        'and look.'),
+        'and look. I learn your own limits from Play only.'),
     'ob.world.play.title': _sk_en('Hra · 墨 Sumi', 'Play · 墨 Sumi'),
     # „väčšinou“: asi desatina hlášok naschvál mlčí (porovnanie) a hláška,
     # ktorej pauza nepríde, je len obrazom — „s hlasom aj obrazom“ sľubovalo
@@ -7231,6 +7250,50 @@ STRINGS.update({
         'The natural voice is online: the text of your cues (never your heart '
         'rate) is sent to Microsoft to be turned into speech. The Windows voice '
         'sends nothing — switch to it in Settings → Sound.'),
+    'ob.cue.work_note': {
+        'sk': 'V Práci sa ozývam len obrázkom — toto platí pre Hru.',
+        'en': 'In Work I only show a picture — this is about Play.',
+        'ja': '「仕事」ではビジュアルだけで知らせます — これは「ゲーム」の設定です。',
+        'zh': '在“工作”里我只用图片提示——这里设置的是“游戏”。',
+        'ru': 'В «Работе» я подаю знак только картинкой — это настройка для «Игры».',
+        'es': 'En Trabajo solo aviso con una imagen — esto es para Juego.',
+        'de': 'In Arbeit melde ich mich nur mit einem Bild — das hier gilt für Spiel.',
+        'fr': 'En Travail, je ne me manifeste que par une image — ceci vaut pour Jeu.',
+        'pt': 'No Trabalho eu só aviso com uma imagem — isto vale para o Jogo.',
+    },
+    'ob.preview.voice': {
+        'sk': '▶ Ukážka (hlas z Windows — prirodzený je jemnejší)',
+        'en': '▶ Preview (Windows voice — the natural one is softer)',
+        'ja': '▶ 試聴（Windows の音声 — 自然な音声はもっとやわらか）',
+        'zh': '▶ 试听（Windows 语音——自然语音更柔和）',
+        'ru': '▶ Пример (голос Windows — естественный звучит мягче)',
+        'es': '▶ Ejemplo (voz de Windows — la natural suena más suave)',
+        'de': '▶ Hörprobe (Windows-Stimme — die natürliche klingt weicher)',
+        'fr': '▶ Aperçu (voix Windows — la naturelle est plus douce)',
+        'pt': '▶ Amostra (voz do Windows — a natural é mais suave)',
+    },
+    'ob.preview.sound': {
+        'sk': '▶ Ukážka zvuku',
+        'en': '▶ Preview the sound',
+        'ja': '▶ 効果音を試聴',
+        'zh': '▶ 试听音效',
+        'ru': '▶ Послушать звук',
+        'es': '▶ Escuchar el sonido',
+        'de': '▶ Ton anhören',
+        'fr': '▶ Écouter le son',
+        'pt': '▶ Ouvir o som',
+    },
+    'ob.preview.visual': {
+        'sk': '▶ Ukážka obrázka',
+        'en': '▶ Preview the picture',
+        'ja': '▶ ビジュアルを見る',
+        'zh': '▶ 看看图片',
+        'ru': '▶ Показать картинку',
+        'es': '▶ Ver la imagen',
+        'de': '▶ Bild ansehen',
+        'fr': '▶ Voir l’image',
+        'pt': '▶ Ver a imagem',
+    },
     'settings.cue_style': _sk_en('Ako sa ozývam', 'How I speak up'),
     'settings.cue_style_sub': _sk_en(
         'Keď mi dáš vedieť, že hlášky prekážajú, stíšim sa aj sama — nikdy '
@@ -7434,6 +7497,13 @@ _tr7('guide.block.science', '役立つかもしれない理由', '为什么可�
 _tr7('hr.ip_show', 'IP を表示', '显示 IP', 'Показать IP', 'Mostrar IP', 'IP zeigen', 'Afficher l’IP', 'Mostrar IP')
 _tr7('hr.ip_hide', 'IP を隠す', '隐藏 IP', 'Скрыть IP', 'Ocultar IP', 'IP verbergen', 'Masquer l’IP', 'Ocultar IP')
 _tr7('hr.ip_hidden_note', '配信やスクリーンショットに映らないよう、アドレスは隠しています。電話に入力するときは「IP を表示」をクリックしてください。', '我把地址隐藏起来，免得它出现在直播或截图里。点击“显示 IP”后，再把它抄到手机里。', 'Адрес я скрываю, чтобы его не было видно на стриме или скриншоте. В телефон его перепишешь, нажав «Показать IP».', 'Oculto la dirección para que no se vea en el stream ni en una captura de pantalla. Para escribirla en el móvil, pulsa «Mostrar IP».', 'Die Adresse verberge ich, damit sie weder im Stream noch auf einem Screenshot zu sehen ist. Ins Handy überträgst du sie nach einem Klick auf „IP zeigen“.', 'Je masque l’adresse pour qu’on ne la voie ni sur un stream ni sur une capture d’écran. Pour la recopier dans le téléphone, clique sur « Afficher l’IP ».', 'Escondo o endereço para que ele não apareça na stream nem em screenshots. Para digitá-lo no celular, clique em “Mostrar IP”.')
+_tr7('hr.pair_status_waiting', '● 電話がつながるのを待っています…', '● 正在等待手机连接…', '● Жду, пока подключится телефон…', '● Esperando a que se conecte el móvil…', '● Ich warte, bis sich das Handy verbindet…', '● J’attends que le téléphone se connecte…', '● Esperando o celular se conectar…')
+_tr7('hr.pair_status_no_client', '● 電話はまだつながっていません。確認することは下にあります。', '● 手机还没有连上。要检查的内容在下面。', '● Телефон пока не подключился. Что проверить — ниже.', '● El móvil aún no se ha conectado. Qué revisar, más abajo.', '● Das Handy hat sich noch nicht verbunden. Was du prüfen kannst, steht unten.', '● Le téléphone ne s’est pas encore connecté. Ce qu’il faut vérifier est plus bas.', '● O celular ainda não se conectou. O que verificar está mais abaixo.')
+_tr7('hr.pair_status_linked', '● 電話がつながりました — 心拍を待っています…', '● 手机已连接——正在等待心率…', '● Телефон подключён — жду пульс…', '● Móvil conectado: esperando el pulso…', '● Handy verbunden — ich warte auf den Puls…', '● Téléphone connecté — j’attends le pouls…', '● Celular conectado — esperando o pulso…')
+_tr7('hr.pair_status_ok', '✓ 心拍が届いています：{bpm} BPM。このウィンドウは閉じて大丈夫。', '✓ 心率已传过来：{bpm} BPM。可以关闭这个窗口了。', '✓ Пульс идёт: {bpm} BPM. Окно можно закрыть.', '✓ El pulso llega: {bpm} BPM. Ya puedes cerrar la ventana.', '✓ Der Puls kommt an: {bpm} BPM. Du kannst das Fenster schließen.', '✓ Le pouls arrive : {bpm} BPM. Tu peux fermer la fenêtre.', '✓ O pulso está chegando: {bpm} BPM. Pode fechar a janela.')
+_tr7('hr.pair_status_busy', '● ポート {port} は別のプログラムが使用中 — もう一度試しています…', '● 端口 {port} 被其他程序占用——正在重试…', '● Порт {port} занят другой программой — пробую снова…', '● Otro programa tiene el puerto {port}: lo intento de nuevo…', '● Ein anderes Programm belegt Port {port} — ich versuche es erneut…', '● Un autre programme occupe le port {port} — je réessaie…', '● Outro programa está usando a porta {port} — tentando de novo…')
+_tr7('hr.pair_status_gave_up', '✕ ポート {port} は別のプログラムが使用中。「ゲーム中」ページで変更し、電話にも同じ番号を入れて。', '✕ 端口 {port} 被其他程序占用。请在“游戏中”页面修改它，并在手机里填同一个号码。', '✕ Порт {port} занят другой программой. Поменяй его на странице «В игре» и введи то же число в телефоне.', '✕ Otro programa tiene el puerto {port}. Cámbialo en la página «En juego» y pon el mismo número en el móvil.', '✕ Ein anderes Programm belegt Port {port}. Ändere ihn auf der Seite „Im Spiel“ und trag dieselbe Zahl im Handy ein.', '✕ Un autre programme occupe le port {port}. Change-le sur la page « En jeu » et saisis le même numéro sur le téléphone.', '✕ Outro programa está usando a porta {port}. Mude-a na página “No jogo” e digite o mesmo número no celular.')
+_tr7('hr.pair_status_off', '✕ 心拍の受信が始まりませんでした。このウィンドウを閉じて、もう一度開いて — もう一度試します。', '✕ 心率接收没有启动。关闭这个窗口再打开——我会再试一次。', '✕ Приём пульса не включился. Закрой это окно и открой снова — я попробую ещё раз.', '✕ La recepción del pulso no arrancó. Cierra esta ventana y ábrela otra vez: lo intentaré de nuevo.', '✕ Der Pulsempfang ist nicht angesprungen. Schließ dieses Fenster und öffne es neu — ich versuche es noch einmal.', '✕ La réception du pouls n’a pas démarré. Ferme cette fenêtre et rouvre-la — je réessaierai.', '✕ O recebimento do pulso não começou. Feche esta janela e abra de novo — vou tentar outra vez.')
 _tr7('hud.trigger_row.sub', '心拍パネルの下に、4つの合図のアイコンを表示します。見るためだけのもので、ゲーム中のビジュアルの代わりにはなりません — 合図には、ゲーム中のビジュアルが少なくともひとつオンになっている必要があります。', '心率面板下方会显示你四种提示的图标。它们只是用来看的，不能代替游戏中的视觉效果——提示至少需要打开其中一个视觉效果。', 'Под панелью с пульсом появятся значки твоих четырёх подсказок. Они только для вида и не заменяют визуалы в игре — для подсказки должен быть включён хотя бы один из них.', 'Bajo el panel de pulso aparecen los iconos de tus cuatro avisos. Son solo para verlos y no sustituyen a los visuales en el juego — un aviso necesita al menos uno de ellos activado.', 'Unter dem Puls-Panel erscheinen die Symbole deiner vier Hinweise. Sie sind nur zum Anschauen und ersetzen die Visuals im Spiel nicht — ein Hinweis braucht mindestens eins davon eingeschaltet.', 'Sous le panneau de pouls s’affichent les icônes de tes quatre rappels. Elles sont juste là pour l’œil et ne remplacent pas les visuels en jeu — un rappel a besoin qu’au moins l’un d’eux soit activé.', 'Embaixo do painel de pulso aparecem os ícones dos seus quatro avisos. Servem só para ver e não substituem os visuais no jogo — o aviso precisa de pelo menos um deles ativado.')
 _tr7('log.hotkey_failed', 'ショートカット {combo} は別のアプリが使っているため、「今はいい」は使えません。私を黙らせるには、上のバーで停止してください — ただしそうすると、計測も止まります。', '快捷键 {combo} 被其他应用占用了，所以“现在不要”用不了。你仍然可以在顶部横条里停止我来让我安静——不过那样我也会停止测量。', 'Сочетание {combo} занято другим приложением, так что «не сейчас» не сработает. Заставить меня замолчать можно остановкой в полосе вверху — но тогда я перестану и измерять.', 'Otra aplicación está usando el atajo {combo}, así que «ahora no» no funcionará. Puedes silenciarme deteniéndome en la barra de arriba — pero entonces también dejo de medir.', 'Das Tastenkürzel {combo} ist von einer anderen Anwendung belegt, deshalb steht „Jetzt nicht“ nicht zur Verfügung. Stumm schalten kannst du mich, indem du mich in der Leiste oben stoppst — dann höre ich aber auch auf zu messen.', 'Une autre application occupe le raccourci {combo}, donc « pas maintenant » ne marchera pas. Tu peux me faire taire en m’arrêtant dans la barre en haut — mais alors j’arrête aussi de mesurer.', 'Outro aplicativo está usando o atalho {combo}, então o “agora não” não vai funcionar. Para me silenciar, você pode me parar na barra lá em cima — mas aí eu paro de medir também.')
 _tr7('log.snooze_started', '今はいい：{minutes} 分間、声をかけません。監視は止まりません。', '现在不要：{minutes} 分钟内我不会出声。这不会停止监听。', 'Не сейчас: {minutes} мин я не подам голос. Слушать при этом не перестаю.', 'Ahora no: durante {minutes} minutos no aviso. La escucha sigue en marcha.', 'Jetzt nicht: {minutes} Minuten lang melde ich mich nicht. Das Zuhören läuft trotzdem weiter.', 'Pas maintenant : je ne me manifeste pas pendant {minutes} minutes. Ça n’arrête pas l’écoute.', 'Agora não: por {minutes} minutos não vou avisar. Isso não para a escuta.')
@@ -7448,7 +7518,8 @@ _tr7('history.export_col.dropouts', '心拍の途切れ', '心率中断', 'пр�
 _tr7('history.export_col.blind_s', '信号なし (秒)', '无信号 (秒)', 'без сигнала (с)', 'sin señal (s)', 'ohne Signal (s)', 'sans signal (s)', 'sem sinal (s)')
 _tr7('history.export_col.pause_episodes', '入力の休み', '输入停顿', 'паузы во вводе', 'pausas en la entrada', 'Eingabepausen', 'pauses d’entrée', 'pausas na entrada')
 _tr7('tour.sensor.body', 'ここで、アプリにどこで聞けばいいかを伝えます。心拍を渡せば、負荷がしばらく高いまま続いたときに自分から合図を出します — ゲームに夢中なときに、あなたが思い出す必要はありません。時計がなければ、自分から声をかけることはありません。', '在这里告诉应用去哪里“听”你。把你的心率交给它，当你的负荷持续偏高一阵子时，它就会主动给你提示——你不必在激战中自己想起来。没有手表，它不会主动出声。', 'Здесь ты говоришь приложению, где тебя слушать. Если дашь ему свой пульс, оно само подаст подсказку, когда нагрузка какое-то время держится высокой, — тебе не нужно вспоминать об этом в пылу игры. Без часов оно само голос не подаст.', 'Aquí le dices a la app dónde tiene que escucharte. Cuando le das tu pulso, te avisa por sí sola cuando tu carga se mantiene alta un rato — no tienes que acordarte tú en pleno juego. Sin reloj no avisa por sí sola.', 'Hier sagst du der App, wo sie dir zuhören soll. Wenn du ihr deinen Puls gibst, meldet sie sich von selbst mit einem Hinweis, sobald deine Last eine Weile oben bleibt — du musst im Eifer des Spiels nicht selbst daran denken. Ohne Uhr meldet sie sich nicht von selbst.', 'Ici, tu dis à l’app où elle doit t’écouter. Quand tu lui donnes ton pouls, elle se manifeste d’elle-même avec un rappel quand ta charge reste haute un moment — tu n’as pas à y penser toi-même en plein jeu. Sans montre, elle ne se manifeste pas d’elle-même.', 'Aqui você diz ao app onde ele deve te ouvir. Se você der a ele o seu pulso, ele avisa por conta própria quando a sua carga fica alta por um tempo — você não precisa se lembrar disso no calor do jogo. Sem relógio, ele não avisa por conta própria.')
-_tr7('hr.qr_ios', 'iPhone / Apple Watch\n「PulseOSC」（有料）。\nまだ試されていません。\nこの PC の IP とポートをその中で設定。', 'iPhone / Apple Watch\n“PulseOSC”（付费）。\n尚未测试。\n在其中设置这台电脑的 IP 和端口。', 'iPhone / Apple Watch\n«PulseOSC» (платно).\nПока не проверено.\nВнутри укажи IP и порт этого ПК.', 'iPhone / Apple Watch\n«PulseOSC» (de pago).\nAún no probado.\nDentro pon la IP y el puerto de este PC.', 'iPhone / Apple Watch\n„PulseOSC“ (kostenpflichtig).\nNoch nicht ausprobiert.\nDarin IP und Port dieses PCs eintragen.', 'iPhone / Apple Watch\n« PulseOSC » (payant).\nPas encore testé.\nY saisir l’IP et le port de ce PC.', 'iPhone / Apple Watch\n“PulseOSC” (pago).\nAinda não testado.\nNele, defina o IP e a porta deste PC.')
+_tr7('hr.qr_ios', 'iPhone / Apple Watch\n「PulseOSC」（有料）。\nまだ試されていません。\nアドレスとポートは「時計のつなぎ方…」にある。', 'iPhone / Apple Watch\n“PulseOSC”（付费）。\n尚未测试。\n地址和端口在“如何连接手表…”里。', 'iPhone / Apple Watch\n«PulseOSC» (платно).\nПока не проверено.\nАдрес и порт — в «Как подключить часы…».', 'iPhone / Apple Watch\n«PulseOSC» (de pago).\nAún no probado.\nLa dirección y el puerto están en «Cómo vincular tu reloj…».', 'iPhone / Apple Watch\n„PulseOSC“ (kostenpflichtig).\nNoch nicht ausprobiert.\nAdresse und Port findest du unter „Uhr verbinden…“.', 'iPhone / Apple Watch\n« PulseOSC » (payant).\nPas encore testé.\nL’adresse et le port sont dans « Comment connecter ta montre… ».', 'iPhone / Apple Watch\n“PulseOSC” (pago).\nAinda não testado.\nO endereço e a porta estão em “Como parear o seu relógio…”.')
+_tr7('hr.qr_addr_above', 'アドレスとポートは上の枠にある。', '地址和端口在上方的框里。', 'Адрес и порт — в рамке выше.', 'La dirección y el puerto están en el recuadro de arriba.', 'Adresse und Port findest du im Feld oben.', 'L’adresse et le port sont dans le cadre ci-dessus.', 'O endereço e a porta estão no quadro acima.')
 _tr7('ob.step1.how', '何かを押したり覚えたりする必要はありません — アプリがあなたの負荷を見て、負荷がもう上がっていない合間に自分から声をかけます。心拍が「ピーク」の帯にある間は、あえて黙っています。', '你不需要按任何东西，也不需要记住任何事——应用会关注你的负荷，在负荷不再上升的间歇里主动出声。你的心率处于高峰区间时，它宁可保持安静。', 'Тебе не нужно ничего нажимать или запоминать — приложение следит за твоей нагрузкой и само подаёт голос в паузе, когда нагрузка уже не растёт. Пока твой пульс в пиковой зоне, оно лучше промолчит.', 'No tienes que pulsar ni recordar nada — la app vigila tu carga y avisa por sí sola en una pausa, cuando la carga ya no sube. Mientras tu pulso está en la zona de pico, prefiere guardar silencio.', 'Du musst nichts drücken und dir nichts merken — die App verfolgt deine Last und meldet sich von selbst in einer Pause, wenn die Last nicht mehr steigt. Solange dein Puls im Spitzenbereich ist, schweigt sie lieber.', 'Tu n’as aucun bouton à presser ni rien à retenir — l’app surveille ta charge et se manifeste d’elle-même pendant une pause, quand la charge ne monte plus. Tant que ton pouls est en zone de pic, elle préfère se taire.', 'Você não precisa apertar nada nem lembrar de nada — o app acompanha a sua carga e avisa por conta própria numa pausa, quando a carga já não está subindo. Enquanto o seu pulso está na zona de pico, ele prefere ficar em silêncio.')
 _tr7('history.unit.session_len', '1セッションあたりの分数', '每次记录的分钟数', 'минут на сессию', 'minutos por sesión', 'Minuten pro Sitzung', 'minutes par séance', 'minutos por sessão')
 _tr7('history.unit.calm_time', '1セッションあたりの分数', '每次记录的分钟数', 'минут на сессию', 'minutos por sesión', 'Minuten pro Sitzung', 'minutes par séance', 'minutos por sessão')
@@ -7461,6 +7532,9 @@ _tr7('history.detail_calm', '平静', '平静', 'В покое', 'En calma', 'In
 _tr7('history.detail_signal', '信号', '信号', 'Сигнал', 'Señal', 'Signal', 'Signal', 'Sinal')
 _tr7('history.detail_felt', '感覚 · 計測', '感受 · 测量', 'Ощущаемое · измеренное', 'Sentido · medido', 'Gefühlt · gemessen', 'Ressenti · mesuré', 'Sentido · medido')
 _tr7('dnes.hr_lost', '心拍が途切れた', '心率中断', 'пульс пропал', 'se cortó el pulso', 'Puls ausgefallen', 'pouls perdu', 'pulso perdido')
+_tr7('dnes.hr_off', '心拍の受信はオフ', '心率接收已关闭', 'приём пульса выключен', 'recepción del pulso apagada', 'Pulsempfang aus', 'réception du pouls désactivée', 'recebimento do pulso desligado')
+_tr7('dnes.hr_busy', 'ポートが使用中', '端口被占用', 'порт занят', 'puerto ocupado', 'Port belegt', 'port occupé', 'porta ocupada')
+_tr7('dnes.hr_no_client', '電話がつながらない', '手机没有连上', 'телефон не подключился', 'el móvil no se conectó', 'Handy nicht verbunden', 'téléphone non connecté', 'o celular não conectou')
 _tr7('kamae.lost_sub', '心拍が届かなくなりました（時計、電話、または Wi‑Fi）。戻るまでは何も計測せず、自分から声をかけることもありません。', '心率不再传过来了（手表、手机或 Wi‑Fi）。在它恢复之前，我什么都不测量，也不会主动出声。', 'Пульс перестал приходить (часы, телефон или Wi‑Fi). Пока он не вернётся, я ничего не измеряю и сама голос не подам.', 'El pulso dejó de llegar (reloj, móvil o Wi‑Fi). Hasta que vuelva, no mido nada ni aviso por mi cuenta.', 'Der Puls kommt nicht mehr an (Uhr, Handy oder WLAN). Bis er zurück ist, messe ich nichts und melde mich nicht von selbst.', 'Le pouls a cessé d’arriver (montre, téléphone ou Wi‑Fi). Tant qu’il n’est pas revenu, je ne mesure rien et je ne me manifeste pas de moi-même.', 'O pulso parou de chegar (relógio, celular ou Wi‑Fi). Até ele voltar, não meço nada e não aviso sozinha.')
 _tr7('log.hr_back', '{s} 秒の途切れのあと、心拍が戻りました。', '无信号 {s} 秒后，心率恢复了。', 'Пульс вернулся после {s} с без сигнала.', 'El pulso ha vuelto tras {s} s sin señal.', 'Der Puls ist nach {s} s ohne Signal zurück.', 'Le pouls est revenu après {s} s sans signal.', 'O pulso voltou depois de {s} s sem sinal.')
 _tr7('session.end.none_never', '負荷は一度もしきい値を超えませんでした — 声をかける理由がありませんでした。', '负荷一次都没有超过阈值——我没有理由出声。', 'Нагрузка ни разу не поднялась выше порога — мне не было повода подать голос.', 'La carga no superó el umbral ni una vez — no tenía por qué avisar.', 'Die Last ist kein einziges Mal über die Schwelle gekommen — ich hatte keinen Grund, mich zu melden.', 'La charge n’a pas une seule fois dépassé le seuil — je n’avais aucune raison de me manifester.', 'A carga não passou do limiar nem uma vez — eu não tinha motivo para avisar.')
@@ -7483,7 +7557,7 @@ _tr7('settings.world', 'ワールド', '世界', 'Мир', 'Mundo', 'Welt', 'Mon
 _tr7('settings.world_sub', 'ゲームは Sumi、仕事は Aizome。ワールドごとに独自の履歴と気づきがあります。仕事中はビジュアルだけで知らせます — 音声も効果音もなし。安静時ベースラインは共通です — 体はひとつですから。高心拍のしきい値と負荷のしきい値は、ゲームからだけ算出します。', '游戏是 Sumi，工作是 Aizome。每个世界都有自己的历史和分析结论。工作时我只用画面提示——没有语音和音效。静息基线是共用的，毕竟身体只有一个；高心率阈值和负荷阈值我只根据游戏计算。', 'Игра — это Sumi, работа — Aizome. У каждого мира своя история и наблюдения. На работе я даю о себе знать только картинкой — без голоса и звука. Базовая линия покоя общая, тело ведь одно; порог высокого пульса и порог нагрузки я считаю только по игре.', 'El juego es Sumi; el trabajo, Aizome. Cada mundo tiene su propio historial y sus observaciones. En el trabajo solo aviso con imagen — sin voz ni sonido. La línea base en reposo es común, el cuerpo es uno; el límite de pulso alto y el de carga los calculo solo a partir del juego.', 'Spiel ist Sumi, Arbeit ist Aizome. Jede Welt hat ihren eigenen Verlauf und eigene Beobachtungen. Bei der Arbeit melde ich mich nur mit Bild — ohne Stimme und Ton. Die Ruhebasislinie ist gemeinsam, es ist ein Körper; die Grenzen für hohen Puls und für die Last berechne ich nur aus dem Spielen.', 'Le jeu, c’est Sumi ; le travail, Aizome. Chaque monde a son propre historique et ses observations. Au travail, je ne me manifeste que par l’image — sans voix ni son. La ligne de base au repos est commune, le corps est le même ; le seuil de pouls élevé comme celui de la charge, je ne les calcule qu’à partir du jeu.', 'Jogo é Sumi, Trabalho é Aizome. Cada mundo tem o próprio histórico e as próprias observações. No Trabalho, só aviso com imagem — sem voz e sem som. A linha de base em repouso é compartilhada, o corpo é um só; o limite de pulso alto e o limiar de carga eu calculo só a partir do jogo.')
 _tr7('history.world_note', 'ワールド：{world}。ラベルのない古いセッションは「ゲーム」に入ります。「{chart}」グラフは、ゲームで鳴った合図だけを数えます — 仕事中はビジュアルだけで知らせるからです。', '世界：{world}。没有标签的旧记录归入“游戏”。“{chart}”图表只统计游戏中出声的提示——工作时我只用画面提示。', 'Мир: {world}. Старые сессии без метки относятся к «Игре». График «{chart}» учитывает только прозвучавшие подсказки из игры — на работе я даю о себе знать только картинкой.', 'Mundo: {world}. Las sesiones antiguas sin etiqueta pertenecen a Juego. El gráfico «{chart}» cuenta solo los avisos del juego que sonaron — en el trabajo solo aviso con imagen.', 'Welt: {world}. Ältere Sitzungen ohne Kennzeichnung gehören zur Welt Spiel. Das Diagramm „{chart}“ zählt nur Hinweise aus dem Spiel, die erklungen sind — bei der Arbeit melde ich mich nur mit Bild.', 'Monde : {world}. Les anciennes séances sans étiquette appartiennent au Jeu. Le graphique « {chart} » ne compte que les rappels du jeu qui ont retenti — au travail, je ne me manifeste que par l’image.', 'Mundo: {world}. Sessões antigas sem rótulo contam como Jogo. O gráfico “{chart}” conta só os avisos do Jogo que tocaram — no Trabalho, só aviso com imagem.')
 _tr7('ob.step4.title', 'メインのワールドを選ぶ', '选择你的主世界', 'Выбери основной мир', 'Elige tu mundo principal', 'Wähle deine Hauptwelt', 'Choisis ton monde principal', 'Escolha o seu mundo principal')
-_tr7('ob.step4.body', '右上でいつでも切り替えられます。ワールドごとに独自の履歴と見た目があります。', '随时可以在右上角切换。每个世界都有自己的历史和外观。', 'Переключить его можно когда угодно справа вверху. У каждого мира своя история и внешний вид.', 'Lo cambias cuando quieras arriba a la derecha. Cada mundo tiene su propio historial y aspecto.', 'Du kannst sie jederzeit oben rechts wechseln. Jede Welt hat ihren eigenen Verlauf und ihr eigenes Aussehen.', 'Tu le changes à tout moment en haut à droite. Chaque monde a son propre historique et son apparence.', 'Dá para trocar a qualquer momento no canto superior direito. Cada mundo tem o próprio histórico e a própria aparência.')
+_tr7('ob.step4.body', '右上でいつでも切り替えられます。ワールドごとに独自の履歴と見た目があります。あなた自身の限界値は「ゲーム」からだけ学びます。', '随时可以在右上角切换。每个世界都有自己的历史和外观。你自己的界限，我只从“游戏”里学习。', 'Переключить его можно когда угодно справа вверху. У каждого мира своя история и внешний вид. Твои собственные границы я узнаю только по «Игре».', 'Lo cambias cuando quieras arriba a la derecha. Cada mundo tiene su propio historial y aspecto. Tus propios límites los aprendo solo de Juego.', 'Du kannst sie jederzeit oben rechts wechseln. Jede Welt hat ihren eigenen Verlauf und ihr eigenes Aussehen. Deine eigenen Grenzen lerne ich nur aus Spiel.', 'Tu le changes à tout moment en haut à droite. Chaque monde a son propre historique et son apparence. Tes propres limites, je ne les apprends qu’en Jeu.', 'Dá para trocar a qualquer momento no canto superior direito. Cada mundo tem o próprio histórico e a própria aparência. Seus próprios limites eu aprendo só no Jogo.')
 _tr7('ob.world.play.title', 'ゲーム · 墨 Sumi', '游戏 · 墨 Sumi', 'Игра · 墨 Sumi', 'Juego · 墨 Sumi', 'Spiel · 墨 Sumi', 'Jeu · 墨 Sumi', 'Jogo · 墨 Sumi')
 _tr7('ob.world.play.desc', 'プレイするとき。合間に合図、たいていは音声つき。\n墨に金。', '玩游戏时。提示出现在间歇里，大多带语音。\n墨与金。', 'Когда играешь. Подсказки в паузах, чаще с голосом.\nТушь с золотом.', 'Cuando juegas. Avisos en las pausas, casi siempre con voz.\nTinta con oro.', 'Wenn du spielst. Hinweise in den Pausen, meist mit Stimme.\nTinte mit Gold.', 'Quand tu joues. Des rappels dans les pauses, surtout avec la voix.\nEncre et or.', 'Para quando você joga. Avisos nas pausas, geralmente com voz.\nNanquim com ouro.')
 _tr7('ob.world.work.title', '仕事 · 藍 Aizome', '工作 · 藍 Aizome', 'Работа · 藍 Aizome', 'Trabajo · 藍 Aizome', 'Arbeit · 藍 Aizome', 'Travail · 藍 Aizome', 'Trabalho · 藍 Aizome')

@@ -4,16 +4,17 @@
 Doplnok ku gui_harness_auto.py (ten testuje bezne stranky). Tento:
   * zalohuje dandurf_settings.json a ZMAZE ho -> appka ide ako pri prvom
     starte (onboarding + tour); na konci subor obnovi;
-  * onboarding: 5 krokov Dalej/Spat, "Preskocit uvod" -> krok 4 (svet),
-    popisy tem na 2 riadky (ziadne doslovne '\\n'), krok 5 (styl hlasky:
-    styri rovnake odpovede, nic predvybrane, volba sa ulozi), realny klik
-    mysou na Dalej;
-  * guided tour: auto-start po onboardingu, pri kazdom z 8 krokov zmeria
+  * onboarding: 5 krokov Dalej/Spat, Esc otvori otazku "Ukoncit Zanshin?",
+    "Preskocit na hodinky" -> krok 3 (hodinky), popisy tem na 2 riadky
+    (ziadne doslovne '\\n'), krok 5 (styl hlasky: styri rovnake odpovede,
+    nic predvybrane, volba sa ulozi), realny klik mysou na Dalej;
+  * guided tour: auto-start po onboardingu, pri kazdom zo 6 krokov zmeria
     polohu bubliny a zvyraznenia voci cielovemu widgetu (right/below/above/
     center), realny klik na Dalej v bubline, Preskocit, cleanup okien,
     tour_seen ulozene, opakovane spustenie cez start_tour (= Nastavenia);
-  * rezim --pair: v kroku 3 "Sparovat hodinky teraz" -> parovaci dialog na
-    stranke V hre, tour sa NEspusti sam.
+  * rezim --pair: v kroku 3 "Sparovat hodinky teraz" -> uvod pokracuje
+    krokmi 4-5, po nom parovaci dialog na stranke V hre; tour sa spusti az
+    po jeho zavreti (harness dialog nici priamo, preto ju spusti sam).
 
 Spustenie:  python gui_harness_onboarding.py [--pair]   (appka nesmie bezat)
 Hybe realnou mysou; screenshoty a JSON idu do logs/gui_harness/.
@@ -187,13 +188,14 @@ def ob_start():
     rec("wizard has 5 steps", wz.STEP_COUNT == 5 and wz._step == 0, f"step={wz._step}")
     rec("step 1: Back disabled, Skip visible",
         wz.back_btn.cget("state") == "disabled" and wz.skip_btn.winfo_ismapped())
-    rec("wizard cannot be closed by X (protocol swallowed)",
-        wz.top.protocol("WM_DELETE_WINDOW") not in ("", None))
+    rec("wizard X of the OS goes through the quit question",
+        "_on_close_request" in str(wz.top.protocol("WM_DELETE_WINDOW")))
     # vlastna lista namiesto Windows ramu
     chrome = getattr(wz, "chrome", None)
     rec("wizard is frameless (own DialogChrome bar, no OS title)",
         bool(wz.top.overrideredirect()) and chrome is not None and chrome.bar.winfo_ismapped())
-    rec("wizard bar has NO close button", chrome is not None and chrome.close_btn is None)
+    rec("wizard bar has a close button (asks before quitting)",
+        chrome is not None and chrome.close_btn is not None)
     rec("wizard has modal grab", root.grab_current() is not None and root.grab_current().winfo_toplevel() is wz.top,
         str(root.grab_current()))
     shot("ob_step1", widget=wz.top)
@@ -236,14 +238,17 @@ def ob_drag_check():
         abs((x1 - x0) - 90) <= 6 and abs((y1 - y0) - 60) <= 6, f"{(x0, y0)} -> {(x1, y1)}")
     rec("wizard still has grab after drag", root.grab_current() is not None
         and root.grab_current().winfo_toplevel() is wz.top)
-    # Escape nesmie nic urobit
+    # Escape otvori otazku "Ukoncit Zanshin?" - uvod sa nezavrie sam
     user32.keybd_event(0x1B, 0, 0, 0); user32.keybd_event(0x1B, 0, 2, 0)
 
 
 @step(400)
 def ob_escape_check():
     wz = state["wizard"]
-    rec("Escape does NOT close the wizard", wz.top.winfo_exists() and not wz.confirmed)
+    rec("Escape opens the quit question, wizard stays",
+        wz.top.winfo_exists() and wz._otazka is not None and not wz.quit_requested)
+    shot("ob_quit_question", widget=wz.top)
+    wz._hide_quit_question()                 # = Pokracovat
 
 
 @step(400)
@@ -292,11 +297,17 @@ def ob_step3():
 
 @step(400)
 def ob_back_then_skip():
-    if PAIR_MODE:
-        return
     wz = state["wizard"]
+    if PAIR_MODE:
+        # "Sparovat teraz" uvod NEukonci (0.2.2): ide na krok 4, parovanie
+        # sa otvori az po uvode
+        rec("'Pair now' goes on to step 4, pairing queued",
+            wz.top.winfo_exists() and wz._step == 3 and wz.wants_pairing, f"step={wz._step}")
+        wz._on_next()
+        wz._confirm()
+        return
     rec("Back from step 3 -> step 2", state.get("_back_ok"), f"step={wz._step}")
-    # Preskocit uvod -> rovno krok 4
+    # Preskocit -> krok 3 (hodinky), nie volba sveta
     mouse_click_at(*center_of(wz.skip_btn))
 
 
@@ -305,7 +316,8 @@ def ob_step4():
     if PAIR_MODE:
         return
     wz = state["wizard"]
-    rec("REAL click on 'Skip intro' -> step 4 (world)", wz._step == 3, f"step={wz._step}")
+    rec("REAL click on 'Skip to the watch' -> step 3 (watch)", wz._step == 2, f"step={wz._step}")
+    wz._on_next()
     rec("step 4: Skip hidden, Next still says Next (step 5 follows)",
         not wz.skip_btn.winfo_ismapped() and wz.next_btn.cget("text") == tr("ob.next"),
         wz.next_btn.cget("text"))
@@ -375,11 +387,11 @@ def ob_after():
         rec("cue style from step 5 stored", getattr(app, "cue_style", None) == "sound",
             getattr(app, "cue_style", None))
     if app is not None:
-        # Tour krok 7 uz neukazuje na QuickDock.stop_btn (redizajn "Sumi noc"
+        # Tour krok 2 uz neukazuje na QuickDock.stop_btn (redizajn "Sumi noc"
         # ho zrusil) ANI na widget enso: znacka je od 2.1 kresba na strede
         # Dnes (`_EnsoHero` na `app.dnes_canvas`), takze bublina miery na
         # canvas (viz guided_tour._target "enso").
-        rec("dnes canvas has real size (tour step 7 target)",
+        rec("dnes canvas has real size (tour step 2 target)",
             wrect(app.dnes_canvas)[2] > 10,
             f"canvas={wrect(app.dnes_canvas)}")
     if PAIR_MODE:
@@ -413,7 +425,9 @@ def pair_check():
 
 
 # ============================ GUIDED TOUR ============================
-SIDES = ["center", "below", "below", "below", "below", "below", "right", "center"]
+# guided_tour._STEPS: uvod, enso, prijem tepu, spustace, historia, koniec
+# (bez tepu koniec ukazuje na kontrolku hodiniek v bocnom paneli)
+SIDES = ["center", "right", "left", "below", "right", "right"]
 GAP, PAD = 14, 4
 
 
@@ -515,11 +529,11 @@ def tour_s1():
 
 
 def make_tour_steps():
-    for idx in range(1, 8):
+    for idx in range(1, len(SIDES)):
         def chk(i=idx):
             check_tour_step(i, SIDES[i])
             t = tour()
-            if t and t._bubble and i < 7:
+            if t and t._bubble and i < len(SIDES) - 1:
                 t._next()
         chk.__name__ = f"tour_s{idx + 1}"
         step(700)(chk)

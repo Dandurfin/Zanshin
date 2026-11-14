@@ -384,17 +384,25 @@ DEFAULT_EDGE_VOICE = "en-GB-SoniaNeural"
 # `app_prefs._hlas_k_hlaskam`). Samotne prepnutie jazyka texty profilov
 # neprelozi - japonsky hlas by inak cital anglicke "Grounded".
 #
-# Len jazyky s inym pismom nez latinka: ich predvolene hlasky slotov
-# (`slot.default.*`) su v tom pisme a anglicky hlas Sonia by ich
-# pravdepodobne nevyslovil - hlaska by bola skomolena alebo ticha. Cestina
-# ma predvolene hlasky anglicke a latinkove jazyky (es/de/fr/pt) Sonia
-# aspon precita, tam ostava hlavny hlas appky. Vsetky styri su zenske -
-# appka o sebe hovori v zenskom rode.
+# Presne jazyky, ktorych vstavane slova (`slot.default.*`) NIE SU anglicke.
+# Najprv len tie s inym pismom nez latinka (ja/zh/ru/bg) - Sonia by ich
+# nevyslovila vobec. Od 0.2.2 aj es/de/fr/pt: ich slova su po spanielsky,
+# nemecky, francuzsky a portugalsky ("Geerdet", "Kiefer"...) a britska
+# Sonia ich cita anglickou vyslovnostou - prvy vecer tak znel cudzo. Plati
+# to iste pravidlo z 0.2.1d (hlas ide za slovami, nie za menu): hlas sa
+# zmeni len ked su hovoriace hlasky naozaj vstavanymi slovami toho jazyka,
+# takze prepnutie jazyka s anglickymi slovami hlas necha tak. Sk/cs/en
+# navrh nemaju - ich vstavane slova su anglicke. Vsetky hlasy su z
+# `EDGE_FALLBACK_VOICES` a zenske - appka o sebe hovori v zenskom rode.
 VOICE_HINTS = {
     "ja": "ja-JP-NanamiNeural",
     "zh": "zh-CN-XiaoxiaoNeural",
     "ru": "ru-RU-SvetlanaNeural",
     "bg": "bg-BG-KalinaNeural",
+    "es": "es-ES-ElviraNeural",
+    "de": "de-DE-KatjaNeural",
+    "fr": "fr-FR-DeniseNeural",
+    "pt": "pt-BR-FranciscaNeural",
 }
 
 

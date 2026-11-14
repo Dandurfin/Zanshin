@@ -166,7 +166,10 @@ def test_no_client_po_case_bez_pripojenia():
 
 def test_trouble_a_stavy_maju_texty():
     import i18n
-    assert "firewall" in i18n.tr_lang("sk", "hr.trouble_body").lower()
+    # 0.2.2: rada o firewalle presla z "pripoji sa, ale tep nechodi"
+    # (trouble_body) do boxu "vobec sa nepripoja" - tam ta pricina patri.
+    assert "firewall" in i18n.tr_lang("sk", "hr.noconnect_body").lower()
+    assert "firewall" not in i18n.tr_lang("sk", "hr.trouble_body").lower()
     for kluc in ("settings.hr_status_no_client", "settings.hr_status_busy_gave_up"):
         assert i18n.tr_lang("sk", kluc).strip()
         assert i18n.tr_lang("en", kluc).strip()

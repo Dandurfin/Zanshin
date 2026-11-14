@@ -467,8 +467,11 @@ class HudMixin:
             self._watch_zone = nove
         return True, False, self._watch_zone, stats.beat_phase()
 
-    def open_watch_pairing(self):
+    def open_watch_pairing(self, on_close=None):
         """Ikona hodiniek ZAPINA a otvara panel. Vypnut sa nou neda (§1.10).
+
+        `on_close` sa zavola raz po zavreti navodu - prvy start po nom
+        spusti prehliadku appky a prehliadka z neho pokracuje dalsim krokom.
 
         Predtym len otvarala dialog. Ked bol senzor vypnuty, hrac tak dostal
         parovaci panel nad vypnutym senzorom: postupoval podla neho, appka
@@ -480,12 +483,13 @@ class HudMixin:
         popisku necitatelna: hrac nevie, ci klikom zapina alebo vypina, kym
         neklikne.
 
-        Vsetkych pat volajucich je za klikom hraca - dve z nich az po tom,
-        co si v onboardingu vybral "Sparovat hodinky teraz" (app.py:406,
-        2336). Appka teda senzor nezapne nikdy sama od seba.
+        Vsetci volajuci su za klikom hraca - dvaja z nich az po tom, co si
+        v uvode vybral "Sparovat hodinky teraz" (prvy start v `__init__`,
+        `replay_onboarding`), jeden je tlacidlo v bubline prehliadky. Appka
+        teda senzor nezapne nikdy sama od seba.
         """
         self._enable_hr_monitoring()
-        WatchPairingDialog(self)
+        WatchPairingDialog(self, on_close=on_close)
 
     def _enable_hr_monitoring(self):
         """Zapne senzor tepu, ak este nebezi. Vrati True, ak sa naozaj zapol.

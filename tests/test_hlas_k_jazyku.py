@@ -36,19 +36,23 @@ def test_navrhy_su_zo_zoznamu_hlasov_a_zenske():
         assert rod[hlas] == "f", hlas
 
 
-def test_navrh_maju_presne_jazyky_s_inym_pismom():
-    """Tam su predvolene hlasky mimo latinky - inde ich Sonia aspon precita."""
+def test_navrh_maju_presne_jazyky_s_neanglickymi_slovami():
+    """Do 0.2.1 len jazyky mimo latinky (Sonia by ich nevyslovila). Od 0.2.2
+    kazdy jazyk, ktoreho vstavane slova nie su anglicke - es/de/fr/pt Sonia
+    cita anglickou vyslovnostou (tests/test_022c_prvy_vecer_hlas.py).
+    Sk/cs maju vstavane slova anglicke, takze navrh nemaju."""
+    def slova(jazyk):
+        return [i18n.STRINGS[f"slot.default.{k}"][jazyk]
+                for k in ("grounding", "jaw", "release", "breath")]
     for jazyk in i18n.LANGUAGES:
-        slova = "".join(i18n.STRINGS[f"slot.default.{k}"][jazyk]
-                        for k in ("grounding", "jaw", "release", "breath"))
-        latinka = all(ord(znak) < 0x250 for znak in slova)
-        assert (jazyk in VOICE_HINTS) == (not latinka), jazyk
+        assert (jazyk in VOICE_HINTS) == (slova(jazyk) != slova("en")), jazyk
 
 
 def test_predvoleny_hlas_dostane_navrh():
     assert suggested_voice("bg") == "bg-BG-KalinaNeural"
     assert suggested_voice("ja", DEFAULT_EDGE_VOICE) == "ja-JP-NanamiNeural"
-    for jazyk in ("sk", "en", "cs", "es", "de", "fr", "pt"):
+    assert suggested_voice("de") == "de-DE-KatjaNeural"
+    for jazyk in ("sk", "en", "cs"):
         assert suggested_voice(jazyk) == DEFAULT_EDGE_VOICE
 
 
@@ -92,7 +96,7 @@ def start(tmp_path, monkeypatch):
 @pytest.mark.parametrize("locale, hlas", [
     ("bg-BG", "bg-BG-KalinaNeural"), ("ja-JP", "ja-JP-NanamiNeural"),
     ("ru-RU", "ru-RU-SvetlanaNeural"), ("zh-CN", "zh-CN-XiaoxiaoNeural"),
-    ("cs-CZ", DEFAULT_EDGE_VOICE), ("de-DE", DEFAULT_EDGE_VOICE),
+    ("cs-CZ", DEFAULT_EDGE_VOICE), ("de-DE", "de-DE-KatjaNeural"),
     ("en-US", DEFAULT_EDGE_VOICE),
 ])
 def test_prvy_start_dostane_hlas_jazyka_windowsu(start, locale, hlas):

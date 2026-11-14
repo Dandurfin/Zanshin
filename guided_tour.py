@@ -37,34 +37,38 @@ import ui_kit
 from i18n import tr
 
 
-# Kroky prehliadky na JEDNOM mieste: (kluc i18n, stranka, ciel, strana).
+# Kroky prehliadky na JEDNOM mieste: (kluc i18n, stranka, ciel, strana,
+# akcia).
 #
 # Ciel je popis, nie widget - vyhodnocuje sa az v case kroku, ked uz
 # existuje (`_target`). Tabulka je staticka zamerne: appka z nej vie
 # povedat, kolko krokov prehliadka ma, bez toho, aby ju musela postavit
-# (riadok "Prehliadka appky" v Nastaveniach ukazuje "krok 4 z 11").
+# (riadok "Prehliadka appky" v Nastaveniach ukazuje "krok 4 z 6").
 #
 #   None            - bublina v strede okna, bez ukazovania
 #   ("nav", kluc)   - polozka bocneho menu / karta v Nastaveniach
 #   ("attr", meno)  - atribut appky (panel, pas, karta)
-#   ("enso",)       - znacka v bocnom paneli (spusti/zastav)
+#   ("enso",)       - znacka na strede Dnes (stav appky, klik spusti/zastavi)
+#   ("done",)       - koniec: polozka Nastaveni, ked tep chodi, inak
+#                     kontrolka hodiniek v bocnom paneli (viz `_target`)
+#
+# Akcia je tlacidlo navyse v bubline: "pair" otvori navod na parovanie a po
+# jeho zavreti prehliadka pokracuje dalsim krokom.
+#
+# PAT MIEST, NIE DESAT (0.2.2). Prehliadka mala 10 bublin a slubovala "par
+# sekund" - spolu s uvodom a parovanim to bolo okolo 20 cislovanych zastavok
+# pred prvym tepom. Kroky "kamae" a "dock" hovorili o tom istom (spusti /
+# zastav), "sound", "ingame" a "today" opisovali, co hrac najde aj sam, ked
+# tam klikne. Ostalo to, bez coho appka nefunguje alebo co nie je vidno:
+# znacka a jej stav, prijem tepu, pripomienky, historia a kde prehliadku
+# spustit znova (alebo ze bez hodiniek appka mlci).
 _STEPS = (
-    ("welcome", "dnes", None, "center"),
-    ("kamae", "dnes", ("attr", "kamae"), "below"),
-    ("triggers", "spustace", ("nav", "spustace"), "below"),
-    ("sound", "zvuk", ("nav", "zvuk"), "below"),
-    ("ingame", "vhre", ("nav", "vhre"), "below"),
-    # tepova polovica appky - v prehliadke dlho chybala uplne
-    ("sensor", "vhre", ("attr", "hr_card"), "left"),
-    ("today", "dnes", ("attr", "dnes_zone_panel"), "left"),
-    ("history", "historia", ("nav", "historia"), "right"),
-    # POZN: tu bol samostatny krok "guide", ktory ukazoval na polozku menu
-    # ("nav", "guide"). Tá uz neexistuje - vysvetlivky sedia priamo v karte
-    # kazdej hlasky a filozofia na spodku tej istej stranky. Krok teda
-    # ukazoval na prvok, ktory sa nenajde, a prehliadka o jeden klik dlhsia
-    # nepovedala nic navyse. Sprievodcu spomina krok "triggers".
-    ("dock", "dnes", ("enso",), "right"),
-    ("done", "dnes", None, "center"),
+    ("welcome", "dnes", None, "center", None),
+    ("dock", "dnes", ("enso",), "right", None),
+    ("sensor", "vhre", ("attr", "hr_card"), "left", "pair"),
+    ("triggers", "spustace", ("nav", "spustace"), "below", None),
+    ("history", "historia", ("nav", "historia"), "right", None),
+    ("done", "dnes", ("done",), "right", None),
 )
 
 
@@ -76,16 +80,21 @@ class TourStep:
     page      : na ktoru stranku prepnut pred krokom (None = nemenit)
     title/body: texty (klucky do i18n sa prekladaju v tour, sem uz text)
     side      : kam od cielu umiestnit bublinu ('right'/'left'/'above'/'below'/'center')
+    key       : kluc kroku z `_STEPS` (koniec si text vyberie az pri kresleni)
+    action    : tlacidlo navyse v bubline (None / "pair")
     """
 
-    __slots__ = ("target_fn", "page", "title", "body", "side")
+    __slots__ = ("target_fn", "page", "title", "body", "side", "key", "action")
 
-    def __init__(self, target_fn=None, page=None, title="", body="", side="right"):
+    def __init__(self, target_fn=None, page=None, title="", body="", side="right",
+                 key="", action=None):
         self.target_fn = target_fn
         self.page = page
         self.title = title
         self.body = body
         self.side = side
+        self.key = key
+        self.action = action
 
 
 class GuidedTour:
@@ -101,8 +110,8 @@ class GuidedTour:
         self.pal = app.pal
         self.steps = self._build_steps()
         # Prehliadka sa da opustit uprostred a neskor v nej POKRACOVAT -
-        # jedenast krokov nikto nepreklika naraz a zacinat vzdy od zaciatku
-        # znamena, ze ju druhykrat uz nikto nepozrie.
+        # zacinat vzdy od zaciatku znamena, ze ju druhykrat uz nikto
+        # nepozrie.
         self._index = max(0, min(int(start_index or 0), len(self.steps) - 1))
         self._bubble = None
         self._highlight = None
@@ -143,14 +152,39 @@ class GuidedTour:
             # (`_EnsoHero` na `app.dnes_canvas`). Bublina ukazuje na canvas -
             # `app.sidebar.enso` je len stav bez `winfo_*`, nedal by sa zamerat.
             return getattr(self.app, "dnes_canvas", None)
+        if spec[0] == "done":
+            # Koniec ukazuje na miesto, ktore k nemu patri: kde sa prehliadka
+            # spusta znova - alebo, kym tep nechodi, na kontrolku hodiniek,
+            # lebo bez nich appka mlci a to je posledna vec, ktoru treba vediet.
+            if self._tep_chodi():
+                return self._nav_row("nastavenia")
+            return getattr(getattr(self.app, "sidebar", None), "pair_btn", None)
         return None
+
+    def _tep_chodi(self):
+        """Prichadza prave tep z hodiniek? Rovnaka podmienka ako kontrolka
+        hodiniek v bocnom paneli (`_watch_pulse_state`): prijem zapnuty a
+        posledne BPM znamo."""
+        app = self.app
+        if not getattr(app, "hr_monitoring_enabled", False):
+            return False
+        return bool(getattr(getattr(app, "hr_stats", None), "last_bpm", None))
+
+    def _body(self, step):
+        """Text bubliny. Koniec sa vybera az pri kresleni, nie pri stavbe:
+        hodinky sa daju sparovat aj POCAS prehliadky (akcia v kroku o tepe)
+        a "Prijemne hranie" by bez nich slubovalo nieco, co sa nestane -
+        bez tepu appka mlci."""
+        if step.key == "done" and not self._tep_chodi():
+            return tr("tour.done.no_watch")
+        return step.body
 
     def _build_steps(self):
         return [
             TourStep(target_fn=(lambda s=spec: self._target(s)), page=page,
                      title=tr(f"tour.{key}.title"), body=tr(f"tour.{key}.body"),
-                     side=side)
-            for key, page, spec, side in _STEPS
+                     side=side, key=key, action=action)
+            for key, page, spec, side, action in _STEPS
         ]
 
     # ---- zivotny cyklus ----
@@ -216,6 +250,29 @@ class GuidedTour:
         else:
             self._save_progress(self._index)
             self._show()
+
+    def _pair(self):
+        """Akcia kroku o tepe: otvori navod na parovanie hodiniek.
+
+        Bubliny pritom zmiznu - su topmost a modalny navod by inak sedel pod
+        nimi. Pozicia sa ulozi uz na DALSI krok, takze ked appku pocas
+        parovania zavrie, prehliadka v Nastaveniach nadviaze za tymto krokom.
+        Po zavreti navodu pokracuje sama (`_after_pairing`)."""
+        if self._finished:
+            return
+        self._cleanup()
+        self._save_progress(min(self._index + 1, len(self.steps) - 1))
+        try:
+            self.app.open_watch_pairing(on_close=self._after_pairing)
+        except Exception:
+            self._after_pairing()
+
+    def _after_pairing(self):
+        # Medzitym mohla prehliadka skoncit alebo ju nahradila nova
+        # (`start_tour` z Nastaveni) - potom tato uz nema co ukazat.
+        if self._finished or getattr(self.app, "_tour", self) is not self:
+            return
+        self._next()
 
     # ---- vykreslenie kroku ----
 
@@ -307,9 +364,18 @@ class GuidedTour:
         ctk.CTkLabel(inner, text=step.title, font=("Segoe UI", 14, "bold"),
                      text_color=pal["text"], anchor="w", justify="left",
                      wraplength=self.BUBBLE_W - 40).pack(anchor="w", pady=(4, 6))
-        ctk.CTkLabel(inner, text=step.body, font=("Segoe UI", 11),
+        ctk.CTkLabel(inner, text=self._body(step), font=("Segoe UI", 11),
                      text_color=pal["text_dim"], anchor="w", justify="left",
                      wraplength=self.BUBBLE_W - 40).pack(anchor="w")
+
+        if step.action == "pair":
+            # Parovanie priamo z bubliny - krok o tepe inak len povie, ze bez
+            # hodiniek appka mlci, a hrac by navod hladal sam.
+            ctk.CTkButton(inner, text=tr("tour.sensor.pair"), height=30,
+                          corner_radius=8, fg_color="transparent", border_width=1,
+                          border_color=pal["accent"], hover_color=pal["surface_alt"],
+                          text_color=pal["accent"], font=("Segoe UI", 11, "bold"),
+                          command=self._pair).pack(anchor="w", pady=(12, 0))
 
         # tlacidla
         btns = ctk.CTkFrame(inner, fg_color="transparent")

@@ -385,8 +385,18 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
 
         if settings["first_run"]:
             self.root.withdraw()
-            wizard = OnboardingWizard(self.root)
+            wizard = OnboardingWizard(self.root, prvy_start=True)
             self.root.wait_window(wizard.top)
+            if getattr(wizard, "quit_requested", False):
+                # Hrac uvod zavrel (krizik, Esc, Alt+F4) a potvrdil Ukoncit.
+                # NIC sa neuklada: tema v nastaveniach chyba, takze dalsi
+                # start ukaze uvod znova - presne to mu otazka slubila. Zatial
+                # nebezi port, skratka ani hlas, ktore by bolo treba zastavit
+                # (jedine vlakno je priprava zvukov sprievodcu - daemon,
+                # subory zapisuje cez .tmp + replace), a `main()` este
+                # nespustil cakanie na druhy start.
+                self.root.destroy()
+                raise SystemExit(0)
             if wizard.confirmed:
                 # Krok 4 vybera HLAVNY SVET; `choice` je jeho tema.
                 self.world = theme_mod.theme_world(wizard.choice)
@@ -451,7 +461,10 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         self.rate_value = int(settings["rate"])
         self.volume_value = int(settings["volume"])
         self.tour_seen = bool(settings.get("tour_seen", False))
-        self.tour_step = max(0, int(settings.get("tour_step", 0) or 0))
+        # Strop na posledny krok: do 0.2.1 mala prehliadka 10 krokov a ulozena
+        # pozicia z nej by v Nastaveniach ukazala "krok 9 z 6".
+        self.tour_step = min(max(0, int(settings.get("tour_step", 0) or 0)),
+                             GuidedTour.STEP_COUNT - 1)
         # Jazyk toho, co appka kresli DO HRY - viz `_game_text`.
         self.game_lang = settings.get("game_lang", LANG_EN)
         self.balance_value = int(settings["balance"])
@@ -494,6 +507,7 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         self._hr_generation = 0
         self.hr_status_label = None
         self.hr_enabled_var = None
+        self.hr_ip_show_switch = None     # "Ukazat IP" pri poli adresy
         self.heart_rate_monitor = HeartRateMonitor(
             self.on_hr_bpm, self.on_hr_status, on_metrics=self.on_hr_metrics)
         # Kolko sprav s krokmi este zapisat do denniku. Nastavuje sa pri
@@ -562,6 +576,12 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         self._hr_analysis_rerun = False
         self._hr_rerun_job = None
         self._hr_session_open = False
+        # PRVA RELACIA PO UVODE JE NASTAVOVANIE (0.2.2): uvod, parovanie a
+        # prehliadka su pokoj pri stole, nie hranie. Prva ulozena relacia
+        # dostane `setup` a prahy sa z nej neucia (`_suhrn_relacie`,
+        # `hr_stats.ciste_relacie`); `_close_hr_session` znacku po ulozeni
+        # zhodi. Len pocas behu s uvodom - po restarte uz nie.
+        self._relacia_nastavovania = bool(settings["first_run"])
         # Kolko sekund relacie bol HUD viditelny (biofeedback: videny tep sa
         # podvedome reguluje). Snima sa v `_tick_cue_trigger`, aby chytilo aj
         # prepnutie uprostred hrania; do suhrnu ide ako podiel z AKTIVNEHO casu.
@@ -601,6 +621,11 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         # Hlaska, ktora pocas pocuvania chybala v cache (`_speak_text`) -
         # dogeneruje sa az po `stop_listening`, nie uprostred hry.
         self._pregen_po_hre = False
+        # Prvy start caka so sledovanim na pripravu hlasu
+        # (`_zacni_sledovat_po_priprave_hlasu`).
+        self._prvy_start_caka = False
+        self._prvy_start_job = None
+        self._prvy_start_do = 0.0
 
         self.worker = SpeechWorker(self.log_threadsafe, on_voices=self.on_voices_ready)
         self.worker.pending_voice = self.saved_voice_id or None
@@ -719,17 +744,23 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         self.start_snooze_hotkey()
 
         if settings["first_run"]:
-            self.root.after(250, self.start_listening)
+            # Az PO priprave hlasu (najviac `PRVY_START_MAX_S`): kym appka
+            # sleduje, na Microsoft nechodi, takze start o 250 ms neskor
+            # pripravu hned zastavil a prvy vecer hovoril hlasom z Windows.
+            self._zacni_sledovat_po_priprave_hlasu()
 
         # Ak hrac v onboardingu klikol "Sparovat hodinky teraz", otvorime
         # parovaci dialog az teraz - okno appky uz je hotove a viditelne.
+        # Prva prehliadka ide az PO nom (`on_close`), nie namiesto neho:
+        # predtym ju parovanie uplne vynechalo, lebo bola len vo vetve elif.
+        # Dva sprievodcovia sa pritom stale neprekryvaju.
+        prehliadka = settings["first_run"] and not self.tour_seen
         if getattr(self, "_pending_pairing", False):
             self._pending_pairing = False
             self.sidebar._select("vhre")
-            self.root.after(400, self.open_watch_pairing)
-        elif settings["first_run"] and not self.tour_seen:
-            # Prva prehliadka appky - az po onboardingu a len ak hrac neisiel
-            # rovno parovat hodinky (aby sa dva sprievodcovia neprekryvali).
+            po_parovani = self._prehliadka_po_parovani if prehliadka else None
+            self.root.after(400, lambda: self.open_watch_pairing(on_close=po_parovani))
+        elif prehliadka:
             self.root.after(600, self.start_tour)
 
     # ---------- start bez preblikania ----------
@@ -2138,29 +2169,42 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         inner.pack(fill="x")
         inner.grid_columnconfigure(1, weight=1)
 
-        self.hr_ip_var = tk.StringVar(value=self.hr_ip)
-        # Pole IP je skryte ako heslo, kym si ho hrac neodkryje prepinacom
-        # vedla neho (skryta IP, viz `set_show_ip`). Ukladanie hodnoty sa
-        # tym nemeni - maska je len to, ako pole kresli.
-        self.show_ip_var = tk.BooleanVar(value=self.show_ip)
+        # PORADIE KARTY (0.2.2): prijem tepu -> stav -> navod na parovanie ->
+        # az potom sietove polia. Pole s 0.0.0.0 bolo prve, co hrac na karte
+        # videl, a zvadzalo zadat to cislo do telefonu - parovanie potom
+        # zlyhalo bez jedinej hlasky. Adresu PC ukazuje navod, nie pole.
+        self.hr_enabled_var = tk.BooleanVar(value=self.hr_monitoring_enabled)
+        ctk.CTkSwitch(inner, text=tr("settings.hr_enable_switch"),
+                     variable=self.hr_enabled_var,
+                     progress_color=pal["accent"], text_color=pal["text"],
+                     command=self.on_hr_toggle).grid(
+            row=0, column=0, columnspan=2, sticky="w", pady=(0, 8))
 
-        def _prepinac_ip(bunka):
-            ctk.CTkSwitch(bunka, text=tr("hr.ip_show"), variable=self.show_ip_var,
-                          progress_color=pal["accent"], text_color=pal["text_dim"],
-                          font=ui_kit.ui(11),
-                          command=lambda: self.set_show_ip(self.show_ip_var.get())
-                          ).pack(side="left", padx=(12, 0))
+        # Zalomenie ako popis kritickeho tepu nizsie: od 0.2.2 moze za tepom
+        # stat aj veta o dvoch radoch tepu v jednom zdroji.
+        self.hr_status_label = ctk.CTkLabel(inner, text="", font=("Segoe UI", 13, "bold"),
+                                            anchor="w", wraplength=430, justify="left")
+        self.hr_status_label.grid(row=1, column=0, columnspan=2, sticky="w")
+        self.refresh_hr_status_label()
 
-        self.hr_ip_entry = self._hr_entry(inner, pal, 1, tr("settings.hr_ip_label"),
-                                          self.hr_ip_var, extra=_prepinac_ip)
-        self.hr_ip_var.trace_add("write", lambda *_a: self._apply_hr_ip_mask())
-        self._apply_hr_ip_mask()
-        self._hr_hint(inner, pal, 2, tr("settings.hr_ip_hint"))
+        # Parovanie hodiniek je najmenej intuitivna cast celej appky - hrac
+        # musi vediet, ze appka predstiera OBS a ze si v telefone nastavuje
+        # OBS spojenie. Preto samostatny krokovy navod, nie len hint pod
+        # polickom (viz WatchPairingDialog).
+        ctk.CTkButton(inner, text=tr("hr.pair_button"), height=32,
+                      corner_radius=ui_kit.RADIUS_CONTROL, fg_color="transparent", border_width=1,
+                      border_color=pal["accent"], hover_color=pal["surface_alt"],
+                      text_color=pal["accent_hover"], font=ui_kit.ui(12),
+                      command=self.open_watch_pairing).grid(
+            row=2, column=0, columnspan=2, sticky="ew", pady=(14, 0))
 
-        self.hr_port_var = tk.StringVar(value=str(self.hr_port))
-        self.hr_port_entry = self._hr_entry(inner, pal, 3, tr("settings.hr_port_label"),
-                                            self.hr_port_var)
-        self._hr_hint(inner, pal, 4, tr("settings.hr_port_hint"))
+        # QR na appku do telefonu aj tu, nielen v krokovom navode - kto uz
+        # vie, co robi, si ju chce stiahnut bez otvarania sprievodcu.
+        # Navonok je to len znacka, biely kod sa rozbali az na klik
+        # (viz ui_kit.QrReveal).
+        qr_row = ctk.CTkFrame(inner, fg_color="transparent")
+        qr_row.grid(row=3, column=0, columnspan=2, sticky="w", pady=(10, 0))
+        self.hr_qr = watch_app_qr(qr_row, pal, pady=0)
 
         # KRITICKY TEP UZ NIE JE POLICKO.
         #
@@ -2177,41 +2221,35 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
             inner, text=self._kriticky_popis(), font=ui_kit.ui(11),
             text_color=pal["text_dim"], anchor="w", justify="left",
             wraplength=430)
-        self.hr_critical_label.grid(row=5, column=0, columnspan=2, sticky="w",
-                                    pady=(10, 0))
+        self.hr_critical_label.grid(row=4, column=0, columnspan=2, sticky="w",
+                                    pady=(14, 10))
 
-        self.hr_enabled_var = tk.BooleanVar(value=self.hr_monitoring_enabled)
-        ctk.CTkSwitch(inner, text=tr("settings.hr_enable_switch"),
-                     variable=self.hr_enabled_var,
-                     progress_color=pal["accent"], text_color=pal["text"],
-                     command=self.on_hr_toggle).grid(
-            row=7, column=0, columnspan=2, sticky="w", pady=(10, 10))
+        self.hr_ip_var = tk.StringVar(value=self.hr_ip)
+        # Pole IP je skryte ako heslo, kym si ho hrac neodkryje prepinacom
+        # vedla neho (skryta IP, viz `set_show_ip`). Ukladanie hodnoty sa
+        # tym nemeni - maska je len to, ako pole kresli.
+        self.show_ip_var = tk.BooleanVar(value=self.show_ip)
 
-        # Zalomenie ako popis kritickeho tepu vyssie: od 0.2.2 moze za tepom
-        # stat aj veta o dvoch radoch tepu v jednom zdroji.
-        self.hr_status_label = ctk.CTkLabel(inner, text="", font=("Segoe UI", 13, "bold"),
-                                            anchor="w", wraplength=430, justify="left")
-        self.hr_status_label.grid(row=8, column=0, columnspan=2, sticky="w")
-        self.refresh_hr_status_label()
+        # Prepinac sa ukaze, len ked je v poli skutocna adresa: pri 0.0.0.0
+        # nemal co odkryt a hrac cakal, ze mu ukaze adresu PC. Ukazuje ju az
+        # `_apply_hr_ip_mask` (pri kazdej zmene pola).
+        def _prepinac_ip(bunka):
+            self.hr_ip_show_switch = ctk.CTkSwitch(
+                bunka, text=tr("hr.ip_show"), variable=self.show_ip_var,
+                progress_color=pal["accent"], text_color=pal["text_dim"],
+                font=ui_kit.ui(11),
+                command=lambda: self.set_show_ip(self.show_ip_var.get()))
 
-        # Parovanie hodiniek je najmenej intuitivna cast celej appky - hrac
-        # musi vediet, ze appka predstiera OBS a ze si v telefone nastavuje
-        # OBS spojenie. Preto samostatny krokovy navod, nie len hint pod
-        # polickom (viz WatchPairingDialog).
-        ctk.CTkButton(inner, text=tr("hr.pair_button"), height=32,
-                      corner_radius=ui_kit.RADIUS_CONTROL, fg_color="transparent", border_width=1,
-                      border_color=pal["accent"], hover_color=pal["surface_alt"],
-                      text_color=pal["accent_hover"], font=ui_kit.ui(12),
-                      command=self.open_watch_pairing).grid(
-            row=9, column=0, columnspan=2, sticky="ew", pady=(14, 0))
+        self.hr_ip_entry = self._hr_entry(inner, pal, 5, tr("settings.hr_ip_label"),
+                                          self.hr_ip_var, extra=_prepinac_ip)
+        self.hr_ip_var.trace_add("write", lambda *_a: self._apply_hr_ip_mask())
+        self._apply_hr_ip_mask()
+        self._hr_hint(inner, pal, 6, tr("settings.hr_ip_hint"))
 
-        # QR na appku do telefonu aj tu, nielen v krokovom navode - kto uz
-        # vie, co robi, si ju chce stiahnut bez otvarania sprievodcu.
-        # Navonok je to len znacka, biely kod sa rozbali az na klik
-        # (viz ui_kit.QrReveal).
-        qr_row = ctk.CTkFrame(inner, fg_color="transparent")
-        qr_row.grid(row=10, column=0, columnspan=2, sticky="w", pady=(10, 0))
-        self.hr_qr = watch_app_qr(qr_row, pal, pady=0)
+        self.hr_port_var = tk.StringVar(value=str(self.hr_port))
+        self.hr_port_entry = self._hr_entry(inner, pal, 7, tr("settings.hr_port_label"),
+                                            self.hr_port_var)
+        self._hr_hint(inner, pal, 8, tr("settings.hr_port_hint"))
 
     def _hr_entry(self, inner, pal, row, label, variable, extra=None):
         """Jeden riadok "popisok + policko" karty Senzor Tepu.
@@ -2319,14 +2357,25 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         jednu instanciu, aby sa dve prehliadky neprekryvali.
 
         `from_start=True` zacne od zaciatku; inak nadviaze tam, kde ju hrac
-        naposledy opustil (`tour_step`) - jedenast krokov nikto nepreklika
-        naraz a zacinat vzdy odznova znamena, ze druhykrat uz nepozrie nic.
+        naposledy opustil (`tour_step`) - zacinat vzdy odznova znamena, ze
+        druhykrat uz nepozrie nic.
         """
         existing = getattr(self, "_tour", None)
         if existing is not None:
             existing.finish()
         self._tour = GuidedTour(self, start_index=0 if from_start else self.tour_step)
         self._tour.start()
+
+    def _prehliadka_po_parovani(self):
+        """Prvy start s "Sparovat hodinky teraz": navod na parovanie sa
+        zavrel, teraz pride prva prehliadka. Len ak ju hrac medzitym nevidel
+        a ziadna nebezi - kontroluje sa AZ TERAZ, nie pri otvoreni navodu."""
+        if self.tour_seen or getattr(self, "_tour", None) is not None:
+            return
+        # Kratky odklad (ako po uvode): `on_close` bezi hned po destroy()
+        # navodu, kym sa hlavne okno este neprekreslilo - bublina meria
+        # polohu ciela na obrazovke a mala by ju zo stareho obrazu.
+        self.root.after(300, self.start_tour)
 
     def save_tour_progress(self, index):
         """Kde prehliadka skoncila (0 = dobehla cela)."""
@@ -2510,6 +2559,74 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
 
     # ---------- start / stop ----------
 
+    # PRVY START: SLEDOVAT AZ PO PRIPRAVE HLASU (0.2.2).
+    #
+    # Po uvode appka zacne sledovat sama (`__init__`). Robila to o 250 ms -
+    # lenze kym sleduje, na Microsoft nechodi ani kvoli priprave hlasok
+    # (`pregenerate`), takze sa priprava hned zastavila a prvy vecer, podla
+    # ktoreho sa appka posudzuje, hovoril vacsinou hlasom z Windows. Teraz
+    # pocka, kym su hlasky v cache, najviac `PRVY_START_MAX_S` (zlyhana
+    # priprava bez siete nesmie start odlozit navzdy). Stav cita
+    # `_kamae_state_text`.
+    PRVY_START_MAX_S = 15.0
+    PRVY_START_KROK_MS = 500
+
+    def _hlas_pripraveny(self):
+        """Su hlasky, ktore v hre povie prirodzeny hlas, uz v cache?
+
+        True aj ked netreba pripravovat nic (hlas z Windows, Edge chyba, styl
+        bez slov, Praca, vsetky hlasky vypnute - `pregen_jobs` je prazdne):
+        vtedy niet na co cakat. Ta ista otazka ako v `pregenerate`."""
+        if self.engine != ENGINE_EDGE or not audio_engine.EDGE_AVAILABLE:
+            return True
+        try:
+            rate = self.rate_value
+            return all(self.edge_cache.has(text, hlas, rate)
+                       for text, hlas in self.pregen_jobs())
+        except Exception:
+            # Radsej zacat sledovat hned nez visiet - tak to bolo doteraz.
+            app_log.exception("prvy start: stav pripravy hlasu sa nedal zistit")
+            return True
+
+    def _zacni_sledovat_po_priprave_hlasu(self):
+        """Prvy start: sledovanie zacne, az ked je hlas pripraveny alebo po
+        `PRVY_START_MAX_S` - podla toho, co nastane skor. Pripravu spusta
+        `_load_edge_voices` este v `__init__`, toto ju len necha dobehnut."""
+        if self._hlas_pripraveny():
+            self.root.after(250, self.start_listening)
+            return
+        self._prvy_start_caka = True
+        self._prvy_start_do = time.monotonic() + self.PRVY_START_MAX_S
+        self._refresh_kamae_state_text()
+        self._prvy_start_job = self.root.after(self.PRVY_START_KROK_MS,
+                                               self._prvy_start_krok)
+
+    def _prvy_start_krok(self):
+        """Raz za `PRVY_START_KROK_MS`: hlas hotovy, alebo cas vyprsal?"""
+        self._prvy_start_job = None
+        if not self._prvy_start_caka:
+            return
+        if self.listening:
+            # Spustil to hrac alebo hra - druhy start netreba.
+            self._zrus_cakanie_prveho_startu()
+            return
+        if self._hlas_pripraveny() or time.monotonic() >= self._prvy_start_do:
+            self.start_listening()
+            return
+        self._prvy_start_job = self.root.after(self.PRVY_START_KROK_MS,
+                                               self._prvy_start_krok)
+
+    def _zrus_cakanie_prveho_startu(self):
+        """Koniec cakania na hlas - pas uz nesmie slubovat start."""
+        self._prvy_start_caka = False
+        job, self._prvy_start_job = self._prvy_start_job, None
+        if job is not None:
+            try:
+                self.root.after_cancel(job)
+            except Exception:
+                pass
+        self._refresh_kamae_state_text()
+
     def toggle_listening(self):
         if self.listening:
             self.stop_listening()
@@ -2531,6 +2648,11 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         """
         if self.listening:
             return
+        # Prvy start uz na hlas necaka (`_prvy_start_krok`) - spustil to hrac
+        # tlacidlom, hra (auto-profil) alebo samo cakanie. Bez toho by hrac,
+        # ktory dal medzitym ▶ a hned ■, dostal o chvilu druhy start.
+        if getattr(self, "_prvy_start_caka", False):
+            self._zrus_cakanie_prveho_startu()
         # Drag-test nesmie prezit spustenie pocuvania.
         #
         # Testovaci vizual ma vypnuty klik-through, cize nad hrou pohlcuje

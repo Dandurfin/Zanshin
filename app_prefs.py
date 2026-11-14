@@ -162,7 +162,7 @@ class PrefsMixin:
             return
         self.lang = code
         set_lang(code)
-        # Hlas jazyka (ja/zh/ru/bg) len ked su hlasky aktivneho profilu
+        # Hlas jazyka (`VOICE_HINTS`) len ked su hlasky aktivneho profilu
         # naozaj v tom jazyku - prepnutie ich neprelozi, viz `_hlas_k_hlaskam`.
         self._hlas_k_hlaskam(self.slot_dicts())
         self.save_settings()
@@ -197,8 +197,9 @@ class PrefsMixin:
     def _hlas_k_hlaskam(self, slots):
         """Predvoleny Edge hlas -> hlas jazyka appky, ak su v nom hlasky `slots`.
 
-        VOICE_HINTS je tu kvoli hlaskam v inom pisme nez latinka (ja/zh/ru/
-        bg): anglicky hlas by ich nevyslovil. Do 0.2.1d sa hlas menil podla
+        VOICE_HINTS je tu kvoli hlaskam, ktorych vstavane slova nie su
+        anglicke (ja/zh/ru/bg, od 0.2.2 aj es/de/fr/pt): anglicky hlas by ich
+        nevyslovil alebo skomolil. Do 0.2.1d sa hlas menil podla
         jazyka ROZHRANIA - lenze prepnutie jazyka texty existujucich profilov
         neprelozi (vstavane slova sa beru pri zalozeni profilu, pre sk/cs
         anglicke). Po prepnuti na japoncinu tak japonsky hlas cital anglicke
@@ -513,8 +514,8 @@ class PrefsMixin:
             **DEFAULT_AUDIO,
             "voice_id": "",
             "engine_pref": ENGINE_EDGE,
-            # Prvy start: bulharsky (japonsky, cinsky, rusky) Windows dostane
-            # hlas svojho jazyka - predvolene hlasky su v jeho pisme.
+            # Prvy start: Windows v jazyku z VOICE_HINTS (napr. bulharsky,
+            # nemecky) dostane hlas svojho jazyka - predvolene hlasky su v nom.
             "edge_voice": suggested_voice(lang),
             "theme": theme_mod.DEFAULT_THEME,
             # Svet (B3-worlds). Novy hrac zacina v Hre - je to appka pre

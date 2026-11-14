@@ -294,15 +294,16 @@ def test_app_prevezme_styl_z_onboardingu():
 
 
 def test_preskocit_uvod_neprekoci_otazku():
-    """"Preskočiť úvod" ide na prvú voľbu (svet), krok 5 príde po nej."""
+    """"Preskočiť" na krokoch 1-2 ide na krok s hodinkami (0.2.2) - nie na
+    voľbu sveta, ktorá ho obišla. Svet a otázka (krok 5) prídu po ňom."""
     import ui_dialogs
     W = ui_dialogs.OnboardingWizard
-    assert W.STEP_COUNT == 5 and W.PRVA_VOLBA == 3
+    assert W.STEP_COUNT == 5 and W.KROK_HODINKY == 2
     ud = _read("ui_dialogs.py")
-    assert "command=lambda: self._show_step(self.PRVA_VOLBA))" in ud
+    assert "command=lambda: self._show_step(self.KROK_HODINKY))" in ud
     krok = ast.unparse(_funkcia("ui_dialogs.py", "_show_step", "OnboardingWizard"))
     assert "self._step5)[index]" in krok
-    assert "index >= self.PRVA_VOLBA" in krok
+    assert "index >= self.KROK_HODINKY" in krok
 
 
 # --------------------------------------------------------------------------

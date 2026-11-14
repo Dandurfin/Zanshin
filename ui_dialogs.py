@@ -17,6 +17,7 @@ import numpy as np
 import customtkinter as ctk
 
 import guide_panel
+import logging_setup      # okno parovania: chyba v on_close ide do app.log
 import ui_kit
 
 try:
@@ -32,7 +33,8 @@ import hud_paint          # onboarding kresli realne piktogramy a HUD
 import netinfo            # skryta IP v okne parovania (mask_ip)
 import sfx_assets
 import theme as theme_mod
-from audio_engine import MicRecorder, play_audio_file
+# speak_sapi_isolated: ukazka hlasu v uvode - VZDY hlas z Windows, nikdy Edge
+from audio_engine import MicRecorder, play_audio_file, speak_sapi_isolated
 from i18n import tr
 from paths import APP_NAME, AUDIO_DIR, images_dir
 from settings_model import (BREATH_SECONDS_MAX, BREATH_SECONDS_MIN, MODE_COMBO, MODE_ORDER,
@@ -527,6 +529,10 @@ class SessionEndDialog:
         self._val_btns = {}
         self._body_btns = {}
         self._cue_btns = {}
+        # "Len nastavovanie appky" (0.2.2). Prva relacia po uvode ho ma
+        # zapnute od appky (`setup` v suhrne) - `confirm` posle stav cipu.
+        self.setup = bool(summary.get("setup"))
+        self._setup_btn = None
         pal = app.pal
 
         minuty = int((summary.get("duration_s") or 0) // 60)
@@ -729,6 +735,32 @@ class SessionEndDialog:
         # Svet, v ktorom relacia zacala, je hned vidno - kto zabudol prepnut,
         # opravi to jednym klikom. Ulozi sa ale az ten klik.
         self._paint_activity(self._svet)
+
+        # LEN NASTAVOVANIE APPKY (0.2.2). Uvod, parovanie a prehliadka su
+        # pokoj pri stole, nie hranie - z takej relacie by sa hranica aj prah
+        # stiahli k pokoju (ta ista chyba ako 110 -> 80 v KNOWN_ISSUES), takze
+        # sa z nej neucia (`hr_stats.ciste_relacie`). Vlastny rad, nie tretia
+        # odpoved na hral/pracoval: je to prepinac a svet relacie nemeni.
+        setup_row = ctk.CTkFrame(body, fg_color="transparent")
+        setup_row.pack(fill="x", pady=(0, 2))
+        self._setup_btn = ctk.CTkButton(
+            setup_row, text=tr("session.context.setup"), height=30,
+            corner_radius=ui_kit.RADIUS_CONTROL, border_width=1,
+            fg_color="transparent", border_color=pal["card_border"],
+            hover_color=pal["surface_alt"], text_color=pal["text_dim"],
+            font=ui_kit.ui(12), command=self._prepni_setup)
+        self._setup_btn.pack(side="left")
+        # Zapnuty cip pri otvoreni zapla appka sama (prva relacia po uvode -
+        # dotaznik ide hned po ulozeni, hrac ho este nevidel). Bez vety by
+        # nevedel preco, a kto pritom naozaj hral, by ho Ulozenim nechal:
+        # prvy vecer by sa potom do ucenia nezaratal.
+        setup_hint = (tr("session.context.setup_hint_first") if self.setup
+                      else tr("session.context.setup_hint"))
+        ctk.CTkLabel(body, text=setup_hint,
+                     font=ui_kit.ui(10), text_color=pal["text_faint"],
+                     anchor="w", justify="left", wraplength=420).pack(
+            fill="x", pady=(0, 10))
+        self._paint_setup()
 
         # DVA RADY, nie jeden. Prvy je "co sa dialo pocas vecera", druhy
         # "s cim si do neho sadol" - su to rozne veci a posuvaju rozne
@@ -960,6 +992,24 @@ class SessionEndDialog:
             btn.configure(fg_color=pal["accent2"], border_color=pal["accent"],
                           text_color=pal["accent"])
 
+    def _prepni_setup(self):
+        """Cip "Len nastavovanie appky" - zapnute/vypnute."""
+        self.setup = not self.setup
+        self._paint_setup()
+
+    def _paint_setup(self):
+        """Prefarbi cip nastavovania podla `self.setup`."""
+        btn = self._setup_btn
+        if btn is None:
+            return
+        pal = self.app.pal
+        if self.setup:
+            btn.configure(fg_color=pal["accent2"], border_color=pal["accent"],
+                          text_color=pal["accent"])
+        else:
+            btn.configure(fg_color="transparent", border_color=pal["card_border"],
+                          text_color=pal["text_dim"])
+
     def confirm(self):
         # Prazdny zoznam NIE JE to iste, co preskocenie: [] znamena
         # "nic z toho sa nedialo", None znamena "hrac sa nevyjadril".
@@ -973,7 +1023,8 @@ class SessionEndDialog:
             self.summary, sorted(self.vybrane),
             activity=self.activity, note=poznamka,
             sleep=self.sleep, felt_load=self.felt_load, valence=self.valence,
-            body_peak=(sorted(self._body_sel) or None), cue_verdict=self.cue_verdict)
+            body_peak=(sorted(self._body_sel) or None), cue_verdict=self.cue_verdict,
+            setup=self.setup)
         self.close()
 
     def close(self):
@@ -1384,21 +1435,79 @@ class OverlaySettingsDialog:
         self.top.destroy()
 
 
-def watch_app_qr(parent, pal, **pack_kw):
+def _qr_popis(kluc, v_navode=False):
+    """Popis pod QR. Posledny riadok posiela po adresu do „Ako sparovat
+    hodinky…“ - na karte senzora spravne, v SAMOTNOM navode by vsak hrac
+    hladal tlacidlo, ktore toto okno otvorilo. Tam ho nahradi odkaz na ramik
+    s adresou hore (`hr.qr_addr_above`). Len ked posledny riadok naozaj
+    odkazuje na navod - iny tvar prekladu ostane cely."""
+    text = tr(kluc)
+    if v_navode:
+        riadky = text.split("\n")
+        if tr("hr.pair_button") in riadky[-1]:
+            text = "\n".join(riadky[:-1] + [tr("hr.qr_addr_above")])
+    return text
+
+
+def watch_app_qr(parent, pal, v_navode=False, **pack_kw):
     """QR na appku do telefonu - navonok len znacka, kod az na klik.
 
     Je to ta ista vec na dvoch miestach (krokovy navod na parovanie aj
     karta senzora v Nastaveniach), takze zije tu a nie dvakrat. Ked
     obrazok chyba (napr. rozbity build), nevrati sa nic - chybajuci QR
-    nesmie zhodit dialog ani stranku.
+    nesmie zhodit dialog ani stranku. `v_navode=True` = QR v navode na
+    parovanie (viz `_qr_popis`).
     """
     base = images_dir()
-    codes = [(os.path.join(base, "qr_watch_play.png"), tr("hr.qr_android")),
-             (os.path.join(base, "qr_watch_appstore.png"), tr("hr.qr_ios"))]
+    codes = [(os.path.join(base, "qr_watch_play.png"),
+              _qr_popis("hr.qr_android", v_navode)),
+             (os.path.join(base, "qr_watch_appstore.png"),
+              _qr_popis("hr.qr_ios", v_navode))]
     widget = ui_kit.QrReveal(parent, pal, codes, tr("hr.qr_show"),
                              tr("hr.qr_hide"))
     widget.pack(anchor="w", **(pack_kw or {"pady": (8, 0)}))
     return widget
+
+
+def stav_parovania(app):
+    """(druh, text) riadku stavu v okne parovania - zo SKUTOCNEHO prijmu.
+
+    Druh: "ok" (tep chodi), "caka" (cakam na telefon alebo na tep),
+    "pozor" (nieco nesedi, ale este to skusam), "chyba" (prijem nebezi).
+    Farbu k druhu vyberie dialog. Funkcia modulu, nie metoda dialogu, aby
+    sa dala overit na atrape appky bez Tk.
+
+    Cislo je vyhladene (`HeartStats.display_bpm`) - to iste ako na HUD-e,
+    na Dnes aj pri prepinaci, inak by okno parovania ukazovalo ine cislo
+    nez zvysok appky. CI tep chodi, rozhoduje surovy `_hr_last_bpm`, rovnako
+    ako v `_hr_status_display`.
+    """
+    stav = getattr(app, "_hr_state", "disconnected")
+    port = getattr(app, "hr_port", "")
+    if not getattr(app, "hr_monitoring_enabled", False):
+        # Okno je modalne a prijem zapina uz jeho otvorenie, takze vypnuty
+        # prijem tu znamena chybu portu alebo siete, nie volbu hraca.
+        if stav == "busy_gave_up":
+            return "chyba", tr("hr.pair_status_gave_up", port=port)
+        return "chyba", tr("hr.pair_status_off")
+    surovy = getattr(app, "_hr_last_bpm", None)
+    if stav == "connected" and surovy is not None:
+        tep = getattr(getattr(app, "hr_stats", None), "display_bpm", None)
+        if tep is None:
+            tep = surovy
+        return "ok", tr("hr.pair_status_ok", bpm=tep)
+    if stav in ("linked", "connected"):
+        # "connected" bez vzorky = tep chodil a nova relacia (`start_listening`
+        # pocas parovania, prvy start ho spusti sam) prave zmazala posledne
+        # cislo. Telefon je pripojeny - "cakam, kym sa pripoji" by klamalo.
+        return "caka", tr("hr.pair_status_linked")
+    if stav == "busy":
+        return "pozor", tr("hr.pair_status_busy", port=port)
+    if stav == "no_client":
+        # Za `HR_NO_CLIENT_AFTER_MS` sa nikto nepripojil - rady su v boxe
+        # "Hodinky sa vobec nepripoja?" nizsie v tom istom okne.
+        return "pozor", tr("hr.pair_status_no_client")
+    return "caka", tr("hr.pair_status_waiting")
 
 
 class WatchPairingDialog:
@@ -1418,17 +1527,33 @@ class WatchPairingDialog:
     neklikne "Ukazat IP" - okno parovania byva na streame aj na screenshote
     pre testera. Tlacidlo prepina `app.show_ip`, ktore plati pre celu appku
     (aj pole IP v Nastaveniach a dennik) a len do restartu.
+
+    ZIVY STAV (0.2.2): pod ramikom s adresou je riadok, ktory sa kazdu
+    sekundu prekresli zo skutocneho stavu prijmu (`stav_parovania`). Dialog
+    bol predtym slepy - uspech bolo vidno len za modalnym oknom - a krok 5
+    radil prepinac zapnut, hoci prijem uz zaplo samotne otvorenie navodu
+    (`open_watch_pairing`). Kto posluchol, prijem si vypol.
+
+    `on_close` (volitelne) sa zavola raz, az po zavreti okna - sprievodca
+    prveho spustenia po nom spusti prehliadku appky.
     """
 
-    def __init__(self, app):
+    STAV_OBNOVA_MS = 1000
+
+    def __init__(self, app, on_close=None):
         self.app = app
+        self._on_close = on_close
+        self._zavrete = False
+        self._stav_job = None
         pal = app.pal
         app.set_typing(True)
 
         self.top = ctk.CTkToplevel(app.root)
         self.top.title(tr("hr.pair_title"))
         self.top.configure(fg_color=pal["bg"])
-        self.top.geometry("560x640")
+        # Okno bez ramu (DialogChrome) OS neumiestni - bez polohy sa otvaralo
+        # v rohu obrazovky. Stred rata ten isty pomocnik ako hlavne okno.
+        self.top.geometry(ui_kit.vycentrovana_geometria(app.root, 560, 640))
         self.top.minsize(520, 560)
         self.top.transient(app.root)
         self.top.grab_set()
@@ -1452,7 +1577,7 @@ class WatchPairingDialog:
         # panel s realnou IP/portom tohto PC
         net = ctk.CTkFrame(scroll, fg_color=pal["surface"], corner_radius=ui_kit.RADIUS_CONTROL,
                            border_width=1, border_color=pal["accent2"])
-        net.pack(fill="x", pady=(0, 14))
+        net.pack(fill="x", pady=(0, 8))
         net_in = ctk.CTkFrame(net, fg_color="transparent")
         net_in.pack(fill="x", padx=16, pady=14)
         ctk.CTkLabel(net_in, text=tr("hr.pair_this_pc"), font=ui_kit.ui(11),
@@ -1496,11 +1621,22 @@ class WatchPairingDialog:
                          justify="left").pack(fill="x", pady=(4, 0))
         self._render_ips()
 
+        # ZIVY STAV PRIJMU hned pod adresou - tam sa hrac pozera, ked ju
+        # prepisuje do telefonu, a nemusi zatvarat okno, aby videl, ci to ide.
+        self.status_label = ctk.CTkLabel(scroll, text="", font=ui_kit.ui(12, "bold"),
+                                         anchor="w", justify="left", wraplength=500)
+        self.status_label.pack(fill="x", padx=4, pady=(0, 14))
+        self._obnov_stav()
+
         # kroky; krok 2 je "stiahni si appku do telefonu" - tam patri QR,
-        # aby hrac nemusel na telefone nic pisat
+        # aby hrac nemusel na telefone nic pisat. Popis QR tu posiela na
+        # ramik s adresou hore, nie do „Ako sparovat hodinky…“ (to je toto okno).
+        def qr_v_navode(col, pal_):
+            return watch_app_qr(col, pal_, v_navode=True)
+
         steps = [
             (tr("hr.step1_title"), tr("hr.step1_body"), None),
-            (tr("hr.step2_title"), tr("hr.step2_body"), watch_app_qr),
+            (tr("hr.step2_title"), tr("hr.step2_body"), qr_v_navode),
             (tr("hr.step3_title"), tr("hr.step3_body"), None),
             (tr("hr.step4_title"), tr("hr.step4_body"), None),
             (tr("hr.step5_title"), tr("hr.step5_body"), None),
@@ -1509,19 +1645,12 @@ class WatchPairingDialog:
             self._step_row(scroll, pal, i, title, body,
                            extra=(lambda col, fn=extra: fn(col, pal)) if extra else None)
 
-        # co ak to nechodi
-        trouble = ctk.CTkFrame(scroll, fg_color=pal["surface"], corner_radius=ui_kit.RADIUS_CONTROL,
-                               border_width=1, border_color=pal["line_soft"])
-        trouble.pack(fill="x", pady=(6, 0))
-        stripe = ctk.CTkFrame(trouble, fg_color=pal["warn"], width=3, corner_radius=0)
-        stripe.pack(side="left", fill="y")
-        tb = ctk.CTkFrame(trouble, fg_color="transparent")
-        tb.pack(side="left", fill="x", expand=True, padx=14, pady=13)
-        ctk.CTkLabel(tb, text=tr("hr.trouble_title"), font=ui_kit.ui(12, "bold"),
-                     text_color=pal["text"], anchor="w").pack(fill="x")
-        ctk.CTkLabel(tb, text=tr("hr.trouble_body"), font=ui_kit.ui(11),
-                     text_color=pal["text_dim"], wraplength=470, anchor="w",
-                     justify="left").pack(fill="x", pady=(5, 0))
+        # co ak to nechodi - DVA rozne pripady, dva boxy. Telefon sa vobec
+        # nepripoji (firewall, Verejna siet, ina adresa) je iny problem nez
+        # "pripoji sa, ale tep nechodi" (scena/zdroj, hodinky nemeraju). Rada
+        # o firewalle bola predtym len v druhom boxe, teda pri opacnom pripade.
+        self._rada_box(scroll, pal, tr("hr.noconnect_title"), tr("hr.noconnect_body"))
+        tb = self._rada_box(scroll, pal, tr("hr.trouble_title"), tr("hr.trouble_body"))
         # Ovladac s gyrom / bez mrtvej zony hlasi vstup bez prestania a appka
         # nenajde pauzu - ta ista rada ako riadok na Dnes (`dnes.nonstop_input`).
         ctk.CTkLabel(tb, text=tr("hr.trouble_pad"), font=ui_kit.ui(11),
@@ -1534,6 +1663,47 @@ class WatchPairingDialog:
                       corner_radius=ui_kit.RADIUS_CONTROL, fg_color=pal["accent2"],
                       hover_color=pal["accent2_hover"], text_color=pal["text"],
                       command=self.close).pack(side="right")
+
+    @staticmethod
+    def _rada_box(parent, pal, title, body):
+        """Box s radou (pruh vo farbe warn, nadpis, text). Vrati vnutorny
+        ramec, aby sa don dal pridat dalsi odsek."""
+        box = ctk.CTkFrame(parent, fg_color=pal["surface"], corner_radius=ui_kit.RADIUS_CONTROL,
+                           border_width=1, border_color=pal["line_soft"])
+        box.pack(fill="x", pady=(6, 6))
+        # height=1: prazdny CTkFrame si inak vypyta predvolenych 200 px a box
+        # mal nad nadpisom aj pod textom prazdny pas. Na vysku boxu ho
+        # natiahne `fill="y"`, vysku urcuje text.
+        stripe = ctk.CTkFrame(box, fg_color=pal["warn"], width=3, height=1, corner_radius=0)
+        stripe.pack(side="left", fill="y")
+        tb = ctk.CTkFrame(box, fg_color="transparent")
+        tb.pack(side="left", fill="x", expand=True, padx=14, pady=13)
+        ctk.CTkLabel(tb, text=title, font=ui_kit.ui(12, "bold"),
+                     text_color=pal["text"], anchor="w").pack(fill="x")
+        ctk.CTkLabel(tb, text=body, font=ui_kit.ui(11),
+                     text_color=pal["text_dim"], wraplength=470, anchor="w",
+                     justify="left").pack(fill="x", pady=(5, 0))
+        return tb
+
+    def _obnov_stav(self):
+        """Prekresli riadok stavu a naplanuje dalsie prekreslenie o sekundu.
+
+        Polling, nie udalost: stav prijmu meni pat roznych ciest v appke
+        (`_apply_hr_status`, `_apply_hr_bpm`, `_hr_no_client`, opakovana
+        vazba...) a tie o tomto okne nevedia. Raz za sekundu staci - tep
+        aj tak chodi zhruba v tomto rytme."""
+        self._stav_job = None
+        if self._zavrete:
+            return
+        try:
+            druh, text = stav_parovania(self.app)
+            pal = self.app.pal
+            farba = {"ok": pal["success"], "pozor": pal["warn"],
+                     "chyba": pal["danger"]}.get(druh, pal["text_dim"])
+            self.status_label.configure(text=text, text_color=farba)
+            self._stav_job = self.top.after(self.STAV_OBNOVA_MS, self._obnov_stav)
+        except Exception:
+            pass            # okno medzitym zaniklo - dalsie kolo uz netreba
 
     def _step_row(self, parent, pal, number, title, body, extra=None):
         """`extra(col)` prida pod text kroku dalsi prvok (napr. QR na appku
@@ -1602,12 +1772,31 @@ class WatchPairingDialog:
         self._render_ips()
 
     def close(self):
+        # Zavriet sa da krizikom, Escape aj tlacidlom - `on_close` (napr.
+        # start prehliadky) sa ale smie zavolat len raz.
+        if self._zavrete:
+            return
+        self._zavrete = True
+        if self._stav_job is not None:
+            try:
+                self.top.after_cancel(self._stav_job)
+            except Exception:
+                pass
+            self._stav_job = None
         self.app.set_typing(False)
         try:
             self.top.grab_release()
         except Exception:
             pass
         self.top.destroy()
+        if callable(self._on_close):
+            try:
+                self._on_close()
+            except Exception:
+                # Okno je uz zavrete a stav upratany - chyba volajuceho
+                # nesmie vyletiet do Tk ako "chyba okna parovania".
+                logging_setup.get_logger("app").exception(
+                    "okno parovania: on_close zlyhal")
 
 
 # --------------------------------------------------------------------------
@@ -2237,9 +2426,10 @@ class OnboardingWizard:
 
       1) Co appka robi   - realne piktogramy overlay (grounding/jaw/breath)
       2) Ako to vyzera v hre - HUD + piktogram nad hernym pozadim
-      3) Hodinky (nepovinne) - preco a "Sparovat teraz / Neskor"
-      4) Hlavny svet + test zvuku - Hra · Sumi / Praca · Aizome, hlasitost
-      5) Ako sa ma appka ozvat, ked hraca hra vytoci (styl hlasky)
+      3) Hodinky (nepovinne) - preco a "Sparovat teraz" (otvori sa po uvode)
+      4) Hlavny svet - Hra · Sumi / Praca · Aizome
+      5) Ako sa ma appka ozvat, ked hraca hra vytoci (styl hlasky) +
+         ukazka podla vybranej odpovede a hlasitost
 
     Predtym to boli 3 textove kroky (filozofia + diagnostika + vyber), ktore
     nikdy neukazali NA CO appka je ani PRECO hodinky. Diagnostika symptomov
@@ -2252,23 +2442,33 @@ class OnboardingWizard:
 
     Rozhranie pre app.py ostava: .confirmed, .choice, .volume_value,
     .diagnostics, .top. Pribudlo .wants_pairing (ci hrac klikol "Sparovat
-    teraz" - app potom otvori WatchPairingDialog) a .cue_style (styl hlasky
-    z kroku 5; None = hrac nevybral nic a ostava, co bolo).
+    teraz" - app po uvode otvori WatchPairingDialog), .cue_style (styl
+    hlasky z kroku 5; None = hrac nevybral nic a ostava, co bolo) a
+    .quit_requested (prvy start: hrac uvod zavrel a potvrdil Ukoncit).
     """
 
     STEP_COUNT = 5
-    # Prvy krok, v ktorom sa nieco vybera (svet). "Preskocit uvod" skoci
-    # sem, nie na posledny krok: uvod su vysvetlenia, volby sa neprekakuju.
-    PRVA_VOLBA = 3
+    # Krok s hodinkami. "Preskocit" na krokoch 1-2 skoci SEM: predtym siel
+    # rovno na volbu sveta a obisiel prave krok, bez ktoreho appka mlci.
+    # Od neho dalej sa uz nepreskakuje - zvysok su volby.
+    KROK_HODINKY = 2
 
-    def __init__(self, root, choice=None, volume=None):
+    def __init__(self, root, choice=None, volume=None, *, prvy_start=False):
         # `choice`/`volume`: aktualny svet (tema) a hlasitost, ked sa uvod
         # pusta znova z palety (`replay_onboarding`). Bez nich sprievodca
         # zacinal na predvolenom svete a 80 % - kto ho len preklikol, skoncil
         # z Prace v Hre (kde hlasky mozu hovorit nahlas) a s inou hlasitostou.
+        #
+        # `prvy_start=True` (len `DandurfApp.__init__`): uvod je jedine okno
+        # appky - zavretie sa pyta na ukoncenie a okno drzi navrchu. Z palety
+        # (appka uz bezi) zavretie len zrusi uvod bez zmeny.
         self.choice = (choice if choice in (theme_mod.ZEN, theme_mod.MODERN)
                        else theme_mod.DEFAULT_THEME)
         self.confirmed = False
+        self.quit_requested = False       # prvy start: zavrel a dal Ukoncit
+        self._prvy_start = bool(prvy_start)
+        self._otazka = None               # ramcek "Ukoncit Zanshin?", kym visi
+        self._otazka_od = 0.0
         self.wants_pairing = False        # klikol "Sparovat hodinky teraz"?
         # Styl hlasky z kroku 5. NIC nie je predvybrane (zadavatel: ziadne
         # predsudzovanie) - kto nevyberie, ostava na tom, co mal (novy hrac
@@ -2282,7 +2482,10 @@ class OnboardingWizard:
         # diagnostika sa uz nepyta - predvolene vsetky sloty zapnute
         self.diagnostics = {0: True, 1: True, 2: True, 3: True}
         self._assets_ready = sfx_assets.missing_count() == 0
-        self.test_btn = None
+        self.preview_btn = None           # ukazka v kroku 5 (podla odpovede)
+        self._preview_job = None          # skrytie ukazky obrazka
+        self._preview_img = None
+        self._hovori = False              # ukazka hlasu prave znie
         self._step = 0
         # Chrome onboardingu (nie len karty v kroku 4) ma sediet s
         # DEFAULT_THEME - predtym bolo natvrdo MODERN, co bolo pri
@@ -2304,15 +2507,30 @@ class OnboardingWizard:
         self.top.resizable(False, False)
         self.top.transient(root)
         self.top.grab_set()
-        # Onboarding sa NESMIE dat zavriet "do prazdna" - krizik OS ramu
-        # prehltneme a vlastna lista (DialogChrome) ho vobec nema.
-        self.top.protocol("WM_DELETE_WINDOW", lambda: None)
+        # ZAVRIET SA DA - krizikom, Esc aj Alt+F4 - ale nie "do prazdna".
+        #
+        # Predtym nesiel zavriet vobec: ikona v liste este neexistuje, okno
+        # bez ramu nema tlacidlo v paneli uloh, takze kto chcel odist, mohol
+        # len zabit proces. Teraz sa pri prvom starte opyta, ci ukoncit
+        # appku (`_on_close_request`); z palety uvod len zrusi.
+        self.top.protocol("WM_DELETE_WINDOW", self._on_close_request)
+        self.top.bind("<Alt-F4>", lambda _e: (self._on_close_request(), "break")[1])
+        if self._prvy_start:
+            # Jedine okno appky (hlavne je schovane) a bez tlacidla v paneli
+            # uloh: po kliknuti inam by zmizlo za inym oknom a nedalo by sa
+            # najst. Navrchu len kym zije - Windows dialogy (SmartScreen,
+            # UAC) prichadzaju pred spustenim alebo na zabezpecenej ploche a
+            # vyzva firewallu az pri otvoreni portu, teda PO uvode.
+            try:
+                self.top.attributes("-topmost", True)
+            except Exception:
+                pass
 
         # Rovnaka tmava lista ako hlavne okno a ostatne dialogy (Sprievodca,
         # parovanie) - onboarding bol posledne okno s Windows titulkom.
-        # closable=False: ziadny krizik ani Escape, on_close sa nevola.
+        # Krizik aj Escape idu cez tu istu otazku ako krizik OS.
         self.chrome = ui_kit.DialogChrome(self.top, self._pal, title,
-                                          on_close=lambda: None, closable=False)
+                                          on_close=self._on_close_request)
         host = self.chrome.body
 
         # obsah kroku + spodna navigacna lista (obe do chrome.body, nie do top)
@@ -2354,23 +2572,90 @@ class OnboardingWizard:
             return
         if done >= total:
             self._assets_ready = True
-            if self.test_btn is not None:
-                try:
-                    self.test_btn.configure(state="normal",
-                                            text=tr("onboarding.test_sound"))
-                except Exception:
-                    pass
+            self._refresh_preview()       # ukazka zvuku uz moze hrat
+
+    # ---- zavretie: pri prvom starte otazka na ukoncenie ----
+
+    # Druha poziadavka o zavretie do tohto casu po prvej je TA ISTA klavesa:
+    # Alt+F4 pride ako klaves aj ako WM_DELETE_WINDOW. Bez toho by druha
+    # otazku hned zase zavrela.
+    OTAZKA_DUPLIKAT_S = 0.4
+
+    def _on_close_request(self):
+        """Krizik, Esc, Alt+F4. Z palety uvod zrusi (appka bezi dalej a nic
+        sa nezmeni). Pri prvom starte sa opyta - uvod je jedine okno appky,
+        takze zavriet ho znamena ukoncit Zanshin. Otazka visi v okne, nie v
+        systemovom dialogu: ten by mal tlacidla Ano/Nie a pod oknom navrchu
+        by sa mohol stratit. Druhe Esc / krizik otazku zavrie (= Pokracovat)."""
+        if not self._prvy_start:
+            self._close(confirmed=False)
+            return
+        if self._otazka is not None:
+            if time.monotonic() - self._otazka_od >= self.OTAZKA_DUPLIKAT_S:
+                self._hide_quit_question()
+            return
+        self._show_quit_question()
+
+    def _show_quit_question(self):
+        pal = self._pal
+        self._otazka_od = time.monotonic()
+        # Cez cele telo okna (krok aj patku), aby sa pod otazkou nedalo nic
+        # klikat - je to rozhodnutie, nie poznamka na okraj.
+        cover = ctk.CTkFrame(self.chrome.body, fg_color=pal["bg"], corner_radius=0)
+        cover.place(relx=0, rely=0, relwidth=1, relheight=1)
+        cover.lift()
+        self._otazka = cover
+        inner = ctk.CTkFrame(cover, fg_color="transparent")
+        inner.place(relx=0.5, rely=0.45, anchor="center")
+        ctk.CTkLabel(inner, text=tr("ob.quit.title"), font=ui_kit.ui(20, "bold"),
+                     text_color=pal["text"]).pack(pady=(0, 8))
+        ctk.CTkLabel(inner, text=tr("ob.quit.body"), font=ui_kit.ui(12),
+                     text_color=pal["text_dim"], wraplength=480,
+                     justify="center").pack(pady=(0, 22))
+        row = ctk.CTkFrame(inner, fg_color="transparent")
+        row.pack()
+        ctk.CTkButton(row, text=tr("ob.quit.yes"), width=130, height=38,
+                      corner_radius=ui_kit.RADIUS_CONTROL, fg_color="transparent",
+                      border_width=1, border_color=pal["border"],
+                      hover_color=pal["surface_alt"], text_color=pal["text_dim"],
+                      font=ui_kit.ui(12), command=self._quit).pack(side="left", padx=6)
+        # Pokracovat je to bezpecne a hlavne tlacidlo - kto len omylom
+        # stlacil Esc, jednym klikom alebo Enterom pokracuje.
+        dalej = ctk.CTkButton(row, text=tr("ob.quit.no"), width=150, height=38,
+                              corner_radius=ui_kit.RADIUS_CONTROL, fg_color=pal["accent"],
+                              hover_color=pal["accent_hover"], text_color=pal["bg"],
+                              font=ui_kit.ui(12, "bold"), command=self._hide_quit_question)
+        dalej.pack(side="left", padx=6)
+        self.top.bind("<Return>", lambda _e: self._hide_quit_question())
+
+    def _hide_quit_question(self):
+        cover, self._otazka = self._otazka, None
+        try:
+            self.top.unbind("<Return>")
+        except Exception:
+            pass
+        if cover is not None:
+            try:
+                cover.destroy()
+            except Exception:
+                pass
+
+    def _quit(self):
+        """Ukoncit z otazky: nic sa neuklada, appka (`DandurfApp.__init__`)
+        skonci a dalsi start ukaze uvod znova."""
+        self.quit_requested = True
+        self._close(confirmed=False)
 
     # ---- navigacia ----
 
     def _build_footer(self):
         pal = self._pal
-        # vlavo: preskocit uvod (rovno na prvu volbu - svet, potom styl)
+        # vlavo: preskocit na krok s hodinkami (len na krokoch 1-2)
         self.skip_btn = ctk.CTkButton(
             self.footer, text=tr("ob.skip"), width=120, height=34,
             corner_radius=ui_kit.RADIUS_CONTROL, fg_color="transparent", hover_color=pal["surface_alt"],
             text_color=pal["text_faint"], font=ui_kit.ui(11),
-            command=lambda: self._show_step(self.PRVA_VOLBA))
+            command=lambda: self._show_step(self.KROK_HODINKY))
         self.skip_btn.pack(side="left", padx=24)
 
         # bodky postupu
@@ -2410,6 +2695,8 @@ class OnboardingWizard:
 
     def _show_step(self, index):
         self._step = index
+        self._stop_picture_preview()
+        self.preview_btn = None
         for w in self.body.winfo_children():
             w.destroy()
         self._photos.clear()
@@ -2433,9 +2720,9 @@ class OnboardingWizard:
             self.back_btn.pack_forget()
         elif not self.back_btn.winfo_ismapped():
             self.back_btn.pack(side="right", padx=6)
-        # Od prvej volby dalej uz nie je co preskakovat (skok by viedol na
-        # krok, na ktorom hrac prave je).
-        self.skip_btn.pack_forget() if index >= self.PRVA_VOLBA \
+        # Od kroku s hodinkami dalej uz nie je co preskakovat: na nom by skok
+        # viedol na to iste miesto a dalej su len volby.
+        self.skip_btn.pack_forget() if index >= self.KROK_HODINKY \
             else self.skip_btn.pack(side="left", padx=24, before=self.dots)
         last = index == self.STEP_COUNT - 1
         self.next_btn.configure(text=tr("onboarding.confirm") if last else tr("ob.next"))
@@ -2450,9 +2737,9 @@ class OnboardingWizard:
         self._photos.append(photo)
         return photo
 
-    def _kicker(self, parent, text):
+    def _kicker(self, parent, text, top=30):
         ctk.CTkLabel(parent, text=text, font=ui_kit.ui(10, "bold"),
-                     text_color=self._pal["accent"]).pack(pady=(30, 4))
+                     text_color=self._pal["accent"]).pack(pady=(top, 4))
 
     def _heading(self, parent, text):
         ctk.CTkLabel(parent, text=text, font=ui_kit.ui(22, "bold"),
@@ -2611,21 +2898,39 @@ class OnboardingWizard:
         # obrazovke, z toho dve rovnake. Preskocenie uz patka vie (krok je
         # oznaceny ako nepovinny), takze tu ostava len ta akcia, ktora sa
         # inde spravit neda.
-        ctk.CTkButton(parent, text="🕑  " + tr("ob.step3.pair_now"), width=230, height=44,
-                      corner_radius=8, fg_color=pal["accent"],
-                      hover_color=pal["accent_hover"], text_color=pal["bg"],
-                      font=ui_kit.ui(12, "bold"),
-                      command=self._pair_now).pack(pady=(12, 6))
+        self.pair_btn = ctk.CTkButton(parent, width=230, height=44, corner_radius=8,
+                                      font=ui_kit.ui(12, "bold"), command=self._pair_now)
+        self._pair_button_look()
+        self.pair_btn.pack(pady=(12, 6))
         ctk.CTkLabel(parent, text=tr("ob.step3.later_note"), font=ui_kit.ui(9),
                      text_color=pal["text_faint"]).pack(pady=(6, 0))
 
-    def _pair_now(self):
-        """Hrac chce sparovat hned - dokoncime onboarding a app otvori
-        parovaci dialog (cez wants_pairing)."""
-        self.wants_pairing = True
-        self._confirm()
+    def _pair_button_look(self):
+        """Tlacidlo parovania podla toho, ci uz hrac parovanie zvolil - kto
+        sa na tento krok vrati, vidi, ze volba plati."""
+        pal = self._pal
+        if self.wants_pairing:
+            self.pair_btn.configure(
+                text="✓  " + tr("ob.step3.pair_queued"), fg_color="transparent",
+                border_width=1, border_color=pal["accent"],
+                hover_color=pal["surface_alt"], text_color=pal["accent"])
+        else:
+            self.pair_btn.configure(
+                text="🕑  " + tr("ob.step3.pair_now"), fg_color=pal["accent"],
+                border_width=0, hover_color=pal["accent_hover"], text_color=pal["bg"])
 
-    # ---- KROK 4: hlavny svet + test zvuku ----
+    def _pair_now(self):
+        """Hrac chce sparovat hned - parovanie sa otvori PO uvode
+        (`wants_pairing`) a uvod pokracuje dalsim krokom.
+
+        Predtym tu uvod hned skoncil: kroky 4 a 5 (svet, hlasitost, styl
+        hlasky - a jedina zmienka o Microsofte) sa vobec neukazali a prva
+        prehliadka sa po parovani nespustila."""
+        self.wants_pairing = True
+        self._pair_button_look()
+        self._show_step(self.KROK_HODINKY + 1)
+
+    # ---- KROK 4: hlavny svet ----
 
     def _step4(self, parent):
         """Hlavny svet (B3-worlds): Hra · Sumi alebo Praca · Aizome.
@@ -2633,12 +2938,11 @@ class OnboardingWizard:
         Vzhlad patri svetu, takze sa nevybera zvlast. `self.choice` ostava
         KLUC TEMY (rozhranie pre app.py); svet z neho appka odvodi cez
         `theme_mod.theme_world`."""
-        pal = self._pal
         self._kicker(parent, tr("ob.step4.kicker"))
         self._heading(parent, tr("ob.step4.title"))
 
         cards = ctk.CTkFrame(parent, fg_color="transparent")
-        cards.pack(padx=30, pady=(4, 0), fill="x")
+        cards.pack(padx=30, pady=(4, 18), fill="x")
         cards.columnconfigure(0, weight=1)
         cards.columnconfigure(1, weight=1)
         self._card(cards, 0, theme_mod.WORLD_THEME["play"],
@@ -2646,25 +2950,9 @@ class OnboardingWizard:
         self._card(cards, 1, theme_mod.WORLD_THEME["work"],
                    tr("ob.world.work.title"), tr("ob.world.work.desc"))
 
-        # test zvuku + hlasitost
-        test_row = ctk.CTkFrame(parent, fg_color="transparent")
-        test_row.pack(pady=(20, 4), padx=36, fill="x")
-        self.test_btn = ctk.CTkButton(
-            test_row, width=210, height=38,
-            text=tr("onboarding.test_sound") if self._assets_ready else tr("assets.preparing"),
-            state="normal" if self._assets_ready else "disabled",
-            fg_color=pal["accent2"], hover_color=pal["accent2_hover"],
-            command=self._test_sound)
-        self.test_btn.pack(side="left")
-        self.volume_var = tk.IntVar(value=self.volume_value)
-        ui_kit.block_slider_wheel(ctk.CTkSlider(
-            test_row, from_=0, to=100, number_of_steps=100, variable=self.volume_var,
-            width=150, command=lambda _v: self._on_volume_slide())).pack(
-            side="left", padx=(12, 6), fill="x", expand=True)
-        self.volume_label = ctk.CTkLabel(test_row, text=f"{self.volume_value} %",
-                                         text_color=pal["text_dim"], width=44)
-        self.volume_label.pack(side="left")
-
+        # POZN: tu bol "Vyskusat zvuk" s hlasitostou. Prehral len zvuk - hlas
+        # nikto nepocul, a krok 5 sa nan aj tak pytal. Ukazka je teraz pri
+        # otazke na styl (`_build_preview_row`) a hra to, co hrac vybral.
         self._para(parent, tr("ob.step4.body"), width=480)
         self._select(self.choice)
 
@@ -2672,7 +2960,7 @@ class OnboardingWizard:
         self.volume_value = int(self.volume_var.get())
         self.volume_label.configure(text=f"{self.volume_value} %")
 
-    def _test_sound(self):
+    def _play_sound_preview(self):
         if not self._assets_ready:
             return
         # Vzdy zvuky HRY: v Praci hlasky zvuk nemaju (B3-worlds), takze
@@ -2737,10 +3025,22 @@ class OnboardingWizard:
         predvybrane a ziadne "odporucane" - odpoved patri hracovi. Tichy
         riadok pod nimi povie, kde sa to da zmenit a ze appka moze ist sama
         tichsie, hlasnejsie nikdy; druhy, ze prirodzeny hlas posiela texty
-        hlasok do Microsoftu a hlas z Windows nic."""
+        hlasok do Microsoftu a hlas z Windows nic.
+
+        Pod odpovedami je UKAZKA podla vybranej odpovede a hlasitost
+        (`_build_preview_row`) - predtym bol na kroku 4 len test zvuku, hlas
+        nikto nepocul a tu sa nan aj tak pytalo."""
         pal = self._pal
-        self._kicker(parent, tr("ob.step5.kicker"))
+        # Mensi okraj nad kickerom: krok 5 je najvyssi (styri odpovede,
+        # ukazka, dva riadky) a okno ma pevnu vysku 600.
+        self._kicker(parent, tr("ob.step5.kicker"), top=6)
         self._heading(parent, tr("ob.cue.title"))
+        if theme_mod.theme_world(self.choice) == "work":
+            # V Praci sa appka ozyva len obrazkom (B3-worlds) - bez tejto
+            # vety by sa otazka na hlas tvarila, ze plati aj tam.
+            ctk.CTkLabel(parent, text=tr("ob.cue.work_note"), font=ui_kit.ui(11),
+                         text_color=pal["accent"], justify="center",
+                         wraplength=560).pack(pady=(0, 6))
         volby = ctk.CTkFrame(parent, fg_color="transparent")
         volby.pack(pady=(4, 0))
         self._cue_buttons = {}
@@ -2751,14 +3051,15 @@ class OnboardingWizard:
                 hover_color=pal["surface_alt"], border_width=2,
                 border_color=pal["border"], text_color=pal["text_dim"],
                 font=ui_kit.ui(13), command=lambda v=volba: self._vyber_styl(v))
-            btn.pack(pady=5)
+            btn.pack(pady=4)
             self._cue_buttons[volba] = btn
+        self._build_preview_row(parent)
         # Dva tiche riadky pod odpovedami, oba na sirku nadpisu (560): pri
         # 480 sa zalamuju do viacerych riadkov a okno onboardingu ma pevnu
         # vysku (600) - styri tlacidla a nadpis z nej uz beru vacsinu.
         ctk.CTkLabel(parent, text=tr("ob.cue.note"), font=ui_kit.ui(11),
                      text_color=pal["text_faint"], justify="center",
-                     wraplength=560).pack(pady=(14, 0))
+                     wraplength=560).pack(pady=(6, 0))
         # Co z odpovede "hlasom" odchadza z pocitaca - hrac to ma vediet uz
         # tu, nie az v Nastaveniach (`data.hint` hovori to iste).
         ctk.CTkLabel(parent, text=tr("ob.cue.online_note"), font=ui_kit.ui(11),
@@ -2784,9 +3085,149 @@ class OnboardingWizard:
                     text_color=pal["text"] if vybrana else pal["text_dim"])
             except Exception:
                 pass
+        self._refresh_preview()
+
+    # ---- ukazka v kroku 5 ----
+
+    # Kolko ms visi ukazka obrazka - zhruba ako dlho piktogram v hre.
+    PICTURE_PREVIEW_MS = 2600
+
+    def _build_preview_row(self, parent):
+        """Riadok s ukazkou a hlasitostou pod odpovedami.
+
+        Ma PEVNU vysku a kym hrac nic nevybral, je prazdny: ukazka patri
+        k odpovedi a bez nej nie je co ukazat. Pevna vyska drzi odpovede na
+        mieste - inak by po prvom kliku poskocili hore."""
+        pal = self._pal
+        row = ctk.CTkFrame(parent, fg_color="transparent", height=42)
+        row.pack(fill="x", pady=(4, 0))
+        row.pack_propagate(False)
+        self._preview_row = ctk.CTkFrame(row, fg_color="transparent")
+        self.preview_btn = ctk.CTkButton(
+            self._preview_row, height=36, corner_radius=ui_kit.RADIUS_CONTROL,
+            fg_color=pal["accent2"], hover_color=pal["accent2_hover"],
+            text_color=pal["text"], font=ui_kit.ui(11), command=self._play_preview)
+        self.preview_btn.pack(side="left")
+        self._volume_box = ctk.CTkFrame(self._preview_row, fg_color="transparent")
+        self.volume_var = tk.IntVar(value=self.volume_value)
+        ui_kit.block_slider_wheel(ctk.CTkSlider(
+            self._volume_box, from_=0, to=100, number_of_steps=100,
+            variable=self.volume_var, width=130,
+            command=lambda _v: self._on_volume_slide())).pack(side="left", padx=(12, 6))
+        self.volume_label = ctk.CTkLabel(self._volume_box, text=f"{self.volume_value} %",
+                                         text_color=pal["text_dim"], width=44)
+        self.volume_label.pack(side="left")
+
+    def _refresh_preview(self):
+        """Text a stav ukazky podla vybranej odpovede. "Neviem" sa uklada
+        ako hlas, tak aj ukazka je hlasom."""
+        btn = self.preview_btn
+        if btn is None:
+            return
+        try:
+            if self._cue_volba is None:
+                self._preview_row.place_forget()
+                return
+            hlasitost = True
+            stav = "normal"
+            if self.cue_style == rebrik.STYL_OBRAZ:
+                text, hlasitost = tr("ob.preview.visual"), False
+            elif self.cue_style == rebrik.STYL_ZVUK:
+                text = tr("ob.preview.sound")
+                if not self._assets_ready:
+                    text, stav = tr("assets.preparing"), "disabled"
+            else:
+                text = tr("ob.preview.voice")
+            btn.configure(text=text, state=stav)
+            if hlasitost:
+                self._volume_box.pack(side="left")
+            else:
+                self._volume_box.pack_forget()   # obrazok nema hlasitost
+            self._preview_row.place(relx=0.5, rely=0.5, anchor="center")
+        except Exception:
+            pass                                 # krok medzitym prestavali
+
+    def _play_preview(self):
+        if self.cue_style == rebrik.STYL_OBRAZ:
+            self._show_picture_preview()
+        elif self.cue_style == rebrik.STYL_ZVUK:
+            self._play_sound_preview()
+        elif self._cue_volba is not None:
+            self._speak_preview()
+
+    def _speak_preview(self):
+        """Ukazka hlasu - VZDY hlas z Windows (SAPI), ktory bezi v pocitaci.
+
+        Prirodzeny hlas (Edge) by text poslal do Microsoftu a uvod nesmie
+        poslat nikam nic: o tom, co prirodzeny hlas posiela, sa hrac dozvie
+        az o riadok nizsie (`ob.cue.online_note`). Preto aj popisok tlacidla
+        hovori, ze je to hlas z Windows a ze prirodzeny znie jemnejsie.
+        Veta je ta ista, akou sa appka v hre ozve (`slot.default.breath`)."""
+        if getattr(self, "_hovori", False):
+            return                               # dve ukazky naraz = hluk
+        text = tr("slot.default.breath")
+        hlasitost = self.volume_value
+        self._hovori = True
+
+        def povedz():
+            try:
+                speak_sapi_isolated(text, None, 0, hlasitost)
+            except Exception:
+                pass                             # bez SAPI ukazka mlci
+            finally:
+                self._hovori = False
+
+        threading.Thread(target=povedz, daemon=True).start()
+
+    def _show_picture_preview(self):
+        """Ukazka obrazka: piktogram sa na chvilu objavi dole v okne a
+        zmizne - tak, ako v hre pri okraji obrazovky. Tazisko (slot 1), ten
+        isty vizual ako na kroku 2 a ten isty slot ako ukazka zvuku; dych
+        nema vizual v `VISUAL_DRAW` (kresli ho `render_breath`)."""
+        self._stop_picture_preview()
+        try:
+            # tk obrazok CTk neskaluje - pri 150 % by bol piktogram mensi
+            # nez tlacidlo, ktore ho ukazuje
+            mierka = float(ctk.ScalingTracker.get_window_scaling(self.top))
+        except Exception:
+            mierka = 1.0
+        try:
+            style = hud_paint.Style(self._pal)
+            ico = hud_paint.render_visual("grounding", int(150 * mierka),
+                                          int(100 * mierka), style,
+                                          t=0.8, label=None, ss=2)
+            photo = ImageTk.PhotoImage(ico)
+        except Exception:
+            return
+        label = tk.Label(self.body, image=photo, bd=0, bg=self._pal["bg"])
+        label.image = photo                      # referencia (GC)
+        label.place(relx=0.5, rely=1.0, anchor="s", y=-6)
+        self._preview_img = label
+        self._preview_job = self.top.after(self.PICTURE_PREVIEW_MS,
+                                           self._stop_picture_preview)
+
+    def _stop_picture_preview(self):
+        job, self._preview_job = self._preview_job, None
+        if job is not None:
+            try:
+                self.top.after_cancel(job)
+            except Exception:
+                pass
+        label, self._preview_img = self._preview_img, None
+        if label is not None:
+            try:
+                label.destroy()
+            except Exception:
+                pass
 
     def _confirm(self):
-        self.confirmed = True
+        self._close(confirmed=True)
+
+    def _close(self, confirmed):
+        """Zavrie uvod. `confirmed=False` = zrusenie (paleta) alebo Ukoncit
+        pri prvom starte - app.py potom nic z uvodu neprevezme."""
+        self.confirmed = bool(confirmed)
+        self._stop_picture_preview()
         try:
             self.top.grab_release()
         except Exception:
