@@ -92,9 +92,10 @@ and breathe.
   sessions of five minutes or more, and the load threshold needs the most: at
   least three play sessions of five minutes or more that add up to roughly
   half an hour of heart rate — three of about ten minutes are enough, three of
-  five are not. Imported sessions, sessions with implausible readings and
-  sessions you marked afterwards as affected by illness, alcohol or exercise
-  just before playing don't count.
+  five are not. Imported sessions, sessions with implausible readings,
+  sessions recovered after Zanshin ended without saving them (from 0.2.2, see
+  *Your data*) and sessions you marked afterwards as affected by illness,
+  alcohol or exercise just before playing don't count.
 - **Silent while you walk — if your watch sends steps.** While the watch
   reports steps (15 or more in the last minute, for now), the app stays quiet
   — walking raises heart rate just like stress, and the two can't be told
@@ -198,6 +199,9 @@ unchanged; it doesn't make the warning go away.
 
 ### A. Ready-made ZIP (easiest)
 
+0. **Had the 0.2 installer?** It shares your data folder with this ZIP. When
+   you uninstall it, answer **Yes** to *Keep your settings…* — **No** deletes
+   `%APPDATA%\Zanshin`, which this version uses too.
 1. On the GitHub page open **Releases** and download
    `Zanshin-<version>-windows.zip` (for this version
    `Zanshin-0.2.1-windows.zip`). The release lists the file's **SHA-256**
@@ -281,7 +285,9 @@ issue instead, so I know.
 
 **Updating a Zanshin you built:** quit Zanshin first (right-click its tray icon → **Quit**). If it's
 still running, `build.bat` closes it without asking, and a session in progress
-isn't saved. Then get the new version and build it the same way. Your data
+isn't saved (*not released yet, 0.2.2:* the next start adds it to your history
+from the copy Zanshin keeps every 5 minutes, without its last few minutes; see
+*Your data*). Then get the new version and build it the same way. Your data
 stays, because it isn't in the build folder. Make a new shortcut to the new
 `dist\Zanshin\Zanshin.exe` and delete the old folder. To Windows Firewall it's
 a new program, so it may ask again.
@@ -296,6 +302,18 @@ yourself, Python stays installed: if you don't need it for anything else, uninst
 it downloaded for the build in `%LOCALAPPDATA%\pip\cache` (about 45 MB on my
 PC); you can delete that folder, and `%LOCALAPPDATA%\Python` too if it's
 still there afterwards.
+
+*Not released yet (0.2.2):* shutting down, restarting or signing out of
+Windows saves a session in progress the normal way, only without the
+questions at the end. While a session runs, Zanshin also keeps a copy of it
+every 5 minutes in `hr_session_open.json`. If Zanshin ends without saving
+(a crash, Task Manager, a power cut), the next start adds that copy to your
+history, without its last few minutes, and says so in the log; the load
+threshold, high heart-rate limit and resting baseline don't learn from it.
+Before each save of your settings, the previous good file is kept as
+`dandurf_settings.json.bak`; if the settings can't be read, Zanshin sets the
+broken file aside as `dandurf_settings.json.corrupt-<date>-<time>`, loads
+that backup (or starts with the defaults if there's none) and tells you once.
 
 **No administrator rights,** not for Python's install manager, not for the
 build, not for the app, and don't run Zanshin as administrator. The app draws
@@ -416,6 +434,11 @@ the code that needs a newer one), but I only test 3.14. Run this way, the app
 keeps its data next to `main.py`, separate from the built app's
 `%APPDATA%\Zanshin`.
 
+*Not released yet (0.2.2):* only one copy runs at a time, and a source run
+counts as the same app as the built one: starting it again only shows the
+window of the copy already running. To run two copies anyway (for testing),
+set the environment variable `ZANSHIN_ALLOW_MULTI=1`.
+
 ## Build the installer (optional)
 
 Players only need to double-click `build.bat` (see *Install* above). For
@@ -526,7 +549,7 @@ Author: **Dandurfin** — [Twitch](https://www.twitch.tv/dandurfin) ·
 
 | File | Purpose |
 |---|---|
-| `main.py` | Entry point — makes the app DPI-aware, checks that `customtkinter` is installed, sets up crash logging and starts `app.DandurfApp` |
+| `main.py` | Entry point — makes the app DPI-aware, checks that `customtkinter` is installed, sets up crash logging, lets only one copy run (a second start shows the running copy's window) and starts `app.DandurfApp` |
 | `app.py` | Main window, wiring for the whole app |
 | `app_audio.py` | Part of the main window (a mixin of `DandurfApp`): preparing the built-in sound library, volume and the SFX / voice balance, choosing the voice engine and voice, preparing Edge voice lines ahead of time, and playing a cue's sound, voice or your own recording |
 | `app_controls.py` | Part of the main window (a mixin of `DandurfApp`): the command palette (Ctrl+K), "not now" (pausing cues from the shortcut or the tray menu), the collapsible log, gamepad activity, the manual Test cue and showing the introduction again |

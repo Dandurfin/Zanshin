@@ -41,6 +41,25 @@ from settings_model import clamp_int
 from app_spolocne import app_log
 
 
+def _senzor_vypla_chyba(app):
+    """Port/vazba zlyhali: senzor je vypnuty LEN V PAMATI (0.2.2).
+
+    Obsadeny port ani chyba vazby nie su rozhodnutie hraca. Prepinac ukaze
+    vypnute (tep naozaj nechodi), ale `_hr_vypnute_chybou` povie
+    `save_settings`, ze do suboru patri dalej zapnute - nech uz ulozenie
+    spusti ktorekolvek z desiatok miest (posuvnik, jazyk, ukoncenie appky).
+    Dalsi start teda skusi prijem znova. Priznak zhodi az hrac sam
+    (`on_hr_toggle`) alebo novy pokus po zmene IP/portu (`on_hr_config_change`).
+
+    Funkcia modulu, nie metoda: `_apply_hr_status` bezi v testoch aj na
+    atrapach (SimpleNamespace), ktore by novu metodu nemali.
+    """
+    app.hr_monitoring_enabled = False
+    app._hr_vypnute_chybou = True
+    if app.hr_enabled_var is not None:
+        app.hr_enabled_var.set(False)
+
+
 class SessionMixin:
     """Senzor tepu a meracia relacia (mixin DandurfApp)."""
 
@@ -61,11 +80,24 @@ class SessionMixin:
         self.hr_port_var.set(str(port))
         self.refresh_hr_status_label()
         self.save_settings()
+        if (network_changed and not self.hr_monitoring_enabled
+                and getattr(self, "_hr_vypnute_chybou", False)):
+            # Senzor vypla chyba portu ci adresy, nie hrac (`_senzor_vypla_chyba`).
+            # Nove cislo v poli je presne oprava, ktoru radi dennik
+            # (`log.hr_port_busy`) - skusime hned, bez dalsieho kliku na
+            # prepinac. Hracom vypnuty senzor (bez priznaku) sa nezapina.
+            self.hr_monitoring_enabled = True
+            self._hr_vypnute_chybou = False
+            if self.hr_enabled_var is not None:
+                self.hr_enabled_var.set(True)
         if network_changed and self.hr_monitoring_enabled:
             self.start_heart_rate_monitor()
 
     def on_hr_toggle(self):
         self.hr_monitoring_enabled = bool(self.hr_enabled_var.get())
+        # Klik na prepinac je rozhodnutie hraca - plati to, co zvolil, nie
+        # zapnute "z pamati" po chybe portu (`_senzor_vypla_chyba`).
+        self._hr_vypnute_chybou = False
         self.save_settings()
         if self.hr_monitoring_enabled:
             self.start_heart_rate_monitor()
@@ -79,6 +111,18 @@ class SessionMixin:
         posielaju), vola sa `_open_hr_session` priamo - restart socketu by
         hodinky na chvilu odpojil.
         """
+        # Cakajuci pokus po obsadenom porte (`_retry_hr_bind`) patri
+        # PREDOSLEMU behu. `_open_hr_session` ho len zabudne (None), no
+        # `after` by ho o par sekund aj tak spustil - restartoval by tento
+        # novy prijem (iny port, vypnutie a zapnutie), hodinky by sa odpojili
+        # a relacia by sa otvorila nanovo. Novy beh si pokusy zacne sam.
+        job = getattr(self, "_hr_retry_job", None)
+        if job is not None:
+            try:
+                self.root.after_cancel(job)
+            except Exception:
+                pass
+            self._hr_retry_job = None
         self._open_hr_session(meria=self.listening)
         self._hr_generation = self.heart_rate_monitor.start(self.hr_ip, self.hr_port)
         self.log(tr("log.hr_enabled", ip=self._hr_ip_display(), port=self.hr_port))
@@ -484,10 +528,12 @@ class SessionMixin:
                 self._hr_retry_job = self.root.after(
                     self.HR_BIND_RETRY_MS, self._retry_hr_bind)
             else:
-                self.hr_monitoring_enabled = False
-                if self.hr_enabled_var is not None:
-                    self.hr_enabled_var.set(False)
-                self.save_settings()
+                # Ani vzdanie sa NIE JE rozhodnutie hraca (0.2.2): prepinac
+                # ukaze vypnute len pre tento beh, do nastaveni ide dalej
+                # zapnute - dalsi start to skusi znova. Do 0.2.2 sa tu
+                # ukladalo vypnutie a druha spustena kopia appky tak prvej
+                # vypla prijem tepu natrvalo (spolocny subor nastaveni).
+                _senzor_vypla_chyba(self)
                 # Stav sa MUSÍ zmeniť z "busy" - inak štítok navždy tvrdí
                 # "skúšam znova", hoci sme to vzdali (B3).
                 self._hr_state = "busy_gave_up"
@@ -503,10 +549,11 @@ class SessionMixin:
             self._hr_client_linked = False
             self._hr_lost = False           # senzor je vypnuty, nie slepy
             self._hr_lost_od = None
-            self.hr_monitoring_enabled = False
-            if self.hr_enabled_var is not None:
-                self.hr_enabled_var.set(False)
-            self.save_settings()
+            # Chyba vazby (napr. port, ktory si rezervoval Windows, alebo
+            # adresa, ktoru PC nema a nepomohla ani zaloha na 0.0.0.0 v
+            # `heart_rate._bind`) NIE JE rozhodnutie hraca - vypnute len v
+            # pamati, dalsi start to skusi znova (rovnako ako "busy" vyssie).
+            _senzor_vypla_chyba(self)
             # Prepinac sa prave vypol, ale relacia zostavala OTVORENA: uz
             # sa nedala vypnut cez `stop_heart_rate_monitor` (ten vola len
             # `on_hr_toggle`, a prepinac je uz v polohe vypnute), takze sa

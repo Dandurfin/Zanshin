@@ -441,10 +441,13 @@ def test_relacia_nesie_stupen_styl_a_snooze():
     # stupen sa pocita z relacii TOHO sveta, ktory B3 opecatil
     urci = ast.unparse(_funkcia("app.py", "_urci_stupen_hlasky"))
     assert "hr_stats.sessions_in_world(" in urci and "_session_world" in urci
-    zatvor = ast.unparse(_funkcia("app.py", "_close_hr_session"))
+    # Suhrn sklada `_suhrn_relacie` (0.2.2, aj pre kontrolny bod relacie);
+    # `_close_hr_session` ho ma zostaveny pred ulozenim.
+    suhrn = ast.unparse(_funkcia("app.py", "_suhrn_relacie"))
     for kluc in ("cue_rung", "cue_style", "snooze_after_cue_s", "snooze_then_s"):
-        assert f"summary['{kluc}']" in zatvor, kluc
-    assert zatvor.index("summary['cue_rung']") < zatvor.index("hr_stats.save_session(")
+        assert f"summary['{kluc}']" in suhrn, kluc
+    zatvor = ast.unparse(_funkcia("app.py", "_close_hr_session"))
+    assert zatvor.index("self._suhrn_relacie()") < zatvor.index("hr_stats.save_session(")
     # okno nesie parametre (a v nich branu)
     assert "w['params'] = params" in ast.unparse(
         _funkcia("app.py", "_save_measure_windows"))

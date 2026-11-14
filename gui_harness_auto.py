@@ -25,8 +25,9 @@ Co treba vediet
 ---------------
   * HYBE REALNOU MYSOU a posiela klavesy - pocas behu (~2 min) nechaj PC tak.
   * Hlavne okno da docasne `topmost`, inak ho prekryje terminal/IDE.
-  * Nastavenia (dandurf_settings.json) a historiu tepu (hr_sessions.json,
-    hr_insights.json) si na zaciatku zalohuje NA DISK vedla originalov
+  * Nastavenia (dandurf_settings.json aj jeho .bak) a historiu tepu
+    (hr_sessions.json, hr_insights.json, kontrolny bod relacie
+    hr_session_open.json) si na zaciatku zalohuje NA DISK vedla originalov
     (`<subor>.pred-harnessom`) a na konci ich OBNOVI - hromadne mazanie,
     drag a test historie by ich inak zmenili. Po behu, ktory niekto tvrdo
     zabil, ich vrati najblizsi beh hned na zaciatku (viz "Zaloha dat").
@@ -158,7 +159,14 @@ def vrat_zalohy(cesty, nechat_zalohy=False):
 SETTINGS = os.path.join(PROJ, "dandurf_settings.json")
 HR_SESSIONS = os.path.join(PROJ, "hr_sessions.json")
 HR_INSIGHTS = os.path.join(PROJ, "hr_insights.json")
-ODLOZENE = (SETTINGS, HR_SESSIONS, HR_INSIGHTS)
+# Od 0.2.2 appka pri starte prida do historie kontrolny bod relacie, ktora sa
+# minule neulozila (hr_session_open.json), a ten zmaze. Bez zalohy by ho
+# harness takto "spotreboval" a historiu potom vratil do stavu pred behom -
+# relacia z padnutej appky by bola navzdy prec. Rovnako .bak nastaveni: inak
+# by po behu ostal s nastaveniami, ktore si harness upravil.
+HR_SESSION_OPEN = os.path.join(PROJ, "hr_session_open.json")
+SETTINGS_BAK = SETTINGS + ".bak"
+ODLOZENE = (SETTINGS, HR_SESSIONS, HR_INSIGHTS, HR_SESSION_OPEN, SETTINGS_BAK)
 obnov_po_prerusenom_behu(ODLOZENE)
 zaloz_zalohy(ODLOZENE)
 atexit.register(vrat_zalohy, ODLOZENE)
@@ -521,8 +529,12 @@ def s_resize_begin():
     state["size0"] = (root.winfo_width(), root.winfo_height())
     scaling = _window_scaling()
     expected = (round(app.WINDOW_W * scaling), round(app.WINDOW_H * scaling))
+    # +-1 px: CTk geometry() zaokruhluje, ale minsize/maxsize orezava. Na
+    # malej ploche (appka zmensena, `ui_kit.umiestni_pevne_okno`) je preto
+    # okno o pixel mensie nez round(...), napr. 1539x991 voci 1540x992.
+    sedi = all(abs(a - b) <= 1 for a, b in zip(state["size0"], expected))
     rec("window opens at the fixed size (WINDOW_W x WINDOW_H, scaled)",
-        state["size0"] == expected, f"{state['size0']} expected {expected} (scaling={scaling})")
+        sedi, f"{state['size0']} expected {expected} (scaling={scaling})")
     grips = getattr(root, "_resize_grips", [])
     rec("no manual resize grips (fixed window by design)", len(grips) == 0, str(len(grips)))
     x = root.winfo_rootx() + root.winfo_width() - 4

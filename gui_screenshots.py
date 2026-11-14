@@ -17,7 +17,8 @@ pustiť kedykoľvek. Nič netvrdí o správnosti — obrázky musí pozrieť čl
 
 Čo si zálohuje a vráti
 ----------------------
-`dandurf_settings.json`, `hr_sessions.json` a `hr_insights.json`. Skript do
+`dandurf_settings.json` (aj jeho `.bak`), `hr_sessions.json`, `hr_insights.json`
+a `hr_session_open.json` (kontrolný bod relácie). Skript do
 nich zapisuje (syntetická história, prepnutie témy), ale na konci — aj po
 páde — obnoví pôvodný stav. Bez toho by ti fotenie prepísalo reálne relácie.
 
@@ -42,8 +43,12 @@ os.makedirs(OUT, exist_ok=True)
 sys.path.insert(0, PROJ)
 os.chdir(PROJ)
 
+# hr_session_open.json a .bak nastaveni od 0.2.2: appka pri starte kontrolny
+# bod prida do historie a zmaze ho - bez zalohy by ho fotenie "spotrebovalo"
+# a historiu potom vratilo bez neho (viz gui_harness_auto.py).
 ZALOHOVAT = [os.path.join(PROJ, n) for n in
-             ("dandurf_settings.json", "hr_sessions.json", "hr_insights.json")]
+             ("dandurf_settings.json", "hr_sessions.json", "hr_insights.json",
+              "hr_session_open.json", "dandurf_settings.json.bak")]
 _zalohy = {}
 for _cesta in ZALOHOVAT:
     if os.path.exists(_cesta):

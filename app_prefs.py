@@ -22,6 +22,8 @@ nie na module app.
 
 import json
 import os
+import shutil
+import time
 import tkinter as tk
 from tkinter import messagebox
 
@@ -53,6 +55,96 @@ from settings_model import (DEFAULT_AUDIO, DEFAULT_BREATH_EXHALE_S,
                             normalize_slot, suggested_voice)
 
 from app_spolocne import DEFAULT_SNOOZE_HOTKEY, LABEL_TO_LANG, LANG_NATIVE_LABELS, app_log
+
+# Oznam o obnove nastaveni (`_oznam_obnovu_nastaveni`) az ked okno stoji.
+OZNAM_OBNOVY_MS = 1200
+
+
+def _citaj_nastavenia(cesta):
+    """Obsah suboru nastaveni ako dict. Vynimka, ked to dict nie je - aj
+    platny JSON zoznam alebo cislo je pre nastavenia pokazeny subor."""
+    with open(cesta, "r", encoding="utf-8") as fh:
+        obsah = json.load(fh)
+    if not isinstance(obsah, dict):
+        raise ValueError("nastavenia nie su JSON objekt")
+    return obsah
+
+
+def zaloha_nastaveni(cesta):
+    """Doterajsi PLATNY subor nastaveni skopiruje do `<cesta>.bak` (atomicky).
+
+    Len platny: keby sa subor medzitym pokazil, zalohovat ho by prepisalo
+    jedinu dobru kopiu. Zaloha je teda vzdy o jeden zapis pozadu - to je
+    posledny stav, ktory sa dal nacitat. Vracia True, ked sa zalohovalo.
+    """
+    try:
+        with open(cesta, "rb") as fh:
+            obsah = fh.read()
+    except OSError:
+        return False                      # este neexistuje (prvy start)
+    try:
+        if not isinstance(json.loads(obsah.decode("utf-8")), dict):
+            return False
+    except Exception:
+        return False
+    bak = cesta + ".bak"
+    tmp = bak + ".tmp"
+    with open(tmp, "wb") as fh:
+        fh.write(obsah)
+    os.replace(tmp, bak)
+    return True
+
+
+def nacitaj_nastavenia(cesta, teraz=None):
+    """Nacita nastavenia. Vracia (dict alebo None, obnova alebo None).
+
+    Subor neexistuje -> (None, None): prvy start, predvolene. Subor sa neda
+    precitat -> pokazeny sa ODLOZI ako `<cesta>.corrupt-RRRRmmdd-HHMMSS`
+    (nech sa da zachranit a nech ho prvy `save_settings` neprepise) a skusi
+    sa `.bak`. `obnova` = {"odlozene": meno odlozeneho suboru (bez cesty -
+    cesta v %APPDATA% nesie meno uctu), "zo_zalohy": bool}.
+    """
+    if not os.path.exists(cesta):
+        return None, None
+    try:
+        return _citaj_nastavenia(cesta), None
+    except Exception:
+        app_log.exception("load_settings: %s sa neda precitat - odkladam ho "
+                          "a skusam zalohu", cesta)
+    znacka = time.strftime("%Y%m%d-%H%M%S",
+                           time.localtime(time.time() if teraz is None else teraz))
+    odlozene = "%s.corrupt-%s" % (cesta, znacka)
+    try:
+        os.replace(cesta, odlozene)
+    except OSError:
+        # Subor drzi ina appka (editor, synchronizacia) - aspon kopia.
+        try:
+            shutil.copy2(cesta, odlozene)
+        except OSError:
+            app_log.exception("load_settings: pokazeny subor sa nedal odlozit")
+            odlozene = None
+    loaded = None
+    try:
+        loaded = _citaj_nastavenia(cesta + ".bak")
+    except FileNotFoundError:
+        pass
+    except Exception:
+        app_log.exception("load_settings: ani zaloha %s.bak sa neda precitat", cesta)
+    if loaded is not None:
+        # Zalohu hned vratit na miesto. Keby appka spadla skor, nez prvy
+        # `save_settings` subor zapise, dalsi start by subor nenasiel a
+        # zacal by ako prvy start - hoci dobra zaloha lezi vedla.
+        try:
+            tmp = cesta + ".tmp"
+            shutil.copyfile(cesta + ".bak", tmp)
+            os.replace(tmp, cesta)
+        except OSError:
+            app_log.exception("load_settings: zalohu sa nepodarilo vratit na miesto")
+    if odlozene is None:
+        # Bez odlozenej kopie nema hrac co hladat - oznam by klamal.
+        return loaded, None
+    return loaded, {"odlozene": os.path.basename(odlozene),
+                    "zo_zalohy": loaded is not None}
 
 
 class PrefsMixin:
@@ -387,27 +479,28 @@ class PrefsMixin:
         # prvym krokom onboardingu. Prva instalacia teraz berie jazyk
         # Windowsu a ked ho nepozname, anglictinu.
         lang = system_lang()
-        loaded = None
-        if os.path.exists(SETTINGS_PATH):
-            try:
-                with open(SETTINGS_PATH, "r", encoding="utf-8") as f:
-                    loaded = json.load(f)
-                # POZN: tu stalo `in (LANG_SK, LANG_EN, LANG_JA)` - zoznam
-                # z cias, ked appka vedela tri jazyky. Prepinac v
-                # Nastaveniach ich medzitym ponuka DEVAT a volbu korektne
-                # ulozi, ale tento filter ju pri dalsom starte zahodil a
-                # spadol spat na slovencinu. A kedze `__init__` hned po
-                # starte vola `save_settings()`, zdegradovana hodnota sa
-                # zapisala spat do suboru - volba hraca bola nenavratne
-                # prec. Overene: zh, ru, es, de, fr, pt sa stratili vsetky,
-                # prezili len sk/en/ja. Porovnavaj vzdy voci `LANGUAGES`,
-                # nie voci rucne prepisanej trojici.
-                if loaded.get("lang") in LANGUAGES:
-                    lang = loaded["lang"]
-            except Exception:
-                app_log.exception("load_settings: nepodarilo sa precitat/parsovat %s "
-                                  "- pouzijem predvolene nastavenia", SETTINGS_PATH)
-                loaded = None
+        # JEDEN ZLY BAJT UZ NEZMAZE VSETKO (0.2.2). Doteraz nečitatelny subor
+        # = predvolene profily, texty aj polohy, a `__init__` ho o sekundu
+        # prepisal (`save_settings`). Teraz sa pokazeny subor odlozi bokom a
+        # nacita sa posledna zaloha (`.bak`, viz `save_settings`); hrac sa to
+        # dozvie raz (`_oznam_obnovu_nastaveni`).
+        loaded, obnova = nacitaj_nastavenia(SETTINGS_PATH)
+        try:
+            self._nastavenia_obnova = obnova
+        except Exception:
+            pass
+        # POZN: tu stalo `in (LANG_SK, LANG_EN, LANG_JA)` - zoznam
+        # z cias, ked appka vedela tri jazyky. Prepinac v
+        # Nastaveniach ich medzitym ponuka DEVAT a volbu korektne
+        # ulozi, ale tento filter ju pri dalsom starte zahodil a
+        # spadol spat na slovencinu. A kedze `__init__` hned po
+        # starte vola `save_settings()`, zdegradovana hodnota sa
+        # zapisala spat do suboru - volba hraca bola nenavratne
+        # prec. Overene: zh, ru, es, de, fr, pt sa stratili vsetky,
+        # prezili len sk/en/ja. Porovnavaj vzdy voci `LANGUAGES`,
+        # nie voci rucne prepisanej trojici.
+        if loaded is not None and loaded.get("lang") in LANGUAGES:
+            lang = loaded["lang"]
         set_lang(lang)
 
         default_profile_name = tr("profile.default_name")
@@ -453,6 +546,7 @@ class PrefsMixin:
             "dashboard_stats": list(DEFAULT_DASHBOARD_STATS),
             "breath_inhale_s": DEFAULT_BREATH_INHALE_S,
             "breath_exhale_s": DEFAULT_BREATH_EXHALE_S,
+            "old_installer_warned": False,
         }
         if loaded is not None:
             try:
@@ -577,6 +671,7 @@ class PrefsMixin:
                 data["world"] = (hr_stats.normalize_activity(loaded.get("world"))
                                  or hr_stats.WORLD_DEFAULT)
                 data["cue_style"] = rebrik.normalize_cue_style(loaded.get("cue_style"))
+                data["old_installer_warned"] = bool(loaded.get("old_installer_warned", False))
             except Exception:
                 app_log.exception("load_settings: castocne poskodeny/neocakavany "
                                   "obsah %s - pouzijem defaulty pre chybajuce polia",
@@ -625,7 +720,12 @@ class PrefsMixin:
             "game_lang": getattr(self, "game_lang", LANG_EN),
             "hr_ip": self.hr_ip,
             "hr_port": int(self.hr_port),
-            "hr_monitoring_enabled": bool(self.hr_monitoring_enabled),
+            # Senzor vypnuty chybou portu/vazby ide do suboru ako zapnuty:
+            # nebolo to rozhodnutie hraca a dalsi start to ma skusit znova
+            # (app_session._senzor_vypla_chyba, 0.2.2).
+            "hr_monitoring_enabled": bool(
+                self.hr_monitoring_enabled
+                or getattr(self, "_hr_vypnute_chybou", False)),
             "zanshin_graduated": bool(self.zanshin_graduated),
             "zanshin_graduated_at": self.zanshin_graduated_at,
             "snooze_hotkey": self.snooze_hotkey,
@@ -639,7 +739,17 @@ class PrefsMixin:
             # nebola treba) - viz `load_settings`. Odteraz su vypnute
             # vizualy volba hraca.
             "visuals_repaired": True,
+            # Upozornenie na nainstalovanu 0.2 uz zaznelo (raz, viz
+            # `_upozorni_na_staru_instalaciu`).
+            "old_installer_warned": bool(getattr(self, "old_installer_warned", False)),
         }
+        # Pred kazdym zapisom: doterajsi PLATNY subor -> .bak. Zlyhanie
+        # zalohy nesmie zastavit samotne ulozenie (subor moze drzat
+        # antivirus alebo synchronizacia), preto ma vlastny try.
+        try:
+            zaloha_nastaveni(SETTINGS_PATH)
+        except Exception:
+            app_log.exception("save_settings: zalohu nastaveni sa nepodarilo zapisat")
         try:
             # Atomicky zapis: najprv .tmp, az potom os.replace() - rovnaky
             # vzor ako uz appka pouziva v sfx_assets._save_wav()/_try_download().
@@ -653,6 +763,34 @@ class PrefsMixin:
         except Exception as exc:
             self.log(tr("log.settings_save_error", err=exc))
             app_log.exception("save_settings zlyhalo")
+
+    def _oznam_obnovu_nastaveni(self):
+        """Raz po starte: nastavenia sa nedali nacitat (`nacitaj_nastavenia`).
+
+        Riadok do dennika a sprava, az ked okno stoji (`after`) - start sa
+        kvoli nej nezastavi. Vola sa z `__init__` po postaveni okna, lebo
+        dennik pred tym neexistuje a text musi byt v jazyku z obnovenych
+        nastaveni (ten nastavil `load_settings`)."""
+        obnova = getattr(self, "_nastavenia_obnova", None)
+        self._nastavenia_obnova = None
+        if not obnova:
+            return
+        if obnova.get("zo_zalohy"):
+            text = tr("log.settings_restored_backup", name=obnova.get("odlozene"))
+        else:
+            text = tr("log.settings_restored_defaults", name=obnova.get("odlozene"))
+        self.log(text)
+
+        def _ukaz():
+            try:
+                messagebox.showwarning(APP_NAME, text)
+            except Exception:
+                app_log.exception("oznam o obnove nastaveni sa neukazal")
+
+        try:
+            self.root.after(OZNAM_OBNOVY_MS, _ukaz)
+        except Exception:
+            app_log.exception("oznam o obnove nastaveni sa nenaplanoval")
 
 
     def on_volume_change(self):

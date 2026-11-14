@@ -286,7 +286,8 @@ def test_harness_zalohuje_skor_nez_sa_dotkne_dat_a_vracia_na_kazdej_ceste():
                        if isinstance(u, ast.ImportFrom) and u.module == "app")
     assert obnov < zaloz < zapis_nastaveni < import_appky
     assert "atexit.register(vrat_zalohy, ODLOZENE)" in src
-    assert "ODLOZENE = (SETTINGS, HR_SESSIONS, HR_INSIGHTS)" in src
+    assert ("ODLOZENE = (SETTINGS, HR_SESSIONS, HR_INSIGHTS, HR_SESSION_OPEN, "
+            "SETTINGS_BAK)") in src
 
     # posledny `finally` aj `finish()` (os._exit preskoci finally aj atexit)
     posledny_try = [u for u in strom.body if isinstance(u, ast.Try)][-1]
@@ -307,7 +308,8 @@ def test_mena_zaloh_pokryva_gitignore():
     with open(os.path.join(KOREN, ".gitignore"), encoding="utf-8") as fh:
         vzory = [r.strip() for r in fh
                  if r.strip() and not r.startswith("#") and "/" not in r.strip()]
-    for meno in ("dandurf_settings.json", "hr_sessions.json", "hr_insights.json"):
+    for meno in ("dandurf_settings.json", "hr_sessions.json", "hr_insights.json",
+                 "hr_session_open.json", "dandurf_settings.json.bak"):
         for pripona in (".pred-harnessom", ".pred-harnessom-nebol",
                         ".pred-harnessom.tmp", ".pred-obnovou-20260925-120000",
                         ".pred-obnovou-20260925-120000-2"):

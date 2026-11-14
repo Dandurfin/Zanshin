@@ -405,6 +405,147 @@ def potlac_dpi_alpha_blik(window):
     return window
 
 
+# --------------------------------------------------------------------------
+# Okno s pevnym rozmerom na monitore: mierka a stred
+# --------------------------------------------------------------------------
+#
+# Ako CTk rata rozmery (overene v customtkinter/.../scaling_tracker.py):
+#
+#   fyzicky rozmer okna = logicky * DPI monitora * ScalingTracker.window_scaling
+#   fyzicky rozmer prvku = logicky * DPI monitora * ScalingTracker.widget_scaling
+#
+# `window_scaling` a `widget_scaling` su JEDNA hodnota pre celu appku (atribut
+# triedy, nie okna) a `ctk.set_*_scaling(x)` ju PREPISE, nenasobi. DPI si CTk
+# drzi pre kazde okno zvlast (`window_dpi_scaling_dict`) a kazdych 100 ms
+# kontroluje, ci sa okno nepresunulo na monitor s inym DPI.
+#
+# Zmensit appku teda znamena vynasobit OBE hodnoty tym istym faktorom:
+# keby sa zmensilo len okno, obsah navrhnuty na 1180x760 by z neho vytiekol.
+
+
+def _ctk_tracker():
+    """`ScalingTracker` z customtkinter. Samostatna funkcia, aby ju testy
+    vedeli nahradit - skutocny tracker je globalny stav celeho procesu."""
+    from customtkinter.windows.widgets.scaling.scaling_tracker import ScalingTracker
+    return ScalingTracker
+
+
+def dpi_mierka_monitora(mon):
+    """DPI cast mierky CTk na monitore `mon` (bez mierky appky).
+
+    CTk na starych Windows (pred 8.1) DPI nesleduje vobec a nasobi len
+    mierkou appky - vtedy je DPI cast 1.0, nech by monitor hlasil cokolvek."""
+    try:
+        if _ctk_tracker().deactivate_automatic_dpi_awareness:
+            return 1.0
+    except Exception:
+        pass
+    return display_mod.dpi_scale(mon)
+
+
+def zosuladi_dpi_s_monitorom(window, mon):
+    """Nastavi CTk mierku okna na DPI monitora `mon` HNED, nie az o 100 ms.
+
+    Tk vytvori okno tam, kam ho da Windows (byva to hlavny monitor), a CTk si
+    DPI zapamata odtial. Ked okno hned potom posunieme na monitor s inou
+    mierkou, CTk to zisti az pri najblizsej kontrole - po `_build_ui`, teda
+    nad viac nez tisickou hotovych widgetov, ktore by vsetky prestaval pred
+    hracom. Kym je okno prazdne, je prepocet lacny.
+
+    Ak by okno predsa skoncilo inde, CTk ho opravi sam ako doteraz. Vracia
+    True, ked sa mierka zmenila. Nikdy nevyhodi vynimku."""
+    try:
+        st = _ctk_tracker()
+        if st.deactivate_automatic_dpi_awareness:
+            return False
+        if window not in st.window_dpi_scaling_dict:
+            return False
+        nova = dpi_mierka_monitora(mon)
+        if abs(float(st.window_dpi_scaling_dict[window]) - nova) < 1e-6:
+            return False
+        st.window_dpi_scaling_dict[window] = nova
+        st.update_scaling_callbacks_for_window(window)
+        return True
+    except Exception:
+        return False
+
+
+def prisposob_mierku_monitoru(width, height, mon):
+    """Zmensi celu appku, ak sa okno `width` x `height` (logicke px) nezmesti
+    do pracovnej plochy monitora `mon`. Vracia pouzity faktor (1.0 = nic sa
+    nezmenilo).
+
+    Volat PRED stavbou UI: CTk pri zmene mierky prestavuje kazdy widget, a
+    kym ziadne nie su, nestoji to nic. Faktor sa rata z mierky, ktoru appka
+    uz ma, takze druhe volanie nezmensi appku este raz - okno sa uz zmesti.
+    Zmena plati pre celu appku (aj dialogy), nie len pre jedno okno."""
+    try:
+        st = _ctk_tracker()
+        okna = float(st.window_scaling or 1.0)
+        prvky = float(st.widget_scaling or 1.0)
+        faktor = display_mod.window_fit_factor(
+            width, height, dpi_mierka_monitora(mon) * okna,
+            mon.work_width, mon.work_height)
+        if faktor < 1.0:
+            st.set_widget_scaling(prvky * faktor)
+            st.set_window_scaling(okna * faktor)
+        return faktor
+    except Exception:
+        return 1.0
+
+
+def vycentrovana_geometria(window, width, height, mon=None):
+    """Geometria "SxV+x+y" okna vycentrovaneho v pracovnej ploche monitora.
+
+    Bezramove okno nikto neumiestni (OS ho nespravuje) a CTk v `geometry()`
+    nasobi mierkou len SIRKU a VYSKU, nie polohu - stred sa preto rata z
+    fyzickeho rozmeru na CIELOVOM monitore (jeho DPI, nie DPI monitora, kde
+    okno prave je). `mon=None` = monitor pod kurzorom: tam sa clovek prave
+    pozera. Ked sa okno nezmesti, prilepi sa hore (viz
+    `display.center_in_work_area`). Pri akejkolvek chybe vrati len rozmer.
+    """
+    try:
+        if mon is None:
+            mon = display_mod.monitor_at_cursor(window)
+        try:
+            okna = float(_ctk_tracker().window_scaling or 1.0)
+        except Exception:
+            okna = 1.0
+        mierka = dpi_mierka_monitora(mon) * okna
+        x, y = display_mod.center_in_work_area(
+            mon, round(width * mierka), round(height * mierka))
+        return f"{width}x{height}+{x}+{y}"
+    except Exception:
+        return f"{width}x{height}"
+
+
+def umiestni_pevne_okno(window, width, height, mon=None):
+    """Pevne okno appky na obrazovku: monitor, mierka, stred - v tomto poradi.
+
+    1. monitor pod kurzorom (ten isty, na ktorom sa ukaze sprievodca prveho
+       spustenia),
+    2. CTk mierka okna podla DPI TOHO monitora (`zosuladi_dpi_s_monitorom`),
+    3. ak sa okno nezmesti do pracovnej plochy, zmensi sa cela appka
+       (`prisposob_mierku_monitoru`),
+    4. okno sa vycentruje v pracovnej ploche.
+
+    Kde sa okno zmesti (1080p pri 100 %, 1440p, 4K pri 150 %...), mierka
+    ostane presne taka ako doteraz. `minsize`/`maxsize` nastavuje volajuci.
+    Vracia (faktor, monitor); monitor je None, ak sa nedal zistit."""
+    if mon is None:
+        try:
+            mon = display_mod.monitor_at_cursor(window)
+        except Exception:
+            mon = None
+    if mon is None:
+        window.geometry(f"{width}x{height}")
+        return 1.0, None
+    zosuladi_dpi_s_monitorom(window, mon)
+    faktor = prisposob_mierku_monitoru(width, height, mon)
+    window.geometry(vycentrovana_geometria(window, width, height, mon))
+    return faktor, mon
+
+
 class Collapsible(ctk.CTkFrame):
     """Panel, ktory sa da zabalit. Zvonka sa sprava ako `Panel` - ma `.body`,
     do ktoreho sa sype obsah, takze sa da za `Panel` priamo vymenit.

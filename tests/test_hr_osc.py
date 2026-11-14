@@ -117,13 +117,15 @@ def test_obsadeny_port_neuklada_vypnutie():
     assert "_retry_hr_bind" in busy, "vazba sa neskusa znova"
     assert "HR_BIND_RETRIES" in busy, "chyba strop pokusov"
 
-    # Kym sa este skusa, NESMIE sa nic ukladat. Vzdat sa a zapisat vypnutie
-    # sa smie az potom, co strop pokusov dobehol - vtedy uz to nie je
-    # docasna kolizia.
+    # Kym sa este skusa, NESMIE sa nic ukladat. A od 0.2.2 ani po vzdani:
+    # ani vtedy to nie je rozhodnutie hraca - druha spustena kopia appky tak
+    # prvej natrvalo vypinala prijem tepu. Vypnute je len v pamati
+    # (`_senzor_vypla_chyba`), dalsi start skusi znova (tests/test_022b_instance_port.py).
     pokusy = busy[busy.index("if self._hr_bind_retries <="):]
     pokusy = pokusy[:pokusy.index("else:")]
     assert "save_settings" not in pokusy,         "vypnutie sa uklada uz pocas opakovania"
-    assert "save_settings" in busy,         "po vycerpani pokusov sa vypnutie ulozit MA"
+    assert "save_settings" not in busy,         "vzdanie sa nie je volba hraca - neuklada sa"
+    assert "_senzor_vypla_chyba(self)" in busy, "po vzdani ma byt senzor vypnuty len v pamati"
 
 
 def test_obsadeny_port_je_vidno_pri_prepinaci():

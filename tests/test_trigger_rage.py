@@ -368,7 +368,8 @@ def test_apply_hr_bpm_posiela_pasmo_tepu():
 
 
 def test_suhrn_relacie_nesie_pauzy_a_zadrzane():
-    telo = _telo("app.py", "_close_hr_session")
+    # Suhrn sklada `_suhrn_relacie` (0.2.2 - zatvorenie aj kontrolny bod).
+    telo = _telo("app.py", "_suhrn_relacie")
     # `ast.unparse` píše reťazce v apostrofoch
     assert "summary['pause_episodes'] = self.cue_trigger.pause_episodes" in telo
     assert "summary['cues_withheld'] = dict(self.cue_trigger.zadrzane)" in telo

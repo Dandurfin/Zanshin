@@ -2329,33 +2329,18 @@ class OnboardingWizard:
 
     @staticmethod
     def _centered_geometry(root, width, height):
-        """Geometria vycentrovana na monitore, kde je kurzor.
+        """Geometria vycentrovana v pracovnej ploche monitora, kde je kurzor.
 
-        Bezramove okno nikto neumiestni (OS ho nespravuje), takze by ostalo
-        v rohu. CTk nasobi v geometry() SIRKU a VYSKU skalovanim, poziciu
-        nie - preto sa stred rata z fyzickych rozmerov (width * scaling).
-
-        POZN: tento postup sem bol prevzaty z
-        `ui_shell.TitleBar._maximized_geometry`, ktora uz neexistuje
-        (maximalizacia bola z appky odstranena) - odkaz zostava len ako
-        vysvetlenie povodu, nehladaj ju.
+        Vypocet je spolocny s hlavnym oknom (`ui_kit.vycentrovana_geometria`):
+        predtym sa tu stred ratal z DPI monitora, na ktorom bol root, a na
+        dvoch monitoroch s inou mierkou sedel sprievodca mimo stredu.
+        Mierku na male obrazovky tu netreba riesit zvlast - appka ju nastavi
+        pred otvorenim sprievodcu (`ui_kit.umiestni_pevne_okno` v
+        `DandurfApp.__init__`) a sprievodca je mensi nez hlavne okno, takze
+        kde sa zmesti ono, zmesti sa aj on. Ked nie, ostane prilepeny hore a
+        titulna lista je na dosah.
         """
-        try:
-            import display
-            mon = display.monitor_at_cursor(root)
-            scaling = 1.0
-            try:
-                from customtkinter.windows.widgets.scaling.scaling_tracker \
-                    import ScalingTracker
-                scaling = ScalingTracker.get_window_scaling(root) or 1.0
-            except Exception:
-                pass
-            px_w, px_h = int(width * scaling), int(height * scaling)
-            x = mon.work_x + max(0, (mon.work_width - px_w) // 2)
-            y = mon.work_y + max(0, (mon.work_height - px_h) // 2)
-            return f"{width}x{height}+{x}+{y}"
-        except Exception:
-            return f"{width}x{height}"
+        return ui_kit.vycentrovana_geometria(root, width, height)
 
     # ---- priprava audio balickov na pozadi ----
 

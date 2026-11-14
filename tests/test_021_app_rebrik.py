@@ -231,8 +231,12 @@ def test_teraz_nie_po_nedorucenej_hlaske_nie_je_signal(monkeypatch, tmp_path):
 
 def test_suhrn_nesie_cues_delivered_pred_ulozenim():
     strom = strom_appky()
-    fn = next(u for u in ast.walk(strom)
-              if isinstance(u, ast.FunctionDef) and u.name == "_close_hr_session")
-    telo = ast.unparse(fn)
-    assert "summary['cues_delivered']" in telo
-    assert telo.index("summary['cues_delivered']") < telo.index("hr_stats.save_session(")
+
+    def _telo(meno):
+        return ast.unparse(next(u for u in ast.walk(strom)
+                                if isinstance(u, ast.FunctionDef) and u.name == meno))
+    # Suhrn sklada `_suhrn_relacie` (0.2.2 - ten isty suhrn ide aj do
+    # kontrolneho bodu); `_close_hr_session` ho ma zostaveny pred ulozenim.
+    assert "summary['cues_delivered']" in _telo("_suhrn_relacie")
+    zatvor = _telo("_close_hr_session")
+    assert zatvor.index("self._suhrn_relacie()") < zatvor.index("hr_stats.save_session(")

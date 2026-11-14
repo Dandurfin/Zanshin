@@ -20,7 +20,7 @@ before publishing. What 0.1 got wrong in the app itself is written down below.
 
 ## What 0.2.2 changes (not released yet)
 
-These two are in the code here, not in a release yet: the 0.2.1 ZIP doesn't
+These are in the code here, not in a release yet: the 0.2.1 ZIP doesn't
 have them.
 
 - **The heart-rate number could jump by several BPM within one second.** Some
@@ -36,6 +36,56 @@ have them.
   switch while heart rate comes in, until the sensor is switched off or
   restarted. It doesn't separate the two; the fix is in the companion's
   settings: only the live heart rate should write into the heart-rate source.
+- **Starting Zanshin a second time could switch heart rate off for good.** ×
+  only hides Zanshin in the tray, and on Windows 11 the tray icon is often
+  hidden under the ^ arrow, so it was easy to start it again. The second copy
+  couldn't open the heart-rate port (the first one held it), gave up and saved
+  *Listen for heart rate from the watch* as off, so the next start didn't
+  listen either. Any other port error saved it as off too. **0.2.2:** a second
+  start just shows the window of the copy already running (if it can't, it
+  says where to find it). If the port is busy or won't open, the switch goes
+  off for that run only: your setting stays on and the next start tries
+  again, and so does changing the port. The log line about a busy port names
+  the usual cause (OBS with its WebSocket server on) and the fix.
+- **The window didn't fit smaller laptop screens.** It has one fixed size and
+  can't be resized or maximized, so on 1920×1080 at 150 % or on 1366×768 its
+  bottom, with *Settings* in the sidebar, ended up under the taskbar.
+  **0.2.2:** Zanshin opens on the screen with the mouse pointer, centred in
+  the space the taskbar leaves free. If the window doesn't fit there, the
+  whole interface gets smaller until it does, down to 70 % at most; if even
+  that isn't enough, the title bar stays at the top of the screen. Where the
+  window already fits, its size stays as it was. The smaller size stays until
+  the next start, even if you move the window to a bigger screen.
+- **Shutting down the PC threw away the whole session**, and so did a crash,
+  ending Zanshin in Task Manager, a power cut or `build.bat` closing it: a
+  session was saved only when it ended normally. **0.2.2:** when Windows shuts
+  down, restarts or signs you out, Zanshin saves the session and your settings
+  first, without the questions at the end. If the shutdown is then cancelled,
+  it goes on measuring in a new session after about 20 seconds. While a
+  session runs, Zanshin also keeps a copy of it every 5 minutes
+  (`hr_session_open.json`, next to `hr_sessions.json`). If Zanshin ends any
+  other way, the next start adds that
+  copy to your history and says so in the log. Its last few minutes are
+  missing, and so are its cue records and measurement windows, which are only
+  written when a session ends. You see it in History, but the load threshold,
+  high heart-rate limit and resting baseline don't learn from it: its end is
+  cut off and it never got the questions where you could mark illness or
+  alcohol. *Delete history* deletes the copy too.
+- **One bad byte in the settings file reset everything**: profiles, reminder
+  wording and positions went back to the defaults, and the broken file was
+  overwritten a second later. **0.2.2:** before each save, Zanshin keeps the
+  previous good file as `dandurf_settings.json.bak`. If the settings can't be
+  read, it sets the broken file aside as
+  `dandurf_settings.json.corrupt-<date>-<time>`, loads the backup (or, if
+  there's none, starts with the defaults) and tells you once, in the log and
+  in a message.
+- **The 0.2 uninstaller can delete this version's data.** Zanshin installed
+  with the 0.2 installer and Zanshin from the ZIP (or one you built) share one
+  data folder, `%APPDATA%\Zanshin`. When you uninstall 0.2, it asks *Keep your
+  settings, heart-rate history, recordings and generated voice lines?*, and
+  **No** deletes that folder, with this version's history in it. Answer
+  **Yes**. **0.2.2:** if Zanshin finds 0.2 still installed, it tells you this
+  once.
 
 ## What 0.2.1 fixes
 

@@ -260,9 +260,19 @@ def ciste_relacie(sessions):
     alkohol, choroba, fyzicka namaha tesne pred hranim) - jeden opity vecer cez
     per-session baseline inak vojde do dlhodobeho 20. percentilu a skresli
     desiatky cistych relacii. Relacie sa NEMAZU, len sa neucia zo skreslenych.
+
+    OBNOVENE RELACIE (`recovered`, 0.2.2) sa tiez nerataju - zamerne
+    opatrne. Su to skutocne vecery hraca, ale appka sa vtedy nezavrela
+    normalne (pad, Spravca uloh, vypadok prudu): chyba im koniec od
+    posledneho kontrolneho bodu (az 5 minut, casto prave upokojenie po hre)
+    a nikdy nedostali dotaznik, takze nevedia o alkohole ani chorobe, ktore
+    `je_confounded` vylucuje. Prahy sa z nich teda neucia (ani promocia),
+    v Historii a v exporte su ako kazda ina relacia. Deje sa to len vynimocne
+    - vypnutie Windows ulozi relaciu normalne (`app._pri_vypinani_windows`).
     """
     return [x for x in (sessions or [])
             if isinstance(x, dict) and not x.get("imported")
+            and not x.get("recovered")
             and not je_podozriva(x) and not je_confounded(x)]
 
 
@@ -2325,14 +2335,31 @@ def attach_context(path, started, context, activity=None, note=None,
 MAX_SESSIONS = 400
 
 
+def je_ulozitelna(summary):
+    """Da sa suhrn ulozit ako relacia? Pod minutu alebo pod 10 vzoriek nie.
+
+    Jedno pravidlo pre `save_session` aj pre obnovu rozpracovanej relacie
+    (`obnov_rozpracovanu`) - obnova nesmie do historie pustit nieco, co by
+    beznym zatvorenim neproslo. Pokazene cislo (None, text) sa sprava ako
+    nula, nie ako vynimka.
+    """
+    if not isinstance(summary, dict) or not summary:
+        return False
+    try:
+        return (float(summary.get("samples", 0) or 0) >= 10
+                and float(summary.get("duration_s", 0) or 0) >= 60)
+    except (TypeError, ValueError):
+        return False
+
+
 def save_session(path, summary, log=None):
     """Prida suhrn relacie do JSON suboru (drzime poslednych MAX_SESSIONS).
 
     Relacie kratsie ako minuta alebo bez jedinej vzorky sa zahadzuju -
     zapnut a hned vypnut senzor nie je "relacia" a len by to zasumilo
-    priemery v prehlade.
+    priemery v prehlade (`je_ulozitelna`).
     """
-    if not summary or summary.get("samples", 0) < 10 or summary.get("duration_s", 0) < 60:
+    if not je_ulozitelna(summary):
         return False
     try:
         data = []
@@ -2373,6 +2400,128 @@ def save_session(path, summary, log=None):
         if log:
             log(f"HR: session log failed: {exc}")
         return False
+
+
+# --------------------------------------------------------------------------
+# Rozpracovana relacia (kontrolny bod)
+# --------------------------------------------------------------------------
+#
+# PRECO: relacia sa do hr_sessions.json zapisuje az pri zatvoreni
+# (`app._close_hr_session`). Pad appky, ukoncenie cez Spravcu uloh,
+# vypadok prudu alebo `build.bat`, ktory beziacu appku zabije, tak zahodili
+# cely vecer. Pocas otvorenej relacie sa preto kazdych par minut zapise jej
+# suhrn sem (rovnaky suhrn, aky by ulozilo zatvorenie) a pri dalsom starte
+# sa prida do historie s `recovered: True`.
+#
+# Rovnake data ako hr_sessions.json, ten isty priecinok - "Zmazat historiu"
+# ho maze tiez (`data_io.MAZATELNE`).
+ROZPRACOVANA_MENO = "hr_session_open.json"
+# Zaciatok relacie mimo tohto rozsahu nie je skutocny cas - rovnaka hranica
+# 2000 ako pri importe (`data_io`). Relacia nesmie koncit v buducnosti;
+# 5 minut tolerancie pre posunute hodiny (synchronizacia casu po starte).
+ROZPRACOVANA_OD = 946684800.0
+ROZPRACOVANA_TOLERANCIA_S = 300.0
+
+
+def cesta_rozpracovanej(sessions_path):
+    """Kontrolny bod lezi vedla hr_sessions.json (nie v DATA_DIR natvrdo):
+    test, ktory presmeruje historiu do tmp, presmeruje aj kontrolny bod."""
+    return os.path.join(os.path.dirname(os.path.abspath(sessions_path)),
+                        ROZPRACOVANA_MENO)
+
+
+def zapis_rozpracovanu(sessions_path, summary, log=None):
+    """Atomicky zapise suhrn otvorenej relacie (.tmp + os.replace).
+
+    Pad uprostred zapisu tak necha predosly kontrolny bod cely, nie
+    polovicny JSON. Vracia True pri uspechu."""
+    cesta = cesta_rozpracovanej(sessions_path)
+    tmp = cesta + ".tmp"
+    try:
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(summary, fh, ensure_ascii=False)
+        os.replace(tmp, cesta)
+        return True
+    except Exception as exc:
+        if log:
+            log(f"HR: rozpracovaná relácia sa nedala zapísať: {exc}")
+        return False
+
+
+def zahod_rozpracovanu(sessions_path):
+    """Zmaze kontrolny bod (relacia sa zatvorila normalne). True = bol tam."""
+    try:
+        os.remove(cesta_rozpracovanej(sessions_path))
+        return True
+    except OSError:
+        return False
+
+
+def _preco_neobnovit(summary, now):
+    """Dovod, preco kontrolny bod nie je vierohodna relacia, alebo None."""
+    if not je_ulozitelna(summary):
+        return "kratka alebo bez dat"
+    try:
+        zaciatok = float(summary.get("started"))
+        trvanie = float(summary.get("duration_s"))
+    except (TypeError, ValueError):
+        return "bez casu zaciatku"
+    # Porovnania zhora chytaju aj NaN a nekonecno (vtedy su vsetky False).
+    if not ROZPRACOVANA_OD <= zaciatok < float("inf"):
+        return "nemozny cas zaciatku"
+    if not 0.0 <= trvanie < float("inf"):
+        return "nemozne trvanie"
+    if not zaciatok + trvanie <= now + ROZPRACOVANA_TOLERANCIA_S:
+        return "konci v buducnosti"
+    return None
+
+
+def _uz_v_historii(sessions, started):
+    for s in sessions or ():
+        if not isinstance(s, dict):
+            continue
+        try:
+            if abs(float(s.get("started")) - float(started)) < 1e-3:
+                return True
+        except (TypeError, ValueError):
+            continue
+    return False
+
+
+def obnov_rozpracovanu(sessions_path, now=None, log=None):
+    """Po starte: rozpracovanu relaciu z minula prida do historie. RAZ.
+
+    Vracia ulozeny suhrn (s `recovered: True`), alebo None. Nevierohodny
+    kontrolny bod (kratky, s nemoznym casom, necitatelny) alebo taky, co uz
+    v historii je (appka spadla az po ulozeni relacie), sa zmaze bez
+    zapisu - inak by sa posudzoval pri kazdom starte znova. Ked zlyha
+    zapis do historie (plny disk), subor OSTAVA a skusi sa pri dalsom starte.
+    """
+    cesta = cesta_rozpracovanej(sessions_path)
+    if not os.path.exists(cesta):
+        return None
+    now = time.time() if now is None else now
+    try:
+        with open(cesta, "r", encoding="utf-8") as fh:
+            summary = json.load(fh)
+    except Exception as exc:
+        summary = None
+        if log:
+            log(f"HR: rozpracovaná relácia sa nedala prečítať: {exc}")
+    dovod = _preco_neobnovit(summary, now)
+    if dovod is None and _uz_v_historii(load_sessions(sessions_path),
+                                        summary.get("started")):
+        dovod = "uz je v historii"
+    if dovod is not None:
+        if log:
+            log(f"HR: rozpracovanú reláciu neobnovujem ({dovod})")
+        zahod_rozpracovanu(sessions_path)
+        return None
+    summary["recovered"] = True
+    if not save_session(sessions_path, summary, log=log):
+        return None
+    zahod_rozpracovanu(sessions_path)
+    return summary
 
 
 # --------------------------------------------------------------------------

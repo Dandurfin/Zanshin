@@ -11,14 +11,20 @@ Dve sekcie presunute z app.py bez zmeny:
   * import / export profilov (zdielanie kodom) - profil ako kod do schranky
     a odstranenie slotov navyse.
 
-Pozor v testoch: `_close_hr_session` a `_maybe_graduate` citaju `time` z
-tohto modulu - falosne hodiny treba podstrcit aj tu (`app_data.time`), nie
-len na module app.
+Pozor v testoch: `_close_hr_session`, `_suhrn_relacie` a `_maybe_graduate`
+citaju `time` z tohto modulu - falosne hodiny treba podstrcit aj tu
+(`app_data.time`), nie len na module app.
+
+Od 0.2.2 tu je aj ochrana relacie mimo normalneho zatvorenia: vypnutie
+Windows (`_pri_vypinani_windows`), kontrolny bod kazdych 5 minut
+(`_zapis_rozpracovanu_relaciu`) a jeho obnova pri starte
+(`_obnov_rozpracovanu_relaciu`).
 """
 
 import base64
 import json
 import os
+import sys
 import time
 import webbrowser
 from tkinter import filedialog, messagebox
@@ -35,12 +41,22 @@ import rebrik
 import trigger
 import ui_kit
 from i18n import tr
-from paths import APP_NAME, DATA_DIR, legacy_data_dirs
+from paths import APP_NAME, DATA_DIR, legacy_data_dirs, stara_instalacia
 from settings_model import (doplnit_kategorie, je_kategoria, mode_labels,
                             slot_na_zdielanie, slot_zo_zdielania)
 from ui_dialogs import ImportDataDialog, ImportProfileDialog, SessionEndDialog
 
 from app_spolocne import app_log
+
+# Kontrolny bod otvorenej relacie (`_zapis_rozpracovanu_relaciu`). Viac
+# by pri pade stratilo dlhy koniec vecera, menej by zapisovalo na disk
+# zbytocne casto uprostred hrania.
+ROZPRACOVANA_KAZDYCH_MS = 5 * 60 * 1000
+# Po WM_SAVE_YOURSELF: ak proces o tolkoto este zije, vypnutie Windows sa
+# zrusilo (`_po_zrusenom_vypnuti`). Bezne vypnutie proces ukonci skor.
+VYPNUTIE_ZRUSENE_MS = 20 * 1000
+# Upozornenie na nainstalovanu 0.2 az ked okno stoji a dobehol start.
+STARA_INSTALACIA_MS = 1500
 
 
 class DataMixin:
@@ -441,11 +457,17 @@ class DataMixin:
         except Exception:
             app_log.exception("promocia: vyhodnotenie zlyhalo")
 
-    def _close_hr_session(self):
+    def _close_hr_session(self, pri_vypnuti=False):
         """Ulozi suhrn prave skoncenej relacie do hr_sessions.json.
 
         Kratke relacie (pod minutu alebo bez dat) sa zahadzuju uz v
         hr_stats.save_session - zapnut a hned vypnut senzor nie je relacia.
+
+        `pri_vypnuti=True` (vypinanie Windows, `_pri_vypinani_windows`):
+        ulozit a nic viac. Windows caka na odpoved len par sekund, takze bez
+        dotaznika (zahodil by sa s procesom), bez promocie (jednorazova
+        sprava by sa hracovi nikdy neukazala - vyhodnoti sa po dalsej
+        relacii) a bez prekreslovania Historie a analyzy v pozadi.
         """
         if not self._hr_session_open:
             return
@@ -470,6 +492,50 @@ class DataMixin:
                                   started=getattr(self.hr_stats, "session_start", None))
         except Exception:
             app_log.exception("udalosti: zapis zlyhal")
+        summary = self._suhrn_relacie()
+        # Az PO zostaveni suhrnu: tieto pocitadla patria uz len tejto
+        # relacii. `_suhrn_relacie` ich len cita (vola ho aj kontrolny bod
+        # uprostred relacie), nulovanie je vec zatvorenia.
+        self._snooze_po_hlaske = None
+        self._snooze_rel_s = 0.0
+        self._snooze_rel_od = None
+        self._hud_tick_t = None
+        ulozena = hr_stats.save_session(self.hr_sessions_path, summary,
+                                        log=self.log_threadsafe)
+        # Kontrolny bod uz netreba - relacia je v historii. Ked sa ulozit
+        # nedala (plny disk), ostava a obnova ju skusi pri dalsom starte;
+        # kratka relacia, ktora by neprisla ani tak, ho maze tiez.
+        if ulozena or not hr_stats.je_ulozitelna(summary):
+            hr_stats.zahod_rozpracovanu(self.hr_sessions_path)
+        if ulozena and not pri_vypnuti:
+            self._maybe_graduate(summary)
+            self._ask_session_context(summary)
+        if ulozena:
+            self.log(tr("log.hr_session_saved",
+                        avg=summary.get("avg_bpm") or "-",
+                        max=summary.get("max_bpm") or "-",
+                        peak=summary.get("peak_stress")))
+            # nova relacia v historii -> prekresli stranku a prepocitaj
+            # postrehy (v pozadi). Cache historie musi ist prec ako prva,
+            # inak by karty aj graf este 20 sekund kreslili stav spred
+            # tejto relacie.
+            self._history_cache = (0.0, None)
+            if pri_vypnuti:
+                return
+            try:
+                self._refresh_history_page()
+            except Exception:
+                app_log.exception("historia: prekreslenie zlyhalo")
+            self.run_hr_analysis()
+
+    def _suhrn_relacie(self):
+        """Suhrn beziacej relacie - presne to, co by ulozilo zatvorenie.
+
+        BEZ VEDLAJSICH UCINKOV: vola ho `_close_hr_session` aj kontrolny bod
+        (`_zapis_rozpracovanu_relaciu`) kazdych par minut uprostred hrania,
+        takze nic nenuluje ani nepripocitava do stavu appky. Jeden zdroj
+        suhrnu, aby sa obnovena relacia nelisila od normalne ulozenej.
+        """
         summary = self.hr_stats.summary()
         # SVET, V KTOROM RELACIA ZACALA (B3-worlds). Samostatny kluc, nie
         # `activity`: to je odpoved hraca v dotazniku a strojovy stitok by
@@ -515,7 +581,6 @@ class DataMixin:
             if snooze is not None:
                 summary["snooze_after_cue_s"] = snooze[0]
                 summary["snooze_then_s"] = round(max(0.0, time.time() - snooze[1]), 1)
-            self._snooze_po_hlaske = None
             # Dlhodoba zakladna, voci ktorej sa zataz v tejto relacii ratala
             # (None = este nebola z coho).
             dlhodoba = self.hr_stats.long_baseline
@@ -533,48 +598,200 @@ class DataMixin:
             stisene += max(0.0, time.time() - od)
         if stisene > 0.0:
             summary["snoozed_s"] = round(stisene, 1)
-        self._snooze_rel_s = 0.0
-        self._snooze_rel_od = None
         # Koľko relácie hráč reálne videl svoj tep (HUD). Doťahuje sa posledný
-        # úsek od posledného tiku po zatvorenie. Podiel z trvania: relácia s
-        # viditeľným HUD je iný experiment než naslepo (biofeedback).
+        # úsek od posledného tiku po teraz - do lokálnych premenných, nie do
+        # `_hud_*` (kontrolný bod by inak ten úsek pripočítal dvakrát).
+        # Podiel z trvania: relácia s viditeľným HUD je iný experiment než
+        # naslepo (biofeedback).
         try:
+            videl_s, aktivne_s = self._hud_vis_s, self._hud_active_s
             if self._hud_tick_t is not None:
                 dt = time.time() - self._hud_tick_t
                 if 0.0 < dt < 5.0:
-                    self._hud_active_s += dt
+                    aktivne_s += dt
                     if self._hud_is_visible():
-                        self._hud_vis_s += dt
-            self._hud_tick_t = None
-            summary["hud_visible_s"] = round(self._hud_vis_s, 1)
+                        videl_s += dt
+            summary["hud_visible_s"] = round(videl_s, 1)
             # Podiel z AKTIVNEHO casu relacie, nie z hrubeho trvania: citatel
             # aj menovatel zahadzuju rovnake medzery (uspanie PC), takze podiel
             # po uspani neklesne umelo nadol.
-            if self._hud_active_s > 0:
+            if aktivne_s > 0:
                 summary["hud_visible_frac"] = round(
-                    max(0.0, min(1.0, self._hud_vis_s / self._hud_active_s)), 3)
+                    max(0.0, min(1.0, videl_s / aktivne_s)), 3)
         except Exception:
             app_log.exception("suhrn: viditelnost HUD-u sa nepodarilo pridat")
-        ulozena = hr_stats.save_session(self.hr_sessions_path, summary,
-                                        log=self.log_threadsafe)
-        if ulozena:
-            self._maybe_graduate(summary)
-            self._ask_session_context(summary)
-        if ulozena:
-            self.log(tr("log.hr_session_saved",
-                        avg=summary.get("avg_bpm") or "-",
-                        max=summary.get("max_bpm") or "-",
-                        peak=summary.get("peak_stress")))
-            # nova relacia v historii -> prekresli stranku a prepocitaj
-            # postrehy (v pozadi). Cache historie musi ist prec ako prva,
-            # inak by karty aj graf este 20 sekund kreslili stav spred
-            # tejto relacie.
-            self._history_cache = (0.0, None)
+        return summary
+
+    # ---------- vypnutie Windows, kontrolny bod, obnova po pade ----------
+
+    def _pri_vypinani_windows(self):
+        """Windows sa vypina, restartuje alebo odhlasuje (WM_SAVE_YOURSELF).
+
+        PRECO TOTO A NIE WM_DELETE_WINDOW: pri vypnuti PC Windows okno
+        nezatvara, posle WM_QUERYENDSESSION a potom proces ukonci. Tk na
+        Windows (tkWinWm.c, WmProc) z WM_QUERYENDSESSION spravi protokol
+        WM_SAVE_YOURSELF a obsluhu zavola HNED, synchronne - Windows medzitym
+        caka na odpoved. Overene nazivo na Tk 9.0, ktore appka bali
+        (tests/test_022b_data_vypnutie.py): WM_QUERYENDSESSION poslana
+        bezramovemu oknu schovanemu v liste zavola obsluhu WM_SAVE_YOURSELF,
+        WM_DELETE_WINDOW nie. Doteraz appka poznala len WM_DELETE_WINDOW,
+        takze vypnutie PC zahodilo celu relaciu aj jej udalosti.
+
+        Musi byt RYCHLE: Windows po par sekundach ukaze "Tato appka brani
+        vypnutiu". Preto len ulozit relaciu bez dotaznika a nastavenia -
+        `_quit` (dotaznik, zastavenie vlakien) sa tu nevola, proces aj tak
+        skonci. Bezpecne aj pocas `_quit` (relacia uz je zavreta, ulozia sa
+        len nastavenia) aj dvakrat po sebe (`_hr_session_open` strazi).
+        """
+        if getattr(self, "_vypnutie_bezi", False):
+            return
+        self._vypnutie_bezi = True
+        try:
             try:
-                self._refresh_history_page()
+                self._close_hr_session(pri_vypnuti=True)
             except Exception:
-                app_log.exception("historia: prekreslenie zlyhalo")
-            self.run_hr_analysis()
+                app_log.exception("vypnutie Windows: relaciu sa nepodarilo ulozit")
+            try:
+                self.save_settings()
+            except Exception:
+                app_log.exception("vypnutie Windows: nastavenia sa nepodarilo ulozit")
+            app_log.info("vypnutie Windows: relacia a nastavenia ulozene")
+            # VYPNUTIE SA MOZE ZRUSIT (ina appka ho zablokuje a hrac da
+            # Zrusit). Tk to appke nepovie - appka by potom pocuvala, ale
+            # bez otvorenej relacie by nemerala nic (presne chyba A1). Ked
+            # proces o chvilu este zije, vypnutie neprebehlo: relacia sa
+            # otvori znova. Ked Windows vypne, toto uz nikdy nepribehne.
+            stary = getattr(self, "_vypnutie_job", None)
+            if stary is not None:
+                try:
+                    self.root.after_cancel(stary)
+                except Exception:
+                    pass
+            try:
+                self._vypnutie_job = self.root.after(
+                    VYPNUTIE_ZRUSENE_MS, self._po_zrusenom_vypnuti)
+            except Exception:
+                self._vypnutie_job = None
+        finally:
+            self._vypnutie_bezi = False
+
+    def _po_zrusenom_vypnuti(self):
+        """Windows sa napokon nevyplo - meranie pokracuje novou relaciou."""
+        self._vypnutie_job = None
+        if getattr(self, "_quit_bezi", False) or getattr(self, "_zatvara_sa", False):
+            return
+        if (not getattr(self, "listening", False)
+                or not getattr(self, "hr_monitoring_enabled", False)
+                or getattr(self, "_hr_session_open", False)):
+            return
+        try:
+            if self.heart_rate_monitor.running:
+                # Prijem bezi dalej, siete sa nedotykame (ako `start_listening`).
+                self._open_hr_session(prepoj=False, meria=True)
+                app_log.info("vypnutie Windows sa zrusilo - nova relacia otvorena")
+        except Exception:
+            app_log.exception("po zrusenom vypnuti sa relacia neotvorila")
+
+    def _naplanuj_rozpracovanu_relaciu(self):
+        """Dalsi kontrolny bod o `ROZPRACOVANA_KAZDYCH_MS`. Vola sa raz z
+        `__init__`, potom sa tik planuje sam."""
+        try:
+            self._rozpracovana_job = self.root.after(
+                ROZPRACOVANA_KAZDYCH_MS, self._tik_rozpracovanej_relacie)
+        except Exception:
+            self._rozpracovana_job = None
+            app_log.exception("kontrolny bod relacie sa nepodarilo naplanovat")
+
+    def _tik_rozpracovanej_relacie(self):
+        self._rozpracovana_job = None
+        # Pocas ukoncovania nic: relacia sa prave uklada normalne a po
+        # `root.destroy()` uz niet kam planovat.
+        if getattr(self, "_quit_bezi", False) or getattr(self, "_zatvara_sa", False):
+            return
+        try:
+            self._zapis_rozpracovanu_relaciu()
+        except Exception:
+            app_log.exception("kontrolny bod relacie zlyhal")
+        self._naplanuj_rozpracovanu_relaciu()
+
+    def _zapis_rozpracovanu_relaciu(self):
+        """Kontrolny bod: suhrn otvorenej relacie do hr_session_open.json.
+
+        PRECO KAZDYCH 5 MINUT, NIE PRI KAZDEJ VZORKE: zapis bezi v Tk vlakne
+        uprostred hrania (rovnaky dovod, preco sa udalosti pisu az na konci).
+        Pri pade sa strati najviac poslednych 5 minut, nie cely vecer.
+        Udalosti a meracie okna sa tu NEZAPISUJU - patria k zatvoreniu (okna
+        sa skladaju z celej relacie naraz), po pade preto chybaju.
+        Vracia True, ked sa zapisalo."""
+        if not getattr(self, "_hr_session_open", False):
+            return False
+        summary = self._suhrn_relacie()
+        if not hr_stats.je_ulozitelna(summary):
+            return False
+        return hr_stats.zapis_rozpracovanu(self.hr_sessions_path, summary,
+                                           log=app_log.warning)
+
+    def _obnov_rozpracovanu_relaciu(self):
+        """Pri starte: relacia, ktora sa minule neulozila, ide do historie.
+
+        Vola sa z `__init__` pred zapnutim senzora (nova relacia sa este
+        neotvorila). Do dennika jeden riadok, technicke dovody len do app.log.
+        """
+        try:
+            obnovena = hr_stats.obnov_rozpracovanu(self.hr_sessions_path,
+                                                   log=app_log.info)
+        except Exception:
+            app_log.exception("obnova rozpracovanej relacie zlyhala")
+            return None
+        if obnovena is None:
+            return None
+        # Rovnaky tvar datumu ako zoznam relacii v Historii.
+        kedy = time.strftime("%d.%m.%Y %H:%M",
+                             time.localtime(float(obnovena["started"])))
+        self.log(tr("log.hr_session_recovered", time=kedy))
+        self._history_cache = (0.0, None)
+        try:
+            self._refresh_history_page()
+        except Exception:
+            app_log.exception("historia: prekreslenie po obnove zlyhalo")
+        return obnovena
+
+    def _upozorni_na_staru_instalaciu(self):
+        """Raz: nainstalovana 0.2 zdiela s touto verziou priecinok dat.
+
+        Jej odinstalator sa pyta "Ponechat nastavenia...?" a pri Nie zmaze
+        %APPDATA%\\Zanshin - aj historiu tejto (ZIP) verzie, ktora byva
+        v tom istom priecinku. Pri behu zo zdrojakov data lezia vedla
+        main.py, takze to tu neplati a kontrola sa preskoci.
+        """
+        if getattr(self, "old_installer_warned", False):
+            return
+        if not getattr(sys, "frozen", False):
+            return
+        try:
+            stara = stara_instalacia()
+        except Exception:
+            app_log.exception("kontrola starej instalacie zlyhala")
+            return
+        if not stara:
+            return
+        text = tr("data.old_installer", version=stara.get("version") or "0.2")
+        self.log(text)
+
+        def _ukaz():
+            # Zapamata sa az po ukazani: ked appka skonci skor, povie sa to
+            # pri dalsom starte.
+            try:
+                messagebox.showinfo(APP_NAME, text)
+            except Exception:
+                app_log.exception("upozornenie na staru instalaciu sa neukazalo")
+            self.old_installer_warned = True
+            self.save_settings()
+
+        try:
+            self.root.after(STARA_INSTALACIA_MS, _ukaz)
+        except Exception:
+            app_log.exception("upozornenie na staru instalaciu sa nenaplanovalo")
 
     def _warn_exclusive_fullscreen_once(self):
         """Jedna rada do logu, ak hra bezi v exkluzivnom fullscreene.

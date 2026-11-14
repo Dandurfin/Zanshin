@@ -276,6 +276,8 @@ def _zavri_relaciu(monkeypatch, tmp_path, prah, dlhodoba):
         _hud_is_visible=lambda: False,
         hr_sessions_path=str(tmp_path / "relacie.json"),
         log_threadsafe=nic)
+    # Suhrn sklada skutocne `_suhrn_relacie` (0.2.2, `_close_hr_session` ho vola).
+    atrapa._suhrn_relacie = types.MethodType(app_mod.DandurfApp._suhrn_relacie, atrapa)
     app_mod.DandurfApp._close_hr_session(atrapa)
     assert len(ulozene) == 1
     return ulozene[0]

@@ -317,6 +317,7 @@ def test_druhe_ukoncit_pocas_dotaznika_nerozbije_prve(zapisovac, monkeypatch, tm
         ui_call = D.ui_call
         stop_listening = D.stop_listening
         _close_hr_session = D._close_hr_session
+        _suhrn_relacie = D._suhrn_relacie
         _ask_session_context = D._ask_session_context
         log = D.log
         _dennik_bez_okna = D._dennik_bez_okna

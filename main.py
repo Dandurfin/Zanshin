@@ -63,9 +63,11 @@ prefarbi kedykolvek bez restartu - farebne tokeny su v theme.py. Zabudovana SFX
 kniznica (stiahnuta alebo lokalne vygenerovana) je v sfx_assets.py.
 """
 
+import os
 import sys
 import threading
 import tkinter as tk
+import types
 from tkinter import messagebox
 
 # DPI-awareness MUSI byt nastavena EST PRED importom customtkinter
@@ -129,6 +131,210 @@ def _install_crash_hooks():
     return log_crash
 
 
+# --- JEDNA KOPIA APPKY (0.2.2) ---------------------------------------------
+#
+# × appku len schova do listy a na Windowse 11 je ikona v liste predvolene
+# skryta pod sipkou ^. Kto ju tam nenasiel, spustil Zanshin.exe znova - a
+# druha kopia zlyhala na skratke Ctrl+Alt+Z ("drzi ju ina appka") aj na porte
+# tepu, ktory drzi prva. Do 0.2.2 navyse po ~24 s ULOZILA vypnuty senzor do
+# spolocnych nastaveni, takze tep sa neprijimal ani pri dalsom starte. Preto
+# pomenovany mutex: druha kopia len povie prvej "ukaz okno" (pomenovana
+# udalost) a ticho skonci. "Local\\" = v ramci prihlasenia jedneho hraca.
+_MUTEX_MENO = "Local\\Zanshin-single"
+_UDALOST_MENO = "Local\\Zanshin-show"
+# Obchadzka pre vyvoj a testy, ktore naozaj potrebuju dve kopie naraz. Pod
+# pytestom sa straz preskakuje sama (`PYTEST_CURRENT_TEST` dedia aj procesy,
+# ktore test spusti) - inak by test so spustenym main.py zlyhal len preto,
+# ze na tom istom PC prave bezi Zanshin.
+POVOL_VIAC_KOPII = "ZANSHIN_ALLOW_MULTI"
+_ERROR_ACCESS_DENIED = 5
+_ERROR_ALREADY_EXISTS = 183
+_EVENT_MODIFY_STATE = 0x0002
+_WAIT_OBJECT_0 = 0x0
+_WAIT_TIMEOUT = 0x102
+_ASFW_ANY = 0xFFFFFFFF
+_MB_ICONINFORMATION = 0x40
+_MB_SETFOREGROUND = 0x10000
+# Kym proces zije, drzi sa tu handle mutexu (a udalosti). Handle v ctypes je
+# len cislo, ktore nic samo nezatvori - mutex zanikne az s procesom, presne
+# vtedy, ked sa druha kopia uz smie spustit.
+_JEDNA_KOPIA = None
+# Len ked by zlyhal aj import i18n - normalne ide text z `tray.already_running`.
+_UZ_BEZI_ZALOHA = (
+    "Zanshin is already running — you'll find it in the tray by the clock "
+    "(if you don't see the icon, click the ^ arrow).\n\n"
+    "Zanshin už beží — nájdeš ho v lište pri hodinách (ak ikonu nevidíš, "
+    "klikni na šípku ^).")
+
+
+def _win32():
+    """kernel32 a user32 s presnymi typmi - vlastne WinDLL, nie
+    `ctypes.windll`, aby `argtypes` nezmenili volania v inych moduloch."""
+    import ctypes
+    from ctypes import wintypes
+
+    k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    u32 = ctypes.WinDLL("user32", use_last_error=True)
+    for fn, args, res in (
+            (k32.CreateMutexW, (wintypes.LPVOID, wintypes.BOOL, wintypes.LPCWSTR),
+             wintypes.HANDLE),
+            (k32.CreateEventW, (wintypes.LPVOID, wintypes.BOOL, wintypes.BOOL,
+                                wintypes.LPCWSTR), wintypes.HANDLE),
+            (k32.OpenEventW, (wintypes.DWORD, wintypes.BOOL, wintypes.LPCWSTR),
+             wintypes.HANDLE),
+            (k32.SetEvent, (wintypes.HANDLE,), wintypes.BOOL),
+            (k32.CloseHandle, (wintypes.HANDLE,), wintypes.BOOL),
+            (k32.WaitForSingleObject, (wintypes.HANDLE, wintypes.DWORD),
+             wintypes.DWORD),
+            (u32.MessageBoxW, (wintypes.HWND, wintypes.LPCWSTR, wintypes.LPCWSTR,
+                               wintypes.UINT), ctypes.c_int),
+            (u32.AllowSetForegroundWindow, (wintypes.DWORD,), wintypes.BOOL)):
+        fn.argtypes, fn.restype = args, res
+    return types.SimpleNamespace(k32=k32, u32=u32,
+                                 posledna_chyba=ctypes.get_last_error)
+
+
+def _straz_jednej_kopie(api=None, environ=None, platforma=None):
+    """Prva kopia: vrati {api, mutex, udalost} - drzat do konca procesu.
+    Uz bezi ina kopia: da jej znamenie "ukaz okno" a skonci (SystemExit 0).
+    None: straz sa preskakuje (iny OS, obchadzka, chyba Windows API).
+
+    Straz NIKDY nesmie zabranit startu - ked jej nieco zlyha, appka sa spusti
+    ako do 0.2.2. Zle zachytena druha kopia je mensia skoda nez appka, ktora
+    sa neda spustit vobec.
+    """
+    environ = os.environ if environ is None else environ
+    platforma = sys.platform if platforma is None else platforma
+    if environ.get(POVOL_VIAC_KOPII) == "1" or "PYTEST_CURRENT_TEST" in environ:
+        return None
+    if not platforma.startswith("win"):
+        return None
+    try:
+        api = api or _win32()
+        mutex = api.k32.CreateMutexW(None, False, _MUTEX_MENO)
+        chyba = api.posledna_chyba()
+    except Exception:
+        return None
+    # ACCESS_DENIED bez handle: mutex existuje, len ho vytvoril proces s
+    # vyssimi pravami (Zanshin spusteny ako spravca). Tiez uz bezi.
+    if chyba == _ERROR_ALREADY_EXISTS or (not mutex and chyba == _ERROR_ACCESS_DENIED):
+        if not _daj_znamenie_prvej_kopii(api):
+            _ukaz_uz_bezi(api)
+        sys.exit(0)
+    if not mutex:
+        return None
+    # Udalost hned za mutexom, este pred dlhym importom app: druha kopia
+    # spustena pocas nacitania tak najde udalost a znamenie sa nestrati -
+    # auto-reset udalost ostane nastavena, kym si ju vlakno prvej kopie
+    # nevyzdvihne (`_cakaj_na_dalsi_start`).
+    try:
+        udalost = api.k32.CreateEventW(None, False, False, _UDALOST_MENO)
+    except Exception:
+        udalost = None
+    return types.SimpleNamespace(api=api, mutex=mutex, udalost=udalost or None)
+
+
+def _daj_znamenie_prvej_kopii(api):
+    """Povie beziacej kopii "ukaz okno". True, ked sa znamenie podarilo."""
+    try:
+        # Do popredia smie okno dat len proces, ktory hrac prave spustil -
+        # teda tento. Bez povolenia by okno prvej kopie len blikalo v liste
+        # uloh za tym, co je prave navrchu.
+        api.u32.AllowSetForegroundWindow(_ASFW_ANY)
+    except Exception:
+        pass
+    try:
+        handle = api.k32.OpenEventW(_EVENT_MODIFY_STATE, False, _UDALOST_MENO)
+    except Exception:
+        return False
+    if not handle:
+        return False
+    try:
+        return bool(api.k32.SetEvent(handle))
+    except Exception:
+        return False
+    finally:
+        try:
+            api.k32.CloseHandle(handle)
+        except Exception:
+            pass
+
+
+def _ulozeny_jazyk():
+    """Jazyk z ulozenych nastaveni, None ked sa neda bezpecne precitat.
+
+    Len `json` - appka sa tu este nenacitala a kvoli jednej vete sa ani
+    nema. Pokazeny ci chybajuci subor znamena "nevieme", nie pad."""
+    try:
+        import json
+        from paths import SETTINGS_PATH
+        with open(SETTINGS_PATH, encoding="utf-8") as fh:
+            data = json.load(fh)
+        lang = data.get("lang") if isinstance(data, dict) else None
+        return lang if isinstance(lang, str) else None
+    except Exception:
+        return None
+
+
+def _text_uz_bezi(lang=None):
+    """Veta pre okienko: v jazyku hraca, inak anglicky a slovensky."""
+    try:
+        import i18n
+        if lang in i18n.LANGUAGES:
+            return i18n.tr_lang(lang, "tray.already_running")
+        return "%s\n\n%s" % (i18n.tr_lang(i18n.LANG_EN, "tray.already_running"),
+                             i18n.tr_lang(i18n.LANG_SK, "tray.already_running"))
+    except Exception:
+        return _UZ_BEZI_ZALOHA
+
+
+def _ukaz_uz_bezi(api):
+    """Znamenie neprislo (prva kopia sa prave zatvara alebo bezi pod inymi
+    pravami) - aspon povedat, kde appku hladat. Nativne okienko, nie Tk:
+    druha kopia nema kvoli jednej vete nacitavat cele GUI."""
+    try:
+        api.u32.MessageBoxW(None, _text_uz_bezi(_ulozeny_jazyk()), "Zanshin",
+                            _MB_ICONINFORMATION | _MB_SETFOREGROUND)
+    except Exception:
+        pass
+
+
+def _cakaj_na_dalsi_start(kopia, ukaz, stop, krok_ms=500):
+    """Vlakno prvej kopie: kym nie je `stop`, caka na znamenie druheho startu
+    a pri nom zavola `ukaz` (DandurfApp.show_window - sama ide cez ui_call).
+
+    Caka po kuskoch `krok_ms`, aby sa pri ukonceni zastavilo samo a nevisi
+    v nekonecnom cakani. Pri chybe handle (WAIT_FAILED) skonci - tocit sa
+    naprazdno nema zmysel."""
+    k32 = kopia.api.k32
+    while not stop.is_set():
+        try:
+            vysledok = k32.WaitForSingleObject(kopia.udalost, krok_ms)
+        except Exception:
+            return
+        if vysledok == _WAIT_OBJECT_0:
+            if stop.is_set():
+                return
+            try:
+                ukaz()
+            except Exception:
+                from logging_setup import get_logger
+                get_logger("main").exception("druhy start: okno sa neukazalo")
+        elif vysledok != _WAIT_TIMEOUT:
+            return
+
+
+def _spusti_cakanie_na_dalsi_start(kopia, ukaz, stop):
+    """Vrati vlakno (alebo None, ked nie je na co cakat)."""
+    if kopia is None or not getattr(kopia, "udalost", None):
+        return None
+    vlakno = threading.Thread(target=_cakaj_na_dalsi_start,
+                              args=(kopia, ukaz, stop),
+                              name="zanshin-druhy-start", daemon=True)
+    vlakno.start()
+    return vlakno
+
+
 def main():
     # Hooky PRED importom app. Import app nataha desiatky modulov (audio,
     # siet, ovladac, TTS...) a chyba v ktoromkolvek z nich - chybajuca
@@ -137,6 +343,11 @@ def main():
     # len v okne PyInstalleru, ktore po zatvoreni zmizne. Kym bol import
     # app prvy riadok main(), takyto pad nezanechal ani crash.log.
     log_crash = _install_crash_hooks()
+    # Jedna kopia PRED importom app: druha kopia nema co nacitavat - povie
+    # prvej "ukaz okno" a skonci skor, nez by siahla na port, skratku ci
+    # nastavenia. Az za hookmi, aby aj pad v nej skoncil v crash.log.
+    global _JEDNA_KOPIA
+    _JEDNA_KOPIA = _straz_jednej_kopie()
     from app import DandurfApp
 
     # Neosetrene vynimky VNUTRI Tk callbackov (napr. command= na tlacidle)
@@ -153,8 +364,16 @@ def main():
     # PyInstalleru). Do 0.2.1 tu bol este try/except s vlastnym log_crash,
     # takze jeden pad bol v crash.log dvakrat - ako keby appka spadla dva
     # razy.
-    DandurfApp(root)
-    root.mainloop()
+    app = DandurfApp(root)
+    # Druhy start ukaze okno tejto kopie - ta ista cesta ako "Zobrazit" v
+    # liste. Vlakno sa pusta az teraz, ked appka stoji: znamenie z druheho
+    # startu pocas nacitania pocka v udalosti.
+    stop = threading.Event()
+    _spusti_cakanie_na_dalsi_start(_JEDNA_KOPIA, app.show_window, stop)
+    try:
+        root.mainloop()
+    finally:
+        stop.set()
 
 
 if __name__ == "__main__":

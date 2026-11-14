@@ -11,13 +11,16 @@ anywhere:
 
 - **Heart-rate readings** received from your phone/watch (and steps or speed,
   if your watch app sends them),
-- **Session history** (`hr_sessions.json`),
+- **Session history** (`hr_sessions.json`, and `hr_session_open.json`: a
+  copy of the session still running, kept every 5 minutes so a crash doesn't
+  lose it),
 - **Insights and baselines** (`hr_insights.json`),
 - **Measurement windows / raw events** (`hr_windows.json`, `hr_events.jsonl`),
 - **Your recorded audio.** The microphone is used only while you record your
   own voice for a reminder — it switches on when you click **Record** on a
   reminder card, and the recording stays in the local `audio/` folder,
-- **Settings** — with one exception: the **wording of your spoken reminders**,
+- **Settings**, and their backup (`dandurf_settings.json.bak`) — with one
+  exception: the **wording of your spoken reminders**,
   which the online voice sends to Microsoft to turn into speech (see
   *Text-to-speech* below),
 - **Logs / crash log** (kept in a local file — there is **no** remote crash
@@ -104,7 +107,8 @@ update-checker** anywhere in the app.
      the pairing guide (*Pair your watch* or *How to pair your watch…*), which
      switches it on too. From then on it's open whenever Zanshin runs — also
      while it sits in the tray, and again at every start — until you switch
-     it off (the app also switches it off if it can't open the TCP port).
+     it off. If the app can't open the TCP port, it stops trying until the
+     next start or until you change the port, but your setting stays on.
    - **What it sends back:** only what the connection needs. On TCP it
      pretends to be OBS (the obs-websocket replies, and a ping after a minute
      of silence); on UDP it replies nothing. It **never sends your heart rate

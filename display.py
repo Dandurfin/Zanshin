@@ -33,6 +33,7 @@ vyvoji na Linuxe/macOS.
 """
 
 import ctypes
+import math
 import sys
 
 IS_WINDOWS = sys.platform == "win32"
@@ -339,6 +340,88 @@ def place(monitor, width, height, pos_x_pct, pos_y_pct):
     x = max(monitor.x, min(monitor.x + monitor.width - width, x))
     y = max(monitor.y, min(monitor.y + monitor.height - height, y))
     return x, y
+
+
+# --------------------------------------------------------------------------
+# Okno appky na monitore - ci sa zmesti a kam ho dat
+# --------------------------------------------------------------------------
+#
+# Hlavne okno ma PEVNY logicky rozmer (DandurfApp.WINDOW_W/H) a CTk ho
+# nasobi mierkou displeja. Na beznom hernom notebooku (1920x1080 so 150 %)
+# je to ~1140 px vysky proti ~1008 px pracovnej plochy a okno sa neda ani
+# zmensit, ani maximalizovat - spodok bocneho menu (Nastavenia) skoncil pod
+# listou uloh. Tieto dve funkcie su cista matematika bez Tk, aby sa dali
+# overit pre kazdu zostavu bez skutocneho monitora.
+
+# Fyzicke px, ktore ostanu medzi oknom a okrajom pracovnej plochy (spolu za
+# obe strany). Okno presne na hrane listy uloh posobi ako "pod nou" a pri
+# zaokruhleni CTk by mohlo o pixel prelezt.
+WINDOW_FIT_MARGIN_PX = 16
+# Pod tuto cast normalnej velkosti appku nezmensime - pismo by bolo
+# necitatelne (velkost 10 by pri 100 % mala len 7 px). Radsej nech okno
+# trci dole a titulna lista ostane hore na dosah.
+WINDOW_MIN_FIT = 0.7
+
+
+def dpi_scale(monitor):
+    """Kolko fyzickych px ma jeden logicky px na tomto monitore (96 DPI = 1.0).
+
+    Ta ista hodnota, akou CTk nasobi rozmery okien (`GetDpiForMonitor`,
+    efektivne DPI), takze vypocet nizsie sedi s tym, co CTk naozaj nakresli."""
+    try:
+        dpi = int(getattr(monitor, "dpi", 96) or 96)
+    except (TypeError, ValueError):
+        dpi = 96
+    return max(1, dpi) / 96.0
+
+
+def window_fit_factor(width, height, scale, work_width, work_height,
+                      margin=WINDOW_FIT_MARGIN_PX, minimum=WINDOW_MIN_FIT):
+    """Kolkokrat zmensit okno, aby sa cele zmestilo do pracovnej plochy.
+
+    `width`/`height` su LOGICKE px okna, `scale` je to, cim ich CTk nasobi
+    (DPI monitora krat uz nastavena mierka okien), `work_*` je pracovna
+    plocha monitora vo fyzickych px (bez listy uloh).
+
+    Vracia 1.0, ked sa okno zmesti aj s okrajom - vtedy sa nema menit nic.
+    Inak faktor < 1 zaokruhleny NADOL na tisiciny: CTk rozmer okna
+    zaokruhluje (`round`) a faktor zaokruhleny nahor by okno o pixel
+    pretiahol cez okraj. Nikdy nie menej nez `minimum` - ak sa okno nezmesti
+    ani tak, `center_in_work_area` ho prilepi k hornemu okraju plochy.
+    """
+    try:
+        scale = float(scale)
+    except (TypeError, ValueError):
+        scale = 1.0
+    if not scale > 0:
+        scale = 1.0
+    phys_w = float(width) * scale
+    phys_h = float(height) * scale
+    if phys_w <= 0 or phys_h <= 0:
+        return 1.0
+    avail_w = float(work_width) - margin
+    avail_h = float(work_height) - margin
+    if phys_w <= avail_w and phys_h <= avail_h:
+        return 1.0
+    if avail_w <= 0 or avail_h <= 0:
+        return float(minimum)
+    factor = min(avail_w / phys_w, avail_h / phys_h)
+    factor = math.floor(factor * 1000.0) / 1000.0
+    return max(float(minimum), min(1.0, factor))
+
+
+def center_in_work_area(monitor, px_width, px_height):
+    """Lavy horny roh okna `px_width` x `px_height` (FYZICKE px) tak, aby
+    sedelo v strede pracovnej plochy `monitor`.
+
+    Pracovna plocha, nie cely monitor: lista uloh moze byt dole, hore aj na
+    boku a okno pod nou by bolo prave tam, kde ho clovek nevidi. Okno vacsie
+    nez plocha sa prilepi k jej hornemu (lavemu) okraju - titulna lista,
+    za ktoru sa okno taha, tak ostane vzdy na obrazovke.
+    """
+    x = monitor.work_x + max(0, (monitor.work_width - int(px_width)) // 2)
+    y = monitor.work_y + max(0, (monitor.work_height - int(px_height)) // 2)
+    return int(x), int(y)
 
 
 def is_fullscreen_foreground(tk_widget=None):

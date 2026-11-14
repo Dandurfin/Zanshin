@@ -157,6 +157,69 @@ def guides_dir():
     return os.path.join(base, "assets", "guides")
 
 
+# AppId instalacky z Dandurf.iss (tam je zapisany so zdvojenou zatvorkou
+# `{{...}`, co je v Inno Setup len escapovanie). Inno podla neho zaklada
+# kluc odinstalovania `<AppId>_is1`.
+INSTALLER_APP_ID = "{30295CDB-462B-4151-B225-582E82027A33}"
+_UNINSTALL_KEY = ("Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\"
+                  + INSTALLER_APP_ID + "_is1")
+
+
+def _hodnota_registra(winreg_mod, kluc, meno):
+    try:
+        hodnota, _typ = winreg_mod.QueryValueEx(kluc, meno)
+    except OSError:
+        return None
+    return str(hodnota).strip() if hodnota else None
+
+
+def stara_instalacia(winreg_mod=None, exe=None):
+    """Je na PC nainstalovany Zanshin z instalacky 0.2? Alebo None.
+
+    PRECO: 0.2 sa instalovala instalackou (Dandurf.iss) a jej odinstalator
+    sa pyta "Ponechat nastavenia...?". Pri Nie zmaze %APPDATA%\\Zanshin -
+    a ten isty priecinok pouziva aj verzia zo ZIP-u, takze by zmizla aj jej
+    historia. Vracia {"location", "version"} z kluca odinstalovania.
+
+    Instalacka bola bez admin prav (HKCU), HKLM sa skusa pre istotu v oboch
+    pohladoch registra (64/32 bit). Ked bezi prave ta nainstalovana appka
+    (exe lezi v jej priecinku), nie je pred cim varovat. Chybajuci winreg
+    alebo kluc nie je chyba - vrati None.
+    """
+    if winreg_mod is None:
+        try:
+            import winreg as winreg_mod
+        except ImportError:
+            return None
+    exe = os.path.normcase(os.path.abspath(exe or sys.executable))
+    citanie = getattr(winreg_mod, "KEY_READ", 0x20019)
+    pokusy = (
+        (getattr(winreg_mod, "HKEY_CURRENT_USER", None), 0),
+        (getattr(winreg_mod, "HKEY_LOCAL_MACHINE", None),
+         getattr(winreg_mod, "KEY_WOW64_64KEY", 0x0100)),
+        (getattr(winreg_mod, "HKEY_LOCAL_MACHINE", None),
+         getattr(winreg_mod, "KEY_WOW64_32KEY", 0x0200)),
+    )
+    for koren, pohlad in pokusy:
+        if koren is None:
+            continue
+        try:
+            with winreg_mod.OpenKey(koren, _UNINSTALL_KEY, 0, citanie | pohlad) as kluc:
+                miesto = (_hodnota_registra(winreg_mod, kluc, "InstallLocation")
+                          or _hodnota_registra(winreg_mod, kluc, "Inno Setup: App Path"))
+                verzia = _hodnota_registra(winreg_mod, kluc, "DisplayVersion")
+        except Exception:
+            # OSError = kluc nie je; cokolvek ine (pokazeny register) tiez
+            # nesmie zhodit start appky.
+            continue
+        if miesto:
+            priecinok = os.path.normcase(os.path.abspath(miesto)).rstrip("\\/")
+            if exe == priecinok or exe.startswith(priecinok + os.sep):
+                return None
+        return {"location": miesto, "version": verzia}
+    return None
+
+
 def resolve_audio_path(path):
     """Po presune dat drzia stare nastavenia absolutne cesty k .wav suborom.
 

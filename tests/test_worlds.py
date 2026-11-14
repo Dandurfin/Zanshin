@@ -205,10 +205,14 @@ def test_svet_sa_pecati_pri_otvoreni_a_uklada_pri_zatvoreni():
     # pecat musi byt az PO zatvoreni predoslej relacie
     assert otvor.index("self._close_hr_session()") < otvor.index(
         "self._session_world = self.world")
+    # Suhrn sklada `_suhrn_relacie` (0.2.2 - zatvorenie aj kontrolny bod);
+    # `_close_hr_session` ho ma zostaveny pred ulozenim.
+    suhrn = zdroj_metody("_suhrn_relacie")
     zatvor = zdroj_metody("_close_hr_session")
-    assert 'summary["world"] = getattr(self, "_session_world"' in zatvor
-    assert zatvor.index('summary["world"]') < zatvor.index("hr_stats.save_session(")
-    assert 'summary["activity"]' not in zatvor, "stroj nesmie pisat odpoved hraca"
+    assert 'summary["world"] = getattr(self, "_session_world"' in suhrn
+    assert zatvor.index("self._suhrn_relacie()") < zatvor.index("hr_stats.save_session(")
+    for telo in (suhrn, zatvor):
+        assert 'summary["activity"]' not in telo, "stroj nesmie pisat odpoved hraca"
     # meracie okna nesu svet priamo
     assert 'w["world"] = svet' in zdroj_metody("_save_measure_windows")
 

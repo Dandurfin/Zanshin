@@ -54,6 +54,10 @@ MAZATELNE = (
     ("data.delete.events", "hr_events.jsonl"),
     ("data.delete.windows", "hr_windows.json"),
     ("data.delete.insights", "hr_insights.json"),
+    # Kontrolny bod otvorenej relacie (`hr_stats.ROZPRACOVANA_MENO`) - ten
+    # isty suhrn ako v hr_sessions.json, len este neuzavrety. Bez neho by po
+    # "Zmazat" pri dalsom starte obnova vratila do historie posledny vecer.
+    ("data.delete.open_session", "hr_session_open.json"),
 )
 # Priečinky, ktoré sa zmažú celé (a hneď vytvoria prázdne, ak do nich appka
 # píše za behu). `logs` tu ZÁMERNE NIE JE: v dev režime je `data_dir`

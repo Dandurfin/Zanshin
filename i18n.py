@@ -1154,16 +1154,19 @@ STRINGS = {
         'fr': 'Surveillance du rythme cardiaque désactivée.',
         'pt': 'Monitoramento de frequência cardíaca desativado.',
     },
+    # 0.2.2: veta menuje castu pricinu (OBS s WebSocket serverom na 4455) a
+    # opravu, ktora funguje vzdy - iny port. Zmena portu v poli senzor po
+    # vzdani sama znova spusti (`on_hr_config_change`).
     'log.hr_port_busy': {
-        'sk': 'Port {port} už používa iný program — najčastejšie druhá otvorená kópia Zanshinu alebo bežiace OBS. Zavri ju a monitorovanie tepu zapni znova.',
-        'en': 'Port {port} is already used by another program - usually a second open copy of Zanshin, or OBS running. Close it and turn heart rate monitoring back on.',
-        'ja': 'ポート {port} は既に別のプログラムが使用しています - 多くの場合、Zanshin の2つ目のコピーか、起動中の OBS です。閉じてから心拍モニタリングを再度オンにしてください。',
-        'zh': '端口 {port} 已被其他程序占用 - 通常是第二个打开的 Zanshin 副本或正在运行的 OBS。关闭它后再重新开启心率监测。',
-        'ru': 'Порт {port} уже занят другой программой — чаще всего это вторая открытая копия Zanshin или запущенный OBS. Закрой её и снова включи мониторинг пульса.',
-        'es': 'El puerto {port} ya lo usa otro programa: normalmente una segunda copia abierta de Zanshin, u OBS en ejecución. Ciérralo y vuelve a activar la monitorización.',
-        'de': 'Port {port} wird bereits von einem anderen Programm benutzt - meist eine zweite offene Kopie von Zanshin oder ein laufendes OBS. Schließe es und schalte die Herzfrequenzüberwachung wieder ein.',
-        'fr': "Le port {port} est déjà utilisé par un autre programme - le plus souvent une seconde copie de Zanshin ouverte, ou OBS en cours d'exécution. Ferme-la puis réactive la surveillance du rythme cardiaque.",
-        'pt': 'A porta {port} já está em uso por outro programa - normalmente uma segunda cópia aberta do Zanshin, ou o OBS em execução. Feche-o e ative o monitoramento novamente.',
+        'sk': 'Port {port} už používa iný program — často OBS so zapnutým WebSocket serverom alebo druhá kópia Zanshinu. Na stránke „V hre“ zmeň port (napr. na 4456) a rovnaké číslo zadaj v appke na telefóne.',
+        'en': 'Port {port} is already used by another program — often OBS with its WebSocket server on, or a second copy of Zanshin. On the “In-game” page change the port (e.g. to 4456) and enter the same number in the phone app.',
+        'ja': 'ポート {port} は既に別のプログラムが使用しています — 多くの場合、WebSocket サーバーをオンにした OBS か、Zanshin の2つ目のコピーです。「ゲーム中」ページでポートを変更し（例: 4456）、スマホのアプリにも同じ番号を入力してください。',
+        'zh': '端口 {port} 已被其他程序占用 — 通常是开启了 WebSocket 服务器的 OBS，或第二个 Zanshin 副本。请在“游戏中”页面更改端口（例如改为 4456），并在手机应用中输入相同的号码。',
+        'ru': 'Порт {port} уже занят другой программой — часто это OBS с включённым WebSocket-сервером или вторая копия Zanshin. На странице «В игре» смени порт (например, на 4456) и введи то же число в приложении на телефоне.',
+        'es': 'El puerto {port} ya lo usa otro programa — a menudo OBS con su servidor WebSocket activado, o una segunda copia de Zanshin. En la página «En el juego», cambia el puerto (por ejemplo, a 4456) y escribe el mismo número en la app del teléfono.',
+        'de': 'Port {port} wird bereits von einem anderen Programm benutzt — oft OBS mit eingeschaltetem WebSocket-Server oder eine zweite Kopie von Zanshin. Ändere auf der Seite „Im Spiel“ den Port (z. B. auf 4456) und gib dieselbe Zahl in der App auf dem Handy ein.',
+        'fr': 'Le port {port} est déjà utilisé par un autre programme — souvent OBS avec son serveur WebSocket activé, ou une seconde copie de Zanshin. Sur la page « En jeu », change le port (par ex. 4456) et saisis le même numéro dans l’app du téléphone.',
+        'pt': 'A porta {port} já está em uso por outro programa — muitas vezes o OBS com o servidor WebSocket ligado, ou uma segunda cópia do Zanshin. Na página “No jogo”, mude a porta (por exemplo, para 4456) e digite o mesmo número no app do celular.',
     },
     'log.hr_socket_error': {
         'sk': 'Monitorovanie tepu sa nepodarilo spustiť (IP/port): {err}',
@@ -1830,16 +1833,19 @@ STRINGS = {
         'fr': "Le moment d'un rappel est venu, mais ils sont tous désactivés — je me tais.",
         'pt': 'Chegou o momento de um aviso, mas estão todos desligados — fico calada.',
     },
+    # 0.2.2: bez "byva to druha kopia appky" - druha kopia sa od 0.2.2 k portu
+    # nedostane (main.py, jedna kopia). Pricinu a opravu povie az
+    # `log.hr_port_busy`, ked sa pokusy minu.
     'log.hr_port_busy_retry': {
-        'sk': 'Port {port} drží iný program — skúšam znova ({n}/{z}). Býva to druhá spustená kópia appky.',
-        'en': 'Port {port} is held by another program — retrying ({n}/{z}). Usually a second copy of the app.',
-        'ja': 'ポート {port} は別のプログラムが使用中です。再試行します（{n}/{z}）。たいていはアプリの二重起動です。',
-        'zh': '端口 {port} 被其他程序占用——正在重试（{n}/{z}）。通常是应用开了第二个副本。',
-        'ru': 'Порт {port} занят другой программой — пробую снова ({n}/{z}). Обычно это вторая копия приложения.',
-        'es': 'El puerto {port} lo tiene otro programa: reintentando ({n}/{z}). Suele ser una segunda copia de la app.',
-        'de': 'Port {port} ist von einem anderen Programm belegt — neuer Versuch ({n}/{z}). Meist eine zweite Kopie der App.',
-        'fr': "Le port {port} est occupé par un autre programme — nouvel essai ({n}/{z}). C'est souvent une seconde copie de l'app.",
-        'pt': 'A porta {port} está ocupada por outro programa — tentando de novo ({n}/{z}). Costuma ser uma segunda cópia do app.',
+        'sk': 'Port {port} drží iný program — skúšam znova ({n}/{z}).',
+        'en': 'Port {port} is held by another program — retrying ({n}/{z}).',
+        'ja': 'ポート {port} は別のプログラムが使用中です。再試行します（{n}/{z}）。',
+        'zh': '端口 {port} 被其他程序占用——正在重试（{n}/{z}）。',
+        'ru': 'Порт {port} занят другой программой — пробую снова ({n}/{z}).',
+        'es': 'El puerto {port} lo tiene otro programa: reintentando ({n}/{z}).',
+        'de': 'Port {port} ist von einem anderen Programm belegt — neuer Versuch ({n}/{z}).',
+        'fr': "Le port {port} est occupé par un autre programme — nouvel essai ({n}/{z}).",
+        'pt': 'A porta {port} está ocupada por outro programa — tentando de novo ({n}/{z}).',
     },
     'settings.hr_status_busy': {
         'sk': 'Port je obsadený — skúšam znova',
@@ -2845,6 +2851,19 @@ STRINGS = {
         'de': 'Beenden',
         'fr': 'Quitter',
         'pt': 'Sair',
+    },
+    # 0.2.2: druhe spustenie appky (main.py, jedna kopia). Ukaze sa len ked
+    # beziaca kopia nedostala znamenie "ukaz okno" - inak sa okno ukaze samo.
+    'tray.already_running': {
+        'sk': 'Zanshin už beží — nájdeš ho v lište pri hodinách (ak ikonu nevidíš, klikni na šípku ^).',
+        'en': 'Zanshin is already running — you’ll find it in the tray by the clock (if you don’t see the icon, click the ^ arrow).',
+        'ja': 'Zanshin はすでに起動しています — 時計の横のトレイにあります（アイコンが見えない場合は、矢印 ^ をクリックしてください）。',
+        'zh': 'Zanshin 已在运行 — 可以在时钟旁的托盘中找到它（如果看不到图标，请点击箭头 ^）。',
+        'ru': 'Zanshin уже запущен — он в трее рядом с часами (если не видишь значок, нажми на стрелку ^).',
+        'es': 'Zanshin ya está en ejecución — lo encontrarás en la bandeja junto al reloj (si no ves el icono, haz clic en la flecha ^).',
+        'de': 'Zanshin läuft bereits — du findest es im Infobereich neben der Uhr (wenn du das Symbol nicht siehst, klicke auf den Pfeil ^).',
+        'fr': 'Zanshin est déjà lancé — tu le trouveras dans la zone de notification, près de l’horloge (si tu ne vois pas l’icône, clique sur la flèche ^).',
+        'pt': 'O Zanshin já está em execução — você o encontra na bandeja, perto do relógio (se não vir o ícone, clique na seta ^).',
     },
     'msgbox.edge_missing_title': {
         'sk': 'Zanshin',
@@ -3936,6 +3955,60 @@ STRINGS.update({
         'de': 'Session saved - average {avg} BPM, peak {max} BPM, load peak {peak}.',
         'fr': 'Session saved - average {avg} BPM, peak {max} BPM, load peak {peak}.',
         'pt': 'Session saved - average {avg} BPM, peak {max} BPM, load peak {peak}.',
+    },
+    # 0.2.2: relacia z minula, ktora sa neulozila (pad, Spravca uloh,
+    # vypadok prudu) - obnovena z kontrolneho bodu (`hr_stats.obnov_rozpracovanu`).
+    # Druha veta je poctivost: kontrolny bod je kazdych 5 minut. cs/bg v
+    # `i18n_cs_bg.py` hned pri 'log.hr_session_saved'.
+    'log.hr_session_recovered': {
+        'sk': 'Obnovila som reláciu z {time}, ktorá sa minule neuložila. Posledné minúty v nej môžu chýbať.',
+        'en': 'I recovered the session from {time} that didn’t get saved last time. Its last few minutes may be missing.',
+        'ja': '前回保存されなかった {time} のセッションを復元しました。最後の数分は欠けているかもしれません。',
+        'zh': '我恢复了上次没能保存的 {time} 的记录。最后几分钟可能缺失。',
+        'ru': 'Я восстановила сессию от {time}, которая в прошлый раз не сохранилась. Последних минут в ней может не быть.',
+        'es': 'Recuperé la sesión del {time}, que la última vez no se guardó. Puede que le falten los últimos minutos.',
+        'de': 'Ich habe die Sitzung vom {time} wiederhergestellt, die beim letzten Mal nicht gespeichert wurde. Die letzten Minuten können fehlen.',
+        'fr': 'J’ai récupéré la séance du {time}, qui n’avait pas été enregistrée la dernière fois. Ses dernières minutes peuvent manquer.',
+        'pt': 'Recuperei a sessão de {time}, que da última vez não foi salva. Os últimos minutos podem estar faltando.',
+    },
+    # 0.2.2: dandurf_settings.json sa nedal precitat - pokazeny subor je
+    # odlozeny ako .corrupt-<cas> (`app_prefs.nacitaj_nastavenia`); {name} je
+    # len meno suboru, cesta v %APPDATA% nesie meno uctu.
+    'log.settings_restored_backup': {
+        'sk': 'Nastavenia sa nedali načítať. Pôvodný súbor som odložila ako {name} a obnovila som poslednú zálohu.',
+        'en': 'Your settings couldn’t be read. I set the original file aside as {name} and restored the last backup.',
+        'ja': '設定を読み込めませんでした。元のファイルを {name} として残し、最後のバックアップから戻しました。',
+        'zh': '无法读取设置。我把原文件另存为 {name}，并恢复了最近的备份。',
+        'ru': 'Не удалось прочитать настройки. Исходный файл я отложила как {name} и восстановила последнюю резервную копию.',
+        'es': 'No se pudo leer la configuración. Guardé aparte el archivo original como {name} y restauré la última copia de seguridad.',
+        'de': 'Die Einstellungen ließen sich nicht lesen. Die ursprüngliche Datei habe ich als {name} beiseitegelegt und die letzte Sicherung wiederhergestellt.',
+        'fr': 'Impossible de lire les réglages. J’ai mis le fichier d’origine de côté sous le nom {name} et restauré la dernière sauvegarde.',
+        'pt': 'Não foi possível ler as configurações. Guardei o arquivo original à parte como {name} e restaurei o último backup.',
+    },
+    'log.settings_restored_defaults': {
+        'sk': 'Nastavenia sa nedali načítať. Pôvodný súbor som odložila ako {name} a začínam s predvolenými.',
+        'en': 'Your settings couldn’t be read. I set the original file aside as {name} and I’m starting with the defaults.',
+        'ja': '設定を読み込めませんでした。元のファイルを {name} として残し、既定の設定で始めます。',
+        'zh': '无法读取设置。我把原文件另存为 {name}，现在从默认设置开始。',
+        'ru': 'Не удалось прочитать настройки. Исходный файл я отложила как {name} и начинаю с настроек по умолчанию.',
+        'es': 'No se pudo leer la configuración. Guardé aparte el archivo original como {name} y empiezo con los valores predeterminados.',
+        'de': 'Die Einstellungen ließen sich nicht lesen. Die ursprüngliche Datei habe ich als {name} beiseitegelegt und beginne mit den Standardwerten.',
+        'fr': 'Impossible de lire les réglages. J’ai mis le fichier d’origine de côté sous le nom {name} et je repars des réglages par défaut.',
+        'pt': 'Não foi possível ler as configurações. Guardei o arquivo original à parte como {name} e vou começar com os padrões.',
+    },
+    # 0.2.2: nainstalovana 0.2 (instalacka) zdiela %APPDATA%\Zanshin so ZIP
+    # verziou a jej odinstalator pri "Nie" zmaze cely priecinok. Raz, viz
+    # `app_data._upozorni_na_staru_instalaciu`; {version} z registra.
+    'data.old_installer': {
+        'sk': 'Máš ešte nainštalovanú verziu {version}. Keď ju budeš odinštalovať, na otázku o dátach odpovedz Áno — inak zmaže aj históriu tejto verzie.',
+        'en': 'You still have version {version} installed. When you uninstall it, answer Yes to the question about your data — otherwise it deletes this version’s history too.',
+        'ja': 'バージョン {version} がまだインストールされています。アンインストールするときは、データについての質問に「はい」と答えてください。そうしないと、このバージョンの履歴も削除されます。',
+        'zh': '你还装着 {version} 版。卸载它时，在询问数据的问题上请选“是”——否则它也会删除这个版本的历史。',
+        'ru': 'У тебя ещё установлена версия {version}. Когда будешь её удалять, на вопрос о данных ответь «Да» — иначе она удалит и историю этой версии.',
+        'es': 'Todavía tienes instalada la versión {version}. Cuando la desinstales, responde «Sí» a la pregunta sobre tus datos; si no, borrará también el historial de esta versión.',
+        'de': 'Du hast noch Version {version} installiert. Wenn du sie deinstallierst, beantworte die Frage nach deinen Daten mit „Ja“ — sonst löscht sie auch den Verlauf dieser Version.',
+        'fr': 'La version {version} est encore installée. Quand tu la désinstalleras, réponds « Oui » à la question sur tes données — sinon elle supprimera aussi l’historique de cette version.',
+        'pt': 'Você ainda tem a versão {version} instalada. Quando for desinstalá-la, responda “Sim” à pergunta sobre os seus dados — senão ela apaga também o histórico desta versão.',
     },
 })
 
@@ -6756,6 +6829,8 @@ STRINGS.update({
     'data.delete.insights': _sk_en('postrehy z analýzy', 'computed insights'),
     'data.delete.tts': _sk_en('vyslovené hlášky (cache)', 'spoken cues (cache)'),
     'data.delete.backup': _sk_en('záloha', 'backup'),
+    # 0.2.2: kontrolny bod otvorenej relacie (hr_session_open.json).
+    'data.delete.open_session': _sk_en('rozpracovaná relácia', 'session in progress'),
     'data.delete.logs': _sk_en('logy', 'logs'),
     'data.delete.empty': _sk_en('(prázdne)', '(empty)'),
     # Kopie historie v starych priecinkoch po migracii (paths.legacy_data_dirs)
@@ -6892,6 +6967,7 @@ _tr7('data.delete.sessions', 'セッション履歴', '记录历史', 'исто�
 _tr7('data.delete.windows', '測定ウィンドウ', '测量窗口', 'измерительные окна', 'ventanas de medición', 'Messfenster', 'fenêtres de mesure', 'janelas de medição')
 _tr7('data.delete.insights', '分析の所見', '分析结论', 'наблюдения из анализа', 'observaciones del análisis', 'Beobachtungen aus der Analyse', 'observations de l’analyse', 'observações da análise')
 _tr7('data.delete.logs', 'ログ', '日志', 'логи', 'registros', 'Logs', 'journaux', 'registros')
+_tr7('data.delete.open_session', '進行中のセッション', '进行中的记录', 'текущая сессия', 'sesión en curso', 'laufende Sitzung', 'séance en cours', 'sessão em andamento')
 _tr7('data.delete.empty', '（空）', '（空）', '(пусто)', '(vacío)', '(leer)', '(vide)', '(vazio)')
 _tr7('data.delete.confirm', '削除', '删除', 'Удалить', 'Borrar', 'Löschen', 'Supprimer', 'Apagar')
 _tr7('data.delete.done', '削除した（{n} 件）。', '已删除（{n} 项）。', 'Удалено ({n}).', 'Borrado ({n} elementos).', 'Gelöscht ({n} Einträge).', 'Supprimé ({n} éléments).', 'Apagado ({n} itens).')

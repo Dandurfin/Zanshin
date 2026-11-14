@@ -191,6 +191,10 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
     # opravovania kazdeho panela pre kazdu moznu velkost okno drzi jeden
     # pevny rozmer, nastaveny programovo cez geometry() - ziadne rucne
     # tahanie za hrany (viz enable_frameless() a minsize==maxsize nizsie).
+    # Su to LOGICKE px: CTk ich nasobi mierkou displeja. Kde sa okno do
+    # pracovnej plochy nezmesti (notebook 1080p pri 150 %, 1366x768),
+    # zmensi sa cela appka naraz, nie rozmer okna (viz
+    # `ui_kit.umiestni_pevne_okno`).
     WINDOW_W, WINDOW_H = 1180, 760
     # Znacka v strede stranky Dnes. Pri 68 px (povodne miesto v bocnom
     # paneli) mal prstenec "natiahnute" 1,4 px a strácal sa. 168 px je
@@ -296,7 +300,23 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         self.root.title(APP_NAME)
         # Pevny rozmer (viz komentar pri WINDOW_W vyssie) - appka nema
         # rucny resize za hrany, minsize/maxsize su rovnake ako geometry.
-        self.root.geometry(f"{self.WINDOW_W}x{self.WINDOW_H}")
+        #
+        # Okno sa da zmensit len mierkou a tu treba zvolit SKOR, nez vznikne
+        # prvy widget (sprievodca prveho spustenia aj `_build_ui`): po zmene
+        # mierky CTk prestavuje kazdy existujuci widget. Predtym okno vzniklo
+        # tam, kam ho dal Windows, v plnej velkosti - na 1366x768 alebo
+        # 1080p pri 150 % bolo vyssie nez plocha a Nastavenia na spodku
+        # bocneho menu boli pod listou uloh. Teraz je vycentrovane v
+        # pracovnej ploche monitora pod kurzorom; kde sa zmesti, mierka
+        # ostava ako doteraz.
+        mierka, mon = ui_kit.umiestni_pevne_okno(
+            self.root, self.WINDOW_W, self.WINDOW_H)
+        if mierka < 1.0 and mon is not None:
+            # Do technickeho logu, nie do dennika: hracovi to nic nehovori,
+            # ale pri hlaseni "vsetko je nejake male" je to prva otazka.
+            app_log.info("okno sa nezmestilo do plochy %dx%d (%d dpi), "
+                         "appka zmensena na %.1f %%", mon.work_width,
+                         mon.work_height, mon.dpi, mierka * 100.0)
         self.root.minsize(self.WINDOW_W, self.WINDOW_H)
         self.root.maxsize(self.WINDOW_W, self.WINDOW_H)
         # Vlastna titulkova lista (FAZA 2 redesignu) - odstrani OS ram;
@@ -355,6 +375,10 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         self.start_minimized = bool(settings["start_minimized"])
         # Uz raz povedane, ze × appku neukonci, len schova do listy (`on_close`).
         self.tray_close_explained = bool(settings["tray_close_explained"])
+        # Upozornenie na nainstalovanu 0.2 uz zaznelo (`_upozorni_na_staru_
+        # instalaciu`). Uz TU, nie az pri upozorneni: prvy `save_settings`
+        # nizsie by inak zapisal False a varovanie by chodilo pri kazdom starte.
+        self.old_installer_warned = bool(settings.get("old_installer_warned"))
         self.auto_profile_enabled = bool(settings["auto_profile_enabled"]) and PSUTIL_AVAILABLE
         self.overlay_configs = settings["overlay_configs"]
         self._vizualy_napravene = bool(settings.get("_vizualy_napravene"))
@@ -592,6 +616,11 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
 
         self._build_ui()
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
+        # Vypnutie / restart / odhlasenie Windows: Tk na Windows mapuje
+        # WM_QUERYENDSESSION na protokol WM_SAVE_YOURSELF a obsluhu zavola
+        # synchronne, kym Windows caka. Bez toho vypnutie PC zahodilo celu
+        # relaciu - WM_DELETE_WINDOW pri nom nepride (`_pri_vypinani_windows`).
+        self.root.protocol("WM_SAVE_YOURSELF", self._pri_vypinani_windows)
         self.root.bind_all("<Control-k>", lambda e: self.open_command_palette())
         if TRAY_AVAILABLE:
             self.setup_tray()
@@ -608,6 +637,19 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
             # spravit potichu - hrac ma vediet, ze sa mu nieco v nastaveniach
             # zmenilo, a ma to vediet vratit.
             self.log(tr("log.vizualy_napravene"))
+        # Nastavenia sa nedali nacitat a appka siahla po zalohe alebo po
+        # predvolenych - povie to raz, teraz uz do dennika (`load_settings`).
+        self._oznam_obnovu_nastaveni()
+        # Relacia, ktora sa minule neulozila (pad, Spravca uloh, vypadok
+        # prudu), ide do historie SKOR, nez senzor otvori novu - a od teraz
+        # sa otvorena relacia kazdych 5 minut odklada (kontrolny bod).
+        self._obnov_rozpracovanu_relaciu()
+        self._naplanuj_rozpracovanu_relaciu()
+        # Nainstalovana 0.2 zdiela priecinok dat - jej odinstalator by pri
+        # "Nie" zmazal aj tuto historiu. Pri prvom starte nie (bezi
+        # sprievodca), povie sa to pri dalsom.
+        if not settings["first_run"]:
+            self._upozorni_na_staru_instalaciu()
 
         if PSUTIL_AVAILABLE:
             # Zoznam procesov sa cita LEN pri zapnutom auto-profile. Predtym
