@@ -473,9 +473,11 @@ class Sidebar(ctk.CTkFrame):
         """Recolours the side panel on a theme change.
 
         It does what the mechanical tree recolouring cannot: it rewrites
-        its own palette copies (Sidebar, every _NavRow, the dock) and
-        redraws the enso, which is an IMAGE. Without this the old colours
-        would come back on the first hover/click."""
+        its own palette copies (Sidebar, every _NavRow and the Ctrl+K row,
+        the state dot) and redraws the heart-rate indicator, which is an
+        IMAGE (the enso is no longer in the panel; the quick dock is gone).
+        Without this the old colours would come back on the first
+        hover/click."""
         self._theme_pal = pal
         self.pal = self._mapuj_paletu(pal)
         try:
@@ -538,8 +540,9 @@ class Sidebar(ctk.CTkFrame):
         self.pack_propagate(False)
         self.on_navigate = on_navigate
         self.on_palette = on_palette
-        # key -> _NavRow (icon only, full name in the tooltip). `buttons`
-        # stays as an alias for old code that expected buttons.
+        # key -> _NavRow (icon + a short label under it, the full name in
+        # the tooltip - see `_NavRow`). `buttons` stays as an alias for old
+        # code that expected buttons.
         self.rows = {}
         self.buttons = self.rows
         labels = labels or {}
@@ -919,7 +922,8 @@ class _NavRow(ctk.CTkFrame):
 
 
 # ---------------------------------------------------------------------------
-# Enso (残) - app mark and listening switch in one, at the TOP of the panel
+# Listening state: the panel's state dot and the enso (残), the app mark -
+# since 2.1 in the centre of the Today page (`_EnsoHero`), not in the panel
 # ---------------------------------------------------------------------------
 class _StateDot(ctk.CTkFrame):
     """Side panel dot: watching / stopped / snoozed / heart rate dropped out.
@@ -1104,18 +1108,25 @@ class _StateDot(ctk.CTkFrame):
 class _EnsoButton(ctk.CTkFrame):
     """The app's mark (残 in the enso) and also the listening switch.
 
-    It sits at the TOP of the side panel - it is the first thing you see
-    in the window, so it carries the app's logo and the state at once.
-    Before, it was in the middle of the panel and smaller; as a mark it
-    got lost there.
+    NO LONGER BUILT ANYWHERE: since 2.1 the mark lives in the centre of
+    the Today page and `_EnsoHero` draws it there (not a widget). This
+    class stays because `_EnsoHero` borrows its `PHASE_OFFSET` and
+    `BIG_PX` and a few tests (`test_trigger`, `test_theme_recolor`) read
+    its source. Until 2.1 it sat at the TOP of the side panel - the
+    first thing you saw in the window, the app's logo and the state at
+    once (before that it was in the middle of the panel and smaller, and
+    as a mark it got lost there).
 
-    The state is carried by COLOUR, following the recording convention:
-    green = listening, red = not listening. No text label (it was tried,
-    the text crossed the character) - the full action name is in the
+    The colour follows the theme accent (`hud_paint.render_enso`); the
+    state is carried by MOTION - a stopped app is one still frame, a
+    listening one breathes. Before, COLOUR carried it: green =
+    listening, red = not listening. No text label (it was tried, the
+    text crossed the character) - the full action name is in the
     tooltip.
 
-    It is NOT a static icon: it breathes slowly with the same curve as
-    the breath ring, and while listening a light arc orbits it.
+    It is NOT a static icon: while listening it breathes slowly with the
+    same curve as the breath ring, and a loading ring behind the mark
+    fills with the inhale.
 
     Frames are pre-computed AHEAD (`_frames`); at runtime only the image
     is switched. Rendering one frame (68 px) costs ~1.2 ms - computing it
@@ -1309,9 +1320,9 @@ class _EnsoButton(ctk.CTkFrame):
         self._snimok = snimok
 
         # A stopped app does NOT MOVE and is at the smallest radius - a single
-        # frame. Stillness carries information here just like colour: an app
-        # that is not listening must not look alive. (And 80 identical frames
-        # would be 96 ms of extra work on every start.)
+        # frame. Stillness carries the state here (the colour does not): an
+        # app that is not listening must not look alive. (And 80 identical
+        # frames would be 96 ms of extra work on every start.)
         try:
             self._frames[(False, False)] = [snimok(False, 0.0)]
         except Exception:
@@ -1497,8 +1508,8 @@ class _EnsoHero:
     (alias), the harness asks for `enso._live`/`_armed`, and
     `_apply_listening_visuals` calls `set_live/
     set_armed`, graduation `graduate()`. `_EnsoButton` stays in this file
-    (it is no longer used anywhere, but a few tests and `theme_recolor`
-    depend on it).
+    (nothing builds it any more, but this class borrows two of its
+    constants and a few tests read its source).
 
     Instead of pre-computing 80 Tk frames it keeps a small cache of PIL
     frames by phase - the same idea (zero per-tick cost for a repeated
@@ -1633,7 +1644,8 @@ class _WatchPulse(ctk.CTkFrame):
       2. PAIRED, HEART RATE NOT ARRIVED YET - the ring glows neutrally and
          breathes slowly: "connected, waiting".
       3. HEART RATE RUNNING - the ring beats in the REAL rhythm of the
-         watch and takes its colour from the load zone.
+         watch and takes its colour from the heart-rate zone
+         (`HeartStats.zone` - heart rate relative to rest, not load).
 
     It takes the rhythm from `HeartStats.beat_phase()` - the same source
     as the heart on the in-game HUD, so both beat together. A fixed
@@ -2116,7 +2128,8 @@ class CommandPalette:
 
 
 # ---------------------------------------------------------------------------
-# Quick dock (mute / snooze / profile / stop) - floating at the bottom right
+# Hover tooltip (`_HoverTip`). The quick dock that used to sit in this
+# section is gone - see the `QuickDock` NOTE below.
 # ---------------------------------------------------------------------------
 class _HoverTip:
     """A simple tooltip attached to a widget - the text is created by

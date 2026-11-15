@@ -209,15 +209,22 @@ def default_params():
 
 
 # --------------------------------------------------------------------------
-# How often the app speaks up - one control instead of four numbers
+# Sensitivity presets - four numbers that move together (no longer offered)
 # --------------------------------------------------------------------------
 #
-# Threshold, hold, gap and cap CANNOT be set separately without them
-# contradicting each other: lowering the threshold without shortening the
-# hold does almost nothing (the body swings over the threshold, but the
-# continuous stretch still does not fill up), and shortening the gap
-# without raising the cap does not either (the cap cuts in sooner). That is
-# why all four move at once, with one choice.
+# HISTORY: the app used to offer a "how often I speak up" choice (less /
+# normal / more) that set the presets below. The choice is gone (see
+# `app._build_citlivost_card`): every session now starts from
+# `default_params()`, and the threshold is replaced by the player's own
+# once it is learned from their sessions (`app_session._open_hr_session`).
+# `params_for` and the `CITLIVOST_*` table stay, but only tests use them.
+#
+# Why the presets move all four at once still holds: threshold, hold, gap
+# and cap CANNOT be set separately without them contradicting each other:
+# lowering the threshold without shortening the hold does almost nothing
+# (the body swings over the threshold, but the continuous stretch still
+# does not fill up), and shortening the gap without raising the cap does
+# not either (the cap cuts in sooner).
 #
 # The rest of the numbers (pause_s, max_wait_s, away_s, dip_grace_s) does
 # NOT change: those are properties of the moment of delivery, not of how
@@ -517,8 +524,9 @@ class CueTrigger:
 
         `calibrating=True` (`HeartStats.is_calibrating`) means the session
         does not have its own baseline yet and the load is only an estimate.
-        Then NOTHING is collected: without this, with the "viac" sensitivity
-        (30 s hold) it could arm even during calibration, and with the normal
+        Then NOTHING is collected: without this, with a short hold (30 s,
+        the old "viac" preset - `params_for(CITLIVOST_VIAC)`, now only in
+        tests) it could arm even during calibration, and with the default
         one the time collected during it would shorten the wait right after
         it. Better a quiet first minute than a cue built on a number the app
         itself does not trust.

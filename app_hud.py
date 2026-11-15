@@ -56,8 +56,8 @@ class HudMixin:
     # (`hud_paint.render_hud_trigger_row`), not as a separate app window.
 
     def show_hud_settings(self):
-        """⚙ next to "Tep v hre" on Today: Settings -> General, the heart-rate
-        panel section expanded and scrolled to the top.
+        """⚙ next to "On-screen HR panel" on Today: Settings -> General,
+        the heart-rate panel section expanded and scrolled to the top.
 
         Before 0.3 the ⚙ led to the In game page - there are no HUD settings
         there, and the sidebar meanwhile kept highlighting "Today". The scroll
@@ -121,8 +121,10 @@ class HudMixin:
     def _on_hud_trigger_click(self, index):
         """A click on an icon in the HUD row (only in the preview in the app,
         in the game the panel is click-through - see hud.StatsHud.handle_click)
-        triggers the same function as if the player had pressed the assigned
-        key."""
+        fires that cue by hand through `fire_slot`, as the Test button on
+        its card does (but keeping the gap between quick clicks); a
+        hand-fired cue is not recorded in the measurement (`_note_cue`).
+        Before phase 3 it did what pressing the slot's key did."""
         if 0 <= index < len(self.slots):
             self.fire_slot(self.slots[index], source="hud_panel")
 

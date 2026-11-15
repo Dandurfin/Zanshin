@@ -88,7 +88,7 @@ class Monitor:
                 and self.y <= py < self.y + self.height)
 
     def label(self, index):
-        """Label for the dropdown - '1: 3840x2160 (primary)'."""
+        """Label for the dropdown - '1: 3840x2160 *' (' *' = primary)."""
         suffix = " *" if self.primary else ""
         return f"{index + 1}: {self.width}x{self.height}{suffix}"
 

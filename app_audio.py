@@ -215,8 +215,9 @@ class AudioMixin:
     # ---------- volume (master + SFX/voice balance) ----------
 
     def _recompute_volumes(self):
-        """Master volume + the Balance slider -> a separate effective
-        volume for SFX and for the voice (TTS), both in the range 0-100.
+        """Master volume + the "Sound ↔ voice mix" slider -> a separate
+        effective volume for SFX and for the voice (TTS), both in the
+        range 0-100.
 
         balance 50 = both at the full master volume; 0 = SFX only
         (voice muted), 100 = voice only (SFX muted)."""

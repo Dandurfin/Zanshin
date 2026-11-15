@@ -278,7 +278,8 @@ def test_readme_odkazuje_na_changelog_a_nove_veci():
     readme = _read("README.md")
     hore = readme[:readme.index("\n## Quick start")]
     assert "[Changelog](CHANGELOG.md)" in hore
-    assert "](CHANGELOG.md#what-03-changes-not-released-yet)" in hore
+    assert "](CHANGELOG.md#what-03-changes)" in hore
+    assert "\n## What 0.3 changes\n" in _read("CHANGELOG.md")   # that anchor
     assert "](CHANGELOG.md)" in _sekcia(readme, "Known issues")
     assert "KNOWN_ISSUES.md#" not in readme
     r = _plain_text(readme)

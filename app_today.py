@@ -428,15 +428,13 @@ class TodayMixin:
             zapnute.append(index)
         dalsi = measure.next_slot(zapnute, getattr(self, "_posledny_cue_slot", None))
         if dalsi is None:
-            # No category is usable. `CUE_SLOT_INDEX` (3) was a hard-coded
-            # fallback, but exactly that slot may have its visual off - and
-            # then the cue would be "delivered" without anything being
-            # drawn. We take the first slot that really has something to show.
-            # NO FALLBACK. Until 19. 9. this returned `CUE_SLOT_INDEX` (3),
-            # i.e. the breathing circle - "better for the app to say something
-            # than nothing". But switching a cue off is the player's decision
-            # and the app must not get around it: whoever turned off all four
-            # wanted silence and got breathing.
+            # No category is usable - NO FALLBACK. Until 19. 9. this returned
+            # `CUE_SLOT_INDEX` (3), i.e. the breathing circle - "better for
+            # the app to say something than nothing". But exactly that slot
+            # may have its visual off, and then the cue would be "delivered"
+            # without anything being drawn. And switching a cue off is the
+            # player's decision, which the app must not get around: whoever
+            # turned off all four wanted silence and got breathing.
             return None
         self._posledny_cue_slot = dalsi
         return dalsi
@@ -1331,14 +1329,14 @@ class TodayMixin:
     def _refresh_dnes_backdrop(self, _event=None, force=False):
         """Redraws the Today centre (dojo + enso + text) on `dnes_canvas`.
 
-        Two dojo modes: in the STOPPED state the DOJO HERO, which breathes
-        (lanterns, moon and reflection rise and fall at the pace of the
-        breath, see `_tick_dnes`). When the app is listening, a dimmed
-        photo. The expensive LANCZOS is done only when size/breath/theme
-        changes (key `_backdrop_size`); the enso and text are always
-        redrawn (they are cheap). Called from: `<Configure>` (debounced),
-        the animation tick, a state change, `_EnsoHero._emit()`
-        (set_live/armed/graduate/set_pal)."""
+        Two dojo modes: in the STOPPED state the bright DOJO HERO, which
+        is static - one fixed breath phase (`_start_dnes_hero`); it no
+        longer breathes (that made the window flicker). When the app is
+        listening, a dimmed photo. The expensive LANCZOS is done only when
+        size/breath/theme changes (key `_backdrop_size`); the enso and text
+        are always redrawn (they are cheap). Called from: `<Configure>`
+        (debounced), the animation tick (now only for the enso), a state
+        change, `_EnsoHero._emit()` (set_live/armed/graduate/set_pal)."""
         canvas = getattr(self, "dnes_canvas", None)
         stred = getattr(self, "dnes_stred", None)
         if canvas is None or stred is None:

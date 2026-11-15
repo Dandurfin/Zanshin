@@ -1,4 +1,4 @@
-"""Centralised logging to a file - solves points 1 and 3 of the code review:
+"""Centralised logging to a file - solves two points of the code review:
 
   1. No top-level crash handler - main.py now writes every unhandled
      exception (also from mainloop) to crash.log in %APPDATA%, so alpha

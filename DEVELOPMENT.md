@@ -36,14 +36,14 @@ minimum from that line, so no script repeats it. The documents that name it,
 this page included, are checked against it by `tests/test_022g_dokumenty.py`,
 so after changing it, that test tells you which sentence to update.
 
-*Not released yet (0.3):* **Update voice** (Settings → Sound, under *Voice
+*New in 0.3:* **Update voice** (Settings → Sound, under *Voice
 source*) works from source too. It puts the downloaded `edge-tts` into
 `voice_lib\` next to `main.py` (git ignores that folder; the built app uses
 `%APPDATA%\Zanshin\voice_lib`), and every start prefers it over the
 pip-installed `edge-tts` as long as it's newer. Delete the folder, or install
 the same or a newer `edge-tts` with pip, to go back to the installed one.
 
-*Not released yet (0.3):* only one copy runs at a time, and a source run
+*New in 0.3:* only one copy runs at a time, and a source run
 counts as the same app as the built one: starting it again only shows the
 window of the copy already running. To run two copies anyway (for testing),
 set the environment variable `ZANSHIN_ALLOW_MULTI=1`.

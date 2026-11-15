@@ -1217,27 +1217,28 @@ def render_enso(size, style, live=False, phase=0.0, ss=SS, color=None,
                 armed=False, sheen=False, close=0.0, halo=0.0):
     """Brush circle + the 残 character - app mark and listening switch in one.
 
-    `color` overrides the state colour. It is for places where the mark
-    is NOT a switch but just a logo (Guide) - there green/red would claim
-    a state that the picture does not track, and a red enso in a manual
-    would read as an error. With the theme accent it fits among the other
-    pictograms, which are drawn the same way (`render_slot_icon`).
+    COLOUR follows the theme accent (`style.accent` - gold in Sumi, blue
+    in Aizome) and does NOT carry the state: MOTION does (see `phase`
+    below), and in the side panel the state dot. With the accent the
+    enso fits among the other pictograms, which are drawn the same way
+    (`render_slot_icon`).
 
-    COLOUR carries the state and follows the usual recording convention:
-      * GREEN (`success`)  = the app is listening, the triggers are live
-      * RED (`danger`)     = not listening, nothing is happening
-    NOTE: it used to be the other way round (green = ready, bengara =
-    running). But red on a running app read as an error, and green on a
-    stopped one as "all is well" - the exact opposite of what the state
-    means. Red dot = not recording, green = recording, everyone knows
-    that.
+    `color` overrides the accent: the Guide passes the accent itself (the
+    mark as a logo), the system tray mark (`make_icon.tray_mark`) passes
+    the state colour - green (`success`) = listening, red (`danger`) =
+    not listening.
+
+    History: in the app window COLOUR used to carry the state as well -
+    green = listening, red = not listening (and before that the other
+    way round, green = ready, bengara = running, which read as an error
+    on a running app).
 
     `phase` is 0..1 and turns the icon into a LIVE element - not a static
-    picture. The same curve as the breath ring (`0.5 - 0.5*cos`), so the
-    enso slowly "breathes": the stroke thins and thickens, the radius
-    changes slightly. When the app is listening, a light arc also orbits
-    the circumference - "loading", i.e. running. When it is not
-    listening, it breathes only very gently and there is no arc.
+    picture. The same curve as the breath ring (`0.5 - 0.5*cos`, see
+    `enso_breath`), so with `live=True` the enso slowly "breathes": the
+    stroke thins and thickens, the radius changes slightly, and a loading
+    ring behind the mark fills with the inhale - "loading", i.e. running.
+    With `live=False` it stands still and there is no ring.
 
     `armed` = the trigger is armed (`trigger.ARMED`): the body has stayed
     above the threshold for 90 s and the app is waiting for a pause to
@@ -1249,10 +1250,9 @@ def render_enso(size, style, live=False, phase=0.0, ss=SS, color=None,
         the same annulus would read as one ornament, not as two states.
         Inside there is free space between the character (~0.17*size)
         and the stroke (0.40*size).
-      * THE SAME COLOUR as the mark. `theme.py` says that the enso
-        colour has a single job in the whole interface - to say whether
-        the app is listening. Arming is therefore NOT a third colour;
-        motion carries it.
+      * THE SAME COLOUR as the mark (`base`). The enso colour carries
+        no state (see above), so arming is NOT a colour of its own
+        either; motion carries it.
       * It CONTRACTS while the loading ring FILLS. The opposite
         direction is what tells the two rings apart even out of the
         corner of the eye.

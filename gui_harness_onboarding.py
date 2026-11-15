@@ -375,7 +375,7 @@ def ob_confirm():
         return
     wz = state["wizard"]
     rec("step 5: 'not sure' is stored as voice", state.get("_neviem_je_hlas"))
-    mouse_click_at(*center_of(wz.next_btn))      # real click on "Enter"
+    mouse_click_at(*center_of(wz.next_btn))      # real click on "Done - start"
 
 
 @step(2500)

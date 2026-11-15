@@ -19,9 +19,9 @@ for OBS*, free) · the phone and the PC on the same home network (Wi‑Fi).
 
 ![Zanshin's Today page in the Sumi theme: the main switch, the ensō, today's numbers and where the session went](docs/img/today.webp)
 
-*Today, with synthetic data. This page describes the code here, which is newer
-than the 0.2.1 release: the 0.2.1 ZIP still uses some older names and lacks
-some controls ([what changed](CHANGELOG.md#what-03-changes-not-released-yet)).*
+*Today, with synthetic data. This page describes 0.3; the 0.2.1 ZIP still
+uses some older names and lacks some controls
+([what changed](CHANGELOG.md#what-03-changes)).*
 
 **Local-first.** Your heart rate, sessions and insights never leave your PC.
 No account, no telemetry, no analytics. One exception is on by default: the
@@ -91,12 +91,12 @@ unchanged; it doesn't make the warning go away.
 1. On the GitHub page open
    [**Releases**](https://github.com/Dandurfin/Zanshin/releases/latest) and
    download `Zanshin-<version>-windows.zip` (for this version
-   `Zanshin-0.2.1-windows.zip`, about 59 MB). The release lists the file's
+   `Zanshin-0.3-windows.zip`, about 59 MB). The release lists the file's
    **SHA-256** fingerprint.
 2. Check it. In File Explorer open the folder with the ZIP, click the address
    bar, type `powershell` and press Enter. In the window that opens, run this
    with the fingerprint from the release pasted in:
-   `(Get-FileHash .\Zanshin-0.2.1-windows.zip).Hash -eq 'PASTE-THE-HASH-HERE'`.
+   `(Get-FileHash .\Zanshin-0.3-windows.zip).Hash -eq 'PASTE-THE-HASH-HERE'`.
    It must print **True** (upper or lower case doesn't matter). If it prints
    **False**, delete the file.
 3. Unpack it (right-click → **Extract All…**) into a folder OneDrive doesn't
@@ -150,7 +150,7 @@ included.
    `build.bat` in step 3. Unblock only a ZIP you got from the page above. Then
    right-click the ZIP → **Extract All…** and choose a folder that OneDrive
    doesn't back up, for example `C:\Games` (Desktop and Documents often are in
-   OneDrive). You get a folder like `Zanshin-0.2.1`; if there's another folder
+   OneDrive). You get a folder like `Zanshin-0.3`; if there's another folder
    of the same name inside it, open that one too, until you see `build.bat`.
 3. **Build it.** Double-click **`build.bat`** (with file extensions hidden, it
    shows as `build`). The first time, it fetches Python through the install
@@ -166,8 +166,7 @@ included.
    or couldn't be downloaded, *pip install failed.* means the packages
    couldn't be downloaded or installed. Check your connection and step 1,
    then run `build.bat` again; if it still fails, please open an issue and
-   paste the last lines. The 0.2.1 source still prints these lines in
-   Slovak: *HOTOVO* for DONE, **CHYBA:** for ERROR.
+   paste the last lines.
 4. **Start it.** In the same folder, open `dist`, then `Zanshin`: the app is
    `dist\Zanshin\Zanshin.exe`. For a desktop shortcut, right-click it → on
    Windows 11 **Show more options** → **Send to → Desktop (create shortcut)**.
@@ -403,25 +402,13 @@ The short version is at the top of this page. In detail:
   [Releases](https://github.com/Dandurfin/Zanshin/releases/latest); the
   **↗ New Zanshin on GitHub** link next to the button opens that page. Until
   then the Windows voice speaks the cues whose natural voice is missing.
-- **In the 0.2.1 ZIP, cues stay in the robotic voice.** Since about November
-  2026 Microsoft refuses the version of `edge-tts`, the natural voice's
-  library, inside that ZIP. Lines prepared before then still play in the
-  natural voice; new ones stay in the Windows voice until 0.3 is out, and
-  the line under the voice source says *check your internet connection*,
-  though your connection is fine. Switching the voice source to Windows makes
-  that warning go away. The 0.2.1 ZIP has no **Update voice** button. If you
-  built Zanshin yourself, a build from 0.3 on fetches the newest `edge-tts`
-  every time; the 0.2.1 build doesn't. A ready-made ZIP never updates itself
-  on its own: from 0.3, **Update voice** fetches a newer voice library when
-  you click it, and if Microsoft refuses even that one, new lines use the
-  Windows voice until a new release. More, with the names the 0.2.1 ZIP uses,
-  in [KNOWN_ISSUES.md](KNOWN_ISSUES.md).
+- **Still on the 0.2.1 ZIP?** Since about November 2026 Microsoft refuses
+  the natural voice's library inside it, so every new line plays in the
+  Windows voice, and it has no **Update voice** button. Update to 0.3 (see
+  [Install](#install)); your data stays.
 - **A game's Ctrl+Alt+Z does nothing.** Zanshin reserves it for "not now".
   From 0.3, pick another shortcut or *Off* in Settings → General →
-  *Keyboard shortcut*. In the 0.2.1 ZIP, quit Zanshin, then in
-  `%APPDATA%\Zanshin\dandurf_settings.json` set `"snooze_hotkey"` to another
-  combination with Ctrl, Alt, Shift or Win (for example `"ctrl+alt+x"`), or to
-  `""` to switch the shortcut off. "Not now" stays in the tray icon's menu.
+  *Keyboard shortcut*. "Not now" stays in the tray icon's menu.
 - **A session you don't want in your history** (one that ran overnight, for
   example): from 0.3, History → *One session up close* → **Delete this
   session**.

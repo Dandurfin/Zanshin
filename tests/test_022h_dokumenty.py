@@ -321,7 +321,7 @@ def test_readme_uvod_sukromie_a_troubleshooting():
     assert "**Update voice** (from 0.3, only when you click it" in sukromie
     bod = _plain_text(_sekcia(readme, "Troubleshooting"))
     bod = bod[bod.index("**The line under *Voice source* says Microsoft refused"):]
-    bod = bod[:bod.index("- **In the 0.2.1 ZIP")]
+    bod = bod[:bod.index("- **Still on the 0.2.1 ZIP?**")]
     assert "Click **Update voice** right below it (once you've stopped watching)" in bod
     assert "Microsoft refuses even the newest version" in bod
     assert "refuses even the newest" in _en("edge.update.refused_still")

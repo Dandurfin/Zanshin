@@ -1,16 +1,13 @@
 # Changelog — Zanshin
 
-What each version changed, newest first: 0.3 (in the code here, not
-released yet), 0.2.1, and what 0.1 got wrong. What doesn't work yet, or works
-only partly, is in [KNOWN_ISSUES.md](KNOWN_ISSUES.md).
+What each version changed, newest first: 0.3, 0.2.1, and what 0.1 got
+wrong. What doesn't work yet, or works only partly, is in
+[KNOWN_ISSUES.md](KNOWN_ISSUES.md).
 
 **0.2, partly** means only part was fixed. Where something stayed as it was,
 such as the online voice being the default, I say so.
 
-## What 0.3 changes (not released yet)
-
-These are in the code here, not in a release yet: the 0.2.1 ZIP doesn't
-have them.
+## What 0.3 changes
 
 ### Heart rate, the window and your data
 
@@ -452,6 +449,10 @@ have them.
   states the real rule (at least a minute and at least 10 heart-rate
   readings). Running the tests from source no longer writes into the app's
   own log.
+- **Under the hood.** The build prints its messages in English (*DONE*,
+  **ERROR:**), where the 0.2.1 build printed them in Slovak (*HOTOVO*,
+  **CHYBA:**). The comments and docstrings in the code are in English too;
+  names in the code and many lines in `app.log` are still in Slovak.
 
 ## What 0.2.1 fixes
 

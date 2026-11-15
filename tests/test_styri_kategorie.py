@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Cues have four fixed categories (0.2).
 
-Grounding, Jaw, Release, Breath - each with its own visual in game.
+Grounding, Jaw, Grip & gaze, Breath - each with its own visual in game.
 The „+ Pridat spustac“ (+ Add trigger) button is gone: the fifth and any
 further slot had neither a visual nor a category, `_dalsi_cue_slot`
 skipped it and it never sounded on its own, even though the log promised

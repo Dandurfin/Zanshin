@@ -296,12 +296,13 @@ class SessionMixin:
         # (§3.3): changing them in the middle of the evening means measuring a
         # moving target.
         #
-        # The order is deliberate. First the "how often I speak up" choice (the
-        # whole dictionary, so switching back to "bezne" really restores the
-        # starting numbers and does not leave old ones hanging), only then the
-        # developer overlay, which is a finer tool and may override anything.
-        # Numbers for the average player from the literature; the first session
-        # runs on them.
+        # The order is deliberate. First the whole `trigger.default_params()`
+        # dictionary - numbers for the average player from the literature, the
+        # first session runs on them - so nothing old is left hanging. Then the
+        # load threshold from the player's own sessions (`_prah_z_dat`, once
+        # there is something to compute it from), and only then the developer
+        # overlay, which is a finer tool and may override anything. (Before,
+        # a "how often I speak up" choice came first; it is gone.)
         self.cue_trigger.params.update(trigger.default_params())
         if getattr(self, "_prah_z_dat", None) is not None:
             self.cue_trigger.params["stress_threshold"] = float(self._prah_z_dat)

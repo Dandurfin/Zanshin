@@ -195,7 +195,7 @@ def test_readme_menuje_ovladace_ako_appka():
     assert "*%s*" % _en("data.title") in r                          # Your data
     assert "**%s**" % _en("data.export.btn") in r                   # Export history (JSON)
     assert "*%s*" % _en("settings.hr_enable_switch") in r
-    # the four cues by name, as the In-game page shows them
+    # the four cues by name, as the Watch and in-game page shows them
     mena = ", ".join(_en("overlay.slot.%d" % i) for i in range(3))
     assert "%s, %s" % (mena, _en("overlay.slot.3")) in r
 
@@ -285,22 +285,21 @@ def test_troubleshooting_skratka_a_cisla_z_kodu():
     assert DEFAULT_SNOOZE_HOTKEY == "ctrl+alt+z"
     assert hotkey.format_combo(DEFAULT_SNOOZE_HOTKEY).replace(" ", "") == "Ctrl+Alt+Z"
     assert "Ctrl+Alt+Z" in t
-    # Since 0.3 (batch 4) the shortcut is picked in Settings -> General;
-    # editing the file by hand stays in the README for the 0.2.1 ZIP (that
-    # one does not have the option).
+    # Since 0.3 (batch 4) the shortcut is picked in Settings -> General. The
+    # hand edit of the settings file for the 0.2.1 ZIP (which lacks the
+    # option) left the README with the release of 0.3: the one line for the
+    # 0.2.1 ZIP says to update.
     assert "Settings → %s → *%s*" % (_en("nav.nastavenia_tabs.vseobecne"),
                                      _en("settings.snooze_hotkey")) in t
     assert "*%s*" % _en("settings.snooze_hotkey_none") in t
     assert 'tr("settings.snooze_hotkey")' in zdroj_suboru("app_prefs.py")
-    assert "In the 0.2.1 ZIP" in t
-    # the suggested replacement is a valid combination and "" switches the
-    # shortcut off
-    m = re.search(r'for example `"([^"]+)"`', t)
-    assert m and hotkey.is_valid(m.group(1)), m
-    assert '`""` to switch the shortcut off' in t
-    prefs = zdroj_suboru("app_prefs.py")
-    assert 'loaded.get("snooze_hotkey"' in prefs and 'hk == ""' in prefs
-    assert "`\"snooze_hotkey\"`" in t
+    assert "In the 0.2.1 ZIP" not in t
+    assert "`\"snooze_hotkey\"`" not in t and "dandurf_settings.json" not in t
+    assert "Update to 0.3" in t
+    # with the shortcut taken or off, "not now" is still in the tray menu
+    assert _en("tray.snooze").startswith("Not now")
+    assert 'tr("tray.snooze"' in zdroj_suboru("app.py")
+    assert "\"Not now\" stays in the tray icon's menu." in t
     assert SNOOZE_HOTKEY_MINUTES == 30
     assert "no cues for 30 minutes" in _plain(_read("README.md"))
     # robot = the Windows voice; preparation only after stopping

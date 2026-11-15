@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Sharing a profile by code (Triggers -> Export profile).
+"""Sharing a profile by code (Cues -> Copy profile code).
 
 The code is sent to other people. Before, it carried whole slots including
 absolute paths to recordings (C:\\Users\\<meno>\\AppData\\...) - whoever

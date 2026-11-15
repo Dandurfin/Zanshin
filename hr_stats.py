@@ -464,16 +464,17 @@ PRAH_MIN_RELACII = 3
 # calibration (`HeartStats` wants 30 samples), which does not count. So a
 # session gives `int(signal_s / 1.5) - 29` points.
 #
-# 1000 -> 900 (0.2.1). The README promises "three sessions of roughly ten
-# minutes are enough, three of five are not". At 1000 that held only with
-# coverage above ~91 %: 3 x 10 min gives at 100 % 3 x 371 = 1113, at 90 %
-# 3 x 331 = 993 and at 85 % 3 x 311 = 933 - so a normal evening with a few
-# holes in the signal would stay below the threshold. 900 lets 3 x 10 min
-# through down to a coverage of ~82 %, and still does not let through
-# 3 x 5 min (3 x 171 = 513 not even at full coverage) nor 3 x 8 min at
-# full coverage (873). Together with calibration, for three sessions it is
+# 1000 -> 900 (0.2.1). docs/HOW-IT-WORKS.md (back then the README) says
+# of the sessions "three of about ten minutes are enough, three of five
+# are not". At 1000 that held only with coverage above ~91 %: 3 x 10 min
+# gives at 100 % 3 x 371 = 1113, at 90 % 3 x 331 = 993 and at 85 %
+# 3 x 311 = 933 - so a normal evening with a few holes in the signal
+# would stay below the threshold. 900 lets 3 x 10 min through down to a
+# coverage of ~82 %, and still does not let through 3 x 5 min
+# (3 x 171 = 513 not even at full coverage) nor 3 x 8 min at full
+# coverage (873). Together with calibration, for three sessions it is
 # (900 + 3 x 29) x 1.5 s = ~25 minutes of heart rate - "roughly half an
-# hour" from the README.
+# hour" from the same paragraph of docs/HOW-IT-WORKS.md.
 PRAH_MIN_BODOV = 900
 PRAH_Z_RELACII = 20
 PRAH_MIN_TRVANIE_S = 300.0
@@ -808,8 +809,8 @@ def time_in_zones(samples, critical_bpm, baseline=None):
     Zones: calm < base+10, raised < base+25, high < critical, critical >=
     critical. The result is a dict {zone: seconds}. Used for an
     after-the-fact recomputation from raw samples (e.g. in tests or on
-    import); a live session computes its zones continuously from the
-    current load."""
+    import); a live session credits the same zones as it goes
+    (`HeartStats.add`, with the same `zone_of_bpm`)."""
     out = {ZONE_CALM: 0.0, ZONE_RAISED: 0.0, ZONE_HIGH: 0.0, ZONE_CRITICAL: 0.0}
     if not samples:
         return out
@@ -1459,12 +1460,16 @@ class HeartStats:
                      zone_at=None):
         """Records a fired cue.
 
-        `arm` is "voice" or "silent" - the silent control arm arrives in
-        phase 2, the field is already here so that data from both phases
-        has the same shape. `source` tells whether the cue was fired by
-        the body ("auto") or a key ("key"); the key triggers go away in
-        phase 3, until then they are handy for checking that the
-        measurements work.
+        `arm` is "voice" or "silent" (`trigger.ARM_SILENT`, the silent
+        control arm, which came in phase 2; the field was here before it,
+        so that data from both phases has the same shape). `source` tells
+        who fired the cue. In the app
+        it is always the body ("auto", `app_today._fire_somatic_cue`):
+        phase 3 removed the key triggers, and a cue fired by hand (Test,
+        the HUD preview) is not recorded at all (`app_controls._note_cue`).
+        The "key" fallback (no `source` and `auto=False`) is a leftover
+        from before phase 3 that only tests and `gui_harness_auto` still
+        hit.
 
         DELIVERY RECORD (0.2, ladder + gate): `rung` is the session's
         ladder rung, `audible` whether something really sounded,
@@ -2178,11 +2183,12 @@ class HeartStats:
             "hrr_events": len(events),
             "hrpi": persistence_index(self._all),
             "trigger_offsets_s": list(self.trigger_offsets),
-            # The shape of the session - 120 numbers (~0.5 kB). Without it a
-            # session in the history can only be read as a table row; with it
-            # it can be LOOKED AT. The zones are recomputed from the curve
-            # only when drawing, via `baseline_bpm` and `critical_bpm` above -
-            # storing them again would be the same number twice.
+            # The shape of the session - up to `CURVE_POINTS` (600) numbers,
+            # a few kB. Without it a session in the history can only be read
+            # as a table row; with it it can be LOOKED AT. The zones are
+            # recomputed from the curve only when drawing, via `baseline_bpm`
+            # and `critical_bpm` above - storing them again would be the same
+            # number twice.
             "curve": [int(round(b)) for b in self.trace()],
             # Activity curve next to the heart rate curve - from it one can
             # find out afterwards when the player was really playing and
@@ -2288,12 +2294,12 @@ def normalize_activity(raw):
 # it". When they answered, their word wins.
 #
 # DELIBERATELY for learning too, not just for history (verified in
-# 0.2.1). The question is "Did you play, or work?" - that is a CORRECTION
-# of the world, not a remark. Whoever forgot to switch from Work before
-# playing answers "I played" and the evening moves to Play INCLUDING the
-# critical heart rate and the load threshold (`sessions_in_world` in
-# `app._open_hr_session`); conversely a session started in Play and
-# answered "I worked" drops out of them.
+# 0.2.1). The question is "Were you playing or working?" - that is a
+# CORRECTION of the world, not a remark. Whoever forgot to switch from
+# Work before playing answers "Playing" and the evening moves to Play
+# INCLUDING the critical heart rate and the load threshold
+# (`sessions_in_world` in `app._open_hr_session`); conversely a session
+# started in Play and answered "Working" drops out of them.
 # The stamp from the start would lie here about what the player was doing
 # - and they know it better.
 # "A running session stays in the world it started in" holds until the

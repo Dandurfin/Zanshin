@@ -112,7 +112,7 @@ THEMES = {
         "keycap_text": "#8FB0E8",
         "washi": "#DCD3C0",          # the 残 mark
         # --- status/secondary colours (dashboard, enso) ---
-        "bengara": "#C04A3E",        # NOTE: enso now uses success/danger
+        "bengara": "#C04A3E",        # NOTE: the tray enso uses success/danger
         "blue": "#5C86C9",           # calm/low values (Aizome is already blue)
         "murasaki": "#9C8FC9",
         # --- heart rate zones (see the note under THEMES) ---
@@ -164,7 +164,7 @@ THEMES = {
         "keycap_text": "#D9B868",
         "washi": "#DCD3C0",
         # --- status/secondary colours (dashboard, enso) ---
-        "bengara": "#A6432E",        # NOTE: enso now uses success/danger
+        "bengara": "#A6432E",        # NOTE: the tray enso uses success/danger
         "blue": "#7B93C9",           # calm/low values (e.g. HRR recovery)
         "murasaki": "#B888C0",
         # --- heart rate zones (see the note under THEMES) ---

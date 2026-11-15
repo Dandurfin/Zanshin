@@ -12,8 +12,9 @@ everything that can be checked without opening a window:
   * compilation of all modules,
   * completeness and consistency of translations in all 11 languages,
   * that the app does not call methods/tokens that do not exist,
-  * that rebind and keycap have the right API (regression from the
-    redesign),
+  * that ui_kit.Keycap still has set_text(), that the keyboard hook and
+    rebind (removed in phase 3) have not come back, that bulk slot
+    deletion keeps its guard and that font sizes are numbers,
   * that data from user settings is normalised without a crash,
   * that the installed edge-tts is new enough (Microsoft rejects older
     ones).

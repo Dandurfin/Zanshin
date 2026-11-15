@@ -2,9 +2,10 @@
 """The documents after batch 0.3g say what the code does.
 
   * natural voice: since November 2026 Microsoft refuses the old edge-tts
-    (HTTP 403). CHANGELOG (0.3), KNOWN_ISSUES (0.2.1 ZIP), README (Install
-    B and Troubleshooting), DEVELOPMENT and HOW-IT-WORKS name the same
-    minimum as requirements.txt and describe what the build really does,
+    (HTTP 403). CHANGELOG (0.3), README (Install B), DEVELOPMENT and
+    HOW-IT-WORKS name the same minimum as requirements.txt and describe
+    what the build really does; the README's Troubleshooting has one line
+    for whoever is still on the 0.2.1 ZIP,
   * since 15. 11. 2026 (the author's decision) requirements.txt has NO
     version cap (",<8" could have blocked exactly this fix) - the
     documents say so, no "newest 7.x" comes back, and after upgrading
@@ -83,10 +84,6 @@ def _bod(text, zaciatok):
 def _zmeny_022():
     c = _read(ZMENY)
     return c[c.index("## What 0.3 changes"):c.index("## What 0.2.1 fixes")]
-
-
-def _otvorene():
-    return _sekcia(_read("KNOWN_ISSUES.md"), "Still open")
 
 
 def _minimum_edge_tts():
@@ -205,46 +202,21 @@ def test_changelog_hlas_menuje_minimum_a_co_build_robi():
 
 
 def test_known_issues_hlas_v_zipe_021():
-    """While 0.2.1 is the released version, its ZIP has edge-tts 7.2.8 -
-    Microsoft refuses it. After 0.3 is released this item (and the
-    condition below) goes away."""
+    """The 0.2.1 ZIP has edge-tts 7.2.8, which Microsoft refuses. While 0.2.1
+    was the released version, KNOWN_ISSUES had an item about it. 0.3 is
+    released (it needs a newer edge-tts and has Update voice), so the item
+    is gone: CHANGELOG covers the fix, and the README has one line for
+    whoever is still on the 0.2.1 ZIP
+    (test_readme_build_a_troubleshooting_hlasu)."""
     k = _read("KNOWN_ISSUES.md")
-    vydana_021 = k.splitlines()[0].endswith("alpha 0.2.1")
-    nadpis = "The natural voice no longer works in the 0.2.1 ZIP."
-    if not vydana_021:
-        assert nadpis not in k
-        return
-    bod = _bod(_otvorene(), nadpis)
-    minimum = _minimum_edge_tts()
-    assert "`edge-tts` 7.2.8" in bod and "HTTP 403" in bod
-    assert "`edge-tts` %s or newer" % minimum in bod
-    assert "0.3 (not released yet)" in bod
-    # the 0.3 build downloads the newest edge-tts on every run and tries it;
-    # the ready-made 0.2.1 ZIP does not and has no Update voice button
-    assert ("If you build 0.3 yourself, its build fetches the newest "
-            "`edge-tts` every time and tests it.") in bod
-    assert "has no *%s* button" % _en("edge.update.btn") in bod
-    assert "0.3's **%s** button" % _en("edge.update.btn") in bod
-    assert "its build updates an older one" not in bod
-    assert "'--upgrade'" in _edge_blok()
-    # 0.2.1 has the old names: the row "Voice comes from", the option "Windows
-    # voice (works offline)" and a general sentence about the internet. Today
-    # they are called differently.
-    for stare in ("*Voice comes from*", "*Windows voice (works offline)*",
-                  "*check your internet connection*"):
-        assert stare in bod, stare
-    assert _en("settings.engine") == "Voice source"
-    assert _en("engine.sapi") != "Windows voice (works offline)"
-    # a manual update for your own 0.2.1 build is unverified - the sentence
-    # says so; the command has the same line as requirements.txt (no cap)
-    assert '`py -m pip install --upgrade "edge-tts>=%s"`' % minimum in bod
-    assert "`py -m pip install --upgrade edge-tts`" not in bod
-    assert ",<" not in bod
-    assert "I haven't tried that with 0.2.1" in bod
-    # "0.2.1 calls the library the same way 0.3 does" - the call in 0.3
-    audio = _read("audio_engine.py")
-    assert "edge_tts.Communicate(text, voice, rate=edge_rate_str(rate))" in audio
-    assert "await comm.save(tmp)" in audio
+    assert k.splitlines()[0].endswith("alpha 0.3")
+    assert "The natural voice no longer works in the 0.2.1 ZIP." not in k
+    assert "not released yet" not in k
+    # the fix is in CHANGELOG: the refused 7.2.8 and the new minimum
+    bod = _bod(_podsekcia(_zmeny_022(), "Fewer dead ends"),
+               "Microsoft started refusing the natural voice.")
+    assert "7.2.8, also the one inside the 0.2.1 ZIP" in bod
+    assert "`edge-tts` %s or newer" % _minimum_edge_tts() in bod
 
 
 def test_readme_build_a_troubleshooting_hlasu():
@@ -277,32 +249,28 @@ def test_readme_build_a_troubleshooting_hlasu():
     assert ("Offline, the build keeps the `edge-tts` you have if it's new enough "
             "(`edge-tts` %s or newer; Microsoft refuses older ones) and says it "
             "couldn't check; with an older one it stops." % minimum) in instal
-    # The robotic one is the Windows voice, not the natural one - the
-    # heading says so too.
-    bod = _bod(_sekcia(readme, "Troubleshooting"),
-               "In the 0.2.1 ZIP, cues stay in the robotic voice.")
+    # Since 0.3 is released, the README has one short item for whoever is
+    # still on the 0.2.1 ZIP: why its new lines are robotic (that is the
+    # Windows voice, not the natural one) and that updating fixes it.
+    bod = _bod(_sekcia(readme, "Troubleshooting"), "Still on the 0.2.1 ZIP?")
+    assert "In the 0.2.1 ZIP, cues stay in the robotic voice." not in readme
+    assert "until 0.3 is out" not in readme
     assert "The natural voice stays robotic" not in readme
-    assert "[KNOWN_ISSUES.md](KNOWN_ISSUES.md)" in bod
-    assert "*check your internet connection*" in bod
-    assert ("a build from 0.3 on fetches the newest `edge-tts` every time; "
-            "the 0.2.1 build doesn't") in bod
-    assert "The 0.2.1 ZIP has no **%s** button." % _en("edge.update.btn") in bod
-    # a ready-made ZIP never updates on its own; from 0.3 only on a click
-    assert ("A ready-made ZIP never updates itself on its own: from 0.3, "
-            "**Update voice** fetches a newer voice library when you click it, "
-            "and if Microsoft refuses even that one, new lines use the Windows "
-            "voice until a new release.") in bod
+    assert "Since about November 2026 Microsoft refuses" in bod
+    assert "Since about November 2026" in _plain(ZMENY)
+    assert "every new line plays in the Windows voice" in bod
+    assert "it has no **%s** button." % _en("edge.update.btn") in bod
+    assert "Update to 0.3 (see [Install](#install)); your data stays." in bod
+    assert "your data stays" in _plain_text(_sekcia(readme, "Install"))
     assert "0.3's won't either" not in readme
     assert "There is no update checker" not in readme
     assert "Zanshin never checks for a new version of itself" in _plain_text(readme)
-    # The old 0.2.1 names do not belong in the README (test_022d_dokumenty) -
-    # the README speaks in general and sends you to KNOWN_ISSUES, where the
-    # names from the 0.2.1 ZIP are.
-    assert "with the names the 0.2.1 ZIP uses, in [KNOWN_ISSUES.md]" in bod
+    # The old 0.2.1 names went with the 0.2.1 items: neither the README
+    # (test_022d_dokumenty) nor KNOWN_ISSUES has them any more.
     k = _plain("KNOWN_ISSUES.md")
-    if k.startswith("# Known issues — Zanshin alpha 0.2.1"):
-        for stare in ("*Voice comes from*", "*Windows voice (works offline)*"):
-            assert stare in k and stare not in bod, stare
+    for stare in ("*Voice comes from*", "*Windows voice (works offline)*",
+                  "*check your internet connection*"):
+        assert stare not in k and stare not in bod, stare
 
 
 def test_development_a_how_it_works_o_edge_tts():

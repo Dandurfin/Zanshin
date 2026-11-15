@@ -129,9 +129,9 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
     # needs data. The rotation is even, not personalised.
     CUE_SLOT_INDEX = 3
 
-    # In phase 2 the key slots trigger nothing. The code is NOT deleted yet
-    # (that is phase 3) - this is the only switch and it can be flipped in
-    # the developer overlay.
+    # Since phase 2 the key slots trigger nothing, and phase 3 deleted their
+    # code (the pynput hooks). Nothing reads this switch any more - not the
+    # developer overlay either; it stays only as a marker.
     KEY_SLOTS_ENABLED = False
 
     # Busy TCP port: how many times and after how long the bind is retried.
@@ -1460,10 +1460,11 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
     # ---------- Settings and In-game pages ----------
 
     def _build_spustace_page(self, page, pal):
-        """Triggers: the profile, sharing it, and the trigger map.
+        """Cues (key "spustace", once called Triggers): the profile, sharing
+        it, the cue cards and the guide below them.
 
         The page is no longer called "Profiles" - the profile is the
-        mechanism, the trigger is what the user really sets. The profile
+        mechanism, the cue is what the user really sets. The profile
         stays, it just stopped being the name of the whole page.
         """
         # ONE SCROLL FOR THE WHOLE PAGE.
@@ -2191,8 +2192,11 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
             sidebar.mark_active(key)
 
     def _build_settings_group(self, page, pal):
-        """The Settings group: a row of tabs at the top (Cues | Sound | Guide |
+        """The Settings group: a row of tabs at the top (Cues | Sound |
         General) and a nested PageContainer below it.
+
+        "Guide" was a separate tab until 18. 9. - it now sits at the bottom
+        of the Cues page and `TAB_ALIAS` sends the old key there.
 
         "In-game" is no longer a tab - it is a separate item in the side
         menu (the "Sumi noc" redesign), because it is the biggest part of
@@ -2224,16 +2228,18 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
 
     def _build_nastavenia_page(self, page, pal):
         """General settings (a tab in the Settings group): now only things
-        that get set once - look, language, behaviour, the guide.
+        that get set once or are rarely needed - your data, About, the
+        in-game sections, look and language, the "Not now" shortcut, the
+        guide.
 
         A scrollable frame (not just a CTkFrame): with the fixed window
-        size (see DandurfApp.WINDOW_H) all the panels (Look/Behaviour/
-        Guide) may not fit vertically - without scrolling the bottom
-        panels would be unreachable.
+        size (see DandurfApp.WINDOW_H) all these panels may not fit
+        vertically - without scrolling the bottom panels would be
+        unreachable.
 
-        NOTE: originally the "Dojo background" and "Minimalist mode"
-        panels were also listed here - both have since been removed, so
-        they are no longer a reason for the scroll.
+        NOTE: originally the "Dojo background", "Minimalist mode" and
+        "Behaviour" panels were also listed here - all three have since
+        been removed, so they are no longer a reason for the scroll.
         """
         wrap = ui_kit.stranka_scroll(page, pal)
         wrap.pack(fill="both", expand=True, padx=ui_kit.PAGE_GUTTER, pady=(20, 20))
@@ -2450,10 +2456,12 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
     def _hr_entry(self, inner, pal, row, label, variable, extra=None):
         """One "label + field" row of the Heart-Rate Sensor card.
 
-        set_typing() is just as important here as in the slots (see
-        SlotCard): the global keyboard catcher runs even while the player
-        is typing into the settings, so without this safeguard typing
-        "110" would fire the slot they have bound to the "1" key.
+        set_typing() is called here just as in the slots (see SlotCard),
+        but nothing reads the flag any more. Before phase 3 a global
+        keyboard catcher ran even while the player was typing into the
+        settings, so without it typing "110" would fire the slot bound to
+        the "1" key. Phase 3 removed the hooks (KEY_SLOTS_ENABLED is
+        False).
 
         `extra(bunka)` adds another control next to the field (the
         "Show IP" switch) - the field stays in the same place on the

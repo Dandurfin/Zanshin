@@ -140,7 +140,7 @@ class DataMixin:
                                       justify="left", wraplength=560)
 
     def show_about(self):
-        """The "A" button in the title bar: open Settings and jump to About.
+        """The ⓘ button in the title bar: open Settings and jump to About.
 
         The scroll is done only after the redraw (`after`), because before
         it `winfo_y()` has nothing to return yet - the page is not laid out
@@ -154,7 +154,8 @@ class DataMixin:
 
     def _posun_vseobecne_na(self, panel):
         """Scrolls the General page so that `panel` is at the top. Shared by
-        ⓘ (About) and ⚙ at "Tep v hre" (the heart-rate panel section)."""
+        ⓘ (About) and ⚙ at "On-screen HR panel" (the heart-rate panel
+        section)."""
         wrap = getattr(self, "vseobecne_wrap", None)
         if panel is None or wrap is None:
             return

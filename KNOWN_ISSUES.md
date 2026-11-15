@@ -1,41 +1,17 @@
-# Known issues — Zanshin alpha 0.2.1
+# Known issues — Zanshin alpha 0.3
 
-What doesn't work yet, or works only partly. What each version changed,
-including 0.3 (in the code here, not released yet), is in
+What doesn't work yet, or works only partly. What each version changed is in
 [CHANGELOG.md](CHANGELOG.md).
 
 I'm not a programmer. I build Zanshin with AI and learn as I go. If you spot
 something, or know a better way, I'd be glad to hear it. Where something stays
 as it is, such as the online voice being the default, I say so.
 
-## Still open (some planned for 0.3, some by design)
+## Still open (some planned for a later version, some by design)
 
 As far as I know, none of these is harmful. Some are limits you should know
 about, and a few will stay.
 
-- **The natural voice no longer works in the 0.2.1 ZIP.** Since about November
-  2026 Microsoft's speech service refuses the voice library inside the ZIP
-  (`edge-tts` 7.2.8; the service answers HTTP 403). Lines Zanshin prepared
-  before then still play in the natural voice. Every other line (after a
-  fresh install, or once you change a cue's wording, the voice or the speed)
-  is spoken by the Windows voice, and the line under *Voice comes from* in
-  Settings → Sound says *check your internet connection*, though your
-  connection is fine. The 0.2.1 ZIP can't fix this itself: it keeps the
-  library it came with and has no *Update voice* button. It's fixed in 0.3
-  (not released yet), which needs `edge-tts` 7.3.1 or newer. If you build
-  0.3 yourself, its build fetches the newest `edge-tts` every time and
-  tests it. And if Microsoft changes something again, 0.3's **Update
-  voice** button (Settings → Sound, under *Voice source*) fetches a newer
-  `edge-tts`, if there is one, when you click it, ZIP or not, without
-  waiting for a new release.
-  Until then, choose *Windows voice (works offline)* under *Voice comes
-  from*: every cue then uses the Windows voice, nothing is sent to
-  Microsoft, and the warning goes away. If you built 0.2.1 yourself,
-  building it again doesn't help, because its build keeps the `edge-tts`
-  already on your PC. Updating it by hand first
-  (`py -m pip install --upgrade "edge-tts>=7.3.1"`) should, since 0.2.1
-  calls the library the same way 0.3 does, but I haven't tried that with
-  0.2.1.
 - ***Update voice* can't fix everything** (0.3). It helps only when a newer
   `edge-tts` fixes the problem and works with the libraries inside your
   Zanshin; otherwise it says a newer Zanshin is needed and keeps the current
@@ -131,7 +107,7 @@ data, and logs can name your devices and files. Describe what you saw instead.
 
 ## What changed in each version
 
-What 0.3 changes (not released yet), what 0.2.1 fixed and what 0.1 got
-wrong: [CHANGELOG.md](CHANGELOG.md).
+What 0.3 changes, what 0.2.1 fixed and what 0.1 got wrong:
+[CHANGELOG.md](CHANGELOG.md).
 
 — **Dandurfin** · GPLv3

@@ -439,11 +439,12 @@ class ControlsMixin:
             slot.last_triggered = now
         if 0 <= slot.index < 4:
             self.ui_call(lambda i=slot.index: self.overlay_manager.trigger(i))
-            # A record for the measurement window. It has to go through
-            # `ui_call` - `fire_slot` runs on the listener thread, while only
-            # the GUI thread may touch `HeartStats`. The key triggers go away
-            # in phase 3; until then they are the quickest way to check that
-            # the measurements really come in.
+            # `_note_cue` no longer records anything (see its docstring).
+            # It still goes through `ui_call` - a leftover from when
+            # `fire_slot` also ran on the key listener's thread, while only
+            # the GUI thread may touch `HeartStats`. The key triggers and
+            # their listeners were removed in phase 3; today only the Test
+            # button and a click in the HUD preview come here.
             self.ui_call(lambda i=slot.index, s=source: self._note_cue(i, s))
         threading.Thread(target=self._deliver, args=(slot, ignore_cooldown, source),
                          daemon=True).start()

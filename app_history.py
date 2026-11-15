@@ -503,7 +503,8 @@ class HistoryMixin:
     def _refresh_history_trend(self):
         """Redraws the trend chart + text for the chosen metric and period.
 
-        The period decides which sessions count (e.g. "Week" = from
+        The period decides which sessions count (e.g. "Week" = the last
+        7 days, a rolling window - `hr_stats.rolling_start_ts`, not from
         Monday) and into which buckets they are grouped for the chart
         (month -> daily averages, year -> monthly - exactly as in the
         spec); the metric decides which value of a bucket is drawn.
@@ -535,9 +536,9 @@ class HistoryMixin:
         scale = self._METRIC_SCALE.get(metric, 1.0)
         decimals = self._METRIC_DECIMALS.get(metric, 0)
         # A bucket WITHOUT data is sent as None, not as a skipped point:
-        # otherwise Wednesday's break would not show on the chart and Tuesday
-        # would shift into its place. The x-axis labels are already computed
-        # in the bucket.
+        # otherwise Wednesday's break would not show on the chart and Thursday
+        # would shift left into its place. The x-axis labels are already
+        # computed in the bucket.
         chart_values = [None if b[bucket_key] is None else b[bucket_key] * scale
                         for b in buckets]
         # Axis labels in the date format of the APP'S LANGUAGE (0.3 batch 4b,

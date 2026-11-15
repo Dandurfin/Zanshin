@@ -538,8 +538,9 @@ def k_sprievodca_foto():
 
 @krok
 def k_sprievodca_periferia():
-    # The third cue (Uvolnenie & periferia, Release & periphery) - different
-    # content, different pictogram.
+    # The third cue (slot index 2, "Grip & gaze"; its old name was
+    # "Uvolnenie & periferia", Release & periphery) - different content,
+    # different pictogram.
     app.slots[0].toggle_detail()
     app.slots[2].toggle_detail()
     app.spustace_scroll._parent_canvas.yview_moveto(0.62)

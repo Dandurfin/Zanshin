@@ -2090,11 +2090,12 @@ class SlotCard:
         self.pal = pal
 
         # --- Fixed grid instead of auto widths ------------------------------
-        # The keycap takes its column regardless of how wide it is, so every
-        # trigger's phrase starts on the same vertical line. The keycap width
-        # thus still carries the input type (key / mouse / controller), but no
-        # longer pushes the text beside it - that was the only thing that did
-        # not match the mockup.
+        # Column 0 has a fixed minimum width, so every card's phrase starts on
+        # the same vertical line whatever column 0 holds (arrow, checkbox,
+        # pictogram - see below). Before phase 3 the keycap sat there and its
+        # width carried the input type (key / mouse / controller); the fixed
+        # column kept it from pushing the text beside it - the only thing that
+        # did not match the mockup.
         #
         # Tk minsize does NOT clip a column, it only inflates it if the content
         # is wider - that is why every element in the grid has a fixed `width`.
@@ -2387,9 +2388,10 @@ class SlotCard:
 
         # A DRAWER, not a continuation of the card.
         #
-        # The explanation has its own surface and frame, so you can see at a
-        # glance where the cue controls end and where the text about the body
-        # begins. Without it the two parts merged into one tall rectangle.
+        # The explanation has its own surface (the `surface_alt` fill), so you
+        # can see at a glance where the cue controls end and where the text
+        # about the body begins. Without it the two parts merged into one tall
+        # rectangle.
         #
         # NO FRAME (0.3, UX audit): at most one level of frame - a card in a
         # card was a frame in a frame. The drawer is set apart by the
@@ -2697,7 +2699,8 @@ class OnboardingWizard:
     """First-start guide - 5 steps, each SHOWS something or asks about one
     thing:
 
-      1) What the app does   - real overlay pictograms (grounding/jaw/breath)
+      1) What the app does   - real overlay pictograms (grounding/jaw/
+         release/breath)
       2) What it looks like in game - HUD + pictogram over a game background
       3) Watch (optional) - why, and "Pair a watch now" (opens after the
          introduction)
@@ -2987,8 +2990,8 @@ class OnboardingWizard:
         # The step content goes into a frame that is CENTRED in the body
         # (expand without fill). Before, it was packed directly into `body`, so
         # it sat stuck to the top and up to a third of the window stayed empty
-        # under it - each of the four steps has a different height and a fixed
-        # window height never matches them.
+        # under it - each of the five steps (`STEP_COUNT`) has a different
+        # height and a fixed window height never matches them.
         inner = ctk.CTkFrame(self.body, fg_color="transparent")
         inner.pack(expand=True)
         builder = (self._step1, self._step2, self._step3, self._step4,
@@ -3067,8 +3070,11 @@ class OnboardingWizard:
         self._para(parent, tr("ob.step1.body"), width=560)
         # How it is triggered - a mechanism that was nowhere in the whole
         # introduction. It is exactly the reason why the app is not annoying:
-        # nothing extra reminds you, it hangs on the keys the player presses
-        # anyway.
+        # "You do not have to press or remember anything" - since phase 3 a
+        # cue is fired by the body, not by keys: the app watches the load and
+        # speaks up by itself in a break, once the load has stopped climbing
+        # (and stays quiet in the peak zone). Before phase 3 it hung on the
+        # keys the player presses anyway.
         ctk.CTkLabel(parent, text=tr("ob.step1.how"), font=ui_kit.ui(11),
                      text_color=pal["accent"], justify="center",
                      wraplength=560).pack(pady=(10, 0))
@@ -3503,9 +3509,10 @@ class OnboardingWizard:
     def _show_picture_preview(self):
         """Picture preview: the pictogram appears briefly at the bottom of the
         window and disappears - as in game at the edge of the screen.
-        Grounding (slot 1), the same visual as in step 2 and the same slot
-        as the sound preview; breath has no visual in `VISUAL_DRAW` (it is
-        drawn by `render_breath`)."""
+        Grounding (slot index 0, the first slot), the same visual as in
+        step 2 and the same slot as the sound preview
+        (`default_sound_for_slot_index(pack, 0)`); breath has no visual in
+        `VISUAL_DRAW` (it is drawn by `render_breath`)."""
         self._stop_picture_preview()
         try:
             # CTk does not scale a tk image - at 150 % the pictogram would be

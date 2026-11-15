@@ -658,10 +658,13 @@ def test_dnes_na_pauze_nesluby_hlasku():
 
 
 def test_vety_rebrika_hovoria_jazykom_appky():
-    """Review: the snooze sentence names what the player sees in the app
-    („stíšenie“ - snoozing, Ctrl+Alt+Z), not the internal name „teraz nie“,
-    which the app shows nowhere. And the app does not ask anyone to miss
-    it - SK talks about cues like EN."""
+    """Review: the snooze sentence says „stíšená“ / "snoozed" (the word of
+    "Cancel snooze" on the HUD), not „teraz nie“ / "not now". Not because
+    the app hides "Not now" - it shows it in the tray menu, the tooltip
+    of the side panel's state dot while snoozed and the "Not now"
+    shortcut title in Settings; these asserts only pin the wording of
+    this one sentence. And the app does not ask
+    anyone to miss it - SK talks about cues like EN."""
     snooze = i18n.STRINGS["history.rebrik.why.snooze"]
     # 0.3 (batch 4): no player gender - "som bola stisena" (I was
     # silenced), not "si ma stisil" (you silenced me, masculine)
