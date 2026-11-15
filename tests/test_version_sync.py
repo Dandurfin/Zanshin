@@ -56,6 +56,18 @@ def _verzia_z_i18n():
     return verzia
 
 
+def _vydana_verzia():
+    verzia = _verzia_z_i18n()
+    zmeny = _read("CHANGELOG.md")
+    if f"\n## What {verzia} changes (not released yet)\n" not in zmeny:
+        return verzia
+    nadpisy = re.findall(rf"^## What ({_VERZIA}) ", zmeny, re.M)
+    assert len(nadpisy) >= 2 and nadpisy[0] == verzia, (
+        f"CHANGELOG.md: the unreleased {verzia} must be the first section, "
+        f"followed by the last release: {nadpisy}")
+    return nadpisy[1]
+
+
 def _styri_cisla(verzia):
     """Windows chce v VERSIONINFO 4 cisla - chybajuce su nuly."""
     cisla = [int(x) for x in verzia.split(".")]
@@ -125,5 +137,5 @@ def test_known_issues_nesie_aktualnu_verziu():
     prvy = _read("KNOWN_ISSUES.md").splitlines()[0]
     m = re.search(rf"alpha ({_VERZIA})\s*$", prvy)
     assert m, f"KNOWN_ISSUES.md: nadpis nekonci 'alpha X.Y.Z': {prvy!r}"
-    assert m.group(1) == _verzia_z_i18n(), (
-        f"KNOWN_ISSUES.md hlasi {m.group(1)}, i18n {_verzia_z_i18n()}")
+    assert m.group(1) == _vydana_verzia(), (
+        f"KNOWN_ISSUES.md hlasi {m.group(1)}, vydana verzia {_vydana_verzia()}")

@@ -124,7 +124,7 @@ def test_bezi_prave_nainstalovana_appka():
 def test_podobny_priecinok_nie_je_ten_isty():
     """...\\Zanshin a ...\\Zanshin-0.2.2 su dva rozne priecinky."""
     reg = _FalosnyWinreg({("HKCU", 0): _hodnoty()})
-    exe = INSTALOVANA + r"-0.2.2\Zanshin.exe"
+    exe = INSTALOVANA + r"-0.3\Zanshin.exe"
     assert paths.stara_instalacia(reg, exe=exe) is not None
 
 
@@ -260,7 +260,7 @@ def test_readme_krok_nula_v_zip_navode():
 def test_known_issues_v_sekcii_022():
     # Od 0.2.2 (davka 4) je historia verzii v CHANGELOG.md.
     k = zdroj_suboru("CHANGELOG.md")
-    sekcia = " ".join(k[k.index("## What 0.2.2 changes"):k.index("## What 0.2.1 fixes")].split())
+    sekcia = " ".join(k[k.index("## What 0.3 changes"):k.index("## What 0.2.1 fixes")].split())
     assert "The 0.2 uninstaller can delete this version's data." in sekcia
     assert "**No** deletes that folder" in sekcia and "Answer **Yes**." in sekcia
     # otazka odinstalatora citovana presne podla Dandurf.iss

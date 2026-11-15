@@ -80,6 +80,17 @@ def test_readme_port_pocuva_na_vsetkych_sietach():
         assert "the log says so" in _plain(meno), meno
 
 
+def _vydana_verzia(verzia):
+    zmeny = _read(ZMENY)
+    if "\n## What %s changes (not released yet)\n" % verzia not in zmeny:
+        return verzia
+    nadpisy = re.findall(r"^## What (\d+(?:\.\d+){1,3}) ", zmeny, re.M)
+    assert len(nadpisy) >= 2 and nadpisy[0] == verzia, (
+        "CHANGELOG.md: the unreleased %s must be the first section, followed "
+        "by the last release: %r" % (verzia, nadpisy))
+    return nadpisy[1]
+
+
 def test_readme_vedie_k_buildu_nie_k_instalatoru():
     """Instalacka sa nevydava (rozhodnutie autora, 0.2.1): hrac dostane bud
     hotovy ZIP z Releases s odtlackom SHA-256, alebo si appku postavi sam cez
@@ -93,7 +104,7 @@ def test_readme_vedie_k_buildu_nie_k_instalatoru():
     readme = _read("README.md")
     instal = _sekcia(readme, "Install")
     assert "setup.exe" not in instal
-    assert "Zanshin-%s-windows.zip" % verzia in instal
+    assert "Zanshin-%s-windows.zip" % _vydana_verzia(verzia) in instal
     assert "Get-FileHash" in instal
     assert "`build.bat`" in instal
     assert "dist\\Zanshin\\Zanshin.exe" in instal

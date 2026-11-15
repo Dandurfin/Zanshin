@@ -1,6 +1,6 @@
 # 残 Zanshin
 
-*Alpha 0.2.1 · Windows · code under GPLv3*
+*Alpha 0.3 · Windows · code under GPLv3*
 
 **A free, open-source Windows app for gamers. When your heart rate shows
 you've been under strain for a while, Zanshin waits for a short lull in your
@@ -21,7 +21,7 @@ for OBS*, free) · the phone and the PC on the same home network (Wi‑Fi).
 
 *Today, with synthetic data. This page describes the code here, which is newer
 than the 0.2.1 release: the 0.2.1 ZIP still uses some older names and lacks
-some controls ([what changed](CHANGELOG.md#what-022-changes-not-released-yet)).*
+some controls ([what changed](CHANGELOG.md#what-03-changes-not-released-yet)).*
 
 **Local-first.** Your heart rate, sessions and insights never leave your PC.
 No account, no telemetry, no analytics. One exception is on by default: the
@@ -29,7 +29,7 @@ natural voice sends Microsoft the wording of your spoken cues, to turn it into
 speech — never your heart rate — and, like any connection, your IP address.
 Nothing new is prepared while Zanshin is watching. To keep even that local,
 pick *Windows (offline)* under Settings → Sound → *Voice source*. Only when
-you click **Update voice** (from 0.2.2) does Zanshin download newer code for
+you click **Update voice** (from 0.3) does Zanshin download newer code for
 that voice from PyPI, the Python package index, and test it with one word.
 Once you start pairing a watch, the heart-rate port (`4455`) is open whenever
 Zanshin runs and accepts connections without a password from every network
@@ -57,7 +57,7 @@ promise it won't flag you.
 2. Go through the short introduction.
 3. Pair your watch: [five steps](#getting-your-heart-rate-in).
 4. Play. On the very first start Zanshin starts watching by itself after the
-   introduction (from 0.2.2 it first waits for the natural voice, at most about
+   introduction (from 0.3 it first waits for the natural voice, at most about
    15 seconds; *Today* shows *Preparing the voice*). After that it starts by
    itself whenever Apex Legends, Call of Duty, CS2 or Valorant is running
    (automatic profile switching, on by default); otherwise press
@@ -118,7 +118,7 @@ you can read here. The libraries it uses (`requirements.txt`) and PyInstaller,
 which packs it into an `.exe`, come from PyPI, the usual Python package index.
 The build installs the ones that are missing, in whatever version is newest
 that day, and keeps using the ones already installed without updating them, in
-later builds too. The one exception, from 0.2.2, is `edge-tts`, the library
+later builds too. The one exception, from 0.3, is `edge-tts`, the library
 behind the natural voice: every build fetches its newest version, because
 when Microsoft changes something on its side, the fix usually comes in a new
 `edge-tts`. pip then updates a library `edge-tts` itself uses only if the new
@@ -141,7 +141,7 @@ included.
    You don't have to pick a Python version: the first build (step 3) fetches
    the newest Python 3 by itself. I build and test with Python 3.14. Anything
    newer is untested, and until the libraries and PyInstaller support it, the
-   build may stop at a red **CHYBA:** line. If you already have Python 3.10 or
+   build may stop at a red **ERROR:** line. If you already have Python 3.10 or
    newer, you can skip this step, but only 3.14 is tested.
 2. **Get the source.** On the GitHub page open **Tags** and, next to the
    newest version, click **zip**. Before unpacking, right-click the ZIP →
@@ -156,16 +156,18 @@ included.
    shows as `build`). The first time, it fetches Python through the install
    manager, the packages Zanshin needs and PyInstaller, then builds the app;
    on my PC that took about 3 minutes, and for a while the window shows
-   nothing new. The script's own messages are in Slovak, and a lot of English
-   text from pip and PyInstaller scrolls past, including WARNING lines about
-   PATH: that's normal. Near the end it says *Inno Setup som nenasiel* ("I
-   didn't find Inno Setup"): you don't need it. Then *HOTOVO* ("done") shows
-   where the app is; press any key to close the window. If it stops at a red
-   line starting **CHYBA:** ("error"), the rest says what went wrong:
-   *Nenasiel som Python* means Python isn't there or couldn't be downloaded,
-   *pip install zlyhal* means the packages couldn't be downloaded or
-   installed. Check your connection and step 1, then run `build.bat` again;
-   if it still fails, please open an issue and paste the last lines.
+   nothing new. A lot of text from pip and PyInstaller scrolls past,
+   including WARNING lines about PATH: that's normal. Near the end a yellow
+   line says *Inno Setup not found - installer not built (it isn't needed).*
+   That's expected. Then a green line, *DONE: the app is
+   dist\Zanshin\Zanshin.exe - just run it.*, says where the app is; press any
+   key to close the window. If it stops at a red line starting **ERROR:**,
+   the rest says what went wrong: *Python not found* means Python isn't there
+   or couldn't be downloaded, *pip install failed.* means the packages
+   couldn't be downloaded or installed. Check your connection and step 1,
+   then run `build.bat` again; if it still fails, please open an issue and
+   paste the last lines. The 0.2.1 source still prints these lines in
+   Slovak: *HOTOVO* for DONE, **CHYBA:** for ERROR.
 4. **Start it.** In the same folder, open `dist`, then `Zanshin`: the app is
    `dist\Zanshin\Zanshin.exe`. For a desktop shortcut, right-click it → on
    Windows 11 **Show more options** → **Send to → Desktop (create shortcut)**.
@@ -188,7 +190,7 @@ issue instead, so I know.
 
 **Updating a Zanshin you built:** quit Zanshin first (right-click its tray
 icon → **Quit**). If it's still running, `build.bat` closes it without asking,
-and a session in progress isn't saved (from 0.2.2 the next start adds it to
+and a session in progress isn't saved (from 0.3 the next start adds it to
 your history from the copy Zanshin keeps every 5 minutes, without its last few
 minutes). Then get the new version and build it the same way. Your data stays,
 because it isn't in the build folder. Make a new shortcut to the new
@@ -197,7 +199,7 @@ a new program, so it may ask again.
 
 **Your data** (settings, heart-rate history, recordings, prepared voice and
 sounds) lives in `%APPDATA%\Zanshin`, not in the app's folder, so neither a new
-ZIP nor rebuilding touches it. From 0.2.2, shutting Windows down saves a
+ZIP nor rebuilding touches it. From 0.3, shutting Windows down saves a
 session in progress, a running session is also copied every 5 minutes, a
 session that can't be saved is kept aside for the next start, your settings
 keep a backup copy, and **Open the data folder** under Settings → General →
@@ -244,21 +246,21 @@ sent straight to this PC.
    address (advanced)* field. Leave the password empty.
 5. **Pick the scene and source.** In the phone app pick the scene "Zanshin"
    and the source "Tep". Within seconds *Today* shows your heart rate (from
-   0.2.2 the guide does too, under the address).
+   0.3 the guide does too, under the address).
 
 **Still waiting for the watch?** If the phone hasn't connected after about 20
-seconds, *Today* and the guide say so (from 0.2.2), and the guide's *Watch
+seconds, *Today* and the guide say so (from 0.3), and the guide's *Watch
 won’t connect at all?* box lists what to check. The usual causes: **Cancel**
 in Windows Firewall's question (fix: Windows Security → Firewall & network
 protection → Allow an app through firewall → Change settings → tick
 **Private** next to Zanshin), a network set to Public (step 3), a guest Wi‑Fi
 or the router's "client isolation", which keeps devices apart, or a VPN (from
-0.2.2 the guide marks a VPN's address *(VPN/virtual)*). After a router
+0.3 the guide marks a VPN's address *(VPN/virtual)*). After a router
 restart the PC can get a new address: check the one in the phone again.
 
 **Streaming with OBS?** OBS Studio's own WebSocket server also uses port
 `4455`. While it holds the port, Zanshin can't open it: its log says so, and
-from 0.2.2 *Today* shows *Port 4455 is busy*. Change **Port** in **In-game →
+from 0.3 *Today* shows *Port 4455 is busy*. Change **Port** in **In-game →
 Watch and heart rate**, for example to `4456`, and enter the same number in
 the phone app; Zanshin tries the new port right away. You don't need OBS for
 Zanshin.
@@ -302,7 +304,7 @@ public Wi-Fi (details in [PRIVACY.md](PRIVACY.md)).
 - **A smartwatch and a companion app** that sends heart rate to this PC, with
   the phone and the PC on the same home network (see the table above).
 - **Internet:** while you use Zanshin, only for the natural voice (optional)
-  and, from 0.2.2, its **Update voice** button.
+  and, from 0.3, its **Update voice** button.
 - **Borderless or windowed games** if you want to see the pictures. Windows
   doesn't draw them over exclusive fullscreen; the voice still plays.
 - **No administrator rights.**
@@ -354,7 +356,7 @@ from and when the natural voice prepares its lines — are in
 The short version is at the top of this page. In detail:
 
 - [PRIVACY.md](PRIVACY.md) lists everything that can use the network: the
-  natural voice, **Update voice** (from 0.2.2, only when you click it: newer
+  natural voice, **Update voice** (from 0.3, only when you click it: newer
   code for the natural voice from PyPI, plus one test word to Microsoft), the
   heart-rate port, a download that happens only if a built-in sound is
   missing, and links you click. Zanshin never checks for a new version of
@@ -380,7 +382,7 @@ The short version is at the top of this page. In detail:
   itself: close that program, then switch *Receive heart rate from the phone*
   off and on.
 - ***Two different heart rates in one source — check the watch app*** (from
-  0.2.2): the companion writes two heart rates into one source. In the
+  0.3): the companion writes two heart rates into one source. In the
   companion's settings, let only the live heart rate write into the heart-rate
   source, or the second one ends up in your measurements too.
 - **No pictures over the game.** Exclusive fullscreen hides them (the voice
@@ -388,10 +390,10 @@ The short version is at the top of this page. In detail:
 - **A cue spoke in a robotic voice.** That's the Windows voice: the natural
   voice wasn't ready for that line yet (offline, for example, or you changed
   it while Zanshin was watching). Zanshin prepares it once you stop watching.
-  From 0.2.2, if preparing failed, the line under Settings → Sound → *Voice
+  From 0.3, if preparing failed, the line under Settings → Sound → *Voice
   source* says why, with a *Try again* button.
 - **The line under *Voice source* says Microsoft refused the request** (from
-  0.2.2). Microsoft has probably changed something that only a newer version
+  0.3). Microsoft has probably changed something that only a newer version
   of the voice's library can handle. Click **Update voice** right below it
   (once you've stopped watching): Zanshin looks for a newer `edge-tts` on
   PyPI, checks it, tests it with one word and keeps it only if it works
@@ -404,24 +406,24 @@ The short version is at the top of this page. In detail:
 - **In the 0.2.1 ZIP, cues stay in the robotic voice.** Since about November
   2026 Microsoft refuses the version of `edge-tts`, the natural voice's
   library, inside that ZIP. Lines prepared before then still play in the
-  natural voice; new ones stay in the Windows voice until 0.2.2 is out, and
+  natural voice; new ones stay in the Windows voice until 0.3 is out, and
   the line under the voice source says *check your internet connection*,
   though your connection is fine. Switching the voice source to Windows makes
   that warning go away. The 0.2.1 ZIP has no **Update voice** button. If you
-  built Zanshin yourself, a build from 0.2.2 on fetches the newest `edge-tts`
+  built Zanshin yourself, a build from 0.3 on fetches the newest `edge-tts`
   every time; the 0.2.1 build doesn't. A ready-made ZIP never updates itself
-  on its own: from 0.2.2, **Update voice** fetches a newer voice library when
+  on its own: from 0.3, **Update voice** fetches a newer voice library when
   you click it, and if Microsoft refuses even that one, new lines use the
   Windows voice until a new release. More, with the names the 0.2.1 ZIP uses,
   in [KNOWN_ISSUES.md](KNOWN_ISSUES.md).
 - **A game's Ctrl+Alt+Z does nothing.** Zanshin reserves it for "not now".
-  From 0.2.2, pick another shortcut or *Off* in Settings → General →
+  From 0.3, pick another shortcut or *Off* in Settings → General →
   *Keyboard shortcut*. In the 0.2.1 ZIP, quit Zanshin, then in
   `%APPDATA%\Zanshin\dandurf_settings.json` set `"snooze_hotkey"` to another
   combination with Ctrl, Alt, Shift or Win (for example `"ctrl+alt+x"`), or to
   `""` to switch the shortcut off. "Not now" stays in the tray icon's menu.
 - **A session you don't want in your history** (one that ran overnight, for
-  example): from 0.2.2, History → *One session up close* → **Delete this
+  example): from 0.3, History → *One session up close* → **Delete this
   session**.
 - **"Windows protected your PC", your antivirus or Smart App Control blocked
   it.** See *If Windows blocks it* under [Install](#install). Please don't

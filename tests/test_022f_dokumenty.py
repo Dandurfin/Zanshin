@@ -69,7 +69,7 @@ def _lokalne():
 
 def _davka4():
     c = _read(ZMENY)
-    s022 = c[c.index("## What 0.2.2 changes"):c.index("## What 0.2.1 fixes")]
+    s022 = c[c.index("## What 0.3 changes"):c.index("## What 0.2.1 fixes")]
     return _plain_text(s022[s022.index("### Fewer dead ends"):])
 
 

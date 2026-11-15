@@ -392,7 +392,7 @@ def test_dokumenty_hovoria_to_iste_co_kod():
     assert "the app also switches it off if it can't open the TCP port" not in privacy
     assert "your setting stays on" in privacy
     known = plain("CHANGELOG.md")       # historia verzii od davky 4
-    zaciatok = known.index("## What 0.2.2 changes")
+    zaciatok = known.index("## What 0.3 changes")
     sekcia = known[zaciatok:known.index("## What 0.2.1 fixes")]
     assert "Starting Zanshin a second time could switch heart rate off for good" in sekcia
     assert "the next start tries again" in sekcia

@@ -102,7 +102,7 @@ def test_maska_skryje_ipv4_aj_ipv6_v_texte():
 
 def test_maska_necha_cas_verziu_a_nuly():
     """0.0.0.0 nie je adresa PC (viz `mask_ip`); cas a verzia adresou nie su."""
-    text = "[12:34:56] Zanshin 0.2.2 pocuva na 0.0.0.0, relacia 1:02:03, cislo 1.2.3.4.5."
+    text = "[12:34:56] Zanshin 0.3 (predtym 0.2.1) pocuva na 0.0.0.0, relacia 1:02:03, cislo 1.2.3.4.5."
     assert netinfo.mask_ips_in_text(text) == text
     assert netinfo.mask_ips_in_text("") == ""
     assert netinfo.mask_ips_in_text(None) is None

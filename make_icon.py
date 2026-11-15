@@ -88,7 +88,7 @@ def render(px, color=None):
         enso = hud_paint.render_enso(px, style, live=False, phase=0.0, color=color)
         back.alpha_composite(enso, (0, 0))
     except Exception:
-        sys.stderr.write("VAROVANIE: enso sa nepodarilo vykreslit (pismo/PIL).\n")
+        sys.stderr.write("WARNING: couldn't draw the enso (font/PIL).\n")
     return back
 
 
@@ -108,7 +108,7 @@ def main():
     base = frames[256]
     base.save(OUT, format="ICO", sizes=[(px, px) for px in LAYOUT],
               append_images=[frames[px] for px in LAYOUT if px != 256])
-    print(f"{OUT} hotovo - {len(LAYOUT)} velkosti (zlate enso)")
+    print(f"{OUT} done - {len(LAYOUT)} sizes (golden enso)")
 
     # nahlad: velka verzia + realne velkosti vedla seba, aj stavove varianty
     pal = _pal()
@@ -123,9 +123,9 @@ def main():
     # stav: pocuvam (zelena) / nepocuvam (cervena)
     prev.alpha_composite(tray_mark(64, _rgb(pal.get("success"), (127, 179, 154))), (300, 200))
     prev.alpha_composite(tray_mark(64, _rgb(pal.get("danger"), (192, 74, 62))), (380, 200))
-    ImageDraw.Draw(prev).text((300, 270), "pocuvam        nepocuvam", fill=(150, 150, 160))
+    ImageDraw.Draw(prev).text((300, 270), "listening      not listening", fill=(150, 150, 160))
     prev.convert("RGB").save("icon_preview.png")
-    print("icon_preview.png hotovo")
+    print("icon_preview.png done")
 
 
 if __name__ == "__main__":

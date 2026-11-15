@@ -50,7 +50,7 @@ above with their backups, the prepared voice clips, the crash log and older
 logs (not your settings or recordings). There is **no telemetry and no
 analytics** anywhere in the app, and Zanshin never checks for a new version
 of itself. The one thing it can update is the natural voice's library, and
-only when you click **Update voice** (from 0.2.2, see below).
+only when you click **Update voice** (from 0.3, see below).
 
 ## The few things that can use the network
 
@@ -78,8 +78,8 @@ only when you click **Update voice** (from 0.2.2, see below).
        *Voice, sound and picture*, to Play or to the natural voice, when you
        test a cue whose line isn't ready, or when you ask for the voice to be
        prepared again (*Prepare the cue voice* in the *Ctrl+K* command
-       palette, or, from 0.2.2, *Try again* under *Voice source* after
-       preparing failed), and from 0.2.2 right after **Update voice**
+       palette, or, from 0.3, *Try again* under *Voice source* after
+       preparing failed), and from 0.3 right after **Update voice**
        worked, if a cue's line is still missing.
      - **Only if your cues actually speak.** With *Sound and picture* or
        *Picture only* (*Settings → Sound → How I speak up*), and in the *Work*
@@ -98,7 +98,7 @@ only when you click **Update voice** (from 0.2.2, see below).
        starts while lines are being prepared, only the line already on its way
        is finished.
      - **On the very first start** Zanshin starts watching by itself after
-       the introduction, but (from 0.2.2) only once the lines are prepared,
+       the introduction, but (from 0.3) only once the lines are prepared,
        or after about 15 seconds at most. Lines that aren't ready by then
        (for example offline) are prepared after you stop it for the first
        time or at the next start; until then they play in the Windows voice.
@@ -106,9 +106,9 @@ only when you click **Update voice** (from 0.2.2, see below).
    - **Windows (offline)** — synthesises entirely on your PC, so **nothing
      leaves at all**. Choose it in *Settings → Sound → Voice source* if you
      want even the wording of your cues to stay local. The voice preview in
-     the introduction always uses it (from 0.2.2).
+     the introduction always uses it (from 0.3).
 
-2. **Update voice — only when you click it (from 0.2.2).** Microsoft
+2. **Update voice — only when you click it (from 0.3).** Microsoft
    sometimes changes its speech service so that only newer code of the
    natural voice's library (`edge-tts`) works with it; in November 2026 it
    started refusing the version inside older Zanshin releases. So you don't

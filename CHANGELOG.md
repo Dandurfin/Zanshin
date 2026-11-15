@@ -1,13 +1,13 @@
 # Changelog — Zanshin
 
-What each version changed, newest first: 0.2.2 (in the code here, not
+What each version changed, newest first: 0.3 (in the code here, not
 released yet), 0.2.1, and what 0.1 got wrong. What doesn't work yet, or works
 only partly, is in [KNOWN_ISSUES.md](KNOWN_ISSUES.md).
 
 **0.2, partly** means only part was fixed. Where something stayed as it was,
 such as the online voice being the default, I say so.
 
-## What 0.2.2 changes (not released yet)
+## What 0.3 changes (not released yet)
 
 These are in the code here, not in a release yet: the 0.2.1 ZIP doesn't
 have them.
@@ -17,11 +17,11 @@ have them.
 - **The heart-rate number could jump by several BPM within one second.** Some
   companion setups write two different heart rates into the same source; in
   mine, one ran 5 to 10 BPM below the other. The number showed whichever came
-  last. **0.2.2:** the heart-rate panel in the game, *Today* and the line next
+  last. **0.3:** the heart-rate panel in the game, *Today* and the line next
   to the switch show the median of the last 3 seconds of readings. Measuring
   doesn't change: load, zones and saved sessions still use every reading.
 - **Nothing told you the companion was sending two heart rates**, and both
-  went into your measurements. **0.2.2:** when the readings in one source keep
+  went into your measurements. **0.3:** when the readings in one source keep
   jumping between two values, Zanshin says so in its log and shows *Two
   different heart rates in one source — check the watch app* next to the
   switch while heart rate comes in, until heart-rate receiving is switched off
@@ -32,7 +32,7 @@ have them.
   hidden under the ^ arrow, so it was easy to start it again. The second copy
   couldn't open the heart-rate port (the first one held it), gave up and saved
   heart-rate receiving as off, so the next start didn't receive heart rate
-  either. Any other port error saved it as off too. **0.2.2:** a second
+  either. Any other port error saved it as off too. **0.3:** a second
   start just shows the window of the copy already running (if it can't, it
   says where to find it). If the port is busy or won't open, the switch goes
   off for that run only: your setting stays on and the next start tries
@@ -41,7 +41,7 @@ have them.
 - **The window didn't fit smaller laptop screens.** It has one fixed size and
   can't be resized or maximized, so on 1920×1080 at 150 % or on 1366×768 its
   bottom, with *Settings* in the sidebar, ended up under the taskbar.
-  **0.2.2:** Zanshin opens on the screen with the mouse pointer, centred in
+  **0.3:** Zanshin opens on the screen with the mouse pointer, centred in
   the space the taskbar leaves free. If the window doesn't fit there, the
   whole interface gets smaller until it does, down to 70 % at most; if even
   that isn't enough, the title bar stays at the top of the screen. Where the
@@ -49,7 +49,7 @@ have them.
   the next start, even if you move the window to a bigger screen.
 - **Shutting down the PC threw away the whole session**, and so did a crash,
   ending Zanshin in Task Manager, a power cut or `build.bat` closing it: a
-  session was saved only when it ended normally. **0.2.2:** when Windows shuts
+  session was saved only when it ended normally. **0.3:** when Windows shuts
   down, restarts or signs you out, Zanshin saves the session and your settings
   first, without the questions at the end. If the shutdown is then cancelled,
   it goes on measuring in a new session after about 20 seconds. While a
@@ -64,7 +64,7 @@ have them.
   alcohol. *Delete history* deletes the copy too.
 - **One bad byte in the settings file reset everything**: profiles, cue
   wording and positions went back to the defaults, and the broken file was
-  overwritten a second later. **0.2.2:** before each save, Zanshin keeps the
+  overwritten a second later. **0.3:** before each save, Zanshin keeps the
   previous good file as `dandurf_settings.json.bak`. If the settings can't be
   read, it sets the broken file aside as
   `dandurf_settings.json.corrupt-<date>-<time>`, loads the backup (or, if
@@ -73,8 +73,8 @@ have them.
 - **A file Windows held for a moment could make a save fail.** Right after
   Zanshin writes a file, Windows Defender, Windows Search or a sync app may
   open it briefly, and replacing it then fails with *Access is denied*. In my
-  test copy of 0.2.2 that's how the new settings backup failed, and it left a
-  `dandurf_settings.json.bak.tmp` behind. **0.2.2:** when a file is held like
+  test copy of 0.3 that's how the new settings backup failed, and it left a
+  `dandurf_settings.json.bak.tmp` behind. **0.3:** when a file is held like
   that, the save waits and tries again, up to six tries in about 0.3 seconds,
   and only then reports the error as before; other errors, such as a full
   disk, still fail at once. This covers the settings and their backup, the
@@ -89,7 +89,7 @@ have them.
   data folder, `%APPDATA%\Zanshin`. When you uninstall 0.2, it asks *Keep your
   settings, heart-rate history, recordings and generated voice lines?*, and
   **No** deletes that folder, with this version's history in it. Answer
-  **Yes**. **0.2.2:** if Zanshin finds 0.2 still installed, it tells you this
+  **Yes**. **0.3:** if Zanshin finds 0.2 still installed, it tells you this
   once.
 
 ### The first start
@@ -97,19 +97,19 @@ have them.
 - **"Pair a watch now" in the intro skipped the rest of it.** The intro
   ended on the spot, so the Play / Work step, the step where you choose how
   the app speaks up (and where the intro says what the natural voice sends
-  to Microsoft) and the tour never showed. **0.2.2:** the intro carries on;
+  to Microsoft) and the tour never showed. **0.3:** the intro carries on;
   pairing opens after it, and the tour starts when you close the pairing
   guide.
-- **"Skip intro" also skipped the watch step.** **0.2.2:** on steps 1–2 it
+- **"Skip intro" also skipped the watch step.** **0.3:** on steps 1–2 it
   is *Skip to the watch* and lands on that step; after that it's hidden.
 - **The intro couldn't be closed.** ✕, Esc and Alt+F4 did nothing, and with
-  no taskbar button another window could hide it. **0.2.2:** closing it asks
+  no taskbar button another window could hide it. **0.3:** closing it asks
   *Quit Zanshin?*. Quit saves nothing, so the intro shows again at the next
   start. On the first start the intro stays on top while it's the app's only
   window. The intro replayed from the Ctrl+K palette just closes and changes
   nothing.
 - **The intro asked how the app should speak up, but its only test played a
-  sound, one step earlier.** **0.2.2:** the test is gone from the Play / Work
+  sound, one step earlier.** **0.3:** the test is gone from the Play / Work
   step. The speak-up step has a preview that matches your answer (voice,
   sound or picture) and the volume slider. The voice preview uses the Windows
   voice and says so: the intro sends nothing to Microsoft. Choosing Work
@@ -117,11 +117,11 @@ have them.
   the app learns your own limits from Play only.
 - **The tour described the ensō wrong.** It said the ensō turns green when the
   app runs and red when it's stopped, but the ensō is always in the theme's
-  accent colour. **0.2.2:** the tour says what really shows the state: the
+  accent colour. **0.3:** the tour says what really shows the state: the
   ensō breathes while the app is watching and is still when stopped, a slow
   ring inside means it's waiting for a good moment, a click starts or stops
   it, and the dot at the top left shows the state too.
-- **The tour had 10 bubbles and promised "a few seconds".** **0.2.2:** it
+- **The tour had 10 bubbles and promised "a few seconds".** **0.3:** it
   shows five places in about a minute: the ensō, heart-rate receiving (with a
   *Pair your watch* button; the tour goes on after pairing), cues, history
   and the end. Without heart rate coming in, the last bubble points at the
@@ -132,7 +132,7 @@ have them.
   prepares nothing new, so preparing the natural voice stopped almost at
   once. Spanish, German, French and Portuguese players also heard the
   English default voice read cue words in their own language.
-  **0.2.2:** on the very first start, watching begins once the lines are
+  **0.3:** on the very first start, watching begins once the lines are
   prepared or after 15 seconds, whichever comes first (*Today* shows
   *Preparing the voice*). Spanish, German, French and Portuguese (Brazil)
   cues get a voice of their language (Elvira, Katja, Denise, Francisca)
@@ -142,7 +142,7 @@ have them.
 - **Setting the app up at the desk counted as play.** The intro, pairing and
   the tour easily take more than five minutes, and that calm session was
   saved like play and pulled the high heart-rate limit and the load
-  threshold down, the same problem as 110 → 80 BPM in 0.2.1. **0.2.2:** the
+  threshold down, the same problem as 110 → 80 BPM in 0.2.1. **0.3:** the
   first session saved after the intro is marked *Just setting up the app*. It
   stays in History, but the load threshold, high heart-rate limit and resting
   baseline don't learn from it. The questions at the end show the mark:
@@ -154,7 +154,7 @@ have them.
 - **The pairing guide never showed whether pairing worked, and its last step
   switched heart rate off.** Opening the guide already switches heart-rate
   receiving on, but step 5 said to switch it on, so anyone who did turned it
-  off. Whether heart rate came in showed only behind the guide. **0.2.2:**
+  off. Whether heart rate came in showed only behind the guide. **0.3:**
   under the address the guide shows the live state, from *Waiting for the
   phone to connect…* to *Heart rate is coming in: N BPM*, and says when the
   phone hasn't connected yet, another program holds the port or receiving
@@ -163,14 +163,14 @@ have them.
   guide opens centred on the screen with the mouse pointer.
 - **When the phone never connected, Zanshin said "Waiting for heart rate"
   all evening.** The only firewall hint sat under *Watch connects but no
-  heart rate?*, the opposite case. **0.2.2:** if nothing connects within
+  heart rate?*, the opposite case. **0.3:** if nothing connects within
   about 20 seconds, *Today* says *The phone didn’t connect*, names the usual
   causes (Windows Firewall, a network set to Public, a new PC address after a
   router restart) and points to the watch icon on the left. The guide has a
   new box, *Watch won’t connect at all?*, with four checks, including where
   to set your network to Private and allow Zanshin through the firewall.
 - **"Waiting for watch" on *Today* even when the watch couldn't come.**
-  **0.2.2:** the *Heart rate and load* header says *heart-rate receiving
+  **0.3:** the *Heart rate and load* header says *heart-rate receiving
   off*, *port is busy* or *phone didn’t connect*; *waiting for watch* is left
   for while it connects, or while the phone is connected but no heart rate
   has come yet. With receiving off, *Today* points to the watch icon instead
@@ -178,13 +178,13 @@ have them.
 - **The `0.0.0.0` field invited you to type `0.0.0.0` into the phone.** It
   was the first control on *In-game → Watch and heart rate*, its *Show IP*
   switch did nothing at `0.0.0.0`, and the QR captions said to enter "this
-  PC's IP", which the page didn't show. **0.2.2:** the card starts with the
+  PC's IP", which the page didn't show. **0.3:** the card starts with the
   receiving switch, the status and *How to pair your watch…*. The field comes
   last, is called *Network address (advanced)* and says not to type its
   number into the phone; *Show IP* next to it appears only when it holds a
   real address. The QR captions point to the pairing guide for the address
   and port.
-- **The English pairing guide showed `THIS PC\u2019S` literally.** **0.2.2:**
+- **The English pairing guide showed `THIS PC\u2019S` literally.** **0.3:**
   it reads "THIS PC’S ADDRESS AND PORT — enter it in the phone app", and
   `check_translations.py` fails on any literal `\uXXXX` in a translation.
 
@@ -193,7 +193,7 @@ have them.
 - **One thing had several names.** The main switch was called *listening*
   (in the Slovak original, also a word for eavesdropping), a cue was also a
   reminder, a line, a trigger or a slot, and *limit* and *threshold* were
-  mixed up. **0.2.2:** one word each. Zanshin is *watching* or stopped, and
+  mixed up. **0.3:** one word each. Zanshin is *watching* or stopped, and
   the tray menu says *Start watching* or *Stop watching* (it said *Start /
   Stop*). The heart-rate switch is *Receive heart rate from the phone* (it
   was *Listen for heart rate from the watch*). A cue is always a cue; a
@@ -205,23 +205,23 @@ have them.
   README already uses the new names.
 - **After a session Zanshin could say that 0 of its cues stayed silent on
   purpose**, and the intro never said that some cues are picture-only on
-  purpose, so whoever chose the voice could think it was broken. **0.2.2:**
+  purpose, so whoever chose the voice could think it was broken. **0.3:**
   with none silent the line just counts the cues; otherwise it says how many
   were picture-only on purpose. The speak-up step of the intro says that at
   first about one cue in four is picture-only.
 - **A switch that was on looked like one that was off** (the two tracks
   differed by 1.07:1), and the state dot in the sidebar was red whenever
-  Zanshin was stopped, which is a normal state. **0.2.2:** a switch that is on
+  Zanshin was stopped, which is a normal state. **0.3:** a switch that is on
   is in the theme's accent colour. The dot is filled green while Zanshin is
   watching, a hollow ring when it's stopped and an amber ring during "not
   now".
 - **The sidebar highlighted the wrong page** after ⓘ, ⚙, Ctrl+K or the tour
   opened another one, and ⚙ next to the heart-rate panel switch led to a page
-  without its settings. **0.2.2:** the sidebar marks the page you're on, and
+  without its settings. **0.3:** the sidebar marks the page you're on, and
   ⚙ opens the panel's settings.
 - **Small text was hard to read.** Explanations, axes and legends had a
   contrast of 2.85:1, some text was very small, and the thin dividers were
-  never actually drawn. **0.2.2:** that text has at least 4.5:1, the
+  never actually drawn. **0.3:** that text has at least 4.5:1, the
   smallest text is bigger, the dividers show, and Japanese and Chinese use
   one Windows UI font almost everywhere (the exceptions are in
   [KNOWN_ISSUES.md](KNOWN_ISSUES.md)).
@@ -230,47 +230,47 @@ have them.
   History offered *Recompute* when there was nothing to compute yet; the
   slider in the questions after a session stood at 0 before you touched it,
   which looked like an answer. The pairing guide and the Guide could open in
-  a corner. **0.2.2:** tiles fed by heart rate show "—" until it comes,
+  a corner. **0.3:** tiles fed by heart rate show "—" until it comes,
   *Recompute* waits for the first insight, and the slider stays neutral until
   you move it. The in-game pictures dialog, the pairing guide, the questions
   after a session and the Guide open centred and shrink to fit the screen.
   Deleting your history asks in Zanshin's own window, with *Cancel* focused.
 - **The licence had two names.** The app's title bar and *About* said
-  "GPLv3", the README and the other documents "GPLv3 or later". **0.2.2:**
+  "GPLv3", the README and the other documents "GPLv3 or later". **0.3:**
   everything says GPLv3 (version 3 of the GNU GPL). Copies of 0.2 and 0.2.1
   you already have keep the wording they came with.
-- **The README didn't say which watch was tested.** **0.2.2:** it names it:
+- **The README didn't say which watch was tested.** **0.3:** it names it:
   a Samsung Galaxy Watch7 with an Android phone.
 
 ### Fewer dead ends
 
 - **The main switch was an icon.** *Today* had a ▶ in a bar titled *Main
-  switch*, with "Click ▶ on the left" under it. **0.2.2:** it's one button
+  switch*, with "Click ▶ on the left" under it. **0.3:** it's one button
   that says what it does, **▶ Start watching** or **■ Stop watching**, the
   same words as in the tray menu and the Ctrl+K palette. Tab reaches it, and
   Enter or Space presses it.
 - **The sidebar hid two of its places.** *Settings* and an unlabelled search
   magnifier sat at the bottom, and the watch ring had no caption.
-  **0.2.2:** *Settings* and *Search* (Ctrl+K) follow *In-game*, with labels,
+  **0.3:** *Settings* and *Search* (Ctrl+K) follow *In-game*, with labels,
   and the ring is captioned *Watch*. In the Work world *In-game* is called
   *Screen*. The state dot has a fourth state: a triangle while Zanshin is
   watching but the heart rate from the watch has dropped out.
 - **Before the first heart rate, *Today* still looked like a measurement**,
-  with empty tiles and zone bars. **0.2.2:** until your first session with
+  with empty tiles and zone bars. **0.3:** until your first session with
   heart rate it shows one sentence and *Pair your watch*, and the zones say
   *Zones show up after your first session with heart rate.* *One session up
   close* in History shows only a sentence until there is a session. While
   Zanshin is still learning your limits, a quiet line on *Today* counts your
   play sessions: *Still getting to know you — 1 of 3 play sessions (5+ min
   each)*.
-- **A busy heart-rate port showed only in a small header.** **0.2.2:** when
+- **A busy heart-rate port showed only in a small header.** **0.3:** when
   OBS or another program holds it, *Today* says *Port 4455 is busy*, names
   the usual cause (OBS with its WebSocket server on) and both fixes: switch
   that server off, or change the port in Zanshin and in the phone app. It's
   the only message there then (the pairing sentence stays hidden), on a soft
   dark backing so it reads well over the picture.
 - **Questions and messages came in Windows' own boxes**, with buttons in the
-  language of Windows, and the first × asked Yes or No. **0.2.2:** they open
+  language of Windows, and the first × asked Yes or No. **0.3:** they open
   in Zanshin's own window, in the app's language, with the safe button
   focused. Windows' box is left only for when that window can't show one:
   before it exists, or while Zanshin is hidden in the tray. The first ×
@@ -281,7 +281,7 @@ have them.
 - **The "not now" shortcut could be changed only in the settings file, and
   on some keyboards it took a letter.** AltGr is the same as Ctrl+Alt, so on
   a Polish keyboard Ctrl+Alt+Z swallowed every ż, even with Zanshin in the
-  tray. **0.2.2:** Settings → General → *Keyboard shortcut* offers
+  tray. **0.3:** Settings → General → *Keyboard shortcut* offers
   Ctrl+Alt+Z, Ctrl+Alt+F9, Ctrl+Alt+F12, Ctrl+Shift+F12 or *Off*, and marks
   one that would type a letter on one of your keyboard layouts. If you never
   picked one and the default would type a letter, Zanshin takes the first
@@ -294,18 +294,18 @@ have them.
 - **Sleep made one long session.** With the PC asleep while Zanshin was
   watching, one session ran through the night, its sleeping heart rate went
   into your resting baseline, and the only fix was deleting your whole
-  history. **0.2.2:** when a session's regular ticks stop for more than two
+  history. **0.3:** when a session's regular ticks stop for more than two
   minutes (sleep or hibernation), it ends where the gap began, without the
   questions, and a new one starts after it if Zanshin is still watching.
   *One session up close* in History has **Delete this session**: it asks
   first, naming the date and length, then recomputes the insights without
   it. The session being recorded can't be deleted.
 - ***Delete history* asked one Yes / No question, and a running session saved
-  itself again right after.** **0.2.2:** it offers *Delete history*, *Export
+  itself again right after.** **0.3:** it offers *Delete history*, *Export
   first…* and *Cancel* (focused). While Zanshin is watching, the button is
   off, with *Stop watching first — the running session would save itself
   again after the delete.* under it.
-- **A session that couldn't be saved was lost without a word.** **0.2.2:** if
+- **A session that couldn't be saved was lost without a word.** **0.3:** if
   writing the history fails (a full disk, a locked file), Zanshin says so
   (not while it's quitting), keeps the session in `hr_session_pending.json`
   next to `hr_sessions.json` and adds it to your history at the next start,
@@ -314,12 +314,12 @@ have them.
   session of a minute or more that got almost no heart rate (fewer than 10
   readings) still isn't saved, but the log now says so.
 - **Backups were hard to find, and an import dropped your oldest sessions
-  silently.** **0.2.2:** *Your data* has *Open the data folder*, the message
+  silently.** **0.3:** *Your data* has *Open the data folder*, the message
   after an import says the backups are there, and an import that goes over
   the 400-session limit says how many of the oldest were dropped.
 - **Every failed voice preparation said "check your internet connection"**,
   even when Microsoft refused the request, and only the Ctrl+K palette could
-  retry. **0.2.2:** a line in the *Voice source* row tells an unreachable
+  retry. **0.3:** a line in the *Voice source* row tells an unreachable
   service from a refused request and other errors, with a *Try again* button
   right there, and the log says where to retry (Settings → Sound, or
   Ctrl+K). Like *Prepare the cue voice*, it sends nothing while Zanshin is
@@ -330,7 +330,7 @@ have them.
   7.2.8, also the one inside the 0.2.1 ZIP) with HTTP 403. Lines prepared
   before then still played, but every new one fell back to the Windows voice.
   Building Zanshin again didn't help: the build installed only libraries that
-  were missing and kept an old one. **0.2.2:** Zanshin needs `edge-tts` 7.3.1
+  were missing and kept an old one. **0.3:** Zanshin needs `edge-tts` 7.3.1
   or newer (`requirements.txt`), with no upper limit: if Microsoft changes
   something again, the fix may come in a new major version, and a cap would
   keep it out. `build.bat` fetches the newest `edge-tts` on every build, so a
@@ -338,14 +338,14 @@ have them.
   built with until you click **Update voice**, see the next point). Instead
   of a cap, the build tries the new version. Without the network it checks
   that Zanshin can still call it the way it does; if not, it stops with a red
-  **CHYBA:** line that names the `requirements.txt` line and the command that
+  **ERROR:** line that names the `requirements.txt` line and the command that
   go back to the last version that worked. Online it then has it say one test
   word, "Zanshin", through Microsoft into a temporary file it deletes right
   away: a green line if that works, a loud yellow warning if Microsoft refuses
   it, and the build goes on either way, because the Windows voice still
   covers the cues. Offline it keeps an installed one that's new enough, says
   it couldn't check and skips the test word; with an older one it stops with
-  a red **CHYBA:** line instead of building an app whose natural voice is
+  a red **ERROR:** line instead of building an app whose natural voice is
   refused. The build log names the `edge-tts` version that went in. When
   Microsoft refuses the request, the line under *Voice source* and the log in
   the window now say to click **Update voice** first and, if that doesn't
@@ -360,7 +360,7 @@ have them.
   notes a cap in `requirements.txt`, so a temporary one isn't forgotten).
 - **Only a new Zanshin could repair the natural voice.** When Microsoft
   changes something that only newer `edge-tts` code handles, a ready-made ZIP
-  kept the version it was built with. **0.2.2:** there's an **Update voice**
+  kept the version it was built with. **0.3:** there's an **Update voice**
   button under *Voice source* in Settings → Sound (and the same command in
   the Ctrl+K palette), shown only with the natural voice. Only when you click
   it, and never while Zanshin is watching (a click then says you can update
@@ -388,11 +388,11 @@ have them.
   [SAFETY.md](SAFETY.md) now say exactly what goes out, what's checked and
   what that can't protect against.
 - **Switching Play / Work while watching** changed how the running session's
-  cues spoke, though the session itself stayed in its world. **0.2.2:** the
+  cues spoke, though the session itself stayed in its world. **0.3:** the
   session and its cues keep their world, the switch applies from the next
   time you start watching, and the log says so.
 - **With a VPN on, the pairing guide could show the VPN's address**, which
-  the phone can't reach. **0.2.2:** it lists the PC's real network adapters
+  the phone can't reach. **0.3:** it lists the PC's real network adapters
   first and marks VPN and virtual ones *(VPN/virtual)*, with a note on what
   to do; the *Network address (advanced)* field warns about such an address
   too. An address of Windows' Mobile hotspot is marked *(hotspot)* instead,
@@ -400,7 +400,7 @@ have them.
   network counts as a real adapter.
 - **Quitting again while the questions after a session were open threw away
   your answers.** Quitting while Zanshin is watching saves the session and
-  opens its questions first. **0.2.2:** a second Quit while they're open saves
+  opens its questions first. **0.3:** a second Quit while they're open saves
   the answers you've touched as with *Save*; untouched questions close as
   with *Skip*. The same happens when the questions after an earlier stop
   are still open and you quit from the tray or Windows shuts down; the log
@@ -410,7 +410,7 @@ have them.
   Borderless.
 - **History was hard to read.** The *Consistency* grid showed a whole year,
   mostly empty, load was a bare number and decimals always used a dot.
-  **0.2.2:** the grid shows the weeks since your first session (8 to 26)
+  **0.3:** the grid shows the weeks since your first session (8 to 26)
   with month and weekday labels in the app's language, load reads *x/100*,
   numbers use your language's decimal mark and a real minus sign, and a
   session of an hour or more reads like *1 h 10 min*. The grid grows with
@@ -420,14 +420,14 @@ have them.
   over your heart-rate limit reads like *1 h 15 min* from an hour up, on
   *Today*, in History and on the heart-rate panel.
 - **Some texts sent you to *In-game* in the Work world**, where the sidebar
-  calls that page *Screen*. **0.2.2:** every text that points to that page
+  calls that page *Screen*. **0.3:** every text that points to that page
   uses the name your world shows, and texts already on screen change when
   you switch worlds.
-- ***watch connected* was the phone.** **0.2.2:** while heart rate comes in,
+- ***watch connected* was the phone.** **0.3:** while heart rate comes in,
   *Today* says *phone connected*, and before it does, the line next to the
   switch says *Phone connected — waiting for heart rate…*: what connects to
   Zanshin is the phone app.
-- **Buttons looked different from window to window.** **0.2.2:** buttons,
+- **Buttons looked different from window to window.** **0.3:** buttons,
   menus and dialog buttons all come from one set, and a button that's off
   looks the same everywhere (a *Delete* button that's off is no longer red).
   *Show IP* in the pairing guide is an ordinary button, not a link-style
@@ -435,7 +435,7 @@ have them.
   and small red text, such as an error or the limit on the heart-rate
   panel's chart, uses the readable red.
 - **Japanese and Chinese lines could start with 。 or ）, and the heart-rate
-  panel drew Japanese and Chinese text as empty boxes.** **0.2.2:** wrapped
+  panel drew Japanese and Chinese text as empty boxes.** **0.3:** wrapped
   text in those languages follows their line-breaking rules, and the panel,
   its captions and its preview in the intro draw that text in a Japanese or
   Chinese font.
@@ -544,7 +544,7 @@ its SHA-256 fingerprint, or you build the app yourself (see the README).
   "Connecting...". **0.2.1:** Zanshin keeps listening on TCP, so the Android
   route still works. It says so in its log and shows a note next to the
   switch until something connects: in 0.2.1 *Listening on TCP only — UDP
-  didn’t open*, from 0.2.2 *Android can connect, iPhone (PulseOSC) can’t*. It
+  didn’t open*, from 0.3 *Android can connect, iPhone (PulseOSC) can’t*. It
   doesn't retry UDP: close the other program, then switch *Receive heart rate
   from the phone* off and on (in 0.2.1 it's called *Listen for heart rate
   from the watch*).

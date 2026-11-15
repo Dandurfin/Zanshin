@@ -3711,15 +3711,15 @@ STRINGS.update({
         # "alfa 0.2", nie "2.1": cislovanie 2.x bolo z casov, ked appka
         # mierila na Steam ako pokracovanie predchodcu. Na GitHub ide ako
         # to, cim naozaj je - prva verejna alfa.
-        'sk': 'alfa 0.2.1',
-        'en': 'alpha 0.2.1',
-        'ja': 'alpha 0.2.1',
-        'zh': 'alpha 0.2.1',
-        'ru': 'alpha 0.2.1',
-        'es': 'alpha 0.2.1',
-        'de': 'alpha 0.2.1',
-        'fr': 'alpha 0.2.1',
-        'pt': 'alpha 0.2.1',
+        'sk': 'alfa 0.3',
+        'en': 'alpha 0.3',
+        'ja': 'alpha 0.3',
+        'zh': 'alpha 0.3',
+        'ru': 'alpha 0.3',
+        'es': 'alpha 0.3',
+        'de': 'alpha 0.3',
+        'fr': 'alpha 0.3',
+        'pt': 'alpha 0.3',
     },
     'nav.dnes': {
         'sk': 'Dnes',
@@ -6006,7 +6006,7 @@ def _tr7(key, ja, zh, ru, es, de, fr, pt):
 # --- davka 1: navigacia, dok, onboarding, spustace ------------------------
 # „alpha" sa nechava v anglickom tvare aj v ostatnych jazykoch - je to
 # zauzivane oznacenie stadia, nie slovo na prekladanie.
-_tr7('app.version_short', 'alpha 0.2.1', 'alpha 0.2.1', 'alpha 0.2.1', 'alpha 0.2.1', 'Alpha 0.2.1', 'alpha 0.2.1', 'alpha 0.2.1')
+_tr7('app.version_short', 'alpha 0.3', 'alpha 0.3', 'alpha 0.3', 'alpha 0.3', 'Alpha 0.3', 'alpha 0.3', 'alpha 0.3')
 _tr7('common.open', '開く', '打开', 'Открыть', 'Abrir', 'Öffnen', 'Ouvrir', 'Abrir')
 _tr7('dialog.timing_title', 'タイミング', '时机', 'Тайминг', 'Tiempos', 'Timing', 'Rythme', 'Tempo')
 _tr7('dock.pulse_live_tip', '心拍を受信中', '正在接收心率', 'Пульс поступает', 'Pulso en directo', 'Puls kommt an', 'Le pouls arrive', 'Pulso ao vivo')
@@ -7221,8 +7221,8 @@ for _k, _langs in _DOPLNENE_PREKLADY.items():
     STRINGS.setdefault(_k, {}).update(_langs)
 
 STRINGS.setdefault("app.version_short", {}).update({
-    "ja": "アルファ 0.2.1", "zh": "Alpha 0.2.1", "ru": "альфа 0.2.1",
-    "es": "alfa 0.2.1", "pt": "alfa 0.2.1",
+    "ja": "アルファ 0.3", "zh": "Alpha 0.3", "ru": "альфа 0.3",
+    "es": "alfa 0.3", "pt": "alfa 0.3",
 })
 
 # --- 0.2 B3-worlds: dva svety, jedno telo ----------------------------------

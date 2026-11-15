@@ -1,35 +1,35 @@
-﻿# Postavi Zanshin.exe a z neho instalacku Zanshin-<verzia>-setup.exe
-# (verzia = MyAppVersion v Dandurf.iss)
+﻿# Builds Zanshin.exe and from it the installer Zanshin-<version>-setup.exe
+# (version = MyAppVersion in Dandurf.iss)
 #
-# Spustenie (funguje z hociakeho adresara):
+# How to run (works from any folder):
 #     powershell -ExecutionPolicy Bypass -File ".\build_all.ps1"
 #
-# Potrebujes:
+# You need:
 #   Python 3   ->  https://www.python.org/downloads/
-#   Inno Setup 6  ->  https://jrsoftware.org/isdl.php   (na krok 3/3)
+#   Inno Setup 6  ->  https://jrsoftware.org/isdl.php   (for step 3/3)
 #
-# Pozn.: zamerne NEnastavujeme $ErrorActionPreference = "Stop" - v PowerShelli
-# 5.1 vie externy program zapisom na stderr vyhodit vynimku aj ked dobehol
-# v poriadku. Navratove kody preto kontrolujeme rucne.
+# Note: we deliberately DON'T set $ErrorActionPreference = "Stop" - in PowerShell
+# 5.1 an external program that writes to stderr can throw an exception even
+# when it finished fine. So we check exit codes by hand.
 
 Set-Location -Path $PSScriptRoot
-Write-Host "Priecinok: $PSScriptRoot" -ForegroundColor DarkGray
+Write-Host "Folder: $PSScriptRoot" -ForegroundColor DarkGray
 
 function Fail($message) {
     Write-Host ""
-    Write-Host "CHYBA: $message" -ForegroundColor Red
+    Write-Host "ERROR: $message" -ForegroundColor Red
     exit 1
 }
 
 # --------------------------------------------------------------------------
-# 1/3  Python a zavislosti
+# 1/3  Python and dependencies
 # --------------------------------------------------------------------------
 Write-Host ""
-Write-Host "=== 1/3  Kontrola zavislosti ===" -ForegroundColor Cyan
+Write-Host "=== 1/3  Checking dependencies ===" -ForegroundColor Cyan
 
-# Na Windows sa Python vola raz 'python', inokedy len 'py'. Skusime oboje.
-# Pozor: holy 'python' byva aliasom na Microsoft Store, ktory nic nespusti -
-# preto kazdeho kandidata realne otestujeme.
+# On Windows, Python is sometimes called 'python', sometimes only 'py'. We try both.
+# Careful: a bare 'python' is often an alias to the Microsoft Store that runs
+# nothing - so we really test each candidate.
 $pythonCandidates = @(
     @{ Exe = 'py';      Pre = @('-3') },
     @{ Exe = 'python';  Pre = @() },
@@ -43,12 +43,12 @@ foreach ($candidate in $pythonCandidates) {
     if ($LASTEXITCODE -eq 0) { $PY = $candidate; break }
 }
 if (-not $PY) {
-    # Python install manager (dnes hlavne tlacidlo na python.org) nema ziadne
-    # zaskrtavatko PATH - 'py' ide cez alias vo WindowsApps a Python si pri
-    # prvom 'py -3' stiahne sam. Ak ani to neprejde, byva to bez internetu.
-    Fail ("Nenasiel som Python (alebo sa ho nepodarilo stiahnut - skontroluj internet). " +
-          "Nainstaluj 'Python install manager' z https://www.python.org/downloads/ " +
-          "a spusti build.bat znova. Klasicka instalacka z python.org funguje tiez.")
+    # The Python install manager (today mainly the button on python.org) has no
+    # PATH checkbox - 'py' goes through an alias in WindowsApps, and Python
+    # downloads itself on the first 'py -3'. If even that fails, it's usually no internet.
+    Fail ("Python not found (or it couldn't be downloaded - check your internet connection). " +
+          "Install 'Python install manager' from https://www.python.org/downloads/ " +
+          "and run build.bat again. The classic installer from python.org works too.")
 }
 
 function Invoke-Py {
@@ -59,33 +59,33 @@ function Invoke-Py {
 $version = Invoke-Py '-c' 'import sys; print(sys.version.split()[0])'
 Write-Host "Python $version  ($($PY.Exe) $($PY.Pre))" -ForegroundColor Green
 
-# pyttsx3 (zaloha hlasu Windows) a psutil (automaticke profily) tu chybali -
-# bez nich build presiel, ale appka potom ticho prisla o tieto funkcie.
+# pyttsx3 (the Windows voice fallback) and psutil (automatic profiles) used to be
+# missing here - the build passed without them, but the app then quietly lost these features.
 foreach ($module in @('edge_tts', 'comtypes', 'pystray', 'PIL',
                      'customtkinter', 'numpy', 'pygame', 'pyttsx3', 'psutil')) {
     Invoke-Py '-c' "import $module" 2>&1 | Out-Null
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "Chyba modul $module - instalujem zavislosti..." -ForegroundColor Yellow
+        Write-Host "Module $module is missing - installing dependencies..." -ForegroundColor Yellow
         Invoke-Py '-m' 'pip' 'install' '-r' 'requirements.txt'
-        if ($LASTEXITCODE -ne 0) { Fail "pip install zlyhal." }
+        if ($LASTEXITCODE -ne 0) { Fail "pip install failed." }
         break
     }
 }
 
-# edge-tts (prirodzeny hlas) build stiahne pri KAZDOM behu v najnovsej
-# verzii: Microsoft od novembra 2026 odmieta starsie verzie (HTTP 403) a ked
-# nieco zmeni znova, oprava zvycajne pride v novom edge-tts - aj do buildu po
-# mesiaci bez vydania. Cyklus vyssie instaluje len CHYBAJUCI modul.
-# Strop verzie zamerne nie je (moze zablokovat presne tu opravu) - novu
-# verziu preto build za upgradom vyskusa: API bez siete a jedno skusobne
-# slovo (nizsie).
-# Poziadavka (minimum) je len v requirements.txt. Upgrade dostane
-# LEN edge-tts: pip predvolene (--upgrade-strategy only-if-needed) zdvihne
-# jeho zavislost, len ked jej verzia edge-tts nestaci; ostatne balicky necha.
-# Medzera za menom je zamerna: argument s medzerou da PowerShell 5.1 do
-# uvodzoviek, takze ani Python cez .bat (napr. pyenv-win) neberie '<' a '>'
-# ako presmerovanie. Verzie porovnava importlib.metadata ciselne - bez
-# 'packaging', ten nemusi byt nainstalovany.
+# The build fetches edge-tts (the natural voice) in its newest version on EVERY
+# run: since November 2026 Microsoft refuses older versions (HTTP 403), and when
+# it changes something again, the fix usually comes in a new edge-tts - even for
+# a build made a month after a release. The loop above installs only a MISSING module.
+# There is deliberately no version cap (it could block exactly that fix) - so
+# after the upgrade the build tries the new version: the API without the network
+# and one test word (below).
+# The requirement (minimum) is only in requirements.txt. ONLY edge-tts gets
+# the upgrade: by default (--upgrade-strategy only-if-needed) pip raises one of
+# its dependencies only if edge-tts needs a newer version of it; it leaves the other packages alone.
+# The space after the name is deliberate: PowerShell 5.1 puts an argument with a
+# space in quotes, so not even Python through a .bat (e.g. pyenv-win) takes '<' and '>'
+# as redirection. The versions are compared numerically via importlib.metadata -
+# without 'packaging', which may not be installed.
 $edgeMinVzor = '^\s*edge-tts\s*(>=\s*([0-9]+(?:\.[0-9]+)*)[^#;\r\n]*)'
 $edgeMin = $null
 foreach ($riadok in Get-Content 'requirements.txt') {
@@ -95,151 +95,151 @@ foreach ($riadok in Get-Content 'requirements.txt') {
         break
     }
 }
-if (-not $edgeMin) { Fail "requirements.txt nema minimum pre edge-tts (riadok edge-tts>=...)." }
+if (-not $edgeMin) { Fail "requirements.txt has no minimum for edge-tts (line edge-tts>=...)." }
 $edgeKontrola = "import re, sys, importlib.metadata as m; d = next(iter(m.distributions(name='edge-tts')), None); v = d.version if d else '?'; t = lambda s: tuple(int(c) for c in re.findall(r'\d+', s)); print(v); sys.exit(0 if t(v) >= t(sys.argv[1]) else 1)"
-Write-Host "Hladam najnovsi edge-tts ($edgePoziadavka)..." -ForegroundColor DarkGray
+Write-Host "Looking for the newest edge-tts ($edgePoziadavka)..." -ForegroundColor DarkGray
 Invoke-Py '-m' 'pip' 'install' '--upgrade' '--retries' '1' '--timeout' '15' $edgePoziadavka
 $edgePip = $LASTEXITCODE
 if ($edgePip -eq 0) {
-    # Bez internetu pip skonci OK, ked nainstalovany edge-tts poziadavke
-    # vyhovuje (vypise len WARNING Retrying). Index sa preto spytame este raz,
-    # bez ohladu na nainstalovany: --dry-run nic neinstaluje, bez siete zlyha.
+    # Offline, pip ends OK when the installed edge-tts meets the requirement
+    # (it only prints WARNING Retrying). So we ask the index once more,
+    # regardless of what's installed: --dry-run installs nothing and fails offline.
     Invoke-Py '-m' 'pip' 'install' '--dry-run' '--ignore-installed' '--no-deps' '--quiet' '--retries' '1' '--timeout' '15' $edgePoziadavka 2>&1 | Out-Null
     $edgePip = $LASTEXITCODE
 }
 $edgeVerzia = "$(Invoke-Py '-c' $edgeKontrola $edgeMin)".Trim()
 if ($LASTEXITCODE -ne 0) {
     if ($edgePip -ne 0) {
-        Fail "edge-tts je $edgeVerzia, treba aspon $edgeMin, a novsi som nestiahol (skontroluj internet) - prirodzeny hlas by v builde nefungoval."
+        Fail "edge-tts is $edgeVerzia, but the minimum is $edgeMin, and a newer one couldn't be downloaded (check your internet connection) - the natural voice wouldn't work in the build."
     }
-    Fail "edge-tts je stale $edgeVerzia, treba aspon $edgeMin - prirodzeny hlas by v builde nefungoval."
+    Fail "edge-tts is still $edgeVerzia, but the minimum is $edgeMin - the natural voice wouldn't work in the build."
 }
 if ($edgePip -ne 0) {
-    Write-Host "Najnovsi edge-tts som nevedel overit (bez internetu?) - build pokracuje s nainstalovanym $edgeVerzia." -ForegroundColor Yellow
+    Write-Host "Couldn't check for the newest edge-tts (no internet?) - the build goes on with the installed $edgeVerzia." -ForegroundColor Yellow
 }
 
-# Retazce pre 'py -c' nizsie: bez uvodzoviek (PowerShell 5.1 ich nativnemu
-# programu pokazi, viz $edgeKontrola) a bez znaku percenta - Python cez .bat
-# ide cez cmd.exe a ten by %...% bral ako premennu; preto rate='+0' + chr(37)
-# (= '+0%', ako edge_rate_str v audio_engine). sys.excepthook vypise namiesto
-# tracebacku jeden riadok "Trieda: sprava" - ten ide do hlasky buildu.
-# (a) API bez siete: presne volanie z audio_engine (EdgeTTSCache.ensure) -
-# Communicate(text, hlas, rate=...) a async save. Ked neprejde, novy edge-tts
-# zmenil API: exe by mal prirodzeny hlas mrtvy, build preto zastavi a povie,
-# ako sa vratit na posledny fungujuci.
-$edgeApi = "import inspect, sys; sys.excepthook = lambda t, e, b: print(t.__name__ + ': ' + str(e)[:160]); import edge_tts; k = edge_tts.Communicate('Zanshin', 'en-GB-SoniaNeural', rate='+0' + chr(37)); ok = inspect.iscoroutinefunction(getattr(k, 'save', None)); ok or print('Communicate.save nie je async'); sys.exit(0 if ok else 1)"
+# Strings for 'py -c' below: no double quotes (PowerShell 5.1 breaks them for a
+# native program, see $edgeKontrola) and no percent sign - Python through a .bat
+# goes through cmd.exe, which would take %...% as a variable; hence rate='+0' + chr(37)
+# (= '+0%', like edge_rate_str in audio_engine). Instead of a traceback,
+# sys.excepthook prints one line "Class: message" - the build quotes it in its message.
+# (a) API without the network: the exact call from audio_engine (EdgeTTSCache.ensure) -
+# Communicate(text, voice, rate=...) and an async save. If it fails, the new edge-tts
+# changed its API: the natural voice in the exe would be dead, so the build stops and
+# says how to go back to the last version that worked.
+$edgeApi = "import inspect, sys; sys.excepthook = lambda t, e, b: print(t.__name__ + ': ' + str(e)[:160]); import edge_tts; k = edge_tts.Communicate('Zanshin', 'en-GB-SoniaNeural', rate='+0' + chr(37)); ok = inspect.iscoroutinefunction(getattr(k, 'save', None)); ok or print('Communicate.save is not async'); sys.exit(0 if ok else 1)"
 $edgeApiDovod = "$(Invoke-Py '-c' $edgeApi)".Trim()
 if ($LASTEXITCODE -ne 0) {
     $pyPrikaz = (@($PY.Exe) + $PY.Pre) -join ' '
     if ($edgeVerzia -eq $edgeMin) {
-        # zlyhalo aj samotne minimum - edge-tts sa nezmenil, chyba je okolo neho
-        Fail ("edge-tts $edgeVerzia sa neda pouzit ($edgeApiDovod) - chyba je asi v jeho zavislosti. " +
-              "Preinstaluj ho: $pyPrikaz -m pip install --force-reinstall `"edge-tts==$edgeVerzia`" a spusti build znova.")
+        # even the minimum itself failed - edge-tts didn't change, the problem is around it
+        Fail ("edge-tts $edgeVerzia can't be used ($edgeApiDovod) - the problem is probably in one of its dependencies. " +
+              "Reinstall it: $pyPrikaz -m pip install --force-reinstall `"edge-tts==$edgeVerzia`" and run the build again.")
     }
-    # Posledny fungujuci: o hlavnu verziu nizsie (8.0 -> <8, najnovsia 7.x);
-    # v ramci tej istej hlavnej verzie najnovsia pred tou pokazenou.
+    # Last version that worked: one major version lower (8.0 -> <8, the newest 7.x);
+    # within the same major version, the newest one before the broken one.
     $edgeHlavna = 0
     if ($edgeVerzia -match '^(\d+)') { $edgeHlavna = [int]$Matches[1] }
     $edgeMinHlavna = 0
     if ($edgeMin -match '^(\d+)') { $edgeMinHlavna = [int]$Matches[1] }
     if ($edgeHlavna -gt $edgeMinHlavna) { $edgeSpat = "edge-tts>=$edgeMin,<$edgeHlavna" }
     else { $edgeSpat = "edge-tts>=$edgeMin,<$edgeVerzia" }
-    Fail ("edge-tts $edgeVerzia sa zmenil tak, ze ho Zanshin nevie pouzit ($edgeApiDovod). " +
-          "Vrat sa na posledny fungujuci: v requirements.txt zmen riadok edge-tts na $edgeSpat a spusti build znova " +
-          "(zo zdrojakov rucne: $pyPrikaz -m pip install `"$edgeSpat`"). Natrvalo to opravi az novsi Zanshin.")
+    Fail ("edge-tts $edgeVerzia has changed so that Zanshin can't use it ($edgeApiDovod). " +
+          "Go back to the last version that worked: in requirements.txt change the edge-tts line to $edgeSpat and run the build again " +
+          "(from source, by hand: $pyPrikaz -m pip install `"$edgeSpat`"). Only a newer Zanshin fixes this for good.")
 }
-Write-Host "edge-tts $edgeVerzia ide do buildu (treba aspon $edgeMin)" -ForegroundColor Green
+Write-Host "edge-tts $edgeVerzia goes into the build (minimum $edgeMin)" -ForegroundColor Green
 
-# (b) Skusobne slovo, len s internetom (sonda indexu vyssie): "Zanshin" cez
-# Microsoft do docasneho suboru v %TEMP%, ktory sa hned zmaze. Ked neprejde,
-# build NEzastavi - exe funguje aj s hlasom z Windows a prirodzeny hlas neskor
-# opravi tlacidlo Aktualizovat hlas v appke (alebo dalsi build s novsim
-# edge-tts). Hlaska je ale hlasna, nech ju vidno.
+# (b) Test word, only with internet (the index probe above): "Zanshin" through
+# Microsoft into a temporary file in %TEMP%, which is deleted right away. If it
+# fails, the build does NOT stop - the exe also works with the Windows voice, and
+# the Update voice button in the app (or the next build with a newer edge-tts)
+# fixes the natural voice later. But the message is loud, so it gets seen.
 if ($edgePip -ne 0) {
-    Write-Host "Skusobne slovo vynechavam (bez internetu) - prirodzeny hlas s edge-tts $edgeVerzia som neoveril." -ForegroundColor Yellow
+    Write-Host "Skipping the test word (no internet) - the natural voice with edge-tts $edgeVerzia is not verified." -ForegroundColor Yellow
 } else {
-    $edgeSlovo = "import asyncio, os, sys; sys.excepthook = lambda t, e, b: print(t.__name__ + ': ' + str(e)[:160]); import edge_tts; p = sys.argv[1]; asyncio.run(asyncio.wait_for(edge_tts.Communicate('Zanshin', 'en-GB-SoniaNeural', rate='+0' + chr(37)).save(p), 30)); n = os.path.getsize(p); n or print('prazdny zvuk'); sys.exit(0 if n else 1)"
+    $edgeSlovo = "import asyncio, os, sys; sys.excepthook = lambda t, e, b: print(t.__name__ + ': ' + str(e)[:160]); import edge_tts; p = sys.argv[1]; asyncio.run(asyncio.wait_for(edge_tts.Communicate('Zanshin', 'en-GB-SoniaNeural', rate='+0' + chr(37)).save(p), 30)); n = os.path.getsize(p); n or print('empty audio'); sys.exit(0 if n else 1)"
     $edgeSubor = Join-Path $env:TEMP ('zanshin-edge-tts-' + [guid]::NewGuid().ToString('N') + '.mp3')
     $edgeSlovoDovod = "$(Invoke-Py '-c' $edgeSlovo $edgeSubor)".Trim()
     $edgeSlovoKod = $LASTEXITCODE
     Remove-Item -LiteralPath $edgeSubor -Force -ErrorAction SilentlyContinue
     if ($edgeSlovoKod -eq 0) {
-        Write-Host "prirodzeny hlas overeny (edge-tts $edgeVerzia)" -ForegroundColor Green
+        Write-Host "natural voice verified (edge-tts $edgeVerzia)" -ForegroundColor Green
     } else {
         Write-Host ""
-        Write-Host "!!! POZOR: Microsoft odmieta aj edge-tts $edgeVerzia, alebo jeho hlasova sluzba prave neodpoveda ($edgeSlovoDovod)." -ForegroundColor Yellow
-        Write-Host "!!! Build pokracuje, ale prirodzeny hlas v nom teraz nejde - pripomienky povie hlas z Windows." -ForegroundColor Yellow
-        Write-Host "!!! Opravit ho vie tlacidlo Aktualizovat hlas v appke (ked vyjde novsi edge-tts) alebo dalsi build." -ForegroundColor Yellow
+        Write-Host "!!! WARNING: Microsoft refuses even edge-tts $edgeVerzia, or its voice service isn't answering right now ($edgeSlovoDovod)." -ForegroundColor Yellow
+        Write-Host "!!! The build goes on, but the natural voice doesn't work in it right now - the Windows voice covers the cues." -ForegroundColor Yellow
+        Write-Host "!!! To fix it: the Update voice button in the app (once a newer edge-tts is out) or a later build." -ForegroundColor Yellow
         Write-Host ""
     }
 }
 
 Invoke-Py '-m' 'PyInstaller' '--version' 2>&1 | Out-Null
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "Chyba PyInstaller - instalujem..." -ForegroundColor Yellow
+    Write-Host "PyInstaller is missing - installing it..." -ForegroundColor Yellow
     Invoke-Py '-m' 'pip' 'install' 'pyinstaller'
-    if ($LASTEXITCODE -ne 0) { Fail "Instalacia PyInstalleru zlyhala." }
+    if ($LASTEXITCODE -ne 0) { Fail "Installing PyInstaller failed." }
 }
 
 if (-not (Test-Path "Dandurf.ico")) {
-    Write-Host "Chyba Dandurf.ico - generujem..." -ForegroundColor Yellow
+    Write-Host "Dandurf.ico is missing - generating it..." -ForegroundColor Yellow
     Invoke-Py 'make_icon.py'
-    if ($LASTEXITCODE -ne 0) { Fail "make_icon.py zlyhal." }
+    if ($LASTEXITCODE -ne 0) { Fail "make_icon.py failed." }
 }
 
-# Predbezna kontrola (preklady, volania, ziadny klavesovy hook, ziadna Steam
-# vrstva). Doteraz ju spustal len Steam build - verejny instalator nie.
-Write-Host "Predbezna kontrola (check_before_run.py)..." -ForegroundColor DarkGray
+# Pre-build check (translations, calls, no keyboard hook, no Steam
+# layer). Until now only the Steam build ran it - the public installer didn't.
+Write-Host "Pre-build check (check_before_run.py)..." -ForegroundColor DarkGray
 $env:PYTHONIOENCODING = 'utf-8'
 Invoke-Py 'check_before_run.py'
-if ($LASTEXITCODE -ne 0) { Fail "check_before_run.py nasiel problem - build som nespustil." }
+if ($LASTEXITCODE -ne 0) { Fail "check_before_run.py found a problem - the build was not started." }
 
 # --------------------------------------------------------------------------
-# 2/3  Balenie .exe
+# 2/3  Packaging the .exe
 # --------------------------------------------------------------------------
 Write-Host ""
-Write-Host "=== 2/3  Balim Zanshin.exe ===" -ForegroundColor Cyan
+Write-Host "=== 2/3  Packaging Zanshin.exe ===" -ForegroundColor Cyan
 
-# Windows drzi zamok na kazdom spustenom .exe. Ak appka prave bezi (typicky
-# minimalizovana v systemovej liste), PyInstaller ju neprepise a spadne na
-# "Access is denied". Zatvorime ju teda sami.
+# Windows holds a lock on every running .exe. If the app is running right now
+# (typically minimised to the system tray), PyInstaller can't overwrite it and fails
+# with "Access is denied". So we close it ourselves.
 $running = Get-Process -Name 'Zanshin' -ErrorAction SilentlyContinue
 if ($running) {
-    Write-Host "Appka prave bezi - zatvaram ju, inak sa novy build neda zapisat." -ForegroundColor Yellow
+    Write-Host "The app is running - closing it, otherwise the new build can't be written." -ForegroundColor Yellow
     $running | Stop-Process -Force -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 2
 }
 
-# Onedir build (Dandurf.spec) - vysledok je priecinok dist\Zanshin\,
-# nie jeden .exe. Zmazeme ho vopred cely, nech nezostavaju stare kniznice
-# zo starsich verzii zavislosti.
+# Onedir build (Dandurf.spec) - the result is the folder dist\Zanshin\,
+# not a single .exe. We delete all of it first, so no old libraries from
+# older versions of the dependencies are left behind.
 if (Test-Path "dist\Zanshin") {
     try {
         Remove-Item "dist\Zanshin" -Recurse -Force -ErrorAction Stop
     } catch {
-        Fail ("Stary dist\Zanshin\ sa neda zmazat. Zatvor bezucu appku " +
-              "(pravy klik na ikonu v systemovej liste -> Ukoncit). " +
-              "Ak nebezi, subor moze drzat antivirus alebo otvoreny Prieskumnik.")
+        Fail ("The old dist\Zanshin\ can't be deleted. Close the running app " +
+              "(right-click its icon in the system tray -> Quit). " +
+              "If it isn't running, an antivirus or an open File Explorer window may be holding a file.")
     }
 }
 
-Write-Host "Trva to zvycajne 1-3 minuty..." -ForegroundColor DarkGray
+Write-Host "This usually takes 1-3 minutes..." -ForegroundColor DarkGray
 
 Invoke-Py '-m' 'PyInstaller' '--noconfirm' '--clean' 'Dandurf.spec'
-if ($LASTEXITCODE -ne 0) { Fail "PyInstaller skoncil s kodom $LASTEXITCODE." }
+if ($LASTEXITCODE -ne 0) { Fail "PyInstaller exited with code $LASTEXITCODE." }
 if (-not (Test-Path "dist\Zanshin\Zanshin.exe")) {
-    Fail "PyInstaller nevyrobil dist\Zanshin\Zanshin.exe"
+    Fail "PyInstaller did not produce dist\Zanshin\Zanshin.exe"
 }
 
 $distMb = [math]::Round((Get-ChildItem "dist\Zanshin" -Recurse |
     Measure-Object -Property Length -Sum).Sum / 1MB, 1)
-Write-Host "dist\Zanshin\ hotovo ($distMb MB)" -ForegroundColor Green
+Write-Host "dist\Zanshin\ done ($distMb MB)" -ForegroundColor Green
 
 # --------------------------------------------------------------------------
-# 3/3  Instalacka
+# 3/3  Installer
 # --------------------------------------------------------------------------
 Write-Host ""
-Write-Host "=== 3/3  Skladam instalacku ===" -ForegroundColor Cyan
+Write-Host "=== 3/3  Assembling the installer ===" -ForegroundColor Cyan
 
 $isccCandidates = @(
     "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
@@ -254,36 +254,36 @@ if (-not $iscc) {
 
 if (-not $iscc) {
     Write-Host ""
-    # Instalacka sa nevydava (bez podpisoveho certifikatu) - hrac ju nepotrebuje,
-    # takze ho tu neposielame stahovat Inno Setup. Vyvojar, ktory ju chce,
-    # vie z DEVELOPMENT.md, ze staci Inno Setup 6 nainstalovat a skript spustit znova.
-    Write-Host "Inno Setup som nenasiel - instalacku som nepostavil (netreba ju)." -ForegroundColor Yellow
-    Write-Host "HOTOVO: appka je dist\Zanshin\Zanshin.exe - staci ju spustit." -ForegroundColor Green
+    # The installer isn't published (no signing certificate) - players don't need it,
+    # so we don't send them off to download Inno Setup here. A developer who wants it
+    # knows from DEVELOPMENT.md that installing Inno Setup 6 and running the script again is enough.
+    Write-Host "Inno Setup not found - installer not built (it isn't needed)." -ForegroundColor Yellow
+    Write-Host "DONE: the app is dist\Zanshin\Zanshin.exe - just run it." -ForegroundColor Green
     exit 0
 }
 
-# Instalator hovori vsetkymi 11 jazykmi appky. Cinstinu Inno Setup nedodava,
-# preklad je v projekte (installer_lang\ChineseSimplified.isl) a MUSI byt
-# UTF-8 s BOM - bez BOM by kompilator znaky precital ako ANSI a v dialogu
-# by boli rozsypane. Radsej to overime, nez by sme dodali pokazeny build.
+# The installer speaks all 11 languages of the app. Inno Setup doesn't ship Chinese,
+# the translation is in the project (installer_lang\ChineseSimplified.isl) and MUST be
+# UTF-8 with a BOM - without the BOM the compiler would read the characters as ANSI and
+# the dialog would show garbage. Better to check it than to ship a broken build.
 $zhIsl = "installer_lang\ChineseSimplified.isl"
-if (-not (Test-Path $zhIsl)) { Fail "Chyba $zhIsl (cinsky preklad instalatora)." }
+if (-not (Test-Path $zhIsl)) { Fail "$zhIsl is missing (the installer's Chinese translation)." }
 $bom = [IO.File]::ReadAllBytes($zhIsl)[0..2]
 if (-not ($bom[0] -eq 0xEF -and $bom[1] -eq 0xBB -and $bom[2] -eq 0xBF)) {
-    Fail "$zhIsl nie je ulozeny ako UTF-8 s BOM - uloz ho tak (napr. v Poznamkovom bloku: Ulozit ako -> UTF-8 s BOM)."
+    Fail "$zhIsl is not saved as UTF-8 with BOM - save it that way (e.g. in Notepad: Save as -> UTF-8 with BOM)."
 }
 
 & $iscc "Dandurf.iss"
-if ($LASTEXITCODE -ne 0) { Fail "Inno Setup skoncil s kodom $LASTEXITCODE." }
+if ($LASTEXITCODE -ne 0) { Fail "Inno Setup exited with code $LASTEXITCODE." }
 
 $setup = Get-ChildItem "installer\*setup.exe" -ErrorAction SilentlyContinue |
          Sort-Object LastWriteTime -Descending | Select-Object -First 1
-if (-not $setup) { Fail "Inno Setup nevyrobil ziadny setup.exe v priecinku installer\." }
+if (-not $setup) { Fail "Inno Setup did not produce any setup.exe in the installer\ folder." }
 
 $setupMb = [math]::Round($setup.Length / 1MB, 1)
 Write-Host ""
-Write-Host "HOTOVO: $($setup.FullName) ($setupMb MB)" -ForegroundColor Green
-Write-Host "Instalator ma 11 jazykov (en, sk, ja, zh, ru, es, de, fr, pt, cs, bg), predvolena je anglictina."
-Write-Host "Instaluje sa do %LOCALAPPDATA%\Programs\Zanshin (bez UAC)."
-Write-Host "Pouzivatelske data (nastavenia, nahravky, TTS cache) idu do %APPDATA%\Zanshin."
-Write-Host "Pri prvom spusteni ta SmartScreen moze upozornit - 'Dalsie informacie' -> 'Spustit aj tak'." -ForegroundColor DarkGray
+Write-Host "DONE: $($setup.FullName) ($setupMb MB)" -ForegroundColor Green
+Write-Host "The installer has 11 languages (en, sk, ja, zh, ru, es, de, fr, pt, cs, bg), English is the default."
+Write-Host "It installs into %LOCALAPPDATA%\Programs\Zanshin (no UAC)."
+Write-Host "User data (settings, recordings, TTS cache) goes to %APPDATA%\Zanshin."
+Write-Host "On the first start SmartScreen may warn you - 'More info' -> 'Run anyway'." -ForegroundColor DarkGray

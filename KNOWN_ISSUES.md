@@ -1,7 +1,7 @@
 # Known issues — Zanshin alpha 0.2.1
 
 What doesn't work yet, or works only partly. What each version changed,
-including 0.2.2 (in the code here, not released yet), is in
+including 0.3 (in the code here, not released yet), is in
 [CHANGELOG.md](CHANGELOG.md).
 
 I'm not a programmer. I build Zanshin with AI and learn as I go. If you spot
@@ -21,10 +21,10 @@ about, and a few will stay.
   is spoken by the Windows voice, and the line under *Voice comes from* in
   Settings → Sound says *check your internet connection*, though your
   connection is fine. The 0.2.1 ZIP can't fix this itself: it keeps the
-  library it came with and has no *Update voice* button. It's fixed in 0.2.2
+  library it came with and has no *Update voice* button. It's fixed in 0.3
   (not released yet), which needs `edge-tts` 7.3.1 or newer. If you build
-  0.2.2 yourself, its build fetches the newest `edge-tts` every time and
-  tests it. And if Microsoft changes something again, 0.2.2's **Update
+  0.3 yourself, its build fetches the newest `edge-tts` every time and
+  tests it. And if Microsoft changes something again, 0.3's **Update
   voice** button (Settings → Sound, under *Voice source*) fetches a newer
   `edge-tts`, if there is one, when you click it, ZIP or not, without
   waiting for a new release.
@@ -34,9 +34,9 @@ about, and a few will stay.
   building it again doesn't help, because its build keeps the `edge-tts`
   already on your PC. Updating it by hand first
   (`py -m pip install --upgrade "edge-tts>=7.3.1"`) should, since 0.2.1
-  calls the library the same way 0.2.2 does, but I haven't tried that with
+  calls the library the same way 0.3 does, but I haven't tried that with
   0.2.1.
-- ***Update voice* can't fix everything** (0.2.2). It helps only when a newer
+- ***Update voice* can't fix everything** (0.3). It helps only when a newer
   `edge-tts` fixes the problem and works with the libraries inside your
   Zanshin; otherwise it says a newer Zanshin is needed and keeps the current
   voice. It trusts PyPI and the `edge-tts` project: what its checks don't
@@ -50,7 +50,7 @@ about, and a few will stay.
 - **Exclusive fullscreen hides the pictures and the heart-rate panel** (voice
   still plays), and the app can only guess it. It still counts such a picture
   as shown, which skews the data on cues that stay silent on purpose (see
-  below) and the "HUD seen %" export column. Use Borderless. From 0.2.2 the
+  below) and the "HUD seen %" export column. Use Borderless. From 0.3 the
   questions after a Play session with a cue say so when the guess fired.
 - **Port 4455 accepts connections from every network your PC is connected to,
   without a password** (only your firewall limits who can reach it), so anything
@@ -58,7 +58,7 @@ about, and a few will stay.
   busy so your phone can't get in. Allow it on your home network only.
 - **The "not now" shortcut is reserved.** While Zanshin runs, even in the
   tray, a game that uses that one key combination may not receive it. It's
-  Ctrl+Alt+Z by default; from 0.2.2 you can pick another or switch it off in
+  Ctrl+Alt+Z by default; from 0.3 you can pick another or switch it off in
   Settings → General → *Keyboard shortcut*, and "Not now" is also in the tray
   icon's menu. In 0.1 the start-up log line said input is read with "no
   blocking"; in 0.2 it names the shortcut as the one exception. If Windows
@@ -86,7 +86,7 @@ about, and a few will stay.
   bubbles and the Ctrl+K list still use a fixed Latin font, so Japanese and
   Chinese text there comes out in whatever font Windows substitutes, not the
   one the rest of the window uses.
-- **Untested:** the iPhone / Apple Watch route. Two checks new in 0.2.2 were
+- **Untested:** the iPhone / Apple Watch route. Two checks new in 0.3 were
   tested only with simulated data, never on a PC with that setup: how the
   pairing guide recognises VPN and virtual network adapters (including
   Windows' Mobile hotspot and a Hyper-V external switch), and whether the
@@ -103,7 +103,7 @@ about, and a few will stay.
   and the cue card on *Today* count it, while the questionnaire, the cue
   ladder and "not now" treat it as not shown, even if its voice played.
 - **Texts and controls:** a few explanations and settings texts may still
-  claim a bit more than the code does (0.2.2 rewrote many of them). The
+  claim a bit more than the code does (0.3 rewrote many of them). The
   pairing guide's boxes *Watch won’t connect at all?* and *Watch connects
   but no heart rate?* name the watch, though what connects to Zanshin is
   the phone app. In the Work world, History without sessions still asks you
@@ -116,7 +116,7 @@ about, and a few will stay.
   only; a short GIF of a cue over a game in Borderless is still missing.
 - **The system requirements are from 0.2.1.** The download and disk size,
   memory and CPU use in the README were measured on the 0.2.1 build; I'll
-  measure them again on the final 0.2.2 build.
+  measure them again on the final 0.3 build.
 
 ## How to help
 
@@ -131,7 +131,7 @@ data, and logs can name your devices and files. Describe what you saw instead.
 
 ## What changed in each version
 
-What 0.2.2 changes (not released yet), what 0.2.1 fixed and what 0.1 got
+What 0.3 changes (not released yet), what 0.2.1 fixed and what 0.1 got
 wrong: [CHANGELOG.md](CHANGELOG.md).
 
 — **Dandurfin** · GPLv3

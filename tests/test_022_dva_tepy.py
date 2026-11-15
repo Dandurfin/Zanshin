@@ -430,12 +430,12 @@ def test_readme_a_known_issues_hovoria_to_iste_co_kod():
     assert "still use every reading" in known
     # 0.2.2 este nevyslo - dokumenty to hovoria a verzia sa nezdvihla
     riadok = readme[readme.index("*%s*" % stitok):][:200]
-    assert "(from 0.2.2)" in riadok
-    assert "From 0.2.2" in ako
+    assert "(from 0.3)" in riadok
+    assert "From 0.3" in ako
     with open(os.path.join(ROOT, "KNOWN_ISSUES.md"), encoding="utf-8-sig") as fh:
         k = fh.read()
     assert k.splitlines()[0].endswith("alpha 0.2.1")
     with open(os.path.join(ROOT, "CHANGELOG.md"), encoding="utf-8-sig") as fh:
         c = fh.read()
-    assert (c.index("## What 0.2.2 changes (not released yet)")
+    assert (c.index("## What 0.3 changes (not released yet)")
             < c.index("## What 0.2.1 fixes"))

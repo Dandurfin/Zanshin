@@ -36,14 +36,14 @@ minimum from that line, so no script repeats it. The documents that name it,
 this page included, are checked against it by `tests/test_022g_dokumenty.py`,
 so after changing it, that test tells you which sentence to update.
 
-*Not released yet (0.2.2):* **Update voice** (Settings → Sound, under *Voice
+*Not released yet (0.3):* **Update voice** (Settings → Sound, under *Voice
 source*) works from source too. It puts the downloaded `edge-tts` into
 `voice_lib\` next to `main.py` (git ignores that folder; the built app uses
 `%APPDATA%\Zanshin\voice_lib`), and every start prefers it over the
 pip-installed `edge-tts` as long as it's newer. Delete the folder, or install
 the same or a newer `edge-tts` with pip, to go back to the installed one.
 
-*Not released yet (0.2.2):* only one copy runs at a time, and a source run
+*Not released yet (0.3):* only one copy runs at a time, and a source run
 counts as the same app as the built one: starting it again only shows the
 window of the copy already running. To run two copies anyway (for testing),
 set the environment variable `ZANSHIN_ALLOW_MULTI=1`.
@@ -196,7 +196,7 @@ least the minimum there, with a yellow warning, and stops otherwise. Then it
 tries the new `edge-tts`. Without the network (online and offline alike) it
 imports it and builds `Communicate("Zanshin", "en-GB-SoniaNeural",
 rate="+0%")` the way `audio_engine.py` does, and checks that `save` is async;
-if that fails, the build stops with **CHYBA:**, a one-line reason and the way
+if that fails, the build stops with **ERROR:**, a one-line reason and the way
 back: the `requirements.txt` line to set, with a cap below the broken
 version (`edge-tts>=7.3.1,<8` when 8.0 breaks it, `<7.4.0` when 7.4.0 does),
 plus the pip command for running from source. That line matters
@@ -213,7 +213,7 @@ note says the test word was skipped. It also draws
 `Dandurf.ico` if it's missing, and runs `check_before_run.py` — if that finds
 a problem, nothing is built; (2) force-closes a running Zanshin without asking
 (Windows locks a running `.exe`), deletes the old `dist\Zanshin\` and packages
-the app into `dist\` (onedir, no admin manifest, UPX off). From 0.2.2
+the app into `dist\` (onedir, no admin manifest, UPX off). From 0.3
 `Dandurf.spec` packs a little more than today's `edge-tts` needs, because the
 exe's Python only has the modules PyInstaller saw at build time and a newer
 `edge-tts` from **Update voice** may import more: the libraries `edge-tts`
@@ -246,10 +246,10 @@ Inno Setup the app in `dist\Zanshin\` is ready as it is.
 | `app_session.py` | Part of the main window (a mixin of `DandurfApp`): heart-rate receiving (its settings, turning it on and off, receiving heart rate, steps and connection state, dropouts, a busy port (TCP is retried, a UDP port that won't open is reported), hiding this PC's IP on screen), opening a measuring session with its thresholds, splitting it when the PC slept, and the regular ticks: four times a second whether you're at the keyboard (which also drives the cue trigger), once a second the "last cue" line |
 | `app_spolocne.py` | Names shared by `app.py` and its mixins (the app logger, language names for the switch, the "not now" shortcut defaults, PIL's `ImageTk`), and the name of the *In-game* page in the current world for texts with `{page}` (`stranka_vhre`), with refreshing such texts after a world switch |
 | `app_today.py` | Part of the main window (a mixin of `DandurfApp`): the "Today" page — drawing its animated centre, the live heart-rate, load and session block, delivering the automatic cue, and the "My stats" cards (choosing them, their values, swapping them by dragging) |
-| `paths.py` | Where data lives (`%APPDATA%\Zanshin` for the built app, next to `main.py` from source); the built app also copies data over from older versions. Also `nahrad_subor`, the last step of a safe save (`.tmp` → the real file): while Windows or an antivirus holds the file for a moment, it tries again for about 0.3 s, and on failure it can delete the caller's `.tmp`. The saves in `app_prefs.py`, `data_io.py`, `hr_stats.py`, `hr_insights.py`, `audio_engine.py` and `hlas_kniznica.py` go through it, not through a bare `os.replace` (a test checks that); `paths.py` imports no other module of the app, so any module can use it. From 0.2.2 also `voice_lib_dir()`, the folder for the `edge-tts` that **Update voice** downloads (`voice_lib` in the data folder) |
+| `paths.py` | Where data lives (`%APPDATA%\Zanshin` for the built app, next to `main.py` from source); the built app also copies data over from older versions. Also `nahrad_subor`, the last step of a safe save (`.tmp` → the real file): while Windows or an antivirus holds the file for a moment, it tries again for about 0.3 s, and on failure it can delete the caller's `.tmp`. The saves in `app_prefs.py`, `data_io.py`, `hr_stats.py`, `hr_insights.py`, `audio_engine.py` and `hlas_kniznica.py` go through it, not through a bare `os.replace` (a test checks that); `paths.py` imports no other module of the app, so any module can use it. From 0.3 also `voice_lib_dir()`, the folder for the `edge-tts` that **Update voice** downloads (`voice_lib` in the data folder) |
 | `settings_model.py` | Slot/settings data model — defaults, normalisation |
 | `audio_engine.py` | Text-to-speech (the natural voice through Edge, the Windows voice through SAPI5) and sound/recording playback; at start it prefers a newer `edge-tts` downloaded by **Update voice** over the bundled one, and swaps the module while the app runs once an update worked |
-| `hlas_kniznica.py` | **Update voice** (from 0.2.2), only on click and never while watching: asks PyPI for the newest `edge-tts`, downloads that one wheel from `files.pythonhosted.org`, verifies it (HTTPS and the host, size and SHA-256 from PyPI, the zip entry by entry, only `edge_tts/*.py` written, the code read with `ast`, dependencies already in the app), loads it (under a private module name, because the bundled one is already loaded) with a loader that checks each file's SHA-256, tries the API and one test word, and keeps it only if that works (`manifest.json` in `voice_lib`); at start it loads a valid downloaded version that's newer than the bundled one. Touches no Tk; call `aktualizuj` from a worker thread |
+| `hlas_kniznica.py` | **Update voice** (from 0.3), only on click and never while watching: asks PyPI for the newest `edge-tts`, downloads that one wheel from `files.pythonhosted.org`, verifies it (HTTPS and the host, size and SHA-256 from PyPI, the zip entry by entry, only `edge_tts/*.py` written, the code read with `ast`, dependencies already in the app), loads it (under a private module name, because the bundled one is already loaded) with a loader that checks each file's SHA-256, tries the API and one test word, and keeps it only if that works (`manifest.json` in `voice_lib`); at start it loads a valid downloaded version that's newer than the bundled one. Touches no Tk; call `aktualizuj` from a worker thread |
 | `theme.py` | Colour tokens for the Sumi / Aizome themes; its docstring states the design rules (on and selected = accent, contrast minimums, red only for errors and deleting) |
 | `i18n.py` | UI translations (11 languages; Czech and Bulgarian in `i18n_cs_bg.py`) |
 | `sfx_assets.py` | Built-in sound library — copies the bundled sounds; download or synthesis only if one is missing |
@@ -337,7 +337,7 @@ inherits. A few rules keep it that way:
   wording is checked where it lives: [PRIVACY.md](PRIVACY.md),
   [KNOWN_ISSUES.md](KNOWN_ISSUES.md), [CHANGELOG.md](CHANGELOG.md),
   [docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md) and this page.
-- Code comments are in Slovak, without diacritics, and say *why*, not what.
+- Code comments are in English and say *why*, not what.
 
 See also **[SAFETY.md](SAFETY.md)** (anti-cheat / no-injection) and
 **[PRIVACY.md](PRIVACY.md)** (what is local vs. networked).

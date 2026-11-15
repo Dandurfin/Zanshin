@@ -82,7 +82,7 @@ voice_lib/
 # ── Backups of originals ──────────────────────────────────────────────
 *_original.py.txt
 *_original.iss.txt
-# Archiv: stare/nepouzivane subory presunute z repa (0.2) - ostavaju na disku ako historia, nejdu na GitHub
+# Archive: old/unused files moved out of the repo (0.2) - they stay on disk as history and don't go to GitHub
 _archiv/
 # Any table or log a session could leave in the project folder (exports are
 # personal health data; logs name files and devices):

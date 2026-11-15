@@ -243,7 +243,7 @@ def test_privacy_co_ostane_na_disku_a_ako_to_zmazat(tmp_path, monkeypatch):
 
 def test_safety_anglicke_zhrnutie_hovori_o_stiahnutom_kode():
     en = _safety_en()
-    assert "**Downloaded code (from 0.2.2, only when you click).**" in en
+    assert "**Downloaded code (from 0.3, only when you click).**" in en
     assert "the one place where Zanshin downloads code and runs it" in en
     assert "Never by itself and never while Zanshin is watching" in en
     assert "`pypi.org`" in en and "`files.pythonhosted.org`" in en
@@ -310,10 +310,10 @@ def test_safety_slovenska_cast_sedi_s_kodom():
 def test_readme_uvod_sukromie_a_troubleshooting():
     readme = _read("README.md")
     uvod = _plain_text(readme[:readme.index("\n## Quick start")])
-    assert ("Only when you click **Update voice** (from 0.2.2) does Zanshin "
+    assert ("Only when you click **Update voice** (from 0.3) does Zanshin "
             "download newer code for that voice from PyPI") in uvod
     sukromie = _plain_text(_sekcia(readme, "Privacy and anti-cheat"))
-    assert "**Update voice** (from 0.2.2, only when you click it" in sukromie
+    assert "**Update voice** (from 0.3, only when you click it" in sukromie
     bod = _plain_text(_sekcia(readme, "Troubleshooting"))
     bod = bod[bod.index("**The line under *Voice source* says Microsoft refused"):]
     bod = bod[:bod.index("- **In the 0.2.1 ZIP")]
@@ -323,12 +323,12 @@ def test_readme_uvod_sukromie_a_troubleshooting():
     assert hk.RELEASES_URL in bod
     assert "](PRIVACY.md)" in bod and "](SAFETY.md)" in bod
     assert ("**Internet:** while you use Zanshin, only for the natural voice "
-            "(optional) and, from 0.2.2, its **Update voice** button.") in _plain_text(readme)
+            "(optional) and, from 0.3, its **Update voice** button.") in _plain_text(readme)
 
 
 def test_changelog_bod_o_tlacidle():
     c = _read(ZMENY)
-    s022 = c[c.index("## What 0.2.2 changes"):c.index("## What 0.2.1 fixes")]
+    s022 = c[c.index("## What 0.3 changes"):c.index("## What 0.2.1 fixes")]
     sekcia = s022[s022.index("### Fewer dead ends"):]
     i = sekcia.index("\n- **Only a new Zanshin could repair the natural voice.**")
     bod = _plain_text(sekcia[i:i + 1 + re.search(r"\n- \*\*|\n#", sekcia[i + 1:]).start()])
@@ -424,7 +424,7 @@ def test_poctive_vety_o_tlacidle_drzia_vo_vsetkych_dokumentoch():
     assert "abort" not in _funkcia("_http_get") and "abort" not in _funkcia("skusobne_slovo")
 
     # PRIVACY: priprava hlasok hned po uspechu je dalsie "kedy" pre texty
-    assert ("and from 0.2.2 right after **Update voice** worked, if a cue's line "
+    assert ("and from 0.3 right after **Update voice** worked, if a cue's line "
             "is still missing") in _plain("PRIVACY.md")
     assert "self.pregenerate(force=True)" in zdroj_metody("_aktualizacia_hlasu_hotova")
     p = _bod_privacy()

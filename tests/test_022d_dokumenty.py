@@ -321,12 +321,12 @@ def test_known_issues_zacina_tym_co_este_nefunguje():
     poradie = ["## Still open", "## How to help", "## What changed in each version"]
     indexy = [k.index("\n" + n) for n in poradie]
     assert indexy == sorted(indexy)
-    for stara in ("## What 0.2.2 changes", "## What 0.2.1 fixes", "## Before 0.2",
+    for stara in ("## What 0.3 changes", "## What 0.2.1 fixes", "## Before 0.2",
                   "## What 0.1 got wrong"):
         assert stara not in k, stara
     assert "](CHANGELOG.md)" in _sekcia(k, "What changed in each version")
     c = _read("CHANGELOG.md")
-    poradie = ["## What 0.2.2 changes", "## What 0.2.1 fixes", "## Before 0.2",
+    poradie = ["## What 0.3 changes", "## What 0.2.1 fixes", "## Before 0.2",
                "## What 0.1 got wrong"]
     indexy = [c.index("\n" + n) for n in poradie]
     assert indexy == sorted(indexy)
@@ -335,7 +335,7 @@ def test_known_issues_zacina_tym_co_este_nefunguje():
 
 def test_known_issues_022_menuje_nove_nazvy():
     k = _plain(_read("CHANGELOG.md"))
-    sekcia = k[k.index("## What 0.2.2 changes"):k.index("## What 0.2.1 fixes")]
+    sekcia = k[k.index("## What 0.3 changes"):k.index("## What 0.2.1 fixes")]
     assert "### Words and looks" in sekcia
     for kluc in ("tray.start", "tray.stop", "settings.hr_enable_switch",
                  "nav.spustace", "settings.audio_voice_title", "settings.engine",

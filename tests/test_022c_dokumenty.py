@@ -174,7 +174,7 @@ def test_hlasy_jazykov_es_de_fr_pt():
     assert {"es", "de", "fr", "pt"} <= set(VOICE_HINTS)
     ako = _plain(_read(AKO))
     assert "also in Spanish, German, French or Portuguese" in ako
-    k = _plain(_sekcia(_read("CHANGELOG.md"), "What 0.2.2 changes",
+    k = _plain(_sekcia(_read("CHANGELOG.md"), "What 0.3 changes",
                        "\n## What 0.2.1 fixes"))
     # mena hlasov v CHANGELOG su tie z VOICE_HINTS
     for jazyk in ("es", "de", "fr", "pt"):
@@ -197,7 +197,7 @@ def test_relacia_nastavovania_sa_neuci():
 # --------------------------------------------------------------------------
 
 def _known_022():
-    return _plain(_sekcia(_read("CHANGELOG.md"), "What 0.2.2 changes",
+    return _plain(_sekcia(_read("CHANGELOG.md"), "What 0.3 changes",
                           "\n## What 0.2.1 fixes"))
 
 

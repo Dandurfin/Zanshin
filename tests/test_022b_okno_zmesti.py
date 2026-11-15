@@ -434,7 +434,7 @@ def test_known_issues_hovori_to_iste_co_kod():
     # Od 0.2.2 (davka 4) je historia verzii v CHANGELOG.md.
     with open(os.path.join(ROOT, "CHANGELOG.md"), encoding="utf-8-sig") as fh:
         text = " ".join(fh.read().split())
-    sekcia = text[text.index("## What 0.2.2 changes"):text.index("## What 0.2.1 fixes")]
+    sekcia = text[text.index("## What 0.3 changes"):text.index("## What 0.2.1 fixes")]
     assert "The window didn't fit smaller laptop screens." in sekcia
     assert "down to %d %% at most" % round(display.WINDOW_MIN_FIT * 100) in sekcia
     assert "the screen with the mouse pointer" in sekcia

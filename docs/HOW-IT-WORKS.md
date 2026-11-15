@@ -3,7 +3,7 @@
 The [README](../README.md) says what Zanshin does in a few lines. This page has
 the exact rules: when a cue comes, when Zanshin goes quieter, what it learns
 from, and when the natural voice talks to Microsoft. Where something is new in
-the code here but not in the 0.2.1 release yet, it says *from 0.2.2*.
+the code here but not in the 0.2.1 release yet, it says *from 0.3*.
 
 ## When a cue comes
 
@@ -21,7 +21,7 @@ picture instead, under the same rules; otherwise it stays quiet.
 Some cues stay silent on purpose: about one in four in your first 15 sessions
 (every session of a minute or more counts, Work too), one in ten after that.
 They show only the picture. That collects data for comparing voice with
-picture only; Zanshin doesn't show that comparison yet. From 0.2.2 the line
+picture only; Zanshin doesn't show that comparison yet. From 0.3 the line
 after a session says how many cues were picture-only on purpose.
 
 At most five cues an hour (restarting Zanshin starts that count over), and at
@@ -50,7 +50,7 @@ but never louder than your choice.
 
 "Not now" keeps cues quiet for 30 minutes while Zanshin goes on measuring;
 doing it again ends it sooner. It's a global shortcut, Ctrl+Alt+Z by
-default, and always also in the tray icon's menu (right-click). From 0.2.2
+default, and always also in the tray icon's menu (right-click). From 0.3
 you pick the shortcut under Settings → General → *Keyboard shortcut*:
 Ctrl+Alt+Z, Ctrl+Alt+F9, Ctrl+Alt+F12, Ctrl+Shift+F12 or *Off*. AltGr is the
 same as Ctrl+Alt, so on some keyboard layouts a combination types a letter
@@ -59,7 +59,7 @@ letter. If you never picked a shortcut and the default would type a letter
 on one of your layouts, Zanshin takes the first one that doesn't (or none)
 and says so once in its log. If another program already holds your
 shortcut, the setting keeps your choice and its line says it doesn't work
-right now. From 0.2.2 that line and the log wait for Windows' own answer, so
+right now. From 0.3 that line and the log wait for Windows' own answer, so
 a slow start-up no longer reports a working shortcut as taken. While "not
 now" holds, *Today* says until when and how to end it. In German the app
 writes the keys as on a German keyboard: *Strg* and *Umschalt* instead of
@@ -81,15 +81,15 @@ These sessions don't count:
 - imported sessions,
 - sessions with implausible readings,
 - sessions recovered after Zanshin ended without saving them, or added later
-  because they couldn't be saved at first (from 0.2.2; see
+  because they couldn't be saved at first (from 0.3; see
   [Your sessions](#your-sessions) below),
-- sessions marked *Just setting up the app* (from 0.2.2; the first one saved
+- sessions marked *Just setting up the app* (from 0.3; the first one saved
   after the introduction gets the mark by itself, and you can change it in the
   questions at the end),
 - sessions you marked afterwards as affected by illness, alcohol or exercise
   just before playing.
 
-From 0.2.2, while Zanshin is still getting to know you, *Today* counts the
+From 0.3, while Zanshin is still getting to know you, *Today* counts the
 play sessions it can already learn from (five minutes or more, none of the
 above) in one quiet line, for example *Still getting to know you — 1 of 3
 play sessions (5+ min each)*. It shows in Play only, once heart rate has come
@@ -112,11 +112,11 @@ for work — and switches without a restart. At work, cues are pictures only: no
 voice, no sound. The resting baseline is shared; the load threshold and high
 heart-rate limit are learned from play sessions only and used in both worlds,
 so if you only ever use Work, they stay on the average-player numbers. From
-0.2.2 the *In-game* page is called *Screen* in Work, and every text that
+0.3 the *In-game* page is called *Screen* in Work, and every text that
 sends you to that page uses the name your world shows.
 
 A running session stays in the world it started in, even if you flip the
-switch meanwhile. From 0.2.2 so do its cues: whether they speak or make a
+switch meanwhile. From 0.3 so do its cues: whether they speak or make a
 sound follows the session's world, the new world applies from the next time
 you start watching, and the log says so. At the end, your answer to *Were you
 playing or working?* has the last word: pick the other world and the session
@@ -125,7 +125,7 @@ limit learn from. Skip the question and it stays where it started.
 
 ## The heart-rate number on screen
 
-From 0.2.2 the heart-rate number on screen (the heart-rate panel in the game,
+From 0.3 the heart-rate number on screen (the heart-rate panel in the game,
 *Today* and the line next to the switch) is the median of the last 3 seconds
 of readings, so it doesn't jump with every message; measuring still uses every
 reading. If the companion writes two different heart rates into one source,
@@ -133,7 +133,7 @@ Zanshin says so (see *Troubleshooting* in the README).
 
 ## Today and the sidebar
 
-From 0.2.2 the main switch at the top of *Today* is one button,
+From 0.3 the main switch at the top of *Today* is one button,
 **▶ Start watching** or **■ Stop watching**: the same words as in the tray
 menu and the Ctrl+K palette, and all three stay in step. The big text under
 the ensō says what Zanshin is doing; when another program holds the
@@ -142,7 +142,7 @@ the usual cause (OBS with its WebSocket server on) and how to fix it, and
 that's the only message there: the pairing sentence stays hidden meanwhile.
 Until your first session with heart rate, *Today* shows one sentence and
 *Pair your watch* instead of the tiles and zones. While heart rate comes in,
-the *Heart rate and load* header says *phone connected* (from 0.2.2; it's
+the *Heart rate and load* header says *phone connected* (from 0.3; it's
 the phone app that connects to Zanshin, not the watch). While the phone is
 connected but no heart rate has come yet, the header says *waiting for
 watch* and the line next to the receiving switch *Phone connected — waiting
@@ -159,7 +159,7 @@ dot in a ring during "not now", and a hollow ring when it's stopped.
 
 A session runs while Zanshin is watching. A session of at least a minute with
 at least 10 heart-rate readings is saved, and History keeps the last 400.
-From 0.2.2:
+From 0.3:
 
 - **Quitting with the questions open.** If you quit Zanshin while it's
   watching, it saves the session and opens its questions first. If you quit
@@ -192,7 +192,7 @@ From 0.2.2:
 
 History's *Consistency* grid shows the weeks since your first session (at
 least 8, at most 26) with month and weekday labels, and load reads *x/100*.
-From 0.2.2 the grid grows with the panel up to a set cell size and names all
+From 0.3 the grid grows with the panel up to a set cell size and names all
 seven weekdays when there's room. Dates in History, the trend chart, the
 insights and the delete question are written the way your app language
 writes them (*12 Nov 2026* in English, *12. 11. 2026* in Slovak); the CSV
@@ -203,7 +203,7 @@ the heart-rate panel.
 ## Which address the pairing guide shows
 
 The pairing guide shows one of this PC's addresses, hidden until you click
-**Show IP**. From 0.2.2 it prefers the PC's real network adapters (Wi‑Fi,
+**Show IP**. From 0.3 it prefers the PC's real network adapters (Wi‑Fi,
 Ethernet) to VPN and virtual ones, then the one Windows routes through, then
 home-network addresses (192.168.x.x before 10.x.x.x before 172.16–31.x.x). A
 VPN or virtual adapter's address is marked *(VPN/virtual)*, with a note to
@@ -251,20 +251,20 @@ a line already on its way is finished.
 **Nothing new is prepared while Zanshin is watching** (a line already on its
 way when watching starts is finished): a line that isn't ready then plays in
 the Windows voice, and preparing waits until you stop watching. On the very
-first start Zanshin (from 0.2.2) waits until those lines are prepared, at most
+first start Zanshin (from 0.3) waits until those lines are prepared, at most
 about 15 seconds (*Today* shows *Preparing the voice*), and only then starts
 watching by itself, as if you had pressed ▶ on *Today*, so the first evening
 can already speak in the natural voice. Lines not ready by then (offline, for
 example) are prepared once you stop watching, or at the next start.
 
 If preparing fails, the line under *Voice source* says how many cues have
-their voice and, from 0.2.2, why: Microsoft's service couldn't be reached,
+their voice and, from 0.3, why: Microsoft's service couldn't be reached,
 it refused the request (then it says to click **Update voice** below first;
 if that doesn't help, this Zanshin version is probably outdated, because
 Microsoft refuses older versions of the voice library, and until a new one is
 out you can switch to the Windows voice), or something else went wrong. A
 *Try again* button appears under it, and the log says how to retry; from
-0.2.2 the failure also goes into `app.log`. *Try again* works like *Prepare
+0.3 the failure also goes into `app.log`. *Try again* works like *Prepare
 the cue voice*: while Zanshin is watching it sends nothing and waits until
 you stop.
 
@@ -272,7 +272,7 @@ The full list of what can use the network is in [PRIVACY.md](../PRIVACY.md).
 
 ## Updating the natural voice
 
-From 0.2.2 the *Voice source* row has an **Update voice** button under its
+From 0.3 the *Voice source* row has an **Update voice** button under its
 status line, shown only with the natural voice; the *Ctrl+K* palette has the
 same command (it switches to the *Sound* tab first). It's there because a
 refusal like the one in November 2026 can only be fixed by newer code of
@@ -332,7 +332,7 @@ The built-in cue words are set in the app's language when a profile is created
 (English ones for Slovak and Czech); switching the language later doesn't
 translate them. With the natural voice, spoken cues keep the default English
 voice until you pick another. The exception is cues in Japanese, Chinese,
-Russian or Bulgarian, and from 0.2.2 also in Spanish, German, French or
+Russian or Bulgarian, and from 0.3 also in Spanish, German, French or
 Portuguese, which get a voice of that language while you're still on the
 default voice: on a first start in that language, when a profile is created in
 it, or when you switch to it and the cues that speak in the profile you're in
@@ -341,7 +341,7 @@ the menu: switching the language with English words keeps the English voice,
 and switching back doesn't undo a change. One voice reads all your profiles,
 except cues given a voice of their own.
 
-From 0.2.2 wrapped Japanese and Chinese text follows those languages'
+From 0.3 wrapped Japanese and Chinese text follows those languages'
 line-breaking rules, so a line doesn't start with 。 or ）, and dates follow
 the app language (see [Your sessions](#your-sessions)).
 
@@ -366,7 +366,7 @@ drawn by default on the monitor of the window in focus (normally your game),
 and scaled to that screen's height, so they take the same share of a 1080p or
 a 4K screen. Windows doesn't draw them over a game in exclusive fullscreen (the
 voice still plays); use borderless or windowed mode. Zanshin can only guess
-exclusive fullscreen (a window that covers the whole monitor). From 0.2.2,
+exclusive fullscreen (a window that covers the whole monitor). From 0.3,
 when it guessed so during a Play session with a cue, the questions after the
 session say the pictures may not have shown and suggest *Borderless*.
 

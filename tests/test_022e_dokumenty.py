@@ -91,7 +91,7 @@ def _predvolby():
 
 def _davka4():
     c = _read(ZMENY)
-    s022 = c[c.index("## What 0.2.2 changes"):c.index("## What 0.2.1 fixes")]
+    s022 = c[c.index("## What 0.3 changes"):c.index("## What 0.2.1 fixes")]
     assert s022.index("### Words and looks") < s022.index("### Fewer dead ends")
     return _plain_text(s022[s022.index("### Fewer dead ends"):])
 
@@ -163,7 +163,7 @@ def test_known_issues_licencia_ikona_a_gif():
         assert "or later" not in _plain(meno), meno
     assert "code under GPLv3*" in _read("README.md")
     assert "Licence wording" not in o
-    zmeny = _plain_text(_sekcia(_read("CHANGELOG.md"), "What 0.2.2 changes"))
+    zmeny = _plain_text(_sekcia(_read("CHANGELOG.md"), "What 0.3 changes"))
     assert "everything says GPLv3 (version 3 of the GNU GPL)" in zmeny
     # Otazka ikony je od 2026-11-15 v LICENSE-DESIGN.md, v casti "What stays
     # mine" (rozhodnutie autora) - README na tu stranku uz len odkazuje.
@@ -271,7 +271,7 @@ def test_readme_odkazuje_na_changelog_a_nove_veci():
     readme = _read("README.md")
     hore = readme[:readme.index("\n## Quick start")]
     assert "[Changelog](CHANGELOG.md)" in hore
-    assert "](CHANGELOG.md#what-022-changes-not-released-yet)" in hore
+    assert "](CHANGELOG.md#what-03-changes-not-released-yet)" in hore
     assert "](CHANGELOG.md)" in _sekcia(readme, "Known issues")
     assert "KNOWN_ISSUES.md#" not in readme
     r = _plain_text(readme)

@@ -36,7 +36,7 @@ is (to pick the monitor), the microphone (only while you record your own
 cue), and this PC's network adapters, IP addresses and monitors. None of it
 leaves the PC.
 
-**Downloaded code (from 0.2.2, only when you click).** **Update voice** under
+**Downloaded code (from 0.3, only when you click).** **Update voice** under
 Settings → Sound is the one place where Zanshin downloads code and runs it: a
 newer version of `edge-tts`, the open-source library behind the natural voice,
 from PyPI: the same library, from the same place, that the build packs into
@@ -74,10 +74,10 @@ spôsobom a neinštaluje žiadne systémové hooky.**
 Tento dokument presne opisuje, čo appka robí a čo nie. Záruku, že ťa
 konkrétny anti-cheat nezablokuje, však môže dať len jeho výrobca.
 
-Od 0.2.2 vie appka na tvoj klik stiahnuť a spustiť novší kód jednej
+Od 0.3 vie appka na tvoj klik stiahnuť a spustiť novší kód jednej
 knižnice, tej, na ktorej stojí prirodzený hlas. Čo sa pri tom kontroluje a
 pred čím to nechráni, je v časti
-[Stiahnutý kód](#stiahnutý-kód-aktualizovať-hlas-od-022) nižšie.
+[Stiahnutý kód](#stiahnutý-kód-aktualizovať-hlas-od-03) nižšie.
 
 ## Čo appka nerobí — a nebude robiť
 
@@ -231,8 +231,8 @@ až vtedy, keď ju niekto stlačí. Žiadny prúd vstupu cez ňu netečie — o
 | `RegisterHotKey` | len ohlásenú kombináciu | nie |
 
 Keď je kombinácia obsadená inou aplikáciou, registrácia jednoducho zlyhá a
-appka beží ďalej bez nej (od 0.2.2 to povie aj riadok v nastaveniach). Admin
-práva to nepotrebuje. Od 0.2.2 sa skratka vyberá alebo vypína v Nastavenia →
+appka beží ďalej bez nej (od 0.3 to povie aj riadok v nastaveniach). Admin
+práva to nepotrebuje. Od 0.3 sa skratka vyberá alebo vypína v Nastavenia →
 Všeobecné → „Klávesová skratka“ (voľba „Vypnutá“); v 0.2.1 sa dala vypnúť len
 prázdnym `"snooze_hotkey"` v súbore `dandurf_settings.json`. „Teraz nie“ je od
 0.2.1 aj v ponuke ikony v lište (pravý klik), takže ide aj bez skratky.
@@ -241,7 +241,7 @@ Kód je v `hotkey.py` a `tests/test_hotkey.py` stráži aj to, že sa v ňom
 neobjaví `SetWindowsHookEx`, `WH_KEYBOARD`, `GetAsyncKeyState` ani
 `GetKeyboardState`.
 
-## Stiahnutý kód: „Aktualizovať hlas“ (od 0.2.2)
+## Stiahnutý kód: „Aktualizovať hlas“ (od 0.3)
 
 Toto je jediné miesto, kde Zanshin sťahuje kód a spúšťa ho. Prirodzený hlas
 stojí na knižnici `edge-tts` (open source, z PyPI, bežného registra knižníc

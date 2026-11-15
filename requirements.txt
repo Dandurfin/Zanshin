@@ -2,15 +2,16 @@ pyttsx3
 comtypes
 pystray
 pillow
-# edge-tts: minimum = najstarsia verzia, ktoru Microsoft prijme (starsie od
-# novembra 2026 odmieta, HTTP 403, a prirodzeny hlas mlci). Strop zamerne
-# nie je: ked Microsoft zmeni nieco znova, oprava moze prist aj v novej
-# hlavnej verzii a strop by ju zablokoval. Zlucitelnost sa overuje funkcne:
-# build_all.ps1 pri kazdom builde stiahne najnovsiu verziu, vyskusa jej API
-# (bez siete) a jedno skusobne slovo; appka (tlacidlo Aktualizovat hlas)
-# kazdu stiahnutu verziu tiez najprv vyskusa a necha si ju, len ked funguje.
-# build_all.ps1 a check_before_run.py citaju tento riadok - nikde inde ho
-# nepis.
+# edge-tts: minimum = the oldest version Microsoft accepts (since November
+# 2026 it refuses older ones, HTTP 403, and the natural voice goes silent).
+# There is deliberately no cap: when Microsoft changes something again, the
+# fix may come in a new major version, and a cap would block it.
+# Compatibility is checked by trying it: on every build build_all.ps1
+# fetches the newest version, tries its API (without the network) and one
+# test word; the app (the Update voice button) also tries every version it
+# downloads first and keeps it only if it works.
+# build_all.ps1 and check_before_run.py read this line - don't write it
+# anywhere else.
 edge-tts>=7.3.1
 customtkinter
 numpy

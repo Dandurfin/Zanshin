@@ -270,6 +270,6 @@ def test_cestina_bez_preklepov_z_davky_4():
 
 def test_build_skript_posiela_vyvojara_do_development():
     skript = _read("build_all.ps1")
-    assert "vie z DEVELOPMENT.md" in skript
-    assert "vie z README" not in skript
+    assert "knows from DEVELOPMENT.md" in skript
+    assert "knows from README" not in skript
     assert "Inno Setup" in _read("DEVELOPMENT.md")

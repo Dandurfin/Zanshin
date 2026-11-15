@@ -133,7 +133,7 @@ def test_start_obnovi_riadok_az_po_registracii():
         "self._refresh_snooze_hotkey_row()")
     # a to, co dokumenty slubuju, plati
     assert "If another program holds yours, the row says so." in _read("CHANGELOG.md")
-    assert "od 0.2.2 to povie aj riadok v nastaveniach" in _read("SAFETY.md")
+    assert "od 0.3 to povie aj riadok v nastaveniach" in _read("SAFETY.md")
 
 
 # --------------------------------------------------------------------------
