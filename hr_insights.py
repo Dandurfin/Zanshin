@@ -23,10 +23,10 @@ z dvoch nahodnych vecerov.
 
 import json
 import math
-import os
 import time
 
 import hr_stats
+from paths import nahrad_subor
 
 MIN_SESSIONS = 3
 BASELINE_DELTA_BPM = 4.0       # od kolkych BPM je zmena zakladne "trend"
@@ -356,7 +356,7 @@ def save_insights(path, insights, log=None, world=None):
         tmp = path + ".tmp"
         with open(tmp, "w", encoding="utf-8") as fh:
             json.dump(payload, fh, ensure_ascii=False, indent=2)
-        os.replace(tmp, path)
+        nahrad_subor(tmp, path, uprac_zdroj=True)
         return True
     except Exception as exc:
         if log:

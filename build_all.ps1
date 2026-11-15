@@ -72,6 +72,32 @@ foreach ($module in @('edge_tts', 'comtypes', 'pystray', 'PIL',
     }
 }
 
+# edge-tts musi byt dost novy: starsie verzie Microsoft od novembra 2026
+# odmieta (HTTP 403) a prirodzeny hlas v builde potom mlci. Cyklus vyssie
+# instaluje len CHYBAJUCI modul, takze stara verzia by v PC ostala navzdy.
+# Minimum je v requirements.txt (jediny zdroj). Porovnava sa ciselne cez
+# importlib.metadata - bez 'packaging', ten nemusi byt nainstalovany.
+# Pri starej verzii `pip install -r` zdvihne len poziadavky, ktore nie su
+# splnene - ostatne necha tak. Ked je edge-tts dost novy, na siet sa nechodi.
+$edgeMinVzor = '^\s*edge-tts\s*>=\s*([0-9]+(?:\.[0-9]+)*)'
+$edgeMin = $null
+foreach ($riadok in Get-Content 'requirements.txt') {
+    if ($riadok -match $edgeMinVzor) { $edgeMin = $Matches[1]; break }
+}
+if (-not $edgeMin) { Fail "requirements.txt nema minimum pre edge-tts (riadok edge-tts>=...)." }
+$edgeKontrola = "import re, sys, importlib.metadata as m; d = next(iter(m.distributions(name='edge-tts')), None); v = d.version if d else '?'; t = lambda s: tuple(int(c) for c in re.findall(r'\d+', s)); print(v); sys.exit(0 if t(v) >= t(sys.argv[1]) else 1)"
+$edgeVerzia = "$(Invoke-Py '-c' $edgeKontrola $edgeMin)".Trim()
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "edge-tts $edgeVerzia je stary (treba aspon $edgeMin, starsi Microsoft odmieta) - aktualizujem..." -ForegroundColor Yellow
+    Invoke-Py '-m' 'pip' 'install' '-r' 'requirements.txt'
+    if ($LASTEXITCODE -ne 0) { Fail "pip install zlyhal - edge-tts sa neaktualizoval (skontroluj internet)." }
+    $edgeVerzia = "$(Invoke-Py '-c' $edgeKontrola $edgeMin)".Trim()
+    if ($LASTEXITCODE -ne 0) {
+        Fail "edge-tts je stale $edgeVerzia, treba aspon $edgeMin - prirodzeny hlas by v builde nefungoval."
+    }
+}
+Write-Host "edge-tts $edgeVerzia (treba aspon $edgeMin)" -ForegroundColor Green
+
 Invoke-Py '-m' 'PyInstaller' '--version' 2>&1 | Out-Null
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Chyba PyInstaller - instalujem..." -ForegroundColor Yellow

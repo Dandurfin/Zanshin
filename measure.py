@@ -41,6 +41,8 @@ rovnako ako `hr_stats.py`. Vsetky vypocty su ciste funkcie nad
 import json
 import os
 
+from paths import nahrad_subor
+
 # --------------------------------------------------------------------------
 # Rozmery okna (sekundy). Vychodiskove hodnoty su z literatury, nie z tela
 # konkretneho hraca - prve vecery sa budu ladit, preto su na jednom mieste.
@@ -384,9 +386,10 @@ def load_windows(path):
 def save_windows(path, windows, log=None):
     """Prida okna do JSON suboru (drzime poslednych MAX_WINDOWS).
 
-    Zapisuje sa cez `.tmp` + `os.replace`, rovnako ako
+    Zapisuje sa cez `.tmp` + `paths.nahrad_subor`, rovnako ako
     `hr_stats.save_session` - pad appky uprostred zapisu tak nemoze
-    nechat na disku polovicny subor.
+    nechat na disku polovicny subor a kratky zamok suboru vo Windows
+    (Defender, vyhladavanie) zapis nezhodi; pri neuspechu sa .tmp zmaze.
 
     Pri necitatelnom existujucom subore sa RADSEJ NEZAPISE nic, nez aby
     sa prepisal prazdnym zoznamom: zle prečitany subor nie je dovod
@@ -407,7 +410,7 @@ def save_windows(path, windows, log=None):
         tmp = path + ".tmp"
         with open(tmp, "w", encoding="utf-8") as fh:
             json.dump(data, fh, ensure_ascii=False, indent=2)
-        os.replace(tmp, path)
+        nahrad_subor(tmp, path, uprac_zdroj=True)
         return True
     except Exception as exc:
         if log:

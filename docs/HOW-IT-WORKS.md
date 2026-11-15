@@ -259,10 +259,13 @@ example) are prepared once you stop watching, or at the next start.
 
 If preparing fails, the line under *Voice source* says how many cues have
 their voice and, from 0.2.2, why: Microsoft's service couldn't be reached,
-it refused the request (try later, or switch to the Windows voice), or
-something else went wrong. A *Try again* button appears under it, and the log
-says how to retry. *Try again* works like *Prepare the cue voice*: while
-Zanshin is watching it sends nothing and waits until you stop.
+it refused the request (try later, or switch to the Windows voice; if it
+keeps happening, this Zanshin version is probably outdated, because Microsoft
+refuses older versions of the voice library), or something else went wrong. A
+*Try again* button appears under it, and the log says how to retry; from
+0.2.2 the failure also goes into `app.log`. *Try again* works like *Prepare
+the cue voice*: while Zanshin is watching it sends nothing and waits until
+you stop.
 
 The full list of what can use the network is in [PRIVACY.md](../PRIVACY.md).
 

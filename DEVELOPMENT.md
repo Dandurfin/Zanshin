@@ -17,6 +17,16 @@ the code that needs a newer one), but I only test 3.14. Run this way, the app
 keeps its data next to `main.py`, separate from the built app's
 `%APPDATA%\Zanshin`.
 
+`requirements.txt` names one minimum version: `edge-tts>=7.3.1`, the library
+behind the natural voice. Since about November 2026 Microsoft refuses older
+versions (HTTP 403), and the natural voice then can't prepare any new line. If
+you installed the requirements before, run the same `pip install` again: pip
+updates `edge-tts` and leaves the other packages as they are.
+`check_before_run.py` and `build_all.ps1` read the minimum from that line, so
+no script repeats it. The documents that name it, this page included, are
+checked against it by `tests/test_022g_dokumenty.py`, so after raising it,
+that test tells you which sentence to update.
+
 *Not released yet (0.2.2):* only one copy runs at a time, and a source run
 counts as the same app as the built one: starting it again only shows the
 window of the copy already running. To run two copies anyway (for testing),
@@ -46,9 +56,12 @@ is part of the built app:
 - `check_before_run.py` — checks what can be checked without opening a
   window: every module parses, every text has all 11 languages (none empty,
   same `{placeholders}`; a text still left in English only gets a note), the
-  main window calls no method or colour token that doesn't exist, and no
-  keyboard hook or Steam code has come back. With pyflakes installed (the
-  developer tools above) it also looks for undefined names; without it, it
+  main window calls no method or colour token that doesn't exist, no
+  keyboard hook or Steam code has come back, and the installed `edge-tts` is
+  at least the minimum in `requirements.txt`. An older or missing `edge-tts`
+  only gets a note, because the app still runs with the Windows voice; a
+  `requirements.txt` without that minimum is an error. With pyflakes installed
+  (the developer tools above) it also looks for undefined names; without it, it
   skips that check and says so. `build_all.ps1` runs it before every build but
   doesn't install pyflakes, so unless you already have it, a build skips the
   undefined-names check.
@@ -144,7 +157,10 @@ directly:
 powershell -ExecutionPolicy Bypass -File "build_all.ps1"
 ```
 
-The script (1) checks/installs Python deps and PyInstaller, draws
+The script (1) checks/installs Python deps and PyInstaller, runs
+`pip install -r requirements.txt` if the installed `edge-tts` is older than
+the minimum there (and stops if pip fails or `edge-tts` is still too old
+afterwards; with a new enough one it installs nothing), draws
 `Dandurf.ico` if it's missing, and runs `check_before_run.py` — if that finds
 a problem, nothing is built; (2) force-closes a running Zanshin without asking
 (Windows locks a running `.exe`), deletes the old `dist\Zanshin\` and packages
@@ -170,7 +186,7 @@ Inno Setup the app in `dist\Zanshin\` is ready as it is.
 | `app_session.py` | Part of the main window (a mixin of `DandurfApp`): heart-rate receiving (its settings, turning it on and off, receiving heart rate, steps and connection state, dropouts, a busy port (TCP is retried, a UDP port that won't open is reported), hiding this PC's IP on screen), opening a measuring session with its thresholds, splitting it when the PC slept, and the regular ticks: four times a second whether you're at the keyboard (which also drives the cue trigger), once a second the "last cue" line |
 | `app_spolocne.py` | Names shared by `app.py` and its mixins (the app logger, language names for the switch, the "not now" shortcut defaults, PIL's `ImageTk`), and the name of the *In-game* page in the current world for texts with `{page}` (`stranka_vhre`), with refreshing such texts after a world switch |
 | `app_today.py` | Part of the main window (a mixin of `DandurfApp`): the "Today" page — drawing its animated centre, the live heart-rate, load and session block, delivering the automatic cue, and the "My stats" cards (choosing them, their values, swapping them by dragging) |
-| `paths.py` | Where data lives (`%APPDATA%\Zanshin` for the built app, next to `main.py` from source); the built app also copies data over from older versions |
+| `paths.py` | Where data lives (`%APPDATA%\Zanshin` for the built app, next to `main.py` from source); the built app also copies data over from older versions. Also `nahrad_subor`, the last step of a safe save (`.tmp` → the real file): while Windows or an antivirus holds the file for a moment, it tries again for about 0.3 s, and on failure it can delete the caller's `.tmp`. The saves in `app_prefs.py`, `data_io.py`, `hr_stats.py`, `hr_insights.py` and `audio_engine.py` go through it, not through a bare `os.replace` (a test checks that); `paths.py` imports no other module of the app, so any module can use it |
 | `settings_model.py` | Slot/settings data model — defaults, normalisation |
 | `audio_engine.py` | Text-to-speech (the natural voice through Edge, the Windows voice through SAPI5) and sound/recording playback |
 | `theme.py` | Colour tokens for the Sumi / Aizome themes; its docstring states the design rules (on and selected = accent, contrast minimums, red only for errors and deleting) |

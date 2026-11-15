@@ -116,7 +116,9 @@ you can read here. The libraries it uses (`requirements.txt`) and PyInstaller,
 which packs it into an `.exe`, come from PyPI, the usual Python package index.
 The build installs the ones that are missing, in whatever version is newest
 that day, and keeps using the ones already installed without updating them, in
-later builds too.
+later builds too. The one exception, from 0.2.2, is `edge-tts`, the library
+behind the natural voice: Microsoft refuses its older versions, so if yours is
+older than the one `requirements.txt` asks for, the build updates it.
 
 This is how I install it myself. You need an internet connection. On my PC
 the first build downloaded under 100 MB and took about 550 MB on disk, Python
@@ -372,6 +374,15 @@ The short version is at the top of this page. In detail:
   it while Zanshin was watching). Zanshin prepares it once you stop watching.
   From 0.2.2, if preparing failed, the line under Settings → Sound → *Voice
   source* says why, with a *Try again* button.
+- **In the 0.2.1 ZIP, cues stay in the robotic voice.** Since about November
+  2026 Microsoft refuses the version of `edge-tts`, the natural voice's
+  library, inside that ZIP. Lines prepared before then still play in the
+  natural voice; new ones stay in the Windows voice until 0.2.2 is out, and
+  the line under the voice source says *check your internet connection*,
+  though your connection is fine. Switching the voice source to Windows makes
+  that warning go away. If you built Zanshin yourself, a build from 0.2.2 on
+  updates `edge-tts`; the 0.2.1 build doesn't. More, with the names the 0.2.1
+  ZIP uses, in [KNOWN_ISSUES.md](KNOWN_ISSUES.md).
 - **A game's Ctrl+Alt+Z does nothing.** Zanshin reserves it for "not now".
   From 0.2.2, pick another shortcut or *Off* in Settings → General →
   *Keyboard shortcut*. In the 0.2.1 ZIP, quit Zanshin, then in
@@ -436,11 +447,6 @@ icon and picture. It must not present itself as the official Zanshin or as
 made or endorsed by Dandurfin (additional terms under GPLv3 section 7; see
 [`LICENSE-DESIGN.md`](LICENSE-DESIGN.md)). This is there to protect the people
 who use Zanshin, not to make money.
-
-One thing isn't sorted out yet: `Dandurf.ico` is exactly the ensō that
-`make_icon.py` draws from the GPL code, and the app draws the same ensō in the
-tray and in its window. So it isn't clear yet where the free drawing ends and
-the icon that stays mine begins.
 
 ---
 

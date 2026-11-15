@@ -165,8 +165,16 @@ def test_known_issues_licencia_ikona_a_gif():
     assert "Licence wording" not in o
     zmeny = _plain_text(_sekcia(_read("CHANGELOG.md"), "What 0.2.2 changes"))
     assert "everything says GPLv3 (version 3 of the GNU GPL)" in zmeny
-    assert "One thing isn't sorted out yet" in _plain("README.md")
+    # Otazka ikony je od 2026-11-15 v LICENSE-DESIGN.md, v casti "What stays
+    # mine" (rozhodnutie autora) - README na tu stranku uz len odkazuje.
+    ikona = _plain_text(_sekcia(_read("LICENSE-DESIGN.md"), "2. What stays mine"))
+    assert "One thing isn't sorted out yet" in ikona
+    assert "`Dandurf.ico`" in ikona and "`make_icon.py`" in ikona
+    assert "isn't sorted out yet" not in _plain("README.md")
+    assert "](LICENSE-DESIGN.md)" in _sekcia(_read("README.md"), "License")
     assert "`Dandurf.ico`" in o and "`make_icon.py`" in o
+    assert "[LICENSE-DESIGN.md](LICENSE-DESIGN.md)" in o
+    assert "*License* in the README" not in o
     obrazky = os.listdir(os.path.join(ROOT, "docs", "img"))
     assert not [f for f in obrazky if f.lower().endswith(".gif")]
     assert "No clip of a cue over a game yet." in o

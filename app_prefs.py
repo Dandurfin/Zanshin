@@ -41,7 +41,7 @@ import ui_shell
 from guided_tour import GuidedTour
 from heart_rate import ANY_INTERFACE, DEFAULT_PORT as HR_DEFAULT_PORT
 from i18n import LANGUAGES, LANG_EN, LANG_SAME_AS_APP, LANG_SK, set_lang, system_lang, tr
-from paths import APP_NAME, SETTINGS_PATH, resolve_audio_path
+from paths import APP_NAME, SETTINGS_PATH, nahrad_subor, resolve_audio_path
 from settings_model import (DEFAULT_AUDIO, DEFAULT_BREATH_EXHALE_S,
                             DEFAULT_BREATH_INHALE_S, DEFAULT_DASHBOARD_STATS,
                             DEFAULT_EDGE_VOICE, DEFAULT_MONITOR_TARGET,
@@ -91,7 +91,11 @@ def zaloha_nastaveni(cesta):
     tmp = bak + ".tmp"
     with open(tmp, "wb") as fh:
         fh.write(obsah)
-    os.replace(tmp, bak)
+    # .bak moze na chvilu drzat antivirus alebo indexovanie (WinError 5 v logu
+    # skusobnej kopie) - `nahrad_subor` skusi znova. Ked nevyjde ani tak,
+    # chyba ide k volajucemu ako predtym, len bez zabudnuteho .bak.tmp vedla
+    # nastaveni.
+    nahrad_subor(tmp, bak, uprac_zdroj=True)
     return True
 
 
@@ -115,7 +119,9 @@ def nacitaj_nastavenia(cesta, teraz=None):
                            time.localtime(time.time() if teraz is None else teraz))
     odlozene = "%s.corrupt-%s" % (cesta, znacka)
     try:
-        os.replace(cesta, odlozene)
+        # S opakovanim aj tu: kratky zamok by inak skoncil len kopiou a
+        # pokazeny subor by ostal na mieste. Zdroj sa pri chybe NEMAZE.
+        nahrad_subor(cesta, odlozene)
     except OSError:
         # Subor drzi ina appka (editor, synchronizacia) - aspon kopia.
         try:
@@ -137,7 +143,7 @@ def nacitaj_nastavenia(cesta, teraz=None):
         try:
             tmp = cesta + ".tmp"
             shutil.copyfile(cesta + ".bak", tmp)
-            os.replace(tmp, cesta)
+            nahrad_subor(tmp, cesta, uprac_zdroj=True)
         except OSError:
             app_log.exception("load_settings: zalohu sa nepodarilo vratit na miesto")
     if odlozene is None:
@@ -791,11 +797,12 @@ class PrefsMixin:
             # vzor ako uz appka pouziva v sfx_assets._save_wav()/_try_download().
             # Bez tohto by pad/vypadok POCAS zapisu (a uklada sa pri kazdej
             # zmene slidera!) mohol nechat prazdny/orezany JSON a s nim aj
-            # stratu vsetkych profilov pri buducom starte.
+            # stratu vsetkych profilov pri buducom starte. Kratky zamok
+            # suboru (antivirus, indexovanie) prezije `nahrad_subor`.
             tmp_path = f"{SETTINGS_PATH}.tmp"
             with open(tmp_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
-            os.replace(tmp_path, SETTINGS_PATH)
+            nahrad_subor(tmp_path, SETTINGS_PATH, uprac_zdroj=True)
         except Exception as exc:
             self.log(tr("log.settings_save_error", err=exc))
             app_log.exception("save_settings zlyhalo")

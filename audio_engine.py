@@ -27,7 +27,7 @@ import time
 import numpy as np
 
 from i18n import tr
-from paths import IS_WINDOWS, TTS_CACHE_DIR
+from paths import IS_WINDOWS, TTS_CACHE_DIR, nahrad_subor
 from settings_model import EDGE_FALLBACK_VOICES, EDGE_PREMIUM_HINT
 
 os.environ.pop("SDL_AUDIODRIVER", None)
@@ -261,7 +261,9 @@ class MicRecorder:
                 except OSError:
                     pass
             mci(f'save {self.ALIAS} "{tmp}"')
-            os.replace(tmp, path)
+            # Cerstvu nahravku si hned otvori antivirus - `nahrad_subor`
+            # prezije taky kratky zamok (.part maze `finally` nizsie).
+            nahrad_subor(tmp, path)
         finally:
             if os.path.exists(tmp):
                 try:
@@ -307,7 +309,8 @@ def edge_rate_str(rate):
 # odmietnuty handshake WebSocketu). Hrac potom hladal chybu v sieti, ktora
 # bola v poriadku. Tri druhy, kazdy s inou radou:
 #   offline - spojenie, DNS, vyprsany cas: "skontroluj internet"
-#   refused - Microsoft povedal nie: "skus neskor alebo prepni na Windows"
+#   refused - Microsoft povedal nie: "skus neskor alebo prepni na Windows",
+#             a ked to trva, nova verzia Zanshinu (stary edge-tts odmieta)
 #   other   - cokolvek ine (prazdny vystup, plny disk, chyba knižnice)
 # Rozhoduje sa podla MIEN tried vo vynimke a jej pricinach (`__cause__`,
 # `__context__`), nie podla importu aiohttp - ten tu byt nemusi a testy
@@ -431,7 +434,9 @@ class EdgeTTSCache:
                 asyncio.run(_run())
                 if os.path.getsize(tmp) <= 0:
                     raise RuntimeError(tr("internal.empty_output"))
-                os.replace(tmp, path)
+                # kratky zamok cerstveho .part (antivirus) prezije
+                # `nahrad_subor`; .part pri chybe maze except nizsie
+                nahrad_subor(tmp, path)
             except Exception as exc:
                 try:
                     os.remove(tmp)

@@ -1,9 +1,17 @@
-"""Spolocne cesty k datam appky - zdielane medzi main.py a sfx_assets.py."""
+"""Spolocne cesty k datam appky - zdielane medzi main.py a sfx_assets.py.
 
+Aj `nahrad_subor`: posledny krok atomickeho zapisu (.tmp -> ciel), ktory
+prezije kratky zamok suboru vo Windows. Je tu, lebo tento modul nenatahuje
+ziadny iny modul appky - importovat ho moze kazdy bez kruhoveho importu.
+"""
+
+import errno
 import glob
+import logging
 import os
 import shutil
 import sys
+import time
 
 APP_NAME = "Zanshin"
 IS_WINDOWS = sys.platform == "win32"
@@ -230,3 +238,120 @@ def resolve_audio_path(path):
         return path
     candidate = os.path.join(AUDIO_DIR, os.path.basename(path))
     return candidate if os.path.exists(candidate) else path
+
+
+# --------------------------------------------------------------------------
+# Atomicky zapis, ktory prezije kratky zamok suboru vo Windows
+# --------------------------------------------------------------------------
+#
+# PRECO: data sa zapisuju cez `.tmp` + `os.replace`. Hned po zapise si vsak
+# subor na chvilu otvori Defender, indexovanie Windows Search alebo
+# synchronizacia - bez FILE_SHARE_DELETE - a `os.replace` vtedy spadne na
+# PermissionError: WinError 5, ked drzia ciel, WinError 32, ked drzia .tmp.
+# V logu skusobnej kopie (0.2.2) presne takto padla zaloha nastaveni
+# ("zalohu nastaveni sa nepodarilo zapisat", .bak.tmp -> .bak). Taky zamok
+# trva milisekundy, preto staci par kratkych pokusov.
+#
+# Pauzy rastu a spolu davaju 0.31 s na jeden subor. Viac nie: `save_settings`
+# bezi vo vlakne GUI (uklada sa pri kazdom posune slidera) a nahradza DVA
+# subory (.bak aj nastavenia) - pri zamku oboch caka okno 0.62 s naraz.
+NAHRADA_PAUZY_S = (0.01, 0.02, 0.04, 0.08, 0.16)
+# Kody Windows pre docasne drzany subor: 5 pristup odmietnuty (ciel otvoreny
+# bez FILE_SHARE_DELETE), 32 subor pouziva iny proces, 33 zamknuta cast.
+_DOCASNY_ZAMOK_WIN = (5, 32, 33)
+# Ciel, ktory nevydrzal ani posledny pokus, nedrzi kratky zamok (subor len na
+# citanie, otvoreny v inom programe). Kym zapis donho pada dalej, skusa sa
+# len raz, bez cakania - inak by pri tahani slidera kazde ulozenie zaseklo
+# okno o 0.31-0.62 s (10 ulozeni = 3 az 6 s, namerane so skutocnym zamkom).
+# Plne opakovanie plati zas po prvom uspechu alebo ked do ciela
+# `NAHRADA_ODDYCH_S` nikto nezapisoval (dalsia relacia o hodinu caka znova).
+NAHRADA_ODDYCH_S = 5.0
+_zlyhane_ciele = {}         # normcase(abspath(ciel)) -> _hodiny() zlyhania
+_hodiny = time.monotonic    # vlastny odkaz: testy nahradzaju `paths.time`
+
+_log = logging.getLogger("zanshin.paths")
+
+
+def _je_docasny_zamok(exc):
+    """Ma zmysel `os.replace` skusit znova? Len pri PermissionError s kodom
+    drzaneho suboru. Bez kodu Windows (iny system, umela chyba v teste)
+    rozhoduje errno - EACCES ano, EPERM (zakazana operacia) nie. Ina chyba
+    (plny disk, chybajuci subor) sa opakovanim nezlepsi - vyhodi sa hned."""
+    if not isinstance(exc, PermissionError):
+        return False
+    winerror = getattr(exc, "winerror", None)
+    if winerror is not None:
+        return winerror in _DOCASNY_ZAMOK_WIN
+    return exc.errno in (None, errno.EACCES)
+
+
+def _zmaz_potichu(cesta):
+    try:
+        os.remove(cesta)
+    except OSError:
+        pass
+
+
+def nahrad_subor(zdroj, ciel, uprac_zdroj=False):
+    """`os.replace(zdroj, ciel)`, ktory prezije kratky zamok suboru vo Windows.
+
+    Pri docasnom zamku (`_je_docasny_zamok`) skusa znova po pauzach
+    `NAHRADA_PAUZY_S`. Ked nevyjde ani posledny pokus, vyhodi POSLEDNU chybu,
+    takze volajuci ju osetri rovnako ako predtym chybu holeho `os.replace`.
+    Ina chyba sa vyhodi hned, bez cakania. Ciel, ktory prave takto nevydrzal,
+    sa skusa len raz, kym pada dalej (`NAHRADA_ODDYCH_S`).
+
+    `uprac_zdroj=True`: pri neuspechu zmaze `zdroj` (vlastny .tmp volajuceho),
+    nech vedla dat neostane zabudnuty docasny subor; zlyhanie mazania sa
+    prehltne. NIKDY nie pri odkladani pokazeneho suboru bokom - tam je
+    `zdroj` jedina kopia dat.
+    """
+    try:
+        _nahrad_s_pokusmi(zdroj, ciel)
+    except BaseException:
+        if uprac_zdroj:
+            _zmaz_potichu(zdroj)
+        raise
+
+
+def _zapamataj_zlyhanie(kluc):
+    teraz = _hodiny()
+    # stare zaznamy prec - slovnik ostane maly aj pri mnohych cieloch
+    for k, kedy in list(_zlyhane_ciele.items()):
+        if teraz - kedy >= NAHRADA_ODDYCH_S:
+            _zlyhane_ciele.pop(k, None)
+    _zlyhane_ciele[kluc] = teraz
+
+
+def _nahrad_s_pokusmi(zdroj, ciel):
+    # Do logu len meno suboru a kod chyby, nie text vynimky: v nom je cela
+    # cesta a cesta v %APPDATA% nesie meno uctu.
+    meno = os.path.basename(ciel)
+    kluc = os.path.normcase(os.path.abspath(ciel))
+    zlyhal = _zlyhane_ciele.get(kluc)
+    bez_cakania = zlyhal is not None and _hodiny() - zlyhal < NAHRADA_ODDYCH_S
+    pauzy = [] if bez_cakania else list(NAHRADA_PAUZY_S)
+    pokus = 1
+    while True:
+        try:
+            os.replace(zdroj, ciel)
+        except OSError as exc:
+            zamok = _je_docasny_zamok(exc)
+            if pauzy and zamok:
+                time.sleep(pauzy.pop(0))
+                pokus += 1
+                continue
+            if zamok:
+                # aj pri jedinom pokuse bez cakania: kym pada, necaka sa
+                _zapamataj_zlyhanie(kluc)
+            if pokus > 1:
+                _log.warning("nahrad_subor: %s sa nepodarilo nahradit ani na "
+                             "%d. pokus (WinError %s, errno %s) - dalsie zapisy "
+                             "donho skusaju len raz, kym padaju", meno, pokus,
+                             getattr(exc, "winerror", None), exc.errno)
+            raise
+        _zlyhane_ciele.pop(kluc, None)
+        if pokus > 1:
+            _log.warning("nahrad_subor: %s nahradeny az na %d. pokus (subor "
+                         "na chvilu drzal iny proces)", meno, pokus)
+        return

@@ -82,7 +82,8 @@ def test_b2_vybrany_subor_sa_kopiruje_do_ulozne():
 def test_b3_stop_and_save_je_atomicke():
     audio = _read("audio_engine.py")
     sas = audio[audio.index("    def stop_and_save(self"):audio.index("    def cancel(self")]
-    assert ".part" in sas and "os.replace(" in sas, \
+    # `nahrad_subor` = os.replace s opakovanim pri kratkom zamku (paths.py)
+    assert ".part" in sas and "nahrad_subor(" in sas, \
         "nahravka sa ma ulozit najprv do .part a atomicky presunut (B3)"
 
 

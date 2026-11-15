@@ -13,6 +13,22 @@ as it is, such as the online voice being the default, I say so.
 As far as I know, none of these is harmful. Some are limits you should know
 about, and a few will stay.
 
+- **The natural voice no longer works in the 0.2.1 ZIP.** Since about November
+  2026 Microsoft's speech service refuses the voice library inside the ZIP
+  (`edge-tts` 7.2.8; the service answers HTTP 403). Lines Zanshin prepared
+  before then still play in the natural voice. Every other line (after a
+  fresh install, or once you change a cue's wording, the voice or the speed)
+  is spoken by the Windows voice, and the line under *Voice comes from* in
+  Settings → Sound says *check your internet connection*, though your
+  connection is fine. It's fixed in 0.2.2 (not released yet),
+  which needs `edge-tts` 7.3.1 or newer; its build updates an older one.
+  Until then, choose *Windows voice (works offline)* under *Voice comes
+  from*: every cue then uses the Windows voice, nothing is sent to
+  Microsoft, and the warning goes away. If you built 0.2.1 yourself,
+  building it again doesn't help, because its build keeps the `edge-tts`
+  already on your PC. Updating it by hand first
+  (`py -m pip install --upgrade edge-tts`) should, since 0.2.1 calls the
+  library the same way 0.2.2 does, but I haven't tried that with 0.2.1.
 - **Zanshin can't see the game.** A pause is about 2.5 s without input, so a still
   moment mid-fight counts, and aiming with gyro means no pause at all.
   Controllers were tested on one PC.
@@ -80,7 +96,7 @@ about, and a few will stay.
   still says when you were probably playing.
 - **The icon's licence:** `Dandurf.ico` is the same ensō that `make_icon.py`
   draws from the GPL code, so it isn't clear yet where the free drawing ends
-  and the icon that stays mine begins (see *License* in the README).
+  and the icon that stays mine begins (see [LICENSE-DESIGN.md](LICENSE-DESIGN.md)).
 - **No clip of a cue over a game yet.** The README shows Zanshin's own window
   only; a short GIF of a cue over a game in Borderless is still missing.
 - **The system requirements are from 0.2.1.** The download and disk size,

@@ -26,6 +26,11 @@ You may share unmodified copies of the official Zanshin with them as they are.
 A modified version has to use its own icon and picture, so it can't be
 mistaken for the original.
 
+One thing isn't sorted out yet. `Dandurf.ico` is exactly the ensō that
+`make_icon.py` draws from the GPL code, and the app draws the same ensō in the
+tray and in its window. That drawing in code is free (section 1), so it isn't
+clear yet where the free drawing ends and the icon that stays mine begins.
+
 Third-party files keep their own terms (for example, `sfx_click_reload.wav`
 and `sfx_lock_ping.wav` in `assets/sounds/modern`: two sounds from Kenney's
 *Interface Sounds* under the CC0 licence, which ship with the app).

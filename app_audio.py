@@ -35,6 +35,7 @@ import rebrik
 import sfx_assets
 import theme as theme_mod
 import ui_kit
+from app_spolocne import app_log
 from audio_engine import EdgeTTSCache, speak_sapi_isolated
 from i18n import tr
 from paths import APP_NAME
@@ -59,7 +60,8 @@ def hlavna_chyba_edge(chyby):
     """Z chyb jednej pripravy vyberie tu, o ktorej sa hracovi povie.
 
     Odmietnutie Microsoftom ma prednost (rada je ina: skus neskor / prepni
-    na Windows), potom vypadok siete, potom ostatne. Bez jedinej znamej
+    na Windows, a ked to trva, nova verzia Zanshinu - stary edge-tts
+    Microsoft odmieta), potom vypadok siete, potom ostatne. Bez jedinej znamej
     chyby `(EDGE_CHYBA_INA, None)` - vseobecna veta, nie "internet"."""
     druhy = [c for c in (chyby or ()) if c]
     for druh in (audio_engine.EDGE_CHYBA_ODMIETNUTE, audio_engine.EDGE_CHYBA_OFFLINE):
@@ -69,7 +71,11 @@ def hlavna_chyba_edge(chyby):
     return druhy[0] if druhy else (audio_engine.EDGE_CHYBA_INA, None)
 
 
-_CESTA_V_CHYBE = re.compile(r"(?:[A-Za-z]:|\\\\)[\\/][^'\"\n]*")
+# Pismeno disku nesmie nasledovat za pismenom/cislom: inak by "s:/" z
+# "wss://speech..." (odmietnutie Microsoftom, aiohttp) zmenilo URL sluzby
+# na "wsv1?..." - v denniku aj v app.log. "C:\", "\\?\C:\" a "file:///C:/"
+# sa orezu ako predtym.
+_CESTA_V_CHYBE = re.compile(r"(?:(?<![A-Za-z0-9])[A-Za-z]:|\\\\)[\\/][^'\"\n]*")
 
 
 def _kratka_chyba(exc):
@@ -81,6 +87,18 @@ def _kratka_chyba(exc):
     text = _CESTA_V_CHYBE.sub(
         lambda z: os.path.basename(z.group(0).rstrip("\\/")) or "…", text)
     return text if len(text) <= 120 else text[:119] + "…"
+
+
+def _verzia_edge_tts():
+    """Verzia nainstalovaneho edge-tts do app.log ("?", ked sa neda zistit).
+    Stara verzia je najcastejsia pricina trvaleho odmietnutia: Microsoft od
+    novembra 2026 starsie edge-tts odmieta (HTTP 403, minimum je v
+    requirements.txt)."""
+    try:
+        from importlib import metadata
+        return metadata.version("edge-tts")
+    except Exception:
+        return "?"
 
 
 def stranka_zvuku():
@@ -526,7 +544,10 @@ class AudioMixin:
         Na siet sa ani teraz nechodi pocas sledovania: tlacidlo aj Ctrl+K
         volaju `pregenerate`, ktore ho vtedy odlozi na po hre (PRIVACY.md).
         Riadok do dennika ide raz za druh chyby - kym sa priprava nepodari,
-        dalsie neuspesne pokusy dennik nezaplnia."""
+        dalsie neuspesne pokusy dennik nezaplnia. Rovnako raz ide riadok do
+        app.log (dennik v okne sa po restarte strati): druh, kratka chyba bez
+        ciest (`_kratka_chyba`) a verzia edge-tts - stara verzia je pri
+        odmietnuti najcastejsia pricina."""
         kluc_stavu = {audio_engine.EDGE_CHYBA_OFFLINE: "edge.partial",
                       audio_engine.EDGE_CHYBA_ODMIETNUTE: "edge.partial_refused"}
         # `danger_text`, nie `danger`: veta je drobny text (ui 10) a nesie
@@ -538,11 +559,14 @@ class AudioMixin:
         if getattr(self, "_edge_chyba_v_denniku", None) == druh:
             return
         self._edge_chyba_v_denniku = druh
+        kratka = _kratka_chyba(exc)
         kluc_riadku = {audio_engine.EDGE_CHYBA_OFFLINE: "log.edge_failed_offline",
                        audio_engine.EDGE_CHYBA_ODMIETNUTE: "log.edge_failed_refused"}
         self.log(tr(kluc_riadku.get(druh, "log.edge_failed_other"),
-                    err=_kratka_chyba(exc), page=stranka_zvuku(),
+                    err=kratka, page=stranka_zvuku(),
                     retry=tr("common.retry"), cmd=tr("common.prepare_voices")))
+        app_log.warning("prirodzeny hlas: priprava zlyhala (%s), hotovych %d/%d, "
+                        "edge-tts %s: %s", druh, ok, total, _verzia_edge_tts(), kratka)
 
     def _ukaz_skusit_hlas_znova(self, ukaz):
         """Tlacidlo "Skusit znova" pod stavom pripravy hlasu (Nastavenia → Zvuk)."""

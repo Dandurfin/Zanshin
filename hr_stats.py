@@ -46,9 +46,14 @@ Nic z toho nie je HRV a nic z toho nie je diagnoza.
 
 import json
 import os
+import shutil
 import time
 from collections import deque
 from datetime import datetime, timedelta
+
+# os.replace, ktory prezije kratky zamok suboru vo Windows (antivirus,
+# indexovanie). `paths` nenatahuje ziadny modul appky - ziadny kruh.
+from paths import nahrad_subor
 
 HISTORY_SECONDS = 180.0        # co drzime na krivku HUD-u
 BASELINE_SECONDS = 600.0       # z coho sa rata pokojova zakladna
@@ -2340,7 +2345,7 @@ def attach_context(path, started, context, activity=None, note=None,
         tmp = path + ".tmp"
         with open(tmp, "w", encoding="utf-8") as fh:
             json.dump(data, fh, ensure_ascii=False, indent=2)
-        os.replace(tmp, path)
+        nahrad_subor(tmp, path, uprac_zdroj=True)
         return True
     except Exception as exc:
         if log:
@@ -2370,6 +2375,31 @@ def je_ulozitelna(summary):
                 and float(summary.get("duration_s", 0) or 0) >= 60)
     except (TypeError, ValueError):
         return False
+
+
+def _odloz_pokazeny(path):
+    """Pokazeny subor `path` bokom pod `.corrupt-<cas>`, nech sa da zachranit.
+
+    Presunom cez `nahrad_subor` (kratky zamok prezije, zdroj NEMAZE). Ked ho
+    iny proces drzi dlhsie, aspon kopiou - drzany subor sa precitat da (ako
+    `app_prefs.nacitaj_nastavenia`). Ked nevyjde ani kopia a subor tam stale
+    je, vyhodi chybu presunu: `path` je JEDINA kopia a volajuci ju nesmie
+    prepisat. Zapis za odlozenim totiz skusa znova tiez - zamok, ktory povoli
+    az pocas jeho pokusov, by inak pokazeny subor prepisal bez kopie (holy
+    `os.replace` vtedy padol na ten isty zamok a subor ostal)."""
+    odlozene = "%s.corrupt-%d" % (path, int(time.time()))
+    try:
+        nahrad_subor(path, odlozene)
+        return
+    except OSError as exc:
+        chyba = exc
+    try:
+        shutil.copy2(path, odlozene)
+        return
+    except OSError:
+        pass
+    if os.path.exists(path):
+        raise chyba
 
 
 def save_session(path, summary, log=None):
@@ -2403,12 +2433,13 @@ def save_session(path, summary, log=None):
                 # rovnako ticho (bug B15). Radšej ho odložíme bokom pod
                 # `.corrupt-<čas>`, nech sa dá zachrániť, a v ukladaní
                 # pokračujeme s prázdnym zoznamom.
-                try:
-                    os.replace(path, "%s.corrupt-%d" % (path, int(time.time())))
-                    if log:
-                        log("HR: pokazený súbor histórie odložený na záchranu")
-                except OSError:
-                    pass
+                #
+                # Ked ho odlozit (ani skopirovat) nejde, `_odloz_pokazeny`
+                # vyhodi chybu a relacia skonci ako neulozena (except nizsie
+                # -> hr_session_pending.json), nie prepisom jedinej kopie.
+                _odloz_pokazeny(path)
+                if log:
+                    log("HR: pokazený súbor histórie odložený na záchranu")
         data.append(summary)
         if summary.get("recovered"):
             # DOPLNENA DODATOCNE (kontrolny bod, neulozena relacia z minula -
@@ -2421,7 +2452,7 @@ def save_session(path, summary, log=None):
         tmp = path + ".tmp"
         with open(tmp, "w", encoding="utf-8") as fh:
             json.dump(data, fh, ensure_ascii=False, indent=2)
-        os.replace(tmp, path)
+        nahrad_subor(tmp, path, uprac_zdroj=True)
         return True
     except Exception as exc:
         if log:
@@ -2487,7 +2518,7 @@ def zapis_rozpracovanu(sessions_path, summary, log=None):
     try:
         with open(tmp, "w", encoding="utf-8") as fh:
             json.dump(summary, fh, ensure_ascii=False)
-        os.replace(tmp, cesta)
+        nahrad_subor(tmp, cesta, uprac_zdroj=True)
         return True
     except Exception as exc:
         if log:
@@ -2618,18 +2649,20 @@ def _zapis_cakajuce(sessions_path, zoznam):
     tmp = cesta + ".tmp"
     with open(tmp, "w", encoding="utf-8") as fh:
         json.dump(list(zoznam), fh, ensure_ascii=False)
-    os.replace(tmp, cesta)
+    nahrad_subor(tmp, cesta, uprac_zdroj=True)
     return True
 
 
-def _odloz_pokazenu_cakajucu(sessions_path):
+def _odloz_pokazenu_cakajucu(sessions_path, prisne=False):
     """Subor cakajucich relacii je, ale necitatelny (nie JSON zoznam)?
 
     Potom sa NEZMAZE ani NEPREPISE - su v nom uplne vecery, ktore inde nie
     su. Odlozi sa bokom pod `.corrupt-<cas>` ako pokazena historia v
-    `save_session`, nech sa da zachranit; "Zmazat historiu" ho maze tiez
-    (`data_io` maze aj `hr_session_pending.json.*`). Vracia True, ked subor
-    citatelny NIE JE (aj ked ho odlozit neslo) - vtedy sa mazat nesmie."""
+    `save_session` (`_odloz_pokazeny`), nech sa da zachranit; "Zmazat
+    historiu" ho maze tiez (`data_io` maze aj `hr_session_pending.json.*`).
+    Vracia True, ked subor citatelny NIE JE (aj ked ho odlozit neslo) -
+    vtedy sa mazat nesmie. `prisne=True` (volajuci ho hned prepise): ked
+    nevyjde ani presun, ani kopia, vyhodi chybu - prepisat ho nesmie."""
     cesta = cesta_cakajucej(sessions_path)
     if not os.path.exists(cesta):
         return False
@@ -2640,9 +2673,10 @@ def _odloz_pokazenu_cakajucu(sessions_path):
     except Exception:
         pass
     try:
-        os.replace(cesta, "%s.corrupt-%d" % (cesta, int(time.time())))
+        _odloz_pokazeny(cesta)
     except OSError:
-        pass
+        if prisne:
+            raise
     return True
 
 
@@ -2655,7 +2689,9 @@ def zapis_cakajucu(sessions_path, summary, log=None):
     if not je_ulozitelna(summary):
         return False
     try:
-        _odloz_pokazenu_cakajucu(sessions_path)
+        # prisne: necitatelny subor, ktory sa nedal odlozit ani skopirovat,
+        # by zapis nizsie prepisal - radsej False (kontrolny bod ostava).
+        _odloz_pokazenu_cakajucu(sessions_path, prisne=True)
         zoznam = [s for s in nacitaj_cakajuce(sessions_path)
                   if not _uz_v_historii([s], summary.get("started"))]
         zoznam.append(summary)
@@ -2728,7 +2764,7 @@ def delete_session(path, started, log=None):
         tmp = path + ".tmp"
         with open(tmp, "w", encoding="utf-8") as fh:
             json.dump(ostava, fh, ensure_ascii=False, indent=2)
-        os.replace(tmp, path)
+        nahrad_subor(tmp, path, uprac_zdroj=True)
         return True
     except Exception as exc:
         if log:
@@ -2930,7 +2966,7 @@ def export_sessions_csv(sessions, path, headers=None):
     # utf-8-sig = UTF-8 s BOM; bez neho Excel zjedol diakritiku
     with open(tmp, "w", encoding="utf-8-sig", newline="") as fh:
         fh.write("\r\n".join(lines) + "\r\n")
-    os.replace(tmp, path)
+    nahrad_subor(tmp, path, uprac_zdroj=True)
     return len(rows)
 
 

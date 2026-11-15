@@ -13,7 +13,8 @@ otvorenia okna:
   * uplnost a konzistenciu prekladov vo vsetkych 11 jazykoch,
   * ze appka nevola metody/tokeny, ktore neexistuju,
   * ze rebind a keycap maju spravne API (regresia z redizajnu),
-  * ze data z uzivatelskych nastaveni sa normalizuju bez pada.
+  * ze data z uzivatelskych nastaveni sa normalizuju bez pada,
+  * ze nainstalovany edge-tts je dost novy (starsi Microsoft odmieta).
 
 NEotvara ziadne okno, NEsahat na siet, NEnahrava nikam. Len cita zdroj a
 importuje ciste (bez GUI) moduly. Co NEvie overit: skutocne kreslenie cez
@@ -421,6 +422,51 @@ try:
 except Exception as exc:
     problems.append(f"kontrola Steamu padla: {exc}")
     print(f"  PAD  {exc}")
+
+
+# ==========================================================================
+# 8. edge-tts dost novy (prirodzeny hlas)
+# ==========================================================================
+#
+# Microsoft od novembra 2026 odmieta starsie edge-tts (HTTP 403) - appka
+# potom hovori len hlasom z Windows a v Nastaveniach -> Zvuk pise, ze
+# sluzba poziadavku odmietla. build_all.ps1 stary edge-tts zdvihne sam, pri
+# behu zo zdrojakov to treba urobit rucne. Minimum je len v requirements.txt
+# (to iste cita build_all.ps1). Stara verzia je len upozornenie - appka bezi
+# aj bez prirodzeneho hlasu; chybajuce minimum v requirements.txt je chyba.
+
+check("8. Verzia edge-tts (prirodzeny hlas)")
+try:
+    from importlib import metadata as _metadata
+
+    def _cisla_verzie(verzia):
+        return tuple(int(c) for c in re.findall(r"\d+", verzia))
+
+    _minimum = re.search(r"^\s*edge-tts\s*>=\s*([0-9]+(?:\.[0-9]+)*)",
+                         read("requirements.txt"), re.I | re.M)
+    if not _minimum:
+        problems.append("requirements.txt nema minimum pre edge-tts (edge-tts>=...)")
+        print("  PAD  requirements.txt nema minimum pre edge-tts")
+    else:
+        _treba = _minimum.group(1)
+        try:
+            _verzia = _metadata.version("edge-tts")
+        except _metadata.PackageNotFoundError:
+            _verzia = None
+        if _verzia is None:
+            notes.append("edge-tts nie je nainstalovany - prirodzeny hlas nepojde "
+                         "(py -m pip install -r requirements.txt)")
+            print("  POZN edge-tts nie je nainstalovany")
+        elif _cisla_verzie(_verzia) < _cisla_verzie(_treba):
+            notes.append(f"edge-tts {_verzia} je stary (treba aspon {_treba}) - Microsoft "
+                         "ho odmieta a prirodzeny hlas mlci. Aktualizuj: "
+                         "py -m pip install -r requirements.txt")
+            print(f"  POZN edge-tts {_verzia} je stary (treba aspon {_treba})")
+        else:
+            print(f"  OK   edge-tts {_verzia} (treba aspon {_treba})")
+except Exception as exc:
+    notes.append(f"kontrola verzie edge-tts padla: {exc}")
+    print(f"  POZN {exc}")
 
 
 # ==========================================================================

@@ -39,6 +39,10 @@ import os
 from datetime import datetime
 import shutil
 
+# os.replace, ktory prezije kratky zamok suboru vo Windows (antivirus,
+# indexovanie). `paths` nenatahuje ziadny modul appky - ziadny Tk ani kruh.
+from paths import nahrad_subor
+
 # Verzia formátu. Keď sa raz zmení tvar dát, starý súbor sa dá rozpoznať
 # a buď domigrovať, alebo slušne odmietnuť - namiesto tichého nezmyslu.
 EXPORT_VERSION = 1
@@ -126,7 +130,7 @@ def append_events(path, events, started=None, max_riadkov=MAX_UDALOSTI):
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8", newline="\n") as fh:
         fh.write("\n".join(vsetko) + "\n")
-    os.replace(tmp, path)
+    nahrad_subor(tmp, path, uprac_zdroj=True)
     return len(riadky)
 
 
@@ -204,7 +208,7 @@ def export_rows_csv(rows, path, separator=";"):
     # utf-8-sig: bez BOM zjedol Excel diakritiku (to iste ako v hr_stats)
     with open(tmp, "w", encoding="utf-8-sig", newline="") as fh:
         fh.write("\r\n".join(von) + "\r\n")
-    os.replace(tmp, path)
+    nahrad_subor(tmp, path, uprac_zdroj=True)
     return len(riadky)
 
 
@@ -248,7 +252,7 @@ def write_bundle(path, bundle):
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as fh:
         json.dump(bundle, fh, ensure_ascii=False, indent=2)
-    os.replace(tmp, path)
+    nahrad_subor(tmp, path, uprac_zdroj=True)
     return path
 
 
@@ -641,7 +645,7 @@ def zapis_zoznam(cesta, data):
     tmp = cesta + ".tmp"
     with open(tmp, "w", encoding="utf-8") as fh:
         json.dump(list(data), fh, ensure_ascii=False, indent=2)
-    os.replace(tmp, cesta)
+    nahrad_subor(tmp, cesta, uprac_zdroj=True)
     return cesta
 
 

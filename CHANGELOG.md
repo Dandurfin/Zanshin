@@ -70,6 +70,20 @@ have them.
   `dandurf_settings.json.corrupt-<date>-<time>`, loads the backup (or, if
   there's none, starts with the defaults) and tells you once, in the log and
   in a message.
+- **A file Windows held for a moment could make a save fail.** Right after
+  Zanshin writes a file, Windows Defender, Windows Search or a sync app may
+  open it briefly, and replacing it then fails with *Access is denied*. In my
+  test copy of 0.2.2 that's how the new settings backup failed, and it left a
+  `dandurf_settings.json.bak.tmp` behind. **0.2.2:** when a file is held like
+  that, the save waits and tries again, up to six tries in about 0.3 seconds,
+  and only then reports the error as before; other errors, such as a full
+  disk, still fail at once. This covers the settings and their backup, the
+  heart-rate history (saving, deleting a session, an import), the
+  measurement windows (`hr_windows.json`), the copy of a running session,
+  sessions kept aside, insights, cue records, exports, your own recordings
+  and the prepared voice. If the last try fails too, the temporary file is deleted instead of staying next
+  to your data or your export, and `app.log` notes every save that needed
+  more than one try.
 - **The 0.2 uninstaller can delete this version's data.** Zanshin installed
   with the 0.2 installer and Zanshin from the ZIP (or one you built) share one
   data folder, `%APPDATA%\Zanshin`. When you uninstall 0.2, it asks *Keep your
@@ -311,6 +325,23 @@ have them.
   Ctrl+K). Like *Prepare the cue voice*, it sends nothing while Zanshin is
   watching. The voice menu next to it grows wide enough for long Windows
   voice names.
+- **Microsoft started refusing the natural voice.** Since about November 2026
+  its speech service refuses the voice library Zanshin used (`edge-tts`
+  7.2.8, also the one inside the 0.2.1 ZIP) with HTTP 403. Lines prepared
+  before then still played, but every new one fell back to the Windows voice.
+  Building Zanshin again didn't help: the build installed only libraries that
+  were missing and kept an old one. **0.2.2:** Zanshin needs `edge-tts` 7.3.1
+  or newer (`requirements.txt`). `build.bat` updates an older one before it
+  builds, and if it can't, it stops with a red **CHYBA:** line instead of
+  building an app whose natural voice is refused. When Microsoft refuses the
+  request, the line under *Voice source* and the log in the window now add
+  that if it keeps happening, this Zanshin version is probably outdated and
+  the new one is on the official GitHub (Releases). A failed preparation also
+  goes into `app.log`, with the installed `edge-tts` version, once per kind of
+  error until preparing works again; before, it was only in the log in the
+  window. Run from source, `py -m pip install -r requirements.txt` updates
+  `edge-tts` and leaves the rest as it is, and `check_before_run.py` warns
+  about an older one.
 - **Switching Play / Work while watching** changed how the running session's
   cues spoke, though the session itself stayed in its world. **0.2.2:** the
   session and its cues keep their world, the switch applies from the next
