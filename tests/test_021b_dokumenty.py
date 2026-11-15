@@ -12,7 +12,7 @@
     tak, ako ich ukazuje appka; do app.log ide len port a chyba.
   * KNOWN_ISSUES: hra Ctrl+Alt+Z "nemusi dostat", chodza sa z ucenia
     nevyraduje (kroky len stisia hlasky), terminy ako v README, licencia
-    "GPLv3 or later".
+    "GPLv3" (autor 2026-11-15: len verzia 3, bez "or later").
   * SOUL: hranica vysokeho tepu je do naucenia zaloha 110.
   * SAFETY: gui_harness_auto.py zalohuje nastavenia a historiu tepu na
     disk vedla originalov a po prerusenom behu ich vrati (od 0.2.1c; do
@@ -243,7 +243,7 @@ def test_known_issues_bez_rozporov():
         for stare in ("high-HR line", "strain threshold", "high heart-rate line",
                       "plain GPLv3", "your own high heart-rate limit"):
             assert stare not in text, (meno, stare)
-        assert _read(meno).rstrip().endswith("· GPLv3 or later"), meno
+        assert _read(meno).rstrip().endswith("· GPLv3"), meno
     opravy = _sekcia(_read(ZMENY), "What 0.2.1 fixes")
     for nadpis in ("### The online voice", "### Smaller fixes"):
         assert nadpis in opravy, nadpis
@@ -271,8 +271,8 @@ def test_soul_hranica_a_licencia():
     assert "your own high heart-rate limit" not in s
     assert hr_stats.KRITICKY_ZALOHA == 110.0
     assert "(at or above your high heart-rate limit — 110 BPM until the app has learned yours)" in s
-    assert "under the GPLv3 or later." in s
-    assert "under the GPLv3." not in s
+    assert "under the GPLv3." in s
+    assert "or later" not in s
 
 
 def test_safety_harness_odklada_nastavenia_a_historiu_ako_skript():

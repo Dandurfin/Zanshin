@@ -1,6 +1,6 @@
 # 残 Zanshin
 
-*Alpha 0.2.1 · Windows · code under GPLv3 or later*
+*Alpha 0.2.1 · Windows · code under GPLv3*
 
 **A free, open-source Windows app for gamers. When your heart rate shows
 you've been under strain for a while, Zanshin waits for a short lull in your
@@ -9,7 +9,7 @@ grip.**
 
 **You need:** Windows 11 64-bit (Windows 10 untested) · a smartwatch that
 measures heart rate, with its companion phone app that sends the heart rate to
-this PC (tested: a Wear OS watch with an Android phone and *HeartRateOnStream
+this PC (tested: a Samsung Galaxy Watch7 with an Android phone and *HeartRateOnStream
 for OBS*, free) · the phone and the PC on the same home network (Wi‑Fi).
 
 [Download](https://github.com/Dandurfin/Zanshin/releases/latest) ·
@@ -206,7 +206,7 @@ sends the number straight to this PC.
 
 | Your watch | Companion app | Status |
 |---|---|---|
-| Wear OS watch with an Android phone | *HeartRateOnStream for OBS* (free) | Tested by me |
+| Wear OS watch with an Android phone | *HeartRateOnStream for OBS* (free) | Tested by me on a Samsung Galaxy Watch7 |
 | Apple Watch with an iPhone | *PulseOSC* (paid) | Untested: I have no Apple device |
 | Garmin, Fitbit and others | An app that sends heart rate straight to this PC over OSC, plain UDP (a bare number or simple JSON) or obs-websocket (the number written into a text source) | Untested |
 
@@ -425,7 +425,7 @@ deliberately isn't: [docs/PRIOR_ART.md](docs/PRIOR_ART.md).
 
 | What | License | File |
 |---|---|---|
-| **All of the source code** — including the ensō drawn in code, the colour themes and the layout | **GNU GPL v3.0 or later** — free and open | [`LICENSE`](LICENSE) |
+| **All of the source code** — including the ensō drawn in code, the colour themes and the layout | **GNU GPL v3.0** — free and open | [`LICENSE`](LICENSE) |
 | **Two artwork files** — the app icon (`Dandurf.ico`) and the dojo picture (`assets/images/dojo_noc.webp`) | © Dandurfin — they travel with unmodified copies of the official Zanshin | [`LICENSE-DESIGN.md`](LICENSE-DESIGN.md) |
 | **Two sounds** — `sfx_click_reload.wav` and `sfx_lock_ping.wav` in `assets/sounds/modern` | CC0, from Kenney's *Interface Sounds* — their own terms | [`LICENSE-DESIGN.md`](LICENSE-DESIGN.md) |
 

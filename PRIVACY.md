@@ -177,7 +177,7 @@ rate on your phone or watch and send it to this PC. They aren't a pairing
 mechanism in themselves; *pairing* just means pointing that companion at this PC
 on your local network. **Zanshin has no mobile app of its own** on any store; a
 mobile port, if it ever exists, would be a separate community effort under the
-same licence (GPLv3 or later), clearly marked as its own version and not the
+same licence (GPLv3), clearly marked as its own version and not the
 official Zanshin (see [`LICENSE-DESIGN.md`](LICENSE-DESIGN.md)).
 
 ---

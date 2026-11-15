@@ -8,7 +8,7 @@ Zanshin. This is here to protect the people who use it, not to make money.
 
 ## 1. What is free
 
-All of the source code, under the **GNU General Public License v3.0 or later**
+All of the source code, under the **GNU General Public License v3.0**
 (see [`LICENSE`](LICENSE)). That includes the parts that make the look: the
 ensō drawn in code, the colour themes, the layout.
 

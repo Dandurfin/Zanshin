@@ -53,7 +53,7 @@ Zanshin is neither clenched fear nor reckless abandon. It is relaxed, present re
 Ship it true, not perfect. Say out loud what it can't do. If a line of text promises more than the code delivers, the line is the bug — fix the words until they're true, and name plainly whatever can't be fixed yet. Truth without varnish.
 
 **4. Open — freely inherited, freely passed on.**
-The code is free and open under the GPLv3 or later. Nothing this app does was invented here — the breathing, the focus, the unclenched jaw, the research behind it, the tools it's built with. It stands on the shoulders of giants who left their work in the open, and it stays open so the next person can read it, change it, and carry it on. What is passed on this way can never be closed. Only two pictures stay the author's own — the app icon and the dojo artwork (see LICENSE-DESIGN.md). Whoever carries the code on names their version as their own, never as the original.
+The code is free and open under the GPLv3. Nothing this app does was invented here — the breathing, the focus, the unclenched jaw, the research behind it, the tools it's built with. It stands on the shoulders of giants who left their work in the open, and it stays open so the next person can read it, change it, and carry it on. What is passed on this way can never be closed. Only two pictures stay the author's own — the app icon and the dojo artwork (see LICENSE-DESIGN.md). Whoever carries the code on names their version as their own, never as the original.
 
 **5. Whisper, don't shout.**
 A companion, not a coach barking over your shoulder. Subtle by design. It shows up small, in the corner of the eye, and lets you keep playing.

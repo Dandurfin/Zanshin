@@ -221,6 +221,12 @@ have them.
   you move it. The in-game pictures dialog, the pairing guide, the questions
   after a session and the Guide open centred and shrink to fit the screen.
   Deleting your history asks in Zanshin's own window, with *Cancel* focused.
+- **The licence had two names.** The app's title bar and *About* said
+  "GPLv3", the README and the other documents "GPLv3 or later". **0.2.2:**
+  everything says GPLv3 (version 3 of the GNU GPL). Copies of 0.2 and 0.2.1
+  you already have keep the wording they came with.
+- **The README didn't say which watch was tested.** **0.2.2:** it names it:
+  a Samsung Galaxy Watch7 with an Android phone.
 
 ### Fewer dead ends
 
@@ -701,4 +707,4 @@ before publishing. What 0.1 got wrong in the app itself is written down below.
   "Steam build" sends a fixed presence token; no Steam build was released, and
   nothing was sent to Steam.
 
-— **Dandurfin** · GPLv3 or later
+— **Dandurfin** · GPLv3

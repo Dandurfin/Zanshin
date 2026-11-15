@@ -78,17 +78,11 @@ about, and a few will stay.
   the phone app. In the Work world, History without sessions still asks you
   to play for at least a minute, and the hint under *One session up close*
   still says when you were probably playing.
-- **Licence wording:** the app's title bar and *About* say "GPLv3", while the
-  README and these documents say "GPLv3 or later". I haven't decided yet which
-  wording stays; until then the two differ.
 - **The icon's licence:** `Dandurf.ico` is the same ensō that `make_icon.py`
   draws from the GPL code, so it isn't clear yet where the free drawing ends
   and the icon that stays mine begins (see *License* in the README).
 - **No clip of a cue over a game yet.** The README shows Zanshin's own window
   only; a short GIF of a cue over a game in Borderless is still missing.
-- **The README's watch table doesn't name my watch.** Its *Tested by me* row
-  says only *Wear OS watch with an Android phone*; I still have to add the
-  model I tested with.
 - **The system requirements are from 0.2.1.** The download and disk size,
   memory and CPU use in the README were measured on the 0.2.1 build; I'll
   measure them again on the final 0.2.2 build.
@@ -109,4 +103,4 @@ data, and logs can name your devices and files. Describe what you saw instead.
 What 0.2.2 changes (not released yet), what 0.2.1 fixed and what 0.1 got
 wrong: [CHANGELOG.md](CHANGELOG.md).
 
-— **Dandurfin** · GPLv3 or later
+— **Dandurfin** · GPLv3

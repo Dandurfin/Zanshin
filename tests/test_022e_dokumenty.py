@@ -152,14 +152,19 @@ def test_known_issues_odkazuje_na_changelog():
 
 
 def test_known_issues_licencia_ikona_a_gif():
-    """Licencia: appka "GPLv3", README "GPLv3 or later" - rozhodne autor.
-    Ked sa jedno zmeni, bod v KNOWN_ISSUES treba prepisat (tento test
-    spadne). To iste ikona a GIF."""
+    """Licencia: autor rozhodol (2026-11-15) "GPLv3" - len verzia 3. Appka
+    aj vsetky dokumenty hovoria to iste; "or later" ostava len v historii
+    0.2 v CHANGELOG a v zazname o zmene. Ikona a GIF cakaju na autora."""
     o = _otvorene()
     licencia = re.search(r'^LICENCIA = "([^"]+)"', zdroj_suboru("app.py"), re.M)
     assert licencia and licencia.group(1) == "GPLv3"
-    assert "GPLv3 or later" in _plain("README.md")
-    assert '"GPLv3", while the README and these documents say "GPLv3 or later"' in o
+    for meno in ("README.md", "KNOWN_ISSUES.md", "PRIVACY.md", "SOUL.md",
+                 "LICENSE-DESIGN.md", "SAFETY.md", "DEVELOPMENT.md"):
+        assert "or later" not in _plain(meno), meno
+    assert "code under GPLv3*" in _read("README.md")
+    assert "Licence wording" not in o
+    zmeny = _plain_text(_sekcia(_read("CHANGELOG.md"), "What 0.2.2 changes"))
+    assert "everything says GPLv3 (version 3 of the GNU GPL)" in zmeny
     assert "One thing isn't sorted out yet" in _plain("README.md")
     assert "`Dandurf.ico`" in o and "`make_icon.py`" in o
     obrazky = os.listdir(os.path.join(ROOT, "docs", "img"))
@@ -222,14 +227,17 @@ def test_known_issues_skratka_sa_riadi_odpovedou_windowsu():
 
 
 def test_known_issues_watch_tabulka_a_poziadavky_cakaju_na_autora():
-    """Dve veci caka na autora: model hodiniek v tabulke README a nove
-    meranie systemovych poziadaviek na finalnom builde 0.2.2. Ked sa
-    doplnia, bod v KNOWN_ISSUES treba zmazat (tento test spadne)."""
+    """Model hodiniek autor doplnil (2026-11-15: Samsung Galaxy Watch7).
+    Na autora caka uz len nove meranie systemovych poziadaviek na
+    finalnom builde 0.2.2 - ked sa doplni, bod v KNOWN_ISSUES treba
+    zmazat (tento test spadne)."""
     o = _otvorene()
     readme = _read("README.md")
     tabulka = _sekcia(readme, "Getting your heart rate in")
     assert "| Wear OS watch with an Android phone |" in tabulka
-    assert "doesn't name my watch" in o
+    assert "Tested by me on a Samsung Galaxy Watch7 |" in tabulka
+    assert "tested: a Samsung Galaxy Watch7 with an Android phone" in _plain_text(readme)
+    assert "doesn't name my watch" not in o
     poziadavky = _plain_text(_sekcia(readme, "System requirements"))
     assert "the 0.2.1 ZIP is about 59 MB" in poziadavky
     assert "The system requirements are from 0.2.1." in o
