@@ -1,16 +1,19 @@
 # -*- coding: utf-8 -*-
-"""0.2.1: „teraz nie“ aj bez skratky - položka v ponuke ikony v lište.
+"""0.2.1: "not now" even without the shortcut - an item in the tray icon menu.
 
-Review 0.2: keď Ctrl+Alt+Z drží iná appka, `RegisterHotKey` zlyhá a hlášky
-sa potom dali stíšiť jedine zastavením počúvania - to zastaví aj meranie.
-Tlačidlo v doku odišlo s dokom, v okne ani v lište nič iné nebolo.
+Review 0.2: when another app holds Ctrl+Alt+Z, `RegisterHotKey` fails and
+the cues could then only be silenced by stopping listening - which also
+stops measuring. The button in the dock went away with the dock; there was
+nothing else in the window or in the tray.
 
-Teraz:
-  * v ponuke listy je položka „Teraz nie (30 min)“ - robí presne to, čo
-    skratka (prepínač cez `_toggle_snooze_from_hotkey`, cez `ui_call`),
-    a fajka hovorí, či práve platí,
-  * zlyhanie registrácie sa ohlási RAZ riadkom v denníku, ktorý ukáže na
-    tú položku (bez listy ostáva stará veta o zastavení).
+Now:
+  * the tray menu has the item „Teraz nie (30 min)“ ("Not now (30 min)") -
+    it does exactly what the shortcut does (a toggle via
+    `_toggle_snooze_from_hotkey`, via `ui_call`), and the tick mark says
+    whether it is currently on,
+  * a failed registration is reported ONCE by a line in the journal that
+    points to that item (without a tray the old sentence about stopping
+    stays).
 """
 import os
 import random
@@ -56,7 +59,7 @@ class _Bodka:
 
 
 # --------------------------------------------------------------------------
-# Atrapa pystray
+# Fake pystray
 # --------------------------------------------------------------------------
 
 class _Polozka:
@@ -131,7 +134,7 @@ def test_lista_ma_teraz_nie_a_robi_to_iste_co_skratka(monkeypatch):
     p = _polozka_teraz_nie(app_mod, a)
     assert p.checked is not None and p.checked(p) is False
     p.action(a.tray_icon, p)
-    # klik prisiel na vlakne listy - do Tk ide cez `ui_call`, nic priamo
+    # click came on the tray thread - goes to Tk via `ui_call`, not directly
     assert a.fronta == [a._toggle_snooze_from_hotkey]
     assert a._snooze_job is None
     a.fronta.pop()()
@@ -140,7 +143,7 @@ def test_lista_ma_teraz_nie_a_robi_to_iste_co_skratka(monkeypatch):
     assert a.cue_trigger._suspended_by == trigger.A_SNOOZE
     assert a.listening is True and a._hr_session_open is True
     assert p.checked(p) is True, "fajka ukaze, ze teraz nie plati"
-    # druhy klik zrusi - prepinac ako skratka
+    # a second click cancels - a toggle like the shortcut
     p.action(a.tray_icon, p)
     a.fronta.pop()()
     assert a._snooze_job is None and p.checked(p) is False
@@ -148,9 +151,10 @@ def test_lista_ma_teraz_nie_a_robi_to_iste_co_skratka(monkeypatch):
 
 
 def test_polozka_funguje_so_skutocnym_pystray(monkeypatch):
-    """Atrapa vyssie prijme hocico. Skutocny `pystray.MenuItem` si akciu aj
-    `checked` obali podla poctu argumentov - tu sa overi, ze klik aj fajka
-    prejdu tak, ako ich zavola pystray (bez ikony a bez vlakna listy)."""
+    """The fake above accepts anything. The real `pystray.MenuItem` wraps
+    both the action and `checked` according to the number of arguments -
+    this checks that the click and the tick mark go through the way pystray
+    calls them (without an icon and without the tray thread)."""
     pystray = pytest.importorskip("pystray")
     import app as app_mod
     monkeypatch.setattr(app_mod, "pystray", types.SimpleNamespace(
@@ -167,15 +171,15 @@ def test_polozka_funguje_so_skutocnym_pystray(monkeypatch):
     assert len(najdene) == 1
     p = najdene[0]
     assert p.checked is False
-    p(a.tray_icon)                      # takto klik vola pystray
+    p(a.tray_icon)                      # this is how pystray calls a click
     assert a.fronta == [a._toggle_snooze_from_hotkey]
     a._snooze_job = "after#1"
     assert p.checked is True
 
 
 def test_fajka_sa_obnovi_aj_po_skratke(monkeypatch):
-    """Pystray si menu postaví znova len na `update_menu`; skratka ani
-    `ui_call` po kliku ho inak neobnovia."""
+    """Pystray rebuilds the menu only on `update_menu`; neither the shortcut
+    nor `ui_call` after a click refreshes it otherwise."""
     app_mod, a = _appka(monkeypatch)
     pred = a.tray_icon.aktualizacie
     a._toggle_snooze_from_hotkey()
@@ -201,11 +205,11 @@ def test_bez_listy_indikator_nespadne(monkeypatch):
     a = app_mod.DandurfApp.__new__(app_mod.DandurfApp)
     a._refresh_dnes_state_text = _nic
     a._snooze_job = None
-    app_mod.DandurfApp._refresh_snooze_indicator(a)      # ziadne tray_icon
+    app_mod.DandurfApp._refresh_snooze_indicator(a)      # no tray_icon
 
 
 # --------------------------------------------------------------------------
-# Zlyhaná registrácia skratky
+# Failed shortcut registration
 # --------------------------------------------------------------------------
 
 class _Skratka:
@@ -258,18 +262,20 @@ def test_uspesna_skratka_hlasi_len_pripravenost(monkeypatch):
 
 
 def test_skratka_sa_registruje_len_raz_pri_starte():
-    """„Raz“ z hlásenia stojí na tom, že `start_snooze_hotkey` volá len
-    `__init__` - keby ju volalo aj niečo opakované, riadok by sa množil."""
+    """The "once" in the message relies on `start_snooze_hotkey` being called
+    only by `__init__` - if something repeated called it too, the line would
+    multiply."""
     src = zdroj_appky()
     assert src.count("self.start_snooze_hotkey()") == 1
 
 
 def test_nove_vety_hovoria_pravdu():
-    """Veta o zlyhaní už nesmie tvrdiť, že „teraz nie“ nepôjde vôbec, ani
-    sľubovať meranie (počas stíšenia v zastavenej appke sa nemeria) - len
-    to, čo platí vždy: sledovanie to nezastaví (0.2.2: „sledovať“ namiesto
-    „počúvať“). Kľúče dopĺňa jazyková časť
-    0.2.1; kým tam nie sú, stráži ich tests/test_i18n_keys.py."""
+    """The failure sentence must no longer claim that "not now" will not work
+    at all, nor promise measuring (nothing is measured during a snooze in a
+    stopped app) - only what always holds: it does not stop watching (0.3:
+    „sledovať“ (watch) instead of „počúvať“ (listen)). The keys are added by
+    the language part of 0.2.1; until they are there,
+    tests/test_i18n_keys.py guards them."""
     s = i18n.STRINGS
     if "log.hotkey_failed_tray" not in s or "tray.snooze" not in s:
         pytest.skip("kluce 0.2.1 este nie su v i18n")

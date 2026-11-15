@@ -1,20 +1,20 @@
 # -*- coding: utf-8 -*-
-"""Cislo tepu na obrazovke je vyhladene, meranie nie (0.2.2).
+"""The heart-rate number on screen is smoothed, the measurement is not (0.3).
 
-Appka na hodinkach vie do jedneho zdroja pisat dva rady tepu (5-10 BPM od
-seba, ~2 spravy za sekundu). Obrazovka ukazovala poslednu surovu hodnotu,
-takze cislo v tej istej sekunde skakalo hore-dole.
+The watch app can write two heart-rate series into one source (5-10 BPM
+apart, ~2 messages per second). The screen showed the last raw value, so
+the number jumped up and down within the same second.
 
-Strazi sa:
-  * HUD, Dnes a stitok pri prepinaci ukazuju `HeartStats.display_bpm` -
-    median vzoriek za poslednych `ZOBRAZ_OKNO_S` sekund, vzdy aspon tej
-    poslednej,
-  * do merania ide KAZDA vzorka ako doteraz (`add`, suhrn relacie, pasmo,
-    `_hr_last_bpm` pre rozhodovanie),
-  * okno sa vynuluje pri vypadku a zastaveni (`clear_live`) aj pri novej
-    relacii (`reset_session`) - tam, kde sa nuluje `_hr_last_bpm`.
+Guarded:
+  * the HUD, Today and the label by the switch show `HeartStats.display_bpm` -
+    the median of the samples from the last `ZOBRAZ_OKNO_S` seconds, always
+    at least the last one,
+  * EVERY sample goes into measuring as before (`add`, session summary,
+    zone, `_hr_last_bpm` for decisions),
+  * the window is reset on a dropout and stop (`clear_live`) and on a new
+    session (`reset_session`) - where `_hr_last_bpm` is reset.
 
-Vsetky rady su umele - ziadne skutocne namerane data.
+All series are artificial - no real measured data.
 """
 import os
 import sys
@@ -31,7 +31,7 @@ import theme  # noqa: E402
 from _zdroj_appky import zdroj_metody  # noqa: E402
 
 T0 = 1_700_000_000.0
-# Umele hodnoty dvoch radov (7 BPM od seba) - vymyslene, nie namerane.
+# Artificial values of two series (7 BPM apart) - made up, not measured.
 HORE, DOLE = 97, 90
 
 
@@ -45,7 +45,7 @@ def _app():
 
 
 def _dva_rady(st, t=T0, n=10, hore=HORE, dole=DOLE):
-    """Umely rad: kazdu sekundu hodnota z vyssieho radu a o 0,5 s z nizsieho."""
+    """Artificial series: per second the higher value, 0,5 s later the lower."""
     for _ in range(n):
         st.add(hore, ts=t)
         st.add(dole, ts=t + 0.5)
@@ -82,7 +82,7 @@ def test_dva_rady_nerozskacu_cislo():
         st.add(DOLE, ts=t + 0.5)
         zobrazene.add(st.display_bpm)
         t += 1.0
-    # surova hodnota skace HORE <-> DOLE, cislo drzi medzi radmi
+    # the raw value jumps HORE <-> DOLE, the number holds between the series
     assert st.last_bpm == DOLE
     assert all(DOLE < z < HORE for z in zobrazene), zobrazene
     assert max(zobrazene) - min(zobrazene) <= 2, zobrazene
@@ -92,7 +92,7 @@ def test_median_zahodi_jednu_ujdenu_hodnotu():
     st = hr_stats.HeartStats()
     for i, bpm in enumerate((80, 81, 80, 81, 80)):
         st.add(bpm, ts=T0 + i)
-    st.add(140, ts=T0 + 5)             # jedna spicka
+    st.add(140, ts=T0 + 5)             # one spike
     assert st.last_bpm == 140
     assert st.display_bpm in (80, 81)
 
@@ -101,10 +101,11 @@ def test_starsie_nez_okno_sa_nepocita():
     st = hr_stats.HeartStats()
     for i in range(5):
         st.add(70, ts=T0 + i)
-    # po medzere dlhsej nez okno plati len nova hodnota
+    # after a gap longer than the window only the new value counts
     st.add(95, ts=T0 + 4 + hr_stats.ZOBRAZ_OKNO_S + 0.1)
     assert st.display_bpm == 95
-    # okno sa meria od poslednej vzorky, nie od hodin - cislo neodplava
+    # the window is measured from the last sample, not from the clock - the
+    # number does not drift
     assert st.display_bpm == 95
 
 
@@ -112,12 +113,12 @@ def test_hodiny_posunute_dozadu_neberu_vzorky_z_buducnosti():
     st = hr_stats.HeartStats()
     st.add(80, ts=T0 + 10)
     st.add(80, ts=T0 + 11)
-    st.add(120, ts=T0 + 5)             # hodiny PC skocili dozadu
+    st.add(120, ts=T0 + 5)             # the PC clock jumped back
     assert st.display_bpm == 120
 
 
 def test_cislo_ide_s_tepom_do_par_sekund():
-    """Vyhladenie nesmie skryt skutocny nastup tepu."""
+    """Smoothing must not hide a real rise in heart rate."""
     st = hr_stats.HeartStats()
     t = T0
     for _ in range(10):
@@ -132,19 +133,19 @@ def test_cislo_ide_s_tepom_do_par_sekund():
 def test_vypadok_a_nova_relacia_okno_vynuluju():
     st = hr_stats.HeartStats()
     t = _dva_rady(st)
-    st.clear_live()                    # vypadok / vypnutie senzora
+    st.clear_live()                    # dropout / sensor switched off
     assert st.display_bpm is None
-    st.add(90, ts=t)                   # v tom istom okne 3 s - stare nie
+    st.add(90, ts=t)                   # in the same 3 s window - old ones are not
     assert st.display_bpm == 90
     _dva_rady(st, t + 1.0)
-    st.reset_session()                 # nova relacia (`_open_hr_session`)
+    st.reset_session()                 # new session (`_open_hr_session`)
     assert st.display_bpm is None
     st.add(66, ts=t + 12.0)
     assert st.display_bpm == 66
 
 
 def test_meranie_dostava_kazdu_vzorku():
-    """Surove vzorky ostavaju vsade, kde sa meria - vyhladene je len cislo."""
+    """Raw samples stay wherever it measures - only the number is smoothed."""
     st = hr_stats.HeartStats(critical_bpm=110)
     hodnoty = []
     t = T0
@@ -159,7 +160,7 @@ def test_meranie_dostava_kazdu_vzorku():
     assert st.session_min == min(b for _, b in hodnoty)
     assert st.average == pytest.approx(sum(b for _, b in hodnoty) / len(hodnoty))
     assert st.last_bpm == hodnoty[-1][1]
-    # pasmo stale z medianu 5 SUROVYCH vzoriek, nie z cisla na obrazovke
+    # zone still from the median of 5 RAW samples, not the number on screen
     posledne = sorted(b for _, b in hodnoty[-hr_stats.ZONE_MEDIAN_SAMPLES:])
     base = st._zakladna_bez_odhadu()
     assert base is not None
@@ -167,11 +168,11 @@ def test_meranie_dostava_kazdu_vzorku():
 
 
 # --------------------------------------------------------------------------
-# Appka: kam ide surova vzorka a co sa ukazuje
+# The app: where the raw sample goes and what is shown
 # --------------------------------------------------------------------------
 
 class _Stats:
-    """Atrapa `hr_stats`, ktora si pamata, co do merania prislo."""
+    """Stub `hr_stats` that remembers what came into measuring."""
 
     def __init__(self):
         self.prijate = []
@@ -198,14 +199,15 @@ def test_apply_hr_bpm_posiela_do_merania_kazdu_surovu_vzorku():
     rad = [HORE, DOLE, HORE + 1, DOLE - 2, HORE - 1, DOLE + 1]
     for bpm in rad:
         _app()._apply_hr_bpm(a, bpm, 3)
-        # rozhodovanie (vypadok, kontrolka, vstup bez pauzy) ide zo suroveho
+        # decisions (dropout, indicator, nonstop input) come from the raw one
         assert a._hr_last_bpm == bpm
     assert stats.prijate == rad
 
 
 def test_rozhodovanie_cita_surovy_tep_nie_vyhladeny():
-    """`_hr_last_bpm` zostava posledna surova vzorka a cita sa len ako
-    "tep chodi / nechodi" - vyhladene cislo tam nema co robit."""
+    """`_hr_last_bpm` stays the last raw sample and is read only as
+    "heart rate coming / not coming" - the smoothed number has no business
+    there."""
     telo = zdroj_metody("_apply_hr_bpm")
     assert "self._hr_last_bpm = bpm" in telo
     assert "self.hr_stats.add(bpm)" in telo
@@ -233,8 +235,8 @@ def test_stitok_pri_prepinaci_ukazuje_vyhladene_cislo():
 
 
 def test_stitok_farbu_berie_z_vyhladeneho_cisla():
-    """Surova 107 by bola pod hranicou 110, vyhladene 112 je nad nou -
-    farba sa riadi tym, co hrac vidi."""
+    """Raw 107 would be below the 110 limit, smoothed 112 is above it - the
+    colour follows what the player sees."""
     st = hr_stats.HeartStats()
     _dva_rady(st, n=4, hore=117, dole=107)
     assert st.display_bpm == 112
@@ -312,5 +314,5 @@ def test_hud_kresli_vyhladene_cislo(monkeypatch):
     h._draw()
     assert zachytene["bpm"] == st.display_bpm
     assert zachytene["bpm"] != st.last_bpm
-    # krivka ostava surova - dva rady v nej ostanu vidiet
+    # the curve stays raw - the two series remain visible in it
     assert HORE in zachytene["history"] and DOLE in zachytene["history"]

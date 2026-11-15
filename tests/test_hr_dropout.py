@@ -1,13 +1,16 @@
 # -*- coding: utf-8 -*-
-"""Výpadok tepu: vidno ho ticho a zapíše sa (C3).
+"""Heart rate dropout: shown quietly and recorded (C3).
 
-Tep, ktorý appka počula, prestane chodiť (12 s ticha alebo hodinky pustia
-spojenie). Doteraz to vyzeralo presne ako „hodinky ešte nikdy neprišli":
-Dnes zhodila živý blok aj stopu relácie a ukázala „Spáruj hodinky", a nikde
-sa nezapísalo, ako často a ako dlho bola appka slepá. Po návrate tepu navyše
-pár sekúnd tvrdila „Pokoj", hoci tep bol hore — záťaž sa rozbiehala od nuly.
+Heart rate the app was hearing stops coming (12 s of silence or the watch
+drops the connection). Until now it looked exactly like "the watch has
+never come": Today dropped the live block and the session trace and
+showed "Pair your watch", and nowhere was it recorded how often and for
+how long the app was blind. After heart rate came back it also claimed
+"Calm" for a few seconds, although heart rate was up - the load was
+starting from zero.
 
-Testy bežia bez Tk: skutočné metódy `DandurfApp` sa volajú na malej atrape.
+The tests run without Tk: real `DandurfApp` methods are called on a small
+dummy.
 """
 import ast
 import os
@@ -26,7 +29,7 @@ import i18n       # noqa: E402
 from _zdroj_appky import uzol_metody  # noqa: E402
 
 T0 = 1_700_000_000.0
-KROK = 2.8                      # skutočná kadencia hodiniek (C1)
+KROK = 2.8                      # the watch's real cadence (C1)
 
 
 def _nic(*_a, **_k):
@@ -54,13 +57,13 @@ def _po_kalibracii(critical=110):
 def test_settling_len_prve_styri_vzorky_po_navrate():
     st = hr_stats.HeartStats(critical_bpm=110)
     t = T0
-    # počas kalibrácie je to kalibrácia, nie „usádzanie"
+    # during calibration it is calibration, not "settling"
     for _ in range(10):
         st.add(70, ts=t)
         t += KROK
         assert st.is_calibrating and not st.is_settling
     t = _nakrm(st, 70, 50, t)
-    assert not st.is_calibrating and not st.is_settling   # ustálený stav
+    assert not st.is_calibrating and not st.is_settling   # steady state
 
     st.note_dropout()
     st.clear_live()
@@ -75,9 +78,10 @@ def test_settling_len_prve_styri_vzorky_po_navrate():
 
 
 def test_po_navrate_sa_nikdy_neukaze_falosny_pokoj():
-    """Tep drží hore pred výpadkom aj po ňom. Kým `is_settling`, pásmo sa
-    nečíta; potom už nesmie vyjsť „Pokoj" (záťaž smie chvíľu podstreliť do
-    „Zvýšená" — chyba smerom k tichu)."""
+    """Heart rate stays up before the dropout and after it. While
+    `is_settling`, the zone is not read; after that "Calm" must not come
+    out (the load may undershoot to "Raised" for a moment - an error
+    towards silence)."""
     st, t = _po_kalibracii()
     t = _nakrm(st, 125, 60, t)
     assert st.zone in (hr_stats.ZONE_HIGH, hr_stats.ZONE_CRITICAL)
@@ -101,13 +105,13 @@ def test_suhrn_ma_pocet_vypadkov_a_slepy_cas():
     s = st.summary()
     assert s["dropouts"] == 1
     assert s["blind_s"] == pytest.approx(42.8, abs=0.1)
-    # jednotlivé čísla, nie krivka
+    # single numbers, not a curve
     assert isinstance(s["dropouts"], int) and isinstance(s["blind_s"], float)
 
 
 def test_ten_isty_vypadok_sa_nerata_dvakrat():
-    """`disconnected` po 12 s a `client_gone` po zatvorení TCP môžu prísť
-    obe — stále je to jeden výpadok."""
+    """`disconnected` after 12 s and `client_gone` after the TCP close may
+    both come - it is still one dropout."""
     st, t = _po_kalibracii()
     st.note_dropout()
     st.note_dropout()
@@ -117,8 +121,9 @@ def test_ten_isty_vypadok_sa_nerata_dvakrat():
 
 
 def test_suhrn_pocas_vypadku_zarata_otvoreny_interval():
-    """Relácia sa zatvára naslepo (hráč vypne senzor počas výpadku): slepý čas
-    sa počíta až po teraz, nie až po návrat, ktorý nepríde."""
+    """The session is closed blind (the player turns the sensor off during a
+    dropout): blind time is counted up to now, not up to a return that will
+    not come."""
     st = hr_stats.HeartStats(critical_bpm=110)
     teraz = time.time()
     t = teraz - 300.0
@@ -145,11 +150,11 @@ def test_bez_vypadku_su_nuly_a_nova_relacia_ich_zahodi():
 
 
 # --------------------------------------------------------------------------
-# App: _hr_lost žije len od výpadku po prvú vzorku
+# App: _hr_lost lives only from the dropout to the first sample
 # --------------------------------------------------------------------------
 
 class _SpyStats(hr_stats.HeartStats):
-    """HeartStats, ktorý si zapisuje poradie `note_dropout` / `clear_live`."""
+    """HeartStats that records the order of `note_dropout` / `clear_live`."""
 
     def __init__(self, *a, **k):
         self.volania = []
@@ -184,7 +189,7 @@ def _atrapa(stats=None, **navyse):
         _refresh_kamae_state_text=_nic, _refresh_hud_session_text=_nic,
     )
     a.__dict__.update(navyse)
-    # pomocníci sú tiež metódy appky - volajú sa cez atrapu
+    # the helpers are app methods too - they are called through the dummy
     a._zaznamenaj_vypadok = lambda kind: app_mod.DandurfApp._zaznamenaj_vypadok(a, kind)
     a._tep_je_spat = lambda: app_mod.DandurfApp._tep_je_spat(a)
     return a
@@ -258,8 +263,8 @@ def test_chyba_a_obsadeny_port_vypadok_zhodia(kind):
 
 
 def test_vypnutie_senzora_vypadok_zhodi_a_suhrn_ho_zarata():
-    """Hráč vypne senzor počas výpadku: príznak ide preč, ale relácia sa
-    zatvára s výpadkom, ktorý ešte trval."""
+    """The player turns the sensor off during a dropout: the flag goes away,
+    but the session is closed with the dropout that was still ongoing."""
     app_mod = _app()
     st = _SpyStats(critical_bpm=110)
     st.add(80, ts=time.time() - 45.0)
@@ -275,14 +280,15 @@ def test_vypnutie_senzora_vypadok_zhodi_a_suhrn_ho_zarata():
 
 
 def _telo(metoda):
-    # metoda DandurfApp - aj ked byva v mixine v app_*.py
+    # a DandurfApp method - even when it lives in a mixin in app_*.py
     return uzol_metody(metoda)
 
 
 def test_nova_relacia_zhodi_vypadok_vzdy_nie_len_pri_prepojeni():
-    """`start_listening` počas výpadku otvára reláciu s `prepoj=False`.
-    Príznak nesmie prejsť do novej relácie (a `reset_session` prepíše čas,
-    od ktorého by sa rátal riadok „tep je späť")."""
+    """`start_listening` during a dropout opens a session with `prepoj=False`.
+    The flag must not pass into the new session (and `reset_session`
+    rewrites the time from which the "heart rate is back" line would be
+    counted)."""
     fn = _telo("_open_hr_session")
     priamo = [
         ciel.attr
@@ -296,7 +302,7 @@ def test_nova_relacia_zhodi_vypadok_vzdy_nie_len_pri_prepojeni():
 
 
 # --------------------------------------------------------------------------
-# Pás / Dnes / kontrolka / HUD
+# Bar / Today / indicator / HUD
 # --------------------------------------------------------------------------
 
 def test_pas_pri_vypadku_ma_vlastnu_vetu():
@@ -348,8 +354,8 @@ def _dnes(stats, hr_state, lost, listening=False):
     import theme as theme_mod
     app_mod = _app()
     stopa, hero = [], []
-    # 0.2.2 (audit UX): jas fotky na Dnes ide za stavom sledovania
-    # (`_sync_dnes_hero`), nie za tym, ci chodi tep.
+    # 0.3 (UX audit): the brightness of the photo on Today follows the
+    # watching state (`_sync_dnes_hero`), not whether heart rate comes in.
     a = types.SimpleNamespace(
         listening=listening,
         hr_stats=stats, _hr_state=hr_state, _hr_lost=lost,
@@ -370,8 +376,8 @@ def test_dnes_pocas_vypadku_necha_zivy_blok_bez_falosneho_pokoja():
     st, _t = _po_kalibracii()
     st.note_dropout()
     st.clear_live()
-    assert st.zone == hr_stats.ZONE_CALM     # samo o sebe by klamalo...
-    # vypadok hodiniek prichadza uprostred vecera, teda pocas sledovania
+    assert st.zone == hr_stats.ZONE_CALM     # on its own this would be a lie...
+    # a watch dropout comes in the middle of the evening, i.e. while watching
     a, stopa, hero = _dnes(st, "linked", lost=True, listening=True)
     assert a.dnes_bpm.kw["text"] == "--"
     assert a.dnes_zone.kw["text"] == "—", "...preto ho Dnes nesmie citat"
@@ -396,8 +402,9 @@ def test_dnes_po_navrate_pise_tri_bodky_nie_pokoj():
     st.note_dropout()
     st.clear_live()
     st.add(125, ts=t + 30.0)
-    # Od C2 je `zone` tep voci pokoju, takze tu uz nepise falosny pokoj -
-    # zataz sa ale rozbieha od nuly, tak usadzanie ma prednost dalej.
+    # Since C2 `zone` is heart rate against rest, so it no longer writes a
+    # false calm here - but the load starts from zero, so settling still
+    # takes precedence.
     assert st.is_settling and st.stress < 25
     a, stopa, _hero = _dnes(st, "connected", lost=False)
     assert a.dnes_zone.kw["text"] == "…"
@@ -464,8 +471,8 @@ def _texty(monkeypatch):
 
 
 def test_hud_naslepo_netvrdi_pokoj(style, monkeypatch):
-    """Po `clear_live` je záťaž 0.0, čiže `zone` = pokoj. HUD bez spojenia to
-    nesmie prečítať."""
+    """After `clear_live` the load is 0.0, i.e. `zone` = calm. The HUD without
+    a connection must not read that."""
     napisane = _texty(monkeypatch)
     hud_paint.render_hud(style, bpm=None, stress=0.0, history=[],
                          threshold=110, connected=False, ss=2,
@@ -488,7 +495,7 @@ def test_hud_po_navrate_tri_bodky_a_prazdny_pruh(style, monkeypatch):
 
 
 # --------------------------------------------------------------------------
-# Texty
+# Texts
 # --------------------------------------------------------------------------
 
 def test_nove_kluce_maju_vsetkych_jedenast_jazykov():
@@ -501,8 +508,9 @@ def test_nove_kluce_maju_vsetkych_jedenast_jazykov():
 
 
 def test_rada_pri_vypadku_je_vsade_ta_ista_a_pravdiva():
-    """Tep ide hodinky → telefón (Bluetooth) → Wi‑Fi → počítač. Koniec
-    relácie radil „hodinky bližšie k počítaču", postreh hovoril o telefóne."""
+    """Heart rate goes watch → phone (Bluetooth) → Wi‑Fi → computer. The end
+    of the session advised "the watch closer to the computer", the insight
+    talked about the phone."""
     koniec = i18n.STRINGS["session.end.none_dropouts"]
     postreh = i18n.STRINGS["insight.cue_dropouts"]
     for jazyk, retaz in (("sk", "Tep ide z hodiniek do telefónu cez Bluetooth "
@@ -519,10 +527,12 @@ def test_rada_pri_vypadku_je_vsade_ta_ista_a_pravdiva():
 
 
 def test_cakam_na_tep_hovori_tu_istu_retaz():
-    """„Z hodiniek zatiaľ nič nechodí" radilo „nech sú hodinky na tej istej
-    Wi‑Fi" - hodinky ale idú cez telefón (Bluetooth) a až telefón je na
-    Wi‑Fi. Starý preklad nesmie prežiť v žiadnom jazyku: starý o Bluetooth
-    nehovoril, nový (jazyková fáza 0.2) áno - v každom jazyku."""
+    """„Z hodiniek zatiaľ nič nechodí" (Nothing from the watch yet) advised
+    „nech sú hodinky na tej istej Wi‑Fi" (keep the watch on the same
+    Wi‑Fi) - but the watch goes via the phone (Bluetooth) and only the
+    phone is on Wi‑Fi. The old translation must not survive in any
+    language: the old one did not mention Bluetooth, the new one (languages
+    phase 0.2) does - in every language."""
     zaznam = i18n.STRINGS["kamae.no_hr_sub"]
     assert "pri telefóne (Bluetooth)" in zaznam["sk"]
     assert "telefón na tej istej Wi‑Fi ako počítač" in zaznam["sk"]
@@ -535,8 +545,8 @@ def test_cakam_na_tep_hovori_tu_istu_retaz():
 
 
 def _retaz_cez_telefon(text):
-    """Veta hovorí o Bluetooth (hodinky -> telefón) aj o Wi‑Fi (telefón ->
-    počítač). Nemčina hovorí WLAN, čínština 蓝牙."""
+    """The sentence talks about Bluetooth (watch -> phone) and Wi‑Fi (phone ->
+    computer). German says WLAN, Chinese 蓝牙."""
     return (("Bluetooth" in text or "蓝牙" in text)
             and ("Wi‑Fi" in text or "WLAN" in text))
 
@@ -544,14 +554,16 @@ def _retaz_cez_telefon(text):
 def test_ticho_bez_prekrocenia_nehodnoti_telo():
     zaznam = i18n.STRINGS["session.end.none_never"]
     assert "telo" not in zaznam["sk"] and "body" not in zaznam["en"]
-    # 0.2.2: "hranica" je len BPM, zataz ma "prah" (en threshold)
+    # 0.3: "hranica" (limit) is only BPM, load has "prah" (en threshold)
     assert "prah" in zaznam["sk"] and "threshold" in zaznam["en"]
 
 
 def test_zmenene_vety_nenechali_stary_preklad():
-    """Stará veta („hodinky bližšie k PC", „telo bolo v pohode") nesmie prežiť
-    v žiadnom jazyku. Jazyková fáza 0.2 ich preložila z nového SK: každý
-    jazyk má vlastný text a veta o výpadku hovorí celú reťaz cez telefón."""
+    """The old sentence („hodinky bližšie k PC" - watch closer to the PC,
+    „telo bolo v pohode" - the body was fine) must not survive in any
+    language. The 0.2 languages phase translated them from the new SK:
+    every language has its own text and the dropout sentence names the
+    whole chain via the phone."""
     for kluc in ("session.end.none_never", "session.end.none_dropouts",
                  "insight.cue_dropouts"):
         zaznam = i18n.STRINGS[kluc]
@@ -564,16 +576,17 @@ def test_zmenene_vety_nenechali_stary_preklad():
 
 
 def test_postreh_o_vypadkoch_netvrdi_malo_hlasok():
-    """`hr_insights` pusti postreh o výpadkoch podľa priemeru zrušených
-    počítaní, bez ohľadu na to, koľko hlášok v tie večery padlo. Veta teda
-    nesmie tvrdiť „preto je hlášok málo" ako fakt - len že ich môže byť
-    menej."""
+    """`hr_insights` lets the dropout insight through by the average of
+    cancelled countings, regardless of how many cues fell on those evenings.
+    So the sentence must not claim „preto je hlášok málo" (that is why
+    there are few cues) as a fact - only that there may be fewer."""
     postreh = i18n.STRINGS["insight.cue_dropouts"]
     assert "hlášok málo" not in postreh["sk"]
     assert "few cues" not in postreh["en"]
     assert "môže byť pripomienok menej" in postreh["sk"]
     assert "may be fewer cues" in postreh["en"]
-    # „a to sa začalo" sa dalo čítať ako „a to (konkrétne)…" - počítanie
-    # je v oboch vetách pomenované
+    # „a to sa začalo" (and that had started) could be read as „a to
+    # (konkrétne)…" (and that (specifically)…) - the counting is named in
+    # both sentences
     for kluc in ("insight.cue_dropouts", "session.end.none_dropouts"):
         assert "a počítanie sa zakaždým začalo odznova" in i18n.STRINGS[kluc]["sk"], kluc

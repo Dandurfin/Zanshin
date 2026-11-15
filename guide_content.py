@@ -1,25 +1,28 @@
-"""Struktura panelu 'Sprievodca / Čo je za tým'.
+"""Structure of the 'Guide / What's behind it' panel.
 
-Cely zobrazovany text (nazvy, fyziologia, veda, instrukcie, techniky
-dychania) je prekladany a zije v i18n.py pod klucmi "guide.<id>.*" - tu
-je len poradie kariet, ich ID (pouzivane aj ako nazov docasneho nacrtu
-a nazov PNG v assets/guides/) a pocet technik pre kartu dychania.
+All displayed text (names, physiology, science, instructions, breathing
+techniques) is translated and lives in i18n.py under the keys
+"guide.<id>.*" - here is only the order of the cards, their IDs (also
+used as the name of the temporary sketch and the PNG name in
+assets/guides/) and the number of techniques for the breathing card.
 """
 
 from i18n import tr
 
-# Kam viesť z panela "O appke". Menia sa nezávisle od kódu, preto sú tu ako
-# dáta a nie zadrôtované v UI.
+# Where to link from the "About" panel. These change independently of
+# the code, so they are here as data and not hard-wired into the UI.
 #
-# DISCORD TU ZÁMERNE NIE JE. Na hlásenie chýb, nápady a spoluprácu je
-# GitHub: diskusia tam ostáva verejná, dohľadateľná a viazaná na kód, kým
-# na Discorde po týždni zapadne. Pozvánka má navyše obmedzenú platnosť a
-# po expirácii by prestala fungovať všetkým, čo si appku už stiahli - a
-# autor by sa to nedozvedel.
+# DISCORD IS NOT HERE ON PURPOSE. Bug reports, ideas and collaboration go
+# to GitHub: a discussion there stays public, searchable and tied to the
+# code, while on Discord it sinks after a week. On top of that an invite
+# has a limited validity and after it expired it would stop working for
+# everyone who has already downloaded the app - and the author would not
+# find out.
 #
-# REPOZITÁR je jediné miesto, odkiaľ je oficiálny Zanshin (LICENSE-DESIGN.md,
-# bod 4) - a zároveň to, kde je zdrojový kód, ktorý inštalátor nenesie.
-# Preto je v "O appke" klikací, nie len spomenutý v texte licencie.
+# THE REPOSITORY is the only place the official Zanshin comes from
+# (LICENSE-DESIGN.md, point 4) - and also where the source code is, which
+# the installer does not carry. That is why it is clickable in "About",
+# not just mentioned in the licence text.
 REPO_URL = "https://github.com/Dandurfin/Zanshin"
 
 COMMUNITY_LINKS = [
@@ -32,16 +35,18 @@ COMMUNITY_LINKS = [
 GUIDE_CARD_IDS = ["grounding", "jaw", "periphery", "breath", "philosophy"]
 BREATH_TECHNIQUE_COUNT = 2
 PHILOSOPHY_BLOCK_COUNT = 3
-# TRI zdroje, ktore appka ukazuje - v Sprievodcovi (karta "philosophy") aj v
-# Historii (panel "Ako to vzniklo"), vzdy pod textom autora `origin.*`.
-# Su to presne tie, ktore karty Sprievodcu cituju "v zdrojoch nizsie":
-# dych (Lehrer & Gevirtz 2014), krabicove dychanie (Zaccaro 2018) a celust
-# (Ketelhut & Nigg 2024). Popisky su autorove priklady, nie nazvy studii.
+# THREE sources the app shows - in the Guide (the "philosophy" card) and
+# in History (the "How it came about" panel), always under the author's
+# text `origin.*`. They are exactly the ones the Guide cards cite "in the
+# sources below": breath (Lehrer & Gevirtz 2014), box breathing (Zaccaro
+# 2018) and the jaw (Ketelhut & Nigg 2024). The labels are the author's
+# examples, not study titles.
 #
-# Cely zoznam - vsetko, co tu bolo do 0.2, aj vyskum k hlaskam pod zatazou -
-# je v ZDROJE.md v koreni repozitara. Dlhy zoznam v appke posobil ako "veda
-# za appkou", hoci ziadna z tych prac Zanshin netestuje (rozhodnutie autora,
-# 0.2). check_sources.py kontroluje tieto tri; odkazy v ZDROJE.md nie.
+# The full list - everything that was here up to 0.2, plus the research
+# on cues under load - is in ZDROJE.md in the repository root. A long list
+# in the app came across as "the science behind the app", although none of
+# those works tests Zanshin (the author's decision, 0.2). check_sources.py
+# checks these three; the links in ZDROJE.md it does not.
 PHILOSOPHY_SOURCES = [
     ("guide.philosophy.source12", "https://doi.org/10.3389/fpsyg.2014.00756"),   # Lehrer & Gevirtz 2014
     ("guide.philosophy.source11", "https://doi.org/10.3389/fnhum.2018.00353"),   # Zaccaro 2018
@@ -50,14 +55,14 @@ PHILOSOPHY_SOURCES = [
 
 
 def origin_sources():
-    """[(popisok, url)] pre Sprievodcu aj Historiu - jeden zoznam, jeden
-    stav, prelozene popisky."""
+    """[(label, url)] for the Guide and History - one list, one state,
+    translated labels."""
     return [(tr(key), url) for key, url in PHILOSOPHY_SOURCES]
 
 
 def guide_cards():
-    """Znovu nacita preklady pre aktualny jazyk - vola sa pri kazdom
-    otvoreni/prekresleni panelu Sprievodca."""
+    """Reloads the translations for the current language - called on every
+    opening/redraw of the Guide panel."""
     cards = []
     for card_id in GUIDE_CARD_IDS:
         card = {

@@ -1,11 +1,14 @@
 # -*- coding: utf-8 -*-
-"""Opravy po overeni triaze 0.2 - veci, ktore mohli ublizit.
+"""Fixes after checking the 0.2 triage - things that could do harm.
 
-  * styri kategorie hlasky su pevne: slot 0-3 sa neda odstranit (kategoriu,
-    obrazok aj meranie urcuje pozicia) a profil s menej nez styrmi slotmi
-    dostane chybajuce kategorie na koniec, vypnute - nic sa nemaze,
-  * prvy × povie, ze appka bezi dalej v liste (port, meranie) a da na vyber,
-  * SOUL.md netvrdi plosne, ze data neopustia pocitac.
+  * the four cue categories are fixed: slots 0-3 cannot be removed (the
+    category, picture and measurement are set by the position) and a profile
+    with fewer than four slots gets the missing categories at the end,
+    disabled - nothing is deleted,
+  * the first × says that the app keeps running in the tray (port,
+    measurement) and offers a choice,
+  * SOUL.md does not claim across the board that the data never leave the
+    computer.
 """
 import ast
 import json
@@ -31,7 +34,7 @@ def _read(meno):
 
 def _funkcia(subor, trieda, meno):
     if (subor, trieda) == ("app.py", "DandurfApp"):
-        # metoda DandurfApp - aj ked byva v mixine v app_*.py
+        # a DandurfApp method - even when it lives in a mixin in app_*.py
         return ast.unparse(uzol_metody(meno))
     strom = ast.parse(_read(subor))
     for uzol in ast.walk(strom):
@@ -43,7 +46,7 @@ def _funkcia(subor, trieda, meno):
 
 
 # --------------------------------------------------------------------------
-# Styri pevne kategorie
+# Four fixed categories
 # --------------------------------------------------------------------------
 
 def test_je_kategoria():
@@ -80,8 +83,8 @@ def nastavenia(tmp_path, monkeypatch):
     import app as app_mod
     import app_prefs
     cesta = str(tmp_path / "dandurf_settings.json")
-    # `load_settings` byva v mixine app_prefs (PrefsMixin) a cita
-    # SETTINGS_PATH zo svojho modulu - presmerovat ho treba tam.
+    # `load_settings` lives in the app_prefs mixin (PrefsMixin) and reads
+    # SETTINGS_PATH from its own module - it has to be redirected there.
     monkeypatch.setattr(app_prefs, "SETTINGS_PATH", cesta)
     povodny = i18n._lang["code"]
 
@@ -127,7 +130,7 @@ def _app_so_slotmi(flags):
 def test_kategoria_sa_neda_odstranit(monkeypatch):
     import app as app_mod
     import ui_kit
-    # 0.2.2 davka 4: oznamy v okne appky (`ui_kit.notify`), nie messagebox
+    # 0.3 batch 4: notices in the app window (`ui_kit.notify`), no messagebox
     monkeypatch.setattr(ui_kit, "notify",
                         lambda *a, **k: pytest.fail("ziadna hlaska"))
     a, zaznam = _app_so_slotmi([False] * 4)
@@ -147,15 +150,15 @@ def test_hromadne_odstranenie_nesiahne_na_kategorie(monkeypatch):
     import app as app_mod
     import ui_kit
     otazky = []
-    # 0.2.2 davka 4: potvrdenie v okne appky (`ui_kit.confirm`)
+    # 0.3 batch 4: confirmation in the app window (`ui_kit.confirm`)
     monkeypatch.setattr(ui_kit, "confirm",
                         lambda *a, **k: otazky.append(a) or True)
     monkeypatch.setattr(ui_kit, "notify", lambda *a, **k: None)
-    # oznacene su vsetky styri kategorie -> nic sa nestane, nic sa nepyta
+    # all four categories are selected -> nothing happens, nothing is asked
     a, zaznam = _app_so_slotmi([True] * 4)
     app_mod.DandurfApp.remove_selected_slots(a)
     assert zaznam["rebuild"] is None and not otazky
-    # kategorie + jeden slot navyse -> odide len ten navyse
+    # categories + one extra slot -> only the extra one goes
     a, zaznam = _app_so_slotmi([True] * 5)
     app_mod.DandurfApp.remove_selected_slots(a)
     assert len(otazky) == 1
@@ -178,7 +181,7 @@ def test_import_profilu_doplni_kategorie():
 
 
 # --------------------------------------------------------------------------
-# Prvy × - appka povie, ze bezi dalej v liste
+# The first × - the app says that it keeps running in the tray
 # --------------------------------------------------------------------------
 
 def _app_na_zatvorenie(vysvetlene):
@@ -192,8 +195,8 @@ def _app_na_zatvorenie(vysvetlene):
 
 @pytest.mark.parametrize("odpoved, ocakavane", [("tray", "tray"), ("quit", "quit")])
 def test_prvy_krizik_sa_opyta(monkeypatch, odpoved, ocakavane):
-    # 0.2.2 davka 4: okno appky s dvoma tlacidlami (`ui_kit.choose`), nie
-    # systemove Ano/Nie - odpoved je hodnota tlacidla, nie True/False
+    # 0.3 batch 4: an app window with two buttons (`ui_kit.choose`), not the
+    # system Yes/No - the answer is the button value, not True/False
     import app as app_mod
     import ui_kit
     monkeypatch.setattr(app_mod, "TRAY_AVAILABLE", True)
@@ -232,8 +235,8 @@ def test_veta_o_liste_hovori_o_porte_aj_merani():
     assert "{port}" in zaznam["sk"] and "{port}" in zaznam["en"]
     assert "meriam a ukladám" in zaznam["sk"] and "spustená" in zaznam["sk"]
     assert "measuring and saving" in zaznam["en"]
-    # jazyková fáza 0.2: každý jazyk má vlastnú vetu z nového SK - s portom,
-    # tlačidlom ▶ a otázkou v samostatnom odseku
+    # language phase 0.2: every language has its own sentence from the new SK -
+    # with the port, the ▶ button and the question in a separate paragraph
     for jazyk in i18n.LANGUAGES:
         assert "{port}" in zaznam[jazyk] and "▶" in zaznam[jazyk], jazyk
         assert zaznam[jazyk].count("\n") == zaznam["sk"].count("\n"), jazyk
@@ -242,7 +245,7 @@ def test_veta_o_liste_hovori_o_porte_aj_merani():
 
 
 # --------------------------------------------------------------------------
-# SOUL.md - ziadny plosny slub o sukromi
+# SOUL.md - no blanket privacy promise
 # --------------------------------------------------------------------------
 
 def test_soul_menuje_vynimku_v_sukromi():

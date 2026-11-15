@@ -1,30 +1,32 @@
-"""Zivy HUD panel v hre - tep, zataz a priebeh relacie.
+"""Live in-game HUD panel - heart rate, load and session progress.
 
-Co to je
---------
-Jedno male klikom-priechodne okno v rohu obrazovky, ktore ukazuje:
+What it is
+----------
+One small click-through window in a corner of the screen that shows:
 
-  * aktualny tep velkym cislom + srdce, ktore bije v REALNOM rytme
-    (periferne videnie tak dostane informaciu aj bez citania cisla),
-  * krivku tepu za poslednych ~3 minuty s vyznacenou kritickou hranicou
-    a vlastnou pokojovou zakladnou,
-  * pruh "Záťaž" (0-100) - zlozeninu z hr_stats.py, nie vymysleny "stres",
-  * riadok relacie: dlzka, pocet spustenych pripomienok, cas nad hranicou.
+  * the current heart rate as a big number + a heart that beats in the
+    REAL rhythm (so peripheral vision gets the information even without
+    reading the number),
+  * the heart-rate curve for the last ~3 minutes with the critical limit
+    and the player's own resting baseline marked,
+  * the "Záťaž" (Load) bar (0-100) - a composite from hr_stats.py, not a
+    made-up "stress",
+  * the session row: length, number of cues fired, time above the limit.
 
-Preco vlastne okno a nie sucast vizualov slotov
------------------------------------------------
-Vizualy slotov su UDALOSTI (stlacil si klavesu -> na 3 s sa nieco ukaze).
-HUD je STAV - visi tam cely cas. Miesanie oboch do jedneho okna by
-znamenalo, ze HUD zhasne vzdy, ked dobehne animacia slotu.
+Why its own window and not part of the slot visuals
+---------------------------------------------------
+Slot visuals are EVENTS (you pressed a key -> something shows for 3 s).
+The HUD is a STATE - it stays there the whole time. Mixing both into one
+window would mean that the HUD goes dark every time a slot animation ends.
 
-Vykon
------
-Prekresluje sa 8x za sekundu a len vtedy, ked je naozaj viditelny. Jeden
-snimok je ~250x105 logickych pixelov (na 4K dvojnasobok), co je rad
-velkosti nizsie nez dychovy kruh - v hre to nie je meratelne.
+Performance
+-----------
+It redraws 8x per second and only when it is really visible. One frame is
+~250x105 logical pixels (double on 4K), which is an order of magnitude
+smaller than the breathing circle - in a game it is not measurable.
 
-Anti-cheat: plati to iste co pre overlay.py - ziadna injekcia, ziadne
-citanie hry, okno je klikom priechodne a v Alt+Tab nie je. Viz
+Anti-cheat: the same applies as for overlay.py - no injection, no reading
+of the game, the window is click-through and not in Alt+Tab. See
 layer_window.py.
 """
 
@@ -34,18 +36,18 @@ import display
 import hud_paint
 from layer_window import LayeredSurface
 
-REFRESH_MS = 125           # 8 fps - srdce staci, aby vyzeralo zivo
-REPOSITION_EVERY_S = 2.0   # ako casto kontrolujeme, ci sa nezmenil monitor
+REFRESH_MS = 125           # 8 fps - enough for the heart to look alive
+REPOSITION_EVERY_S = 2.0   # how often we check whether the monitor changed
 
-# Predvolena poloha: lavy dolny roh, nad beznym miestom pre chat/killfeed.
+# Default position: bottom-left corner, above the usual chat/killfeed spot.
 DEFAULT_POS = (13.0, 90.0)
 
 class StatsHud:
-    """HUD panel so statistikou tepu.
+    """HUD panel with heart-rate statistics.
 
-    Vlastnik (DandurfApp) mu len nastavi konfiguraciu a poviе, odkial brat
-    data (`stats`); o okno, prekreslovanie aj presun medzi monitormi sa
-    stara sam.
+    The owner (DandurfApp) only sets its configuration and tells it where
+    to take data from (`stats`); it takes care of the window, redrawing and
+    moving between monitors itself.
     """
 
     def __init__(self, root, stats, style, monitor_target=display.TARGET_AUTO):
@@ -69,16 +71,16 @@ class StatsHud:
         self._last_reposition = 0.0
         self._ss = 3
 
-        # Riadok 4 ikoniek funkcii pod HUD panelom (nahrada za povodny
-        # celoappkovy "Minimalisticky rezim" - teraz je to sucast tohoto
-        # istého panela, ktory uz beh mal v hre BPM/zataz). Vypnute
-        # predvolene, aby sa panel nezmenil pre nikoho, kto uz HUD pouziva.
+        # A row of 4 function icons under the HUD panel (replaces the original
+        # app-wide "Minimalisticky rezim" (Minimalist mode) - now it is part of
+        # this same panel, which already had BPM/load in game). Off by default,
+        # so the panel does not change for anyone who already uses the HUD.
         self.show_triggers = False
-        self.trigger_icon_color = None   # None = farba temy (ako HUD)
+        self.trigger_icon_color = None   # None = theme colour (like the HUD)
         self._triggers = []              # [(visual_name, enabled)]
         self._on_trigger_click = None    # callback(index)
 
-    # ---------- konfiguracia ----------
+    # ---------- configuration ----------
 
     def configure(self, enabled=None, scale=None, pos=None, opacity=None,
                   critical_bpm=None, monitor_target=None):
@@ -123,14 +125,15 @@ class StatsHud:
 
     def configure_triggers(self, show=None, icon_color=None, triggers=None,
                            on_click=None):
-        """Riadok 4 ikoniek funkcii pod HUD panelom ("Ukazat panel v hre" v
-        Nastaveniach -> V hre -> Vizualy). Nahradza povodny celoappkovy
-        "Minimalisticky rezim" - to isté zobrazenie (BPM + 4 funkcie), ale
-        teraz je to jedna cast HUD panela v hre, nie prepnutie celej appky.
+        """Row of 4 function icons under the HUD panel ("Show the panel in game"
+        in Settings -> In game -> Visuals). Replaces the original app-wide
+        "Minimalisticky rezim" (Minimalist mode) - the same display (BPM + 4
+        functions), but now it is one part of the in-game HUD panel, not a
+        switch of the whole app.
 
-        `triggers`: [(visual_name, enabled), ...] max 4 polozky.
-        `on_click(index)`: zavola sa pri kliku na i-tu ikonku (hrac klikom
-        na malej ikonke spusti tu istu pripomienku ako klavesou).
+        `triggers`: [(visual_name, enabled), ...] max 4 items.
+        `on_click(index)`: called on a click on the i-th icon (by clicking
+        the small icon the player fires the same cue as with the key).
         """
         rebuild = False
         if show is not None:
@@ -146,7 +149,7 @@ class StatsHud:
         if rebuild and self.surface is not None:
             self._teardown_window()
 
-    # ---------- zivotny cyklus ----------
+    # ---------- lifecycle ----------
 
     def start(self):
         if not self.enabled or self._job is not None:
@@ -171,7 +174,7 @@ class StatsHud:
         self.surface = None
         self._geometry = None
 
-    # ---------- kreslenie ----------
+    # ---------- drawing ----------
 
     def _ensure_window(self):
         monitor = display.resolve_target(self.monitor_target, self.root)
@@ -186,7 +189,7 @@ class StatsHud:
         if self.surface is not None and self._geometry == key:
             return True
         if self.surface is not None and self._geometry is not None:
-            # zmenil sa len monitor/poloha - staci okno presunut
+            # only the monitor/position changed - moving the window is enough
             if self._geometry[4:6] == (w, h):
                 self.surface.move(x, y)
                 self._geometry = key
@@ -221,19 +224,21 @@ class StatsHud:
             return
 
         stats = self.stats
-        # Hned po navrate tepu (`HeartStats.is_settling`) sa zataz rozbieha od
-        # nuly - ide sa tou istou cestou ako kalibracia (prazdny pruh,
-        # neutralna farba), len namiesto "kalibrujem" je tiche "…".
+        # Right after the heart rate returns (`HeartStats.is_settling`) the
+        # load ramps up from zero - it takes the same path as calibration
+        # (empty bar, neutral colour), only instead of "kalibrujem"
+        # (calibrating) there is a quiet "…".
         labels = self.labels
         settling = self.connected and stats.is_settling
         if settling:
             labels = dict(labels, calibrating="…")
-        # Pasmo sa pocita RAZ, v `HeartStats.zone` (tep voci pokoju) - to
-        # iste slovo ukazuje Dnes aj kontrolka tepu. `render_hud` ho len
-        # nakresli; kalibracia, usadzanie aj odpojenie maju prednost.
-        # Cislo je `display_bpm` (median par sekund), nie posledna surova
-        # vzorka - dva rady tepu v jednom zdroji by ho inak rozskakali.
-        # Krivka, zataz aj pasmo ostavaju na surovych vzorkach.
+        # The zone is computed ONCE, in `HeartStats.zone` (heart rate vs
+        # rest) - the same word is shown by Today and the heart-rate indicator.
+        # `render_hud` only draws it; calibration, settling and disconnection
+        # take precedence.
+        # The number is `display_bpm` (median of a few seconds), not the last
+        # raw sample - two heart-rate series in one source would otherwise make
+        # it jump. The curve, load and zone stay on raw samples.
         image = hud_paint.render_hud(
             self.style,
             bpm=stats.display_bpm if self.connected else None,
@@ -257,17 +262,17 @@ class StatsHud:
         self.surface.show()
 
     def handle_click(self, rel_x, rel_y):
-        """Preklad klikneho bodu (0..1 v ramci okna) na index ikonky v
-        riadku triggerov - POUZITELNE LEN v nahlade vnutri appky (napr.
-        tlacidlo "Test" v Nastaveniach), NIE v realnej hre.
+        """Maps a clicked point (0..1 in the window) to an icon index in the
+        trigger row - USABLE ONLY in the preview inside the app (e.g. the
+        "Test" button in Settings), NOT in a real game.
 
-        Docela zamerne: HUD panel v hre ostava VZDY click-through
-        (WS_EX_TRANSPARENT) - to je zakladny bezpecnostny/anti-cheat
-        princip appky (viz layer_window.py hlavicka). Vypnutie
-        click-through len kvoli klikatelnym ikonkam by znamenalo, ze
-        appka v hre trvalo krade klik zo hry, co je presne to riziko,
-        ktoremu sa ma vyhybat. Ikonky su preto v hre CISTO VIZUALNA
-        pripomienka funkcie (piktogram), nie tlacidlo.
+        Quite deliberately: the in-game HUD panel ALWAYS stays
+        click-through (WS_EX_TRANSPARENT) - that is the app's basic
+        safety/anti-cheat principle (see the layer_window.py header).
+        Turning off click-through just for clickable icons would mean the
+        app permanently steals clicks from the game, which is exactly the
+        risk to avoid. In game the icons are therefore a PURELY VISUAL
+        reminder of the function (a pictogram), not a button.
         """
         if not self.show_triggers or not self._triggers:
             return None

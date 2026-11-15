@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
-"""Pat novych kariet na Dnes a Historia ako cely obraz (0.2, widgets-history).
+"""Five new Today cards and History as a whole picture (0.2, widgets-history).
 
-Karty: dlzka relacie, minuty od poslednej hlasky, cas v pokoji, kvalita
-signalu, citene vs. merane z poslednej ukoncenej relacie. Historia: graf
-aj pre dlzku, pokoj, signal a pocet hlasok; detail relacie so vsetkymi
-hodnotami; stlpec pokrytia signalu v CSV.
+Cards: session length, minutes since the last cue, time in calm, signal
+quality, felt vs. measured from the last finished session. History: a
+chart also for length, calm, signal and cue count; a session detail with
+all values; a signal coverage column in the CSV.
 
-Bez Tk: ciste funkcie z hr_stats/settings_model a skutocne metody
-`DandurfApp` na malej atrape (rovnako ako test_dashboard_cards.py).
+Without Tk: pure functions from hr_stats/settings_model and real
+`DandurfApp` methods on a small dummy (just like test_dashboard_cards.py).
 """
 import os
 import sys
@@ -33,7 +33,7 @@ NOVE_V_HISTORII = ("session_len", "calm_time", "signal", "breath")
 
 @pytest.fixture
 def sk():
-    """Texty v slovencine; povodny jazyk sa po teste vrati."""
+    """Texts in Slovak; the original language is restored after the test."""
     povodny = i18n._lang["code"]
     i18n.set_lang("sk")
     yield
@@ -46,7 +46,7 @@ def _app():
 
 
 # --------------------------------------------------------------------------
-# id a normalizacia
+# id and normalisation
 # --------------------------------------------------------------------------
 
 def test_nove_karty_su_v_katalogu_a_predvolene_ostavaju():
@@ -98,7 +98,7 @@ def test_kazda_nova_karta_ma_vsetky_texty_vo_vsetkych_jazykoch():
 
 
 def test_vysvetlenie_hovori_aj_co_karta_nemeria(sk):
-    """Kazda `more` veta ma povedat hranicu metriky, nielen co meria."""
+    """Every `more` line: the metric's limit, not only what it measures."""
     from i18n import tr
     nie = ("nie ", "nie je", "neznamená", "nezaráta", "nemusia")
     for sid in NOVE:
@@ -111,12 +111,12 @@ def test_felt_vs_measured_nehovori_kto_ma_pravdu(sk):
     more = tr("metric.felt_vs_measured.more")
     assert "ani jedno nie je" in more
     assert "vydelená desiatimi" in more, "musi povedat, co je merane cislo"
-    # aj kratka veta (viditelna bez rozbalenia) povie, ze merane je spicka
+    # the short line too (visible unexpanded) says measured is the peak
     assert "špičky" in tr("metric.felt_vs_measured.short")
 
 
 # --------------------------------------------------------------------------
-# hr_stats: hodnoty jednej ulozenej relacie
+# hr_stats: values of one saved session
 # --------------------------------------------------------------------------
 
 def _relacia(**kw):
@@ -135,7 +135,7 @@ def test_cas_v_pokoji_z_pasiem_alebo_none():
     assert hr_stats.cas_v_pokoji_s(_relacia(zone_seconds=None)) is None
     assert hr_stats.cas_v_pokoji_s(
         _relacia(zone_seconds={"calm": "x", "raised": 1})) is None
-    # pasma su, pokoj nula: to je vypoved, nie "nevieme"
+    # there are bands, calm is zero: that is a statement, not "we don't know"
     assert hr_stats.cas_v_pokoji_s(
         _relacia(zone_seconds={"calm": 0.0, "raised": 60.0})) == 0.0
 
@@ -158,10 +158,10 @@ def test_namerana_zataz_na_skale_0_10(peak, cakam):
 
 def test_citene_a_merane():
     assert hr_stats.citene_a_merane(_relacia(felt_load=6)) == (6, 8)
-    # preskoceny dotaznik -> nie je co porovnat
+    # skipped questionnaire -> nothing to compare
     assert hr_stats.citene_a_merane(_relacia()) is None
     assert hr_stats.citene_a_merane(_relacia(felt_load=None)) is None
-    # spicka chyba -> citene ostava, merane "nevieme"
+    # peak missing -> felt stays, measured "we don't know"
     assert hr_stats.citene_a_merane(_relacia(felt_load=3, peak_stress=None)) == (3, None)
     assert hr_stats.citene_a_merane(None) is None
 
@@ -174,8 +174,8 @@ def test_posledna_relacia_podla_casu_nie_poradia():
 
 
 def test_posledna_relacia_preskoci_importovanu():
-    """Zlucany cudzi export (`imported`) nie je "tvoja posledna relacia" -
-    aj keby bol novsi, karta ma ukazat tvoje cisla, alebo "—"."""
+    """A merged foreign export (`imported`) is not "your last session" -
+    even if it is newer, the card should show your numbers, or "—"."""
     moja = _relacia(started=100.0, felt_load=4)
     cudzia = _relacia(started=500.0, felt_load=9, imported=True)
     assert hr_stats.posledna_relacia([moja, cudzia]) is moja
@@ -183,7 +183,7 @@ def test_posledna_relacia_preskoci_importovanu():
 
 
 # --------------------------------------------------------------------------
-# hr_stats: buckety grafu
+# hr_stats: chart buckets
 # --------------------------------------------------------------------------
 
 def test_bucket_spriemeruje_nove_metriky_na_relaciu():
@@ -199,7 +199,7 @@ def test_bucket_spriemeruje_nove_metriky_na_relaciu():
     assert b["duration_s"] == pytest.approx(2700.0)
     assert b["calm_s"] == pytest.approx(1200.0)
     assert b["cues"] == pytest.approx(1.5)
-    # pokrytie: (3492/3600 + 1800/1800) / 2
+    # coverage: (3492/3600 + 1800/1800) / 2
     assert b["coverage"] == pytest.approx((3492 / 3600.0 + 1.0) / 2)
     for kluc in hr_stats.BUCKET_METRICS:
         assert kluc in b
@@ -218,14 +218,14 @@ def test_bucket_bez_dat_nove_metriky_none_nie_nula():
 
 
 # --------------------------------------------------------------------------
-# HeartStats: zive hodnoty
+# HeartStats: live values
 # --------------------------------------------------------------------------
 
 def test_posledna_hlaska_len_automaticka_a_dorucena():
     st = hr_stats.HeartStats(critical_bpm=110)
     assert st.last_auto_cue_ts() is None
     st.note_trigger(ts=1000.0, auto=True, source="auto")
-    st.note_trigger(ts=1100.0, auto=False, source="key")          # klavesa / Test
+    st.note_trigger(ts=1100.0, auto=False, source="key")          # key / Test
     assert st.last_auto_cue_ts() == 1000.0
     st.note_trigger(ts=1200.0, auto=True, source="auto", delivered=False)
     assert st.last_auto_cue_ts() == 1000.0, "nevykreslena hlaska sa nerata"
@@ -244,7 +244,7 @@ def test_cas_v_pokoji_zivo():
         st.add(62, ts=t0 + i)
     assert st.calm_seconds() == pytest.approx(19.0)
     for i in range(20, 30):
-        st.add(80, ts=t0 + i)                  # +20 nad pokojom = zvysena
+        st.add(80, ts=t0 + i)                  # +20 above calm = raised
     assert st.calm_seconds() == pytest.approx(20.0)
 
 
@@ -258,7 +258,7 @@ def test_cas_v_pokoji_prvy_vecer_kym_nie_je_zakladna():
 
 
 # --------------------------------------------------------------------------
-# DandurfApp._dashboard_stat_value pre nove karty
+# DandurfApp._dashboard_stat_value for the new cards
 # --------------------------------------------------------------------------
 
 def _atrapa(otvorena=True, sessions=()):
@@ -266,8 +266,8 @@ def _atrapa(otvorena=True, sessions=()):
     a = types.SimpleNamespace(
         hr_stats=hr_stats.HeartStats(critical_bpm=110),
         _hr_session_open=otvorena,
-        # Karty na Dnes ukazuju len aktualny svet (B3-worlds); relacie
-        # bez stitku patria Hre.
+        # The cards on Today show only the current world (B3-worlds);
+        # sessions without a label belong to Play.
         world="play",
         _history_cached=lambda: list(sessions),
         _fmt_dlzka=D._fmt_dlzka, _fmt_pokrytie=D._fmt_pokrytie,
@@ -363,7 +363,7 @@ def test_citene_vs_merane_pokazena_historia_nezhodi_kartu(sk):
 
 
 # --------------------------------------------------------------------------
-# Historia: metriky grafu
+# History: chart metrics
 # --------------------------------------------------------------------------
 
 def test_historia_ma_nove_metriky_a_kazda_je_zapojena():
@@ -428,7 +428,7 @@ def test_graf_historie_kresli_nove_metriky(sk, metric, cakam, bars, decimals):
         history_trend_delta=_Label(), pal=theme.tokens(theme.ZEN),
         history_metric=metric, history_period=hr_stats.PERIOD_WEEK,
         _history_sessions=lambda: sessions,
-        # Graf cita len relacie aktualneho sveta (B3-worlds).
+        # The chart reads only sessions of the current world (B3-worlds).
         _world_sessions=lambda: sessions)
     for name in ("HISTORY_METRICS", "_METRIC_BUCKET_KEY", "_METRIC_BARS",
                  "_METRIC_SCALE", "_METRIC_DECIMALS"):
@@ -443,7 +443,7 @@ def test_graf_historie_kresli_nove_metriky(sk, metric, cakam, bars, decimals):
 
 
 # --------------------------------------------------------------------------
-# Historia: detail relacie ukazuje vsetko
+# History: the session detail shows everything
 # --------------------------------------------------------------------------
 
 def test_detail_ma_vsetky_hodnoty_relacie():
@@ -468,7 +468,7 @@ def _detail(session):
 
 def test_detail_hodnoty(sk):
     v = _detail(_relacia(duration_s=3900.0, felt_load=6))
-    # 0.2.2 davka 4: zataz je vsade "x/100" (predtym hole "83")
+    # 0.3 batch 4: load is "x/100" everywhere (before, a bare "83")
     assert v == {
         "duration": "1 h 05 min", "avg": "72", "max": "131", "calm": "30 min",
         "over": "2:05", "breath": "3", "peak": "83/100", "hrr": "+22",
@@ -482,13 +482,13 @@ def test_detail_stara_relacia_pomlcky_nie_nuly(sk):
     for kluc in ("duration", "avg", "max", "calm", "over", "breath", "peak",
                  "hrr", "hrpi", "signal", "felt"):
         assert v[kluc] == "—", kluc
-    # nula je vypoved, nie "nevieme"
+    # zero is a statement, not "we don't know"
     v = _detail(_relacia(time_over_s=0.0, auto_triggers=0))
     assert v["over"] == "0:00" and v["breath"] == "0"
 
 
 # --------------------------------------------------------------------------
-# CSV: stlpec pokrytia signalu
+# CSV: signal coverage column
 # --------------------------------------------------------------------------
 
 STARE_STLPCE = (
@@ -500,7 +500,8 @@ STARE_STLPCE = (
     "body_peak", "cue_verdict", "confounded")
 
 
-# words-and-fixes (0.2): za `signal` pribudli styri stlpce, zase na konci.
+# words-and-fixes (0.2): four columns were added after `signal`, again at
+# the end.
 NOVE_STLPCE = ("world", "dropouts", "blind_s", "pause_episodes")
 I_SIGNAL = len(STARE_STLPCE)
 
@@ -534,7 +535,7 @@ def _bunky(relacia):
 
 
 def test_csv_svet_je_ten_isty_ako_v_historii():
-    """`session_world`: dotaznik > svet zo startu > Hra (aj stara relacia)."""
+    """`session_world`: questionnaire > start world > Play (old ones too)."""
     assert _bunky(_relacia(world="work"))["world"] == "work"
     assert _bunky(_relacia(world="work", activity="play"))["world"] == "play"
     assert _bunky(_relacia())["world"] == "play"
@@ -545,10 +546,10 @@ def test_csv_svet_je_ten_isty_ako_v_historii():
 def test_csv_vypadky_slepy_cas_a_pauzy():
     b = _bunky(_relacia(dropouts=2, blind_s=42.8, pause_episodes=17))
     assert (b["dropouts"], b["blind_s"], b["pause_episodes"]) == ("2", "42,8", "17")
-    # nula je vypoved
+    # zero is a statement
     b = _bunky(_relacia(dropouts=0, blind_s=0.0, pause_episodes=0))
     assert (b["dropouts"], b["blind_s"], b["pause_episodes"]) == ("0", "0,0", "0")
-    # stara relacia ich nema, pokazeny import nezhodi export
+    # an old session lacks them, a broken import does not crash the export
     b = _bunky({"started": 1_700_000_000})
     assert (b["dropouts"], b["blind_s"], b["pause_episodes"]) == ("", "", "")
     b = _bunky(_relacia(dropouts="x;y", blind_s=-3, pause_episodes=None))
@@ -556,8 +557,8 @@ def test_csv_vypadky_slepy_cas_a_pauzy():
 
 
 def test_csv_hlasky_su_to_iste_cislo_ako_detail():
-    """Jedno cislo na relaciu vsade (`hlasky_relacie`)."""
-    assert _bunky(_relacia())["breathing"] == "3"      # auto, nie `triggers` 5
+    """One number per session everywhere (`hlasky_relacie`)."""
+    assert _bunky(_relacia())["breathing"] == "3"      # auto, not `triggers` 5
     stara = _relacia()
     del stara["auto_triggers"]
     assert _bunky(stara)["breathing"] == "5"
@@ -574,8 +575,9 @@ def test_csv_nove_stlpce_maju_hlavicku_sk_en(sk):
 
 
 def test_tabulka_historie_ukazuje_to_iste_cislo_hlasok():
-    """Stlpec „Hlášky" v tabulke rata ako detail, graf aj CSV - nie stare
-    `triggers` (to ratalo aj klavesu a tlacidlo „Test")."""
+    """The "Cues" column in the table counts like the detail, chart and CSV -
+    not the old `triggers` (that also counted the key and the "Test"
+    button)."""
     import ast
     from _zdroj_appky import strom_appky
     strom = strom_appky()

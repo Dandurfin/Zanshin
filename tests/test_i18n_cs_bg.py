@@ -1,18 +1,20 @@
 # -*- coding: utf-8 -*-
-"""Cestina a bulharcina (0.2) - jedenast jazykov v appke aj v instalatore.
+"""Czech and Bulgarian (0.2) - eleven languages in the app and the installer.
 
-Co tieto testy strazia:
-  * cs a bg maju VLASTNY preklad pre kazdy kluc - okrem textov, ktore autor
-    zamerne napisal rovnako po slovensky aj anglicky (mena, skratky, jednotky,
-    symboly: "BPM", "HRPI", "Sumi", "🗑") a par slov, ktore su v cestine
-    naozaj rovnake ako v anglictine,
-  * preklad nerozbije {placeholdery} ani riadky, a `tr()` pre cs/bg nikdy
-    nespadne, ani ked je zaznam neuplny (ide anglicky, nie slovensky),
-  * cesky a bulharsky Windows dostane pri prvom starte svoj jazyk,
-  * modul `i18n_cs_bg.py` zoberie aj PyInstaller a instalator ma cestinu aj
-    bulharcinu so vsetkymi vlastnymi hlaskami,
-  * bulharsky stitok zataze („НАТОВАРВАНЕ“) sa na HUD zmesti vedla slova
-    pasma - HUD texty nemeria ani neorezava, kresli ich na pevne miesta.
+What these tests guard:
+  * cs and bg have their OWN translation for every key - except texts the
+    author deliberately wrote the same in Slovak and English (names,
+    abbreviations, units, symbols: "BPM", "HRPI", "Sumi", "🗑") and a few
+    words that really are the same in Czech as in English,
+  * the translation does not break {placeholders} or lines, and `tr()` for
+    cs/bg never crashes, even when an entry is incomplete (English is used, not
+    Slovak),
+  * Czech and Bulgarian Windows get their language on the first start,
+  * PyInstaller picks up the `i18n_cs_bg.py` module too, and the installer has
+    Czech and Bulgarian with all its own messages,
+  * the Bulgarian load label ("НАТОВАРВАНЕ") fits on the HUD next to the zone
+    word - the HUD neither measures nor clips texts, it draws them at fixed
+    places.
 """
 import os
 import re
@@ -30,10 +32,11 @@ from _zdroj_appky import zdroj_appky  # noqa: E402
 ROOT = os.path.join(os.path.dirname(__file__), "..")
 NOVE = {"cs": i18n_cs_bg.CS, "bg": i18n_cs_bg.BG}
 
-# Slova, ktore su v cestine naozaj rovnake ako v anglictine, hoci slovencina
-# ma ine (valencia / Štart). Vsetko ostatne zhodne s EN je chyba prekladu.
+# Words that really are the same in Czech as in English, although Slovak has
+# different ones (valencia / Štart). Everything else equal to EN is a
+# translation error.
 ZHODA_S_ANGLICTINOU = {
-    # (0.2.2 davka 4: mrtvy "tray.toggle" - Start / Stop - je zo slovnika zmazany)
+    # (0.3 batch 4: dead "tray.toggle" - Start / Stop - removed from dictionary)
     "cs": {"history.export_col.valence"},  # valence
     "bg": set(),
 }
@@ -49,14 +52,14 @@ def _placeholdery(text):
 
 
 class _Hocico:
-    """Hodnota pre lubovolny {placeholder} aj s formatom ({slope:+.1f})."""
+    """A value for any {placeholder}, even with a format ({slope:+.1f})."""
 
     def __format__(self, spec):
         return "x"
 
 
 # --------------------------------------------------------------------------
-# Jazyky
+# Languages
 # --------------------------------------------------------------------------
 
 def test_cestina_a_bulharcina_su_medzi_jazykmi():
@@ -66,7 +69,7 @@ def test_cestina_a_bulharcina_su_medzi_jazykmi():
 
 
 def test_prepinac_ukazuje_nativne_nazvy():
-    """Prepinac jazyka pise kazdy jazyk jeho vlastnym menom (staticky, bez Tk)."""
+    """Language switch shows each language by its own name (static, no Tk)."""
     src = zdroj_appky()
     blok = src[src.index("LANG_NATIVE_LABELS = {"):]
     blok = blok[:blok.index("}")]
@@ -75,9 +78,10 @@ def test_prepinac_ukazuje_nativne_nazvy():
 
 
 def test_kazdy_jazyk_ma_svoj_nazov():
-    """Log po prepnuti jazyka cita `lang.{kod}` (app.on_lang_switch). Kluc je
-    dynamicky, takze ho test_i18n_keys nevidi - pri cestine a bulharcine
-    chybal a do logu sa zapisal surovy kluc („…prepnuty na: lang.cs“)."""
+    """The log after a language switch reads `lang.{kod}` (app.on_lang_switch).
+    The key is dynamic, so test_i18n_keys does not see it - for Czech and
+    Bulgarian it was missing and the raw key went into the log
+    ("…prepnuty na: lang.cs")."""
     for kod in i18n.LANGUAGES:
         kluc = f"lang.{kod}"
         assert kluc in i18n.STRINGS, kluc
@@ -93,18 +97,18 @@ def test_kazdy_jazyk_ma_svoj_nazov():
     ("", "en"),
 ])
 def test_jazyk_windowsu(monkeypatch, locale, cakany):
-    """Cesky Windows dostaval do 0.2 slovencinu - teraz vlastnu cestinu."""
+    """Czech Windows got Slovak until 0.2 - now its own Czech."""
     monkeypatch.setattr(i18n, "_win_locale", lambda: locale)
     assert i18n.system_lang() == cakany
 
 
 # --------------------------------------------------------------------------
-# Preklady
+# Translations
 # --------------------------------------------------------------------------
 
 def test_modul_prekladu_pokryva_presne_vsetky_kluce():
-    """Kazdy kluc appky ma cesky aj bulharsky text a modul nenosi mrtve kluce
-    (napr. `slots.add`, ktory appka uz nema)."""
+    """Every app key has a Czech and a Bulgarian text and the module carries
+    no dead keys (e.g. `slots.add`, which the app no longer has)."""
     for jazyk, preklady in NOVE.items():
         chyba = sorted(set(i18n.STRINGS) - set(preklady))
         navyse = sorted(set(preklady) - set(i18n.STRINGS))
@@ -115,9 +119,10 @@ def test_modul_prekladu_pokryva_presne_vsetky_kluce():
 
 
 def test_cs_bg_maju_vlastny_preklad():
-    """Kde sa slovencina a anglictina lisia, text je jazykovy - cs aj bg tam
-    musia mat vlastny preklad, nie anglicku nahradu. Kde autor napisal SK aj
-    EN rovnako (mena, skratky, jednotky, symboly), zhoda je zamerna."""
+    """Where Slovak and English differ, the text is language-specific - cs and
+    bg must have their own translation there, not an English substitute.
+    Where the author wrote SK and EN the same (names, abbreviations, units,
+    symbols), the match is deliberate."""
     for jazyk in NOVE:
         zle = [kluc for kluc, zaznam in i18n.STRINGS.items()
                if zaznam["sk"] != zaznam["en"]
@@ -127,7 +132,7 @@ def test_cs_bg_maju_vlastny_preklad():
 
 
 def test_vynimky_su_naozaj_rovnake():
-    """Zoznam vynimiek nesmie zastarat - kazda musi byt este stale zhoda."""
+    """The exception list must not go stale - each must still be a match."""
     for jazyk, kluce in ZHODA_S_ANGLICTINOU.items():
         for kluc in kluce:
             zaznam = i18n.STRINGS[kluc]
@@ -135,7 +140,7 @@ def test_vynimky_su_naozaj_rovnake():
 
 
 def test_cestina_nie_je_slovencina():
-    """Pismena, ktore cestina nema - neprelozeny slovensky text by ich mal."""
+    """Letters Czech lacks - an untranslated Slovak text would have them."""
     for kluc, text in i18n_cs_bg.CS.items():
         assert not set(text) & set("äÄľĽĺĹŕŔôÔ"), kluc
 
@@ -157,12 +162,12 @@ def test_placeholdery_riadky_a_okraje_sedia():
             assert text.strip(), (jazyk, kluc)
             assert _placeholdery(text) == _placeholdery(sk), (jazyk, kluc)
             assert text.count("\n") == sk.count("\n"), (jazyk, kluc)
-            assert "\\n" not in text, (jazyk, kluc)       # doslovne lomitko+n
+            assert "\\n" not in text, (jazyk, kluc)       # literal backslash+n
 
 
 @pytest.mark.parametrize("jazyk", ["cs", "bg"])
 def test_tr_pre_cs_bg_nikdy_nespadne(jazyk):
-    """Kazdy kluc sa da naformatovat (aj s formatom typu {slope:+.1f})."""
+    """Every key can be formatted (even with a format like {slope:+.1f})."""
     povodny = i18n._lang["code"]
     try:
         i18n.set_lang(jazyk)
@@ -186,7 +191,7 @@ def test_neuplny_zaznam_ide_anglicky_a_zly_preklad_nezhodi_okno():
             assert i18n.tr_lang(jazyk, "__test.len_sk_en") == "hi {meno}"
             assert i18n.tr("__test.zly_preklad", n=3) == "b 3"
         i18n.set_lang("en")
-        with pytest.raises(KeyError):       # chyba volania sa neschova
+        with pytest.raises(KeyError):       # a call error is not hidden
             i18n.tr("__test.zly_preklad", zle=3)
     finally:
         del i18n.STRINGS["__test.len_sk_en"]
@@ -201,11 +206,11 @@ def test_sk_en_plni_vsetkych_jedenast_jazykov():
 
 
 # --------------------------------------------------------------------------
-# Build a instalator
+# Build and installer
 # --------------------------------------------------------------------------
 
 def test_pyinstaller_zoberie_modul_prekladov():
-    """Staticky import v i18n.py (PyInstaller ho vidi) a poistka v .spec."""
+    """Static import in i18n.py (PyInstaller sees it), safeguard in .spec."""
     assert "from i18n_cs_bg import " in _read("i18n.py").decode("utf-8")
     spec = _read("Dandurf.spec").decode("utf-8")
     assert "'i18n_cs_bg'," in spec[spec.index("hiddenimports=["):]
@@ -232,7 +237,7 @@ def test_instalator_hovori_jedenastimi_jazykmi():
         for jazyk, veta in preklady.items():
             if sprava == "KeepDataHint":
                 assert "%1" in veta, (jazyk, veta)
-    # tlacidla MsgBox su Ano/Nie systemu - veta ich musi volat rovnako
+    # MsgBox buttons are the system's Ano/Nie - the text must name them so
     assert "Ano" in hlasky["KeepDataHint"]["czech"]
     assert "„Да“" in hlasky["KeepDataHint"]["bulgarian"]
 
@@ -242,9 +247,10 @@ def test_instalator_hovori_jedenastimi_jazykmi():
 # --------------------------------------------------------------------------
 
 def test_stitok_zataze_sa_na_hud_zmesti_vo_vsetkych_jazykoch():
-    """Pruh zataze: stitok vlavo, slovo pasma (alebo „kalibrujem...“) vpravo,
-    9 pt s prestrkanim 1,8 - presne ako `hud_paint.render_hud`. Nic sa
-    neorezava, takze medzi nimi musi ostat volne miesto."""
+    """Load strip: label on the left, the zone word (or "calibrating...") on
+    the right, 9 pt with letter spacing 1,8 - exactly like
+    `hud_paint.render_hud`. Nothing is clipped, so free space must remain
+    between them."""
     hud_paint = pytest.importorskip("hud_paint")
     if not hud_paint.PIL_AVAILABLE:
         pytest.skip("bez Pillow sa HUD nekresli")

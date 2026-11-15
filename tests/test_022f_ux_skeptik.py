@@ -1,19 +1,21 @@
 # -*- coding: utf-8 -*-
-"""Skeptik UX davky 4b (0.2.2): opravy najdene na snimkach vlastnych okien.
+"""UX skeptic for batch 4b (0.3): fixes found on screenshots of our windows.
 
-Strazi sa:
-  * stvorceky mriezky Pravidelnost lezia na celych px - Tk kreslil
-    vyhladeny polygon na zlomkovych suradniciach (krok je podiel sirky,
-    napr. 40,5 px) so zubatymi ostnami na hranach,
-  * popisky mesiacov a dni idu po tych istych celych px,
-  * riadok relacie v paneli tepu v hre sa zmesti do panela aj s "1 h 15
-    min" (od 4b) v kazdom jazyku - predtym presahoval pravy okraj,
-  * japonsky a cinsky text v paneli tepu (a v jeho nahlade v uvode) ma
-    pismo s tymi znakmi, nie prazdne stvorceky,
-  * "nad hranicou" v paneli tepu je hranica tepu, nie prah zataze, aj
-    v ja/zh/ru/fr.
+Guarded:
+  * the Consistency grid squares lie on whole px - Tk drew an anti-aliased
+    polygon at fractional coordinates (the step is a fraction of the width,
+    e.g. 40,5 px) with jagged spikes on the edges,
+  * month and day labels follow the same whole px,
+  * the session row in the in-game heart-rate panel fits in the panel even
+    with "1 h 15 min" (since 4b) in every language - before, it overflowed
+    the right edge,
+  * Japanese and Chinese text in the heart-rate panel (and in its preview
+    in the introduction) has a font with those characters, not empty
+    squares,
+  * "nad hranicou" (above the limit) in the heart-rate panel is the
+    heart-rate limit, not the load threshold, also in ja/zh/ru/fr.
 
-Synteticke data, ziadne Tk okno (atrapa platna, PIL obrazok v pamati).
+Synthetic data, no Tk window (canvas fake, PIL image in memory).
 """
 import os
 import sys
@@ -33,7 +35,7 @@ JAZYKY = ("sk", "en", "ja", "zh", "ru", "es", "de", "fr", "pt", "cs", "bg")
 
 
 class _Platno:
-    """Atrapa tk.Canvas: polozky so suradnicami, bbox ~7 px/znak."""
+    """tk.Canvas fake: items with coordinates, bbox ~7 px/char."""
 
     def __init__(self, sirka):
         self.sirka = sirka
@@ -91,7 +93,8 @@ def _mriezka(sirka, mierka, tyzdnov=26):
 
 
 def test_stvorceky_mriezky_lezia_na_celych_px():
-    # 150 % DPI a sirka, pri ktorej krok vyjde zlomkovy (snimka: 40,5 px)
+    # 150 % DPI and a width at which the step comes out fractional
+    # (screenshot: 40,5 px)
     for sirka, mierka in ((1253, 1.5), (1001, 1.25), (777, 1.0)):
         g = _mriezka(sirka, mierka)
         polygony = [p for p in g.canvas.polozky.values() if p["druh"] == "poly"]
@@ -123,13 +126,13 @@ def test_popisky_mriezky_sedia_na_celych_px_stlpcov():
 
 
 # --------------------------------------------------------------------------
-# Panel tepu v hre (hud_paint)
+# In-game heart-rate panel (hud_paint)
 # --------------------------------------------------------------------------
 
 def _hud_riadok(monkeypatch, jazyk, cas_nad_s=4512):
-    """Vykresli panel tepu s dlhym riadkom relacie (ako
-    `HudMixin._refresh_hud_session_text`) a vrati (painter, text, velkost,
-    prestrkanie), ktorymi sa riadok naozaj kreslil."""
+    """Draws the heart-rate panel with a long session row (like
+    `HudMixin._refresh_hud_session_text`) and returns (painter, text, size,
+    letter spacing) with which the row was really drawn."""
     if not hud_paint.PIL_AVAILABLE:
         pytest.skip("bez PIL")
 
@@ -159,8 +162,9 @@ def _hud_riadok(monkeypatch, jazyk, cas_nad_s=4512):
 
 
 def test_riadok_relacie_v_paneli_tepu_sa_zmesti_v_kazdom_jazyku(monkeypatch):
-    """Od 4b je cas nad hranicou od hodiny "1 h 15 min" - s "ÜBER DER
-    GRENZE" ci "НАД ГРАНИЦАТА" riadok presahoval pravy okraj panela."""
+    """Since 4b the time above the limit is "1 h 15 min" from an hour on -
+    with "ÜBER DER GRENZE" or "НАД ГРАНИЦАТА" the row overflowed the
+    panel's right edge."""
     sirka = hud_paint.HUD_WIDTH - 2 * 14.0
     for jazyk in JAZYKY:
         p, text, velkost, prestrk = _hud_riadok(monkeypatch, jazyk)
@@ -180,10 +184,11 @@ def test_cjk_text_v_paneli_tepu_dostane_pismo_s_tymi_znakmi():
     assert druh("label", "負荷") == "label_ja"
     assert druh("label", "ピーク") == "label_ja"
     assert druh("display", "残心 124") == "display_ja"
-    # zjednodusene znaky (负) japonske pisma nemaju -> cinske pismo
+    # simplified characters (负) are missing from Japanese fonts -> Chinese
+    # font
     assert druh("label", "负荷") == "label_zh"
     assert druh("label", "超过上限 1 小时 15 分") == "label_zh"
-    # znak 残 v ense ma vlastne stetcove pismo
+    # the 残 character in the enso has its own brush font
     assert druh("cjk", "残") == "cjk"
     for kind in ("label_ja", "label_zh", "display_ja", "display_zh"):
         assert hud_paint._FONT_CANDIDATES[kind], kind
@@ -195,7 +200,7 @@ def test_cjk_pismo_sa_naozaj_nacita_ked_je_vo_windows():
         mena = [m.lower() for m in hud_paint._FONT_CANDIDATES[kind]
                 if os.path.exists(os.path.join(priecinok, m))]
         if not mena:
-            continue                    # stroj bez CJK pisiem
+            continue                    # machine without CJK fonts
         hud_paint._font_cache.pop((kind, 30), None)
         pismo = hud_paint._load_font(hud_paint._druh_pisma("label", text), 30)
         assert os.path.basename(getattr(pismo, "path", "")).lower() in mena, kind

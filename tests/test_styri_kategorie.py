@@ -1,19 +1,21 @@
 # -*- coding: utf-8 -*-
-"""Hlasky maju pevne styri kategorie (0.2).
+"""Cues have four fixed categories (0.2).
 
-Tazisko, Celust, Uvolnenie, Dych - kazda so svojim vizualom v hre.
-Tlacidlo „+ Pridat spustac“ je prec: piaty a dalsi slot nemal vizual ani
-kategoriu, `_dalsi_cue_slot` ho preskakoval a sam od seba nezaznel nikdy,
-hoci log hracovi slubil opak.
+Grounding, Jaw, Release, Breath - each with its own visual in game.
+The „+ Pridat spustac“ (+ Add trigger) button is gone: the fifth and any
+further slot had neither a visual nor a category, `_dalsi_cue_slot`
+skipped it and it never sounded on its own, even though the log promised
+the player the opposite.
 
-Tieto testy strazia:
-  * tlacidlo ani jeho texty sa nevratili,
-  * stare nastavenia s viac nez styrmi slotmi sa nacitaju bez pada a nic
-    sa z nich nestrati,
-  * novy profil (aj profil bez slotov) dostane vsetky styri kategorie,
-  * automaticka hlaska zvysi pocitadlo v hlavicke dennika
-    (`session.summary`) - len ked sa naozaj ukazala a nie v tichom
-    kontrolnom ramene.
+These tests guard:
+  * that neither the button nor its texts came back,
+  * that old settings with more than four slots load without a crash and
+    nothing gets lost from them,
+  * that a new profile (even a profile without slots) gets all four
+    categories,
+  * that an automatic cue increments the counter in the journal header
+    (`session.summary`) - only when it was really shown and not in the
+    silent control arm.
 """
 import json
 import os
@@ -32,7 +34,7 @@ from _zdroj_appky import zdroj_appky  # noqa: E402
 
 
 # --------------------------------------------------------------------------
-# Tlacidlo je prec
+# The button is gone
 # --------------------------------------------------------------------------
 
 def test_tlacidlo_pridat_spustac_je_prec():
@@ -45,7 +47,7 @@ def test_tlacidlo_pridat_spustac_je_prec():
 
 
 # --------------------------------------------------------------------------
-# Nacitanie starych nastaveni
+# Loading old settings
 # --------------------------------------------------------------------------
 
 @pytest.fixture
@@ -53,8 +55,8 @@ def nastavenia(tmp_path, monkeypatch):
     import app as app_mod
     import app_prefs
     cesta = str(tmp_path / "dandurf_settings.json")
-    # `load_settings` byva v mixine app_prefs (PrefsMixin) a cita
-    # SETTINGS_PATH zo svojho modulu - presmerovat ho treba tam.
+    # `load_settings` lives in the app_prefs mixin (PrefsMixin) and reads
+    # SETTINGS_PATH from its own module - it has to be redirected there.
     monkeypatch.setattr(app_prefs, "SETTINGS_PATH", cesta)
     povodny = i18n._lang["code"]
 
@@ -85,8 +87,8 @@ def test_profil_bez_slotov_dostane_styri_kategorie(nastavenia):
 
 
 def test_piaty_slot_appka_sama_nespusti_ale_nespadne():
-    """Slot 4+ nema vizual (`overlay_configs` ma vzdy 4 polozky) - striedanie
-    ho preskoci, bez vynimky."""
+    """Slot 4+ has no visual (`overlay_configs` always has 4 items) - the
+    rotation skips it, without an exception."""
     import app as app_mod
     a = types.SimpleNamespace(
         slots=[types.SimpleNamespace(index=i, enabled_value=True) for i in range(6)],
@@ -101,11 +103,11 @@ def test_novy_profil_ma_styri_kategorie():
         profiles=[{"name": "Default", "slots": []}], active_profile_name="Default",
         _sync_active_profile_slots=lambda: None, rebuild_slots=lambda s: None,
         refresh_profile_switch=lambda: None, save_settings=lambda: None,
-        # od 0.2.1 novy profil spusti pripravu hlasok ako prepnutie profilu
-        # (test_021b_pregen_profil_a_hra.py)
+        # since 0.2.1 a new profile starts cue preparation like switching a
+        # profile does (test_021b_pregen_profil_a_hra.py)
         schedule_pregenerate=lambda *_: None,
-        # od 0.2.1d novy profil moze dostat hlas k svojim slovam
-        # (test_021d_hlas_podla_hlasok.py) - tu to nehra rolu
+        # since 0.2.1d a new profile may get a voice for its words
+        # (test_021d_hlas_podla_hlasok.py) - it plays no role here
         _hlas_k_hlaskam=lambda slots: False,
         log=lambda *x: None)
     app_mod.DandurfApp.create_profile(a, "Novy")
@@ -115,11 +117,11 @@ def test_novy_profil_ma_styri_kategorie():
 
 
 # --------------------------------------------------------------------------
-# Pocitadlo relacie v hlavicke dennika
+# The session counter in the journal header
 # --------------------------------------------------------------------------
 
 class _Vlakno:
-    """Synchronne `threading.Thread` - aby sa dalo overit, co sa spustilo."""
+    """Synchronous `threading.Thread` - so we can check what was started."""
 
     def __init__(self, target, args=(), kwargs=None, daemon=None):
         self._t, self._a, self._k = target, args, kwargs or {}
@@ -132,8 +134,9 @@ def _hlaska(monkeypatch, arm, vykreslene=True):
     import app as app_mod
     import app_today
     monkeypatch.setattr(app_mod, "threading", types.SimpleNamespace(Thread=_Vlakno))
-    # `_fire_somatic_cue` byva v mixine app_today (TodayMixin) a cita
-    # `threading` zo svojho modulu - synchronne vlakno treba aj tam.
+    # `_fire_somatic_cue` lives in the app_today mixin (TodayMixin) and reads
+    # `threading` from its own module - the synchronous thread is needed
+    # there too.
     monkeypatch.setattr(app_today, "threading", types.SimpleNamespace(Thread=_Vlakno))
     obnovene = []
     slot = types.SimpleNamespace(index=1, text_value="Jaw")

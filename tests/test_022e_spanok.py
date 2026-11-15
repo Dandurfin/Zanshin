@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
-"""Uspanie PC rozdeli relaciu (0.2.2, davka 4).
+"""PC sleep splits the session (0.3, batch 4).
 
-Relacia cez spanok/hibernaciu trvala aj 14 hodin a spankovy tep vosiel do
-pokojovej zakladne. Medzera medzi tikmi relacie nad `MEDZERA_SPANKU_S`
-pocas sledovania = relacia sa uzavrie POSLEDNYM TIKOM pred medzerou (bezna
-cesta ukladania) a po nej sa zacne nova. Hodiny iduce dozadu medzera nie su.
-Vlozene hodiny, ziadne cakanie."""
+A session across sleep/hibernation lasted as long as 14 hours and the
+sleeping heart rate got into the resting baseline. A gap between session
+ticks above `MEDZERA_SPANKU_S` while watching = the session is closed at the
+LAST TICK before the gap (the normal saving path) and a new one starts after
+it. A clock going backwards is not a gap.
+Injected clock, no waiting."""
 import math
 import time
 
@@ -22,7 +23,7 @@ def test_medzera_spanku_je_len_dlhy_skok_dopredu():
     assert app_session.je_medzera_spanku(1000.0, 1121.0)
     assert not app_session.je_medzera_spanku(1000.0, 1120.0)
     assert not app_session.je_medzera_spanku(1000.0, 1000.25)
-    # hodiny dozadu (synchronizacia casu) nie su spanok
+    # a clock going backwards (time sync) is not sleep
     assert not app_session.je_medzera_spanku(5000.0, 1000.0)
     for zle in (None, "x", math.nan):
         assert not app_session.je_medzera_spanku(zle, 2000.0)
@@ -71,7 +72,7 @@ def test_kratka_medzera_ani_hodiny_dozadu_nic_nerozdelia(tmp_path):
     a._posledny_tik_relacie = t
     assert a._hlidaj_medzeru_relacie(teraz=t + 0.25) is False
     assert a._hlidaj_medzeru_relacie(teraz=t + 60.0) is False
-    # hodiny skocili o hodinu dozadu: vychodisko sa len posunie
+    # the clock jumped an hour backwards: the starting point just moves
     assert a._hlidaj_medzeru_relacie(teraz=t - 3600.0) is False
     assert a._posledny_tik_relacie == t - 3600.0
     assert a._hlidaj_medzeru_relacie(teraz=t - 3590.0) is False
@@ -90,7 +91,7 @@ def test_mimo_sledovania_sa_medzera_neráta(tmp_path):
 
 
 def test_kratka_relacia_pred_spankom_sa_neulozi(tmp_path):
-    """Bezna cesta ukladania: pod minutu sa relacia nezapise ani po spanku."""
+    """Normal saving: a sub-minute session isn't written even after sleep."""
     a = _appka(tmp_path, minut=15)
     a._posledny_tik_relacie = a.hr_stats.session_start + 30.0
     a._hlidaj_medzeru_relacie(teraz=a._posledny_tik_relacie + 3600.0)
@@ -108,7 +109,7 @@ def test_suhrn_sa_uzavrie_k_zadanemu_koncu():
 def test_tik_aj_vzorka_tepu_hlidaju_medzeru():
     assert "self._hlidaj_medzeru_relacie()" in zdroj_metody("_tick_activity")
     bpm = zdroj_metody("_apply_hr_bpm")
-    # vzorka po prebudeni patri uz novej relacii - kontrola PRED zapisom
+    # a sample after waking belongs to the new session - check BEFORE writing
     assert bpm.index("_hlidaj_medzeru_relacie") < bpm.index("self._hr_last_bpm = bpm")
-    # otvorenie relacie nastavi vychodisko merania medzery
+    # opening a session sets the starting point for measuring the gap
     assert "self._posledny_tik_relacie = self._hud_tick_t" in zdroj_metody("_open_hr_session")

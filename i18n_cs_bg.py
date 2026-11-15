@@ -1,16 +1,16 @@
 # -*- coding: utf-8 -*-
-"""Cestina a bulharcina - preklad rozhrania Zanshin (0.2).
+"""Czech and Bulgarian - translation of the Zanshin interface (0.2).
 
-Dva slovniky kluc -> text, ktore `i18n.py` na konci importu vlozi do
-`STRINGS` (jazyky "cs" a "bg"). Kluce a {placeholdery} su tie iste ako v
-i18n.py; autoritativny zdroj je slovencina, anglictina pomaha s vyznamom.
-Poradie klucov je poradie v i18n.STRINGS.
+Two dicts key -> text that `i18n.py` inserts into `STRINGS` at the end of
+its import (languages "cs" and "bg"). The keys and {placeholders} are the
+same as in i18n.py; the authoritative source is Slovak, English helps
+with the meaning. The order of the keys is the order in i18n.STRINGS.
 
-Preklady su s pomocou AI (Claude) a rodeny hovoriaci ich este
-nekontroloval. Chybu oprav tu, nie v i18n.py.
+The translations are made with the help of AI (Claude) and a native
+speaker has not checked them yet. Fix mistakes here, not in i18n.py.
 
-Novy kluc v i18n.py, ktory tu chyba, sa v cestine a bulharcine ukaze
-anglicky; tests/test_i18n_cs_bg.py na neho upozorni.
+A new key in i18n.py that is missing here shows in English in Czech and
+Bulgarian; tests/test_i18n_cs_bg.py warns about it.
 """
 
 CS = {
@@ -324,7 +324,7 @@ CS = {
     'log.monitor_target': 'Obrázky a panel tepu budu kreslit na: {target}.',
     'log.exclusive_fullscreen': 'Okno v popředí zabírá celou obrazovku. Pokud je to hra a obrázky v ní nevidíš, běží asi v exkluzivním fullscreenu – Windows v něm cizí překryvy nevykreslí. Přepni ji na „Bez okrajů / Borderless“.',
     'log.hr_session_saved': 'Relace uložena – průměr {avg} BPM, maximum {max} BPM, špička zátěže {peak}.',
-    # 0.2.2: obnova po padu, poskozene nastaveni, stara instalace (i18n.py u 'log.hr_session_saved')
+    # 0.3: crash recovery, damaged settings, old installation (i18n.py at 'log.hr_session_saved')
     'log.hr_session_recovered': 'Obnovila jsem relaci z {time}, která se minule neuložila. Poslední minuty v ní mohou chybět.',
     'log.settings_restored_backup': 'Nastavení se nedalo načíst. Původní soubor jsem odložila jako {name} a obnovila jsem poslední zálohu.',
     'log.settings_restored_defaults': 'Nastavení se nedalo načíst. Původní soubor jsem odložila jako {name} a začínám s výchozími.',
@@ -951,14 +951,14 @@ CS = {
     'ob.preview.sound': '▶ Ukázka zvuku',
     'ob.preview.visual': '▶ Ukázka obrázku',
     'settings.language_note': 'Appka je psaná ve slovenštině. Ostatní jazyky jsou překlady s pomocí AI a rodilý mluvčí je ještě nekontroloval — pokud vidíš chybu, dej vědět.',
-    # 0.2.1: "teraz nie" aj v ponuke ikony v liste (i18n.py, koniec suboru)
+    # 0.2.1: "not now" also in the tray icon menu (i18n.py, end of file)
     'tray.snooze': 'Teď ne ({minutes} min)',
     'log.hotkey_failed_tray': 'Zkratku {combo} drží jiná aplikace, takže nepůjde. „Teď ne“ najdeš i v nabídce ikony v liště (pravé kliknutí) — sledování to nezastaví.',
-    # 0.2.1: UDP na porte tepu sa neotvorilo (i18n.py, koniec suboru)
+    # 0.2.1: UDP on the heart rate port did not open (i18n.py, end of file)
     'log.hr_udp_busy': 'UDP port {port} drží jiný program, takže tep přes OSC (např. z iPhonu přes PulseOSC) nepřijde. Appka pro Android (HeartRateOnStream) funguje dál. Zavři ten program a „Přijímat tep z telefonu“ vypni a zapni.',
     'log.hr_udp_error': 'UDP na portu {port} se nepodařilo otevřít ({err}), takže tep přes OSC (např. z iPhonu přes PulseOSC) nepřijde. Appka pro Android (HeartRateOnStream) funguje dál.',
     'settings.hr_status_udp_off': 'Android se připojí, iPhone (PulseOSC) ne',
-    # 0.2.2: dva rozne tepy v jednom zdroji (i18n.py, koniec suboru)
+    # 0.3: two different heart rates in one source (i18n.py, end of file)
     'log.hr_two_series': 'Appka na hodinkách posílá do zdroje „{source}“ dva různé tepy, takže hodnoty přeskakují mezi nimi. Číslo na obrazovce je vyhlazené, ale měření bere každou hodnotu: v appce na hodinkách nech do tohoto zdroje zapisovat jen živý tep.',
     'settings.hr_status_two_series': 'Dva různé tepy v jednom zdroji — zkontroluj appku na hodinkách',
     'session.end.cues_silent': 'Ozvala jsem se {n}×, z toho {silent}× schválně jen obrázkem — aby bylo s čím porovnat.',
@@ -967,7 +967,7 @@ CS = {
     'cue_style.visual': 'Jen obrázek',
     'tray.start': 'Spustit sledování',
     'tray.stop': 'Zastavit sledování',
-    # --- 0.2.2 davka 4: Dnes, hlavny vypinac, bocny panel, prazdne stavy ---
+    # --- 0.3 batch 4: Today, main switch, side panel, empty states ---
     'kamae.bar_hint': 'Když sleduju, pruh dýchá — jinak stojí.',
     'nav.watch': 'Hodinky',
     'nav.search': 'Hledat',
@@ -977,7 +977,7 @@ CS = {
     'dnes.learning': 'Ještě tě poznávám — {n} ze {celkom} herních relací (každá aspoň 5 min)',
     'kamae.port_busy': 'Port {port} je obsazený',
     'kamae.port_busy_sub': 'Drží ho jiný program — často OBS se zapnutým WebSocket serverem. Vypni ten server v OBS, nebo změň port v „{page} → {card}“ a stejné číslo zadej v appce v telefonu.',
-    # 0.2.2 davka 4: dialogy appky, Historia, Nastavenia, dotaznik
+    # 0.3 batch 4: app dialogs, History, Settings, questionnaire
     'dialog.ok': 'OK',
     'tray.keep_running': 'Nechat běžet v liště',
     'tray.quit_app': 'Ukončit Zanshin',
@@ -985,7 +985,7 @@ CS = {
     'history.grid_months': 'led úno bře dub kvě čvn čvc srp zář říj lis pro',
     'history.grid_weekdays': 'po út st čt pá so ne',
     'session.end.fullscreen_note': 'Hra zabírala celou obrazovku — pokud obrázky nebylo vidět, přepni ji na „Bez okrajů / Borderless“. Hlas funguje i tak.',
-    # 0.2.2 davka 4: logika a okrajove pripady (skratka, spanok PC, data, hlas, VPN)
+    # 0.3 batch 4: logic and edge cases (shortcut, PC sleep, data, voice, VPN)
     'settings.snooze_hotkey_title': 'Zkratka „Teď ne“',
     'settings.snooze_hotkey': 'Klávesová zkratka',
     'settings.snooze_hotkey_sub': '{combo} mě ztiší na {minutes} min a tep měřím dál. Platí v každém okně, i ve hře.',
@@ -1029,12 +1029,12 @@ CS = {
     'settings.hr_ip_virtual_note': 'Adresa v poli patří VPN nebo virtuálnímu adaptéru — telefon se na ni většinou nedostane. Nech raději 0.0.0.0.',
     'log.quit_questionnaire_saved': 'Při ukončení jsem uložila odpovědi, které už v dotazníku byly vyplněné.',
     'log.quit_questionnaire_skipped': 'Při ukončení jsem zavřela prázdný dotazník — relace zůstala uložená bez odpovědí.',
-    # 0.2.2 davka 4: slovnik a kopia existujucich klucov (onboarding krok 1)
+    # 0.3 batch 4: dictionary and copy of existing keys (onboarding step 1)
     'ob.step1.need': 'Co budeš potřebovat: chytré hodinky, které měří tep, k nim appku v telefonu, která tep pošle do tohoto počítače, a telefon i počítač ve stejné domácí síti (Wi‑Fi).',
-    # 0.2.2 davka 4b: VPN/hotspot a dotaznik po relacii v Praci
+    # 0.3 batch 4b: VPN/hotspot and the post-session questionnaire in Work
     'hr.ip_hotspot': '(hotspot)',
     'session.end.trace_hint_work': 'Tep během celé relace. Trojúhelníky jsou připomínky; tenký pruh ukazuje, kdy se pravděpodobně pracovalo (klávesnice, myš nebo ovladač).',
-    # 0.2.2: "Aktualizovat hlas" (novsi edge-tts na klik, Nastavenia → Zvuk)
+    # 0.3: "Update voice" (a newer edge-tts on a click, Settings → Sound)
     'edge.update.btn': 'Aktualizovat hlas',
     'edge.update.releases_btn': 'Nový Zanshin na GitHubu',
     'edge.update.running': '⟳ aktualizuju hlas — hledám novější verzi, stahuju ji a zkouším jedním slovem…',
@@ -1367,7 +1367,7 @@ BG = {
     'log.monitor_target': 'Картините и панелът с пулса ще се рисуват на: {target}.',
     'log.exclusive_fullscreen': 'Прозорецът на преден план заема целия екран. Ако това е игра и не виждаш картините в нея, вероятно върви в ексклузивен цял екран – в него Windows не рисува чужди оувърлеи. Превключи я на „Без рамка / Borderless“.',
     'log.hr_session_saved': 'Сесията е запазена – средно {avg} BPM, максимум {max} BPM, пик на натоварването {peak}.',
-    # 0.2.2: obnova po padu, poskodene nastavenia, stara instalacia
+    # 0.3: crash recovery, damaged settings, old installation
     'log.hr_session_recovered': 'Възстанових сесията от {time}, която миналия път не се запази. Последните минути в нея може да липсват.',
     'log.settings_restored_backup': 'Настройките не можаха да се прочетат. Оригиналния файл оставих настрана като {name} и възстанових последното резервно копие.',
     'log.settings_restored_defaults': 'Настройките не можаха да се прочетат. Оригиналния файл оставих настрана като {name} и започвам с настройките по подразбиране.',
@@ -1994,14 +1994,14 @@ BG = {
     'ob.preview.sound': '▶ Чуй звука',
     'ob.preview.visual': '▶ Виж картината',
     'settings.language_note': 'Приложението е написано на словашки. Останалите езици са преводи с помощта на AI и все още не са проверени от носител на езика — ако видиш грешка, дай знак.',
-    # 0.2.1: "teraz nie" aj v ponuke ikony v liste (i18n.py, koniec suboru)
+    # 0.2.1: "not now" also in the tray icon menu (i18n.py, end of file)
     'tray.snooze': 'Не сега ({minutes} мин)',
     'log.hotkey_failed_tray': 'Клавишната комбинация {combo} е заета от друго приложение, затова няма да работи. „Не сега“ има и в менюто на иконата в лентата (десен клик) — това не спира следенето.',
-    # 0.2.1: UDP na porte tepu sa neotvorilo (i18n.py, koniec suboru)
+    # 0.2.1: UDP on the heart rate port did not open (i18n.py, end of file)
     'log.hr_udp_busy': 'UDP порт {port} е зает от друга програма, затова пулсът през OSC (напр. от iPhone с PulseOSC) няма да пристигне. Приложението за Android (HeartRateOnStream) продължава да работи. Затвори тази програма и после изключи и включи „Приемай пулса от телефона“.',
     'log.hr_udp_error': 'UDP на порт {port} не можа да се отвори ({err}), затова пулсът през OSC (напр. от iPhone с PulseOSC) няма да пристигне. Приложението за Android (HeartRateOnStream) продължава да работи.',
     'settings.hr_status_udp_off': 'Android ще се свърже, iPhone (PulseOSC) — не',
-    # 0.2.2: dva rozne tepy v jednom zdroji (i18n.py, koniec suboru)
+    # 0.3: two different heart rates in one source (i18n.py, end of file)
     'log.hr_two_series': 'Приложението на часовника праща в източника „{source}“ два различни пулса, затова стойностите скачат между тях. Числото на екрана е изгладено, но измерването използва всяка стойност: в приложението на часовника остави в този източник да пише само живият пулс.',
     'settings.hr_status_two_series': 'Два различни пулса в един източник — провери приложението на часовника',
     'session.end.cues_silent': 'Обадих се {n}×, от тях {silent}× нарочно само с картина — за сравнение.',
@@ -2010,7 +2010,7 @@ BG = {
     'cue_style.visual': 'Само картина',
     'tray.start': 'Пусни следенето',
     'tray.stop': 'Спри следенето',
-    # --- 0.2.2 davka 4: Dnes, hlavny vypinac, bocny panel, prazdne stavy ---
+    # --- 0.3 batch 4: Today, main switch, side panel, empty states ---
     'kamae.bar_hint': 'Докато следя, лентата диша — иначе стои.',
     'nav.watch': 'Часовник',
     'nav.search': 'Търсене',
@@ -2020,7 +2020,7 @@ BG = {
     'dnes.learning': 'Още те опознавам — {n} от {celkom} игрови сесии (всяка поне 5 мин)',
     'kamae.port_busy': 'Портът {port} е зает',
     'kamae.port_busy_sub': 'Държи го друга програма — често OBS с включен WebSocket сървър. Изключи този сървър в OBS или смени порта в „{page} → {card}“ и въведи същото число в приложението на телефона.',
-    # 0.2.2 davka 4: dialogy appky, Historia, Nastavenia, dotaznik
+    # 0.3 batch 4: app dialogs, History, Settings, questionnaire
     'dialog.ok': 'ОК',
     'tray.keep_running': 'Продължи в лентата',
     'tray.quit_app': 'Изход от Zanshin',
@@ -2028,7 +2028,7 @@ BG = {
     'history.grid_months': 'яну фев мар апр май юни юли авг сеп окт ное дек',
     'history.grid_weekdays': 'пн вт ср чт пт сб нд',
     'session.end.fullscreen_note': 'Играта заемаше целия екран — ако картините не се виждаха, превключи я на „Без рамка / Borderless“. Гласът работи и така.',
-    # 0.2.2 davka 4: logika a okrajove pripady (skratka, spanok PC, data, hlas, VPN)
+    # 0.3 batch 4: logic and edge cases (shortcut, PC sleep, data, voice, VPN)
     'settings.snooze_hotkey_title': 'Клавишна комбинация „Не сега“',
     'settings.snooze_hotkey': 'Клавишна комбинация',
     'settings.snooze_hotkey_sub': '{combo} ме заглушава за {minutes} мин, а пулса продължавам да меря. Работи във всеки прозорец, и в играта.',
@@ -2072,12 +2072,12 @@ BG = {
     'settings.hr_ip_virtual_note': 'Адресът в полето е на VPN или виртуален адаптер — телефонът обикновено не може да стигне до него. По-добре остави 0.0.0.0.',
     'log.quit_questionnaire_saved': 'При излизане записах отговорите, които вече бяха попълнени в анкетата.',
     'log.quit_questionnaire_skipped': 'При излизане затворих празната анкета — сесията остава записана без отговори.',
-    # 0.2.2 davka 4: slovnik a kopia existujucich klucov (onboarding krok 1)
+    # 0.3 batch 4: dictionary and copy of existing keys (onboarding step 1)
     'ob.step1.need': 'Какво ти трябва: смарт часовник, който мери пулса, приложение към него на телефона, което да праща пулса към този компютър, и телефонът и компютърът в една и съща домашна мрежа (Wi‑Fi).',
-    # 0.2.2 davka 4b: VPN/hotspot a dotaznik po relacii v Praci
+    # 0.3 batch 4b: VPN/hotspot and the post-session questionnaire in Work
     'hr.ip_hotspot': '(гореща точка)',
     'session.end.trace_hint_work': 'Пулсът през цялата сесия. Триъгълниците са подсказки; тънката лента показва кога вероятно се е работило (клавиатура, мишка или контролер).',
-    # 0.2.2: "Aktualizovat hlas" (novsi edge-tts na klik, Nastavenia → Zvuk)
+    # 0.3: "Update voice" (a newer edge-tts on a click, Settings → Sound)
     'edge.update.btn': 'Обнови гласа',
     'edge.update.releases_btn': 'Нов Zanshin в GitHub',
     'edge.update.running': '⟳ обновявам гласа — търся по-нова версия, изтеглям я и я пробвам с една дума…',

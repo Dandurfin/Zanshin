@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-"""Data hraca (0.2.2, davka 4): zmazanie jednej relacie v Historii, "Zmazat
-historiu" s exportom vopred a vypnute pocas sledovania, relacia, ktoru sa
-nepodarilo ulozit (hr_session_pending.json), priecinok s datami a strop
-historie pri importe. Len syntetické data v tmp priecinku."""
+"""Player data (0.3, batch 4): deleting a single session in History,
+"Delete history" with an export first and disabled while watching, a
+session that could not be saved (hr_session_pending.json), the data folder
+and the history cap on import. Only synthetic data in a tmp folder."""
 import json
 import os
 import time
@@ -56,7 +56,7 @@ def _stub(tmp_path):
 
 
 # --------------------------------------------------------------------------
-# Zmazat tuto relaciu (detail v Historii)
+# Delete this session (detail in History)
 # --------------------------------------------------------------------------
 
 def test_delete_session_zmaze_len_jednu_relaciu(tmp_path):
@@ -90,7 +90,7 @@ def test_zmazanie_relacie_s_potvrdenim_okna_aj_postrehy(tmp_path, monkeypatch):
     monkeypatch.setattr(app_data.ui_kit, "confirm", confirm)
     assert a.delete_history_session(dict(ciel)) is True
     (titul, text, ok, zrusit, danger), = otazky
-    # datum v jazyku appky (0.2.2 davka 4b) - ten isty ako tabulka v Historii
+    # the date in the app's language (0.3 batch 4b) - same as the History table
     kedy = app_data.ui_kit.datum_text(ciel["started"], cas=True)
     assert titul == tr("history.delete_session.title")
     assert text == tr("history.delete_session.body", date=kedy,
@@ -131,7 +131,7 @@ def test_tlacidlo_je_v_detaile_a_nahravanu_vypne():
 
 
 # --------------------------------------------------------------------------
-# Zmazat historiu: najprv export, pocas sledovania nie
+# Delete history: export first, not while watching
 # --------------------------------------------------------------------------
 
 def _mazanie(tmp_path, monkeypatch, volby):
@@ -221,7 +221,7 @@ def test_mazanie_zmaze_aj_neulozene_relacie():
 
 
 # --------------------------------------------------------------------------
-# Priecinok s datami a strop historie pri importe
+# The data folder and the history cap on import
 # --------------------------------------------------------------------------
 
 def test_otvorit_priecinok_s_datami(tmp_path, monkeypatch):
@@ -267,7 +267,7 @@ def test_vysledok_importu_rata_vypadnute():
 
 
 # --------------------------------------------------------------------------
-# Relacia, ktoru sa nepodarilo ulozit
+# A session that could not be saved
 # --------------------------------------------------------------------------
 
 def test_chyba_zapisu_relaciu_odlozi_povie_a_ukaze_oznam(tmp_path, monkeypatch):
@@ -289,7 +289,7 @@ def test_chyba_zapisu_relaciu_odlozi_povie_a_ukaze_oznam(tmp_path, monkeypatch):
     assert riadok.startswith(tr("log.hr_session_save_failed", err="X").split("(")[0])
     assert "hrac" not in riadok and "hr_sessions.json" in riadok, "bez cesty s menom uctu"
     assert a.dotazniky == [], "neulozena relacia dotaznik neotvori"
-    # oznam v okne appky (nie systemovy), az ked sa slucka dostane k slovu
+    # a notice in the app window (not a system one), once the loop gets a turn
     (_ms, ukaz), = a.root.ulohy.values()
     ukaz()
     (args, kwargs), = oznamy
@@ -327,7 +327,7 @@ def test_dalsi_start_doplni_cakajucu_raz_a_subor_zmaze(tmp_path):
     assert not os.path.exists(hr_stats.cesta_cakajucej(a.hr_sessions_path))
     kedy = app_data.ui_kit.datum_text(s["started"], cas=True)
     assert a.denn == [tr("log.hr_session_pending_saved", time=kedy)]
-    # uz v historii (napr. aj z kontrolneho bodu): neduplikuje sa
+    # already in history (e.g. from a checkpoint too): not duplicated
     hr_stats.zapis_cakajucu(a.hr_sessions_path, dict(s))
     assert a._dopln_cakajuce_relacie() == []
     assert len(_citaj(a.hr_sessions_path)) == 1

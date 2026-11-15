@@ -1,43 +1,48 @@
-"""Odsimuluje vecer hrania a povie, co by spustac urobil.
+"""Simulates an evening of play and tells what the trigger would do.
 
-PRECO SA TO TU SIMULOVAT DA
----------------------------
-Pri otazke "vidi Windows gamepad?" simulacia nefungovala - synteticky
-vstup by odpovedal za operacny system a vysledok by nic neznamenal.
-Tu je to naopak: pytame sa, co robi NAS vlastny automat pri znamom
-vstupe. To je presne to, na co simulacia je.
+WHY IT CAN BE SIMULATED HERE
+----------------------------
+For the question "does Windows see the gamepad?" simulation did not work -
+synthetic input would answer on behalf of the operating system and the
+result would mean nothing. Here it is the other way round: we ask what OUR
+own state machine does with a known input. That is exactly what simulation
+is for.
 
-Nic sa tu nepocita nanovo. Vecer prejde cez `hr_stats.HeartStats`,
-`activity.ActivityTracker`, `trigger.CueTrigger` aj `measure` - teda cez
-tie iste objekty, ktore bezia v appke, v tom istom poradi volani ako
-`_apply_hr_bpm` a `_tick_activity`. Podstrcene su len dve veci: hodiny a
-`idle_fn`. Keby sa idle pocitalo tu, minula by sa uplne tá cast, o ktoru
-ide najviac - `pause_s()` a to, ze pauza zacina v momente POSLEDNEHO
-vstupu, nie v momente, ked si to appka vsimla.
+Nothing is recomputed here. The evening goes through `hr_stats.HeartStats`,
+`activity.ActivityTracker`, `trigger.CueTrigger` and `measure` - i.e.
+through the same objects that run in the app, in the same call order as
+`_apply_hr_bpm` and `_tick_activity`. Only two things are slipped in: the
+clock and `idle_fn`. If idle were computed here, it would completely miss
+the part that matters most - `pause_s()` and the fact that a pause starts
+at the moment of the LAST input, not at the moment the app noticed it.
 
-CO TO POVIE A CO NIE
---------------------
-POVIE: kolkokrat by sa natiahlo, kolko hlasok by zaznelo, kolko by ich
-padlo do tichej vetvy, kolko meracich okien by bolo platnych a preco tie
-ostatne nie. To su vlastnosti MECHANIZMU a tie sa overit daju.
+WHAT IT WILL AND WILL NOT TELL YOU
+----------------------------------
+IT WILL TELL: how many times it would arm, how many cues would sound, how
+many would fall into the silent branch, how many measurement windows would
+be valid and why the others would not. Those are properties of the
+MECHANISM, and those can be verified.
 
-NEPOVIE: ci tvoja skutocna zataz vobec prekroci 55 a udrzi sa 90 sekund.
-To je vlastnost TELA a na to treba vecer s hodinkami. Simulacia vie
-ukazat, ze mechanizmus je v poriadku; nevie ukazat, ze prahy sedia na
-teba. Riadok "telo" v_ vypise je preto len kontrola, ci synteticky vecer
-vobec dava automatu do coho hryznut - nie je to tvrdenie o hracovi.
+IT WILL NOT TELL: whether your real load ever exceeds 55 and holds for 90
+seconds. That is a property of the BODY, and for that you need an evening
+with the watch. The simulation can show that the mechanism is fine; it
+cannot show that the thresholds fit you. The "telo" (body) row in the
+output is therefore only a check that the synthetic evening gives the
+state machine anything to bite into at all - it is not a claim about the
+player.
 
-NAJSLABSIE MIESTO tohto modelu je rozdelenie prestavok vo vstupe - a je to
-zhodou okolnosti presne to, o com sa vedie spor (prah 2,5 s). Cislo, ktore
-vypadne, teda zavisi od predpokladu, ktory sa ide merat. Preto je to
-parameter a preto je tu `--sweep`: nie aby dal odpoved, ale aby ukazal,
-ako velmi na tom predpoklade zalezi.
+THE WEAKEST POINT of this model is the distribution of breaks in the input
+- and that happens to be exactly what the dispute is about (the 2.5 s
+threshold). So the number that comes out depends on the assumption that is
+about to be measured. That is why it is a parameter and why `--sweep` is
+here: not to give an answer, but to show how much depends on that
+assumption.
 
-POUZITIE
---------
-    python simulate.py                   # 5 vecerov po 3 h
+USAGE
+-----
+    python simulate.py                   # 5 evenings of 3 h each
     python simulate.py --sedeni 1 --podrobne
-    python simulate.py --sweep           # tabulka naprie prahmi pauzy
+    python simulate.py --sweep           # a table across pause thresholds
 """
 
 import argparse
@@ -50,37 +55,39 @@ import hr_stats
 import measure
 import trigger
 
-# Aktivita ma rovnaku kadenciu ako v appke: `_tick_activity` bezi 4x za
-# sekundu (activity.POLL_S).
+# Activity has the same cadence as in the app: `_tick_activity` runs 4x a
+# second (activity.POLL_S).
 #
-# Tep NIE. Simulacia posiela vzorku presne raz za sekundu, bez straty -
-# idealne husta kadencia. Skutocne hodinky posielaju podla dat ~0,9 az
-# ~2,9 s na vzorku (od 20. 9. ~2,9 s, tep sa v OBS strieda s krokmi) a so
-# chvostom medzier tesne nad 5 s (strateny paket). Ten chvost tu nie je -
-# preto tato simulacia nikdy neukazala, ze spustac pri kazdej medzere nad
-# 5 s zmazal nazbierany cas (opravene cez `trigger.DIERA_S`). Cisla z nej
-# platia pre huste hodinky.
+# Heart rate does NOT. The simulation sends a sample exactly once a second,
+# without loss - an ideally dense cadence. Real watches, according to the
+# data, send ~0.9 to ~2.9 s per sample (since 20. 9. ~2.9 s, in OBS heart
+# rate alternates with steps), with a tail of gaps just over 5 s (a lost
+# packet). That tail is not here - which is why this simulation never
+# showed that the trigger erased the accumulated time on every gap over
+# 5 s (fixed via `trigger.DIERA_S`). Its numbers apply to a dense watch.
 TEP_S = 1.0
 
-# Vecer nezacina v case 0. `HeartStats.add` ma `now = float(ts) if ts else
-# time.time()`, takze ts=0.0 by ticho spadlo na realny cas a cela simulacia
-# by sa rozsypala. Nulovy absolutny cas v appke nikdy nenastane, tak sa to
-# tu obchadza a nie opravuje - ale je to napisane, aby to niekto nehladal.
+# The evening does not start at time 0. `HeartStats.add` has `now = float(ts)
+# if ts else time.time()`, so ts=0.0 would silently fall back to the real time
+# and the whole simulation would fall apart. A zero absolute time never happens
+# in the app, so here it is worked around, not fixed - but it is written down
+# so nobody goes looking for it.
 T0 = 1_700_000_000.0
 
 
 # --------------------------------------------------------------------------
-# Synteticky vecer
+# Synthetic evening
 # --------------------------------------------------------------------------
 
 def bloky(rng, hodin):
-    """Vecer rozdeleny na vypate a pokojne useky: [(od, do, vypaty, uroven)].
+    """Evening split into intense/calm stretches: [(od, do, vypaty, uroven)].
 
-    Rozdelenie sa robi RAZ a pouziva sa aj na tep, aj na vstup. Prvy pokus
-    ich generoval dvoma nezavislymi prechodmi a vysledok bol nezmysel:
-    vypaty tep padal na pokojny vstup, takze automat sa natiahol vo chvili,
-    ked uz hrac davno nic nerobil, a "cakanie na pauzu" vychadzalo 0,3 s.
-    Merala by sa tym nekorelovanost modelu, nie spustac.
+    The split is made ONCE and is used for both heart rate and input. The
+    first attempt generated them in two independent passes and the result
+    was nonsense: intense heart rate fell on calm input, so the state
+    machine armed at a moment when the player had long stopped doing
+    anything, and "waiting for a pause" came out at 0.3 s. That would
+    measure the model's lack of correlation, not the trigger.
     """
     koniec = hodin * 3600.0
     out = []
@@ -104,16 +111,16 @@ def _blok_v(bl, t):
 
 
 def vecer(rng, hodin=3.0, pokoj=62.0, naklonenie=1.0):
-    """Vrati (tep, vstupy).
+    """Returns (tep, vstupy).
 
-    `tep` je [(cas, bpm)] po sekunde, `vstupy` su casy, kedy hrac nieco
-    stlacil. Z nich sa potom pocita idle rovnako, ako ho pocita Windows:
-    "kolko ms od posledneho vstupu".
+    `tep` is [(cas, bpm)] per second, `vstupy` are the times when the
+    player pressed something. From them idle is then computed the same way
+    Windows computes it: "how many ms since the last input".
 
-    Nejde o vernu fyziologiu, ide o to, aby tam boli situacie, na ktore
-    automat reaguje: dlhe drzanie hore, kratke spicky, prestavky roznej
-    dlzky. `naklonenie` skaluje, ako vysoko zataz chodi - 0.5 je pokojny
-    vecer, 2.0 tvrda kompetitivna session.
+    It is not about faithful physiology, it is about having the situations
+    the state machine reacts to: long holds up high, short peaks, breaks of
+    various lengths. `naklonenie` scales how high the load goes - 0.5 is a
+    calm evening, 2.0 a hard competitive session.
     """
     bl = bloky(rng, hodin)
     koniec = hodin * 3600.0
@@ -124,7 +131,7 @@ def vecer(rng, hodin=3.0, pokoj=62.0, naklonenie=1.0):
         vypaty, uroven = _blok_v(bl, t)
         bpm = pokoj + uroven * (naklonenie if vypaty else 1.0) + rng.gauss(0, 2.5)
         if vypaty and rng.random() < 0.02:
-            bpm += rng.uniform(10, 25)          # spicka po suboji
+            bpm += rng.uniform(10, 25)          # peak after a fight
         tep.append((T0 + t, max(45.0, min(190.0, bpm))))
         t += TEP_S
 
@@ -137,33 +144,33 @@ def vecer(rng, hodin=3.0, pokoj=62.0, naklonenie=1.0):
 
 
 def medzera(rng, vypaty):
-    """Ako dlho do dalsieho stlacenia.
+    """How long until the next press.
 
-    TOTO JE TEN PREDPOKLAD. Cele cislo "kolko hlasok sa doruci pauzou" z
-    neho vypadne, takze sa na neho neda spoliehat ako na meranie. Je to
-    odhad toho, ako vyzera hranie: v akcii skoro nepretrzite, medzi kolami
-    a v menu riedko.
+    THIS IS THE ASSUMPTION. The whole number "how many cues get delivered
+    in a pause" falls out of it, so it cannot be relied on as a
+    measurement. It is an estimate of what playing looks like: in action
+    almost continuous, between rounds and in menus sparse.
     """
     r = rng.random()
     if vypaty:
         if r < 0.90:
-            return rng.uniform(0.05, 0.4)       # akcia
+            return rng.uniform(0.05, 0.4)       # action
         if r < 0.99:
-            return rng.uniform(1.0, 4.0)        # prebitie, presun
-        return rng.uniform(5.0, 15.0)           # koniec kola
+            return rng.uniform(1.0, 4.0)        # reload, moving
+        return rng.uniform(5.0, 15.0)           # end of round
     if r < 0.60:
         return rng.uniform(0.1, 1.0)            # menu, chat
     if r < 0.90:
-        return rng.uniform(2.0, 10.0)           # cakanie
+        return rng.uniform(2.0, 10.0)           # waiting
     if r < 0.98:
-        return rng.uniform(20.0, 90.0)          # odbehol
-    return rng.uniform(120.0, 400.0)            # prestavka
+        return rng.uniform(20.0, 90.0)          # stepped away
+    return rng.uniform(120.0, 400.0)            # break
 
 
 class Hodiny:
-    """Podstrcene hodiny. Objekt, nie closure, aby sa dal cas posunut
-    zvonku a vsetci traja (`HeartStats`, `ActivityTracker`, `CueTrigger`)
-    videli ten isty."""
+    """A stand-in clock. An object, not a closure, so the time can be moved
+    from outside and all three (`HeartStats`, `ActivityTracker`,
+    `CueTrigger`) see the same one."""
 
     def __init__(self, t=T0):
         self.t = t
@@ -173,15 +180,15 @@ class Hodiny:
 
 
 # --------------------------------------------------------------------------
-# Prehnanie cez skutocne moduly
+# Running it through the real modules
 # --------------------------------------------------------------------------
 
 def odsimuluj(tep, vstupy, params=None, silent_share=0.10, seed=1):
-    """Vrati (okna, udalosti, telo). Poradie volani kopiruje appku."""
+    """Returns (okna, udalosti, telo). The call order copies the app."""
     hodiny = Hodiny()
 
     def idle_ms():
-        """To iste, co vracia GetLastInputInfo: ms od posledneho vstupu."""
+        """Same as what GetLastInputInfo returns: ms since the last input."""
         i = bisect.bisect_right(vstupy, hodiny.t)
         if i == 0:
             return None
@@ -206,17 +213,17 @@ def odsimuluj(tep, vstupy, params=None, silent_share=0.10, seed=1):
     while t <= koniec:
         hodiny.t = t
 
-        # ---- tep: `_apply_hr_bpm`, raz za sekundu ----
+        # ---- heart rate: `_apply_hr_bpm`, once a second ----
         while i_tep < len(tep) and tep[i_tep][0] <= t:
             ts, bpm = tep[i_tep]
             hodiny.t = ts
             stats.add(bpm, ts=ts)
             ev = aut.note_load(stats.stress, ts,
                                calibrating=stats.is_calibrating,
-                               zona=stats.known_zone)   # brana, ako appka
+                               zona=stats.known_zone)   # gate, like the app
             if ev:
                 udalosti.append(ev)
-            # diagnostika syntetickeho tela, nie appky
+            # diagnostics of the synthetic body, not of the app
             if stats.stress >= prah:
                 telo["nad_prahom_s"] += TEP_S
                 if beh_od is None:
@@ -227,14 +234,14 @@ def odsimuluj(tep, vstupy, params=None, silent_share=0.10, seed=1):
             telo["peak"] = max(telo["peak"], stats.stress)
             i_tep += 1
 
-        # ---- aktivita: `_tick_activity`, 4x za sekundu ----
+        # ---- activity: `_tick_activity`, 4x a second ----
         hodiny.t = t
         sled.poll(now=t)
         ev = aut.tick(pause_s=sled.pause_s(now=t), now=t, can_fire=True)
         if ev:
             udalosti.append(ev)
             if ev["typ"] == trigger.E_DELIVER:
-                # to iste, co robi `_fire_somatic_cue`
+                # the same as what `_fire_somatic_cue` does
                 stats.note_trigger(ts=ev["ts"], auto=True,
                                    category=measure.category_for_slot(
                                        measure.CATEGORIES.index("breath")),
@@ -255,7 +262,7 @@ def odsimuluj(tep, vstupy, params=None, silent_share=0.10, seed=1):
 
 
 # --------------------------------------------------------------------------
-# Zhrnutie
+# Summary
 # --------------------------------------------------------------------------
 
 def zhrn(okna, udalosti, telo):

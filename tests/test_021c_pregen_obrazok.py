@@ -1,20 +1,21 @@
 # -*- coding: utf-8 -*-
-"""0.2.1c: hlaska s vypnutym obrazkom v hre sa Microsoftu neposiela.
+"""0.2.1c: a cue with its in-game picture off is not sent to Microsoft.
 
-`_dalsi_cue_slot` berie len hlasky, ktore su zapnute A maju zapnuty obrazok
-v hre (`overlay_configs[i]["enabled"]`) - README: "a reminder whose picture
-you switch off never fires". Priprava Edge hlasu (`_slot_na_pripravu`) sa
-na obrazok nepytala, takze text takej hlasky isiel Microsoftu, hoci ju v
-hre nikdy nepovie.
+`_dalsi_cue_slot` takes only cues that are enabled AND have their in-game
+picture on (`overlay_configs[i]["enabled"]`) - README: "a reminder whose
+picture you switch off never fires". The Edge voice preparation
+(`_slot_na_pripravu`) did not ask about the picture, so the text of such
+a cue went to Microsoft, although the app never says it in game.
 
-Teraz ju `_slot_na_pripravu` vyraduje (ta ista podmienka,
-`_ma_obrazok_v_hre`). Dosledky, ktore testy strazia:
-  * zapnutie obrazka (`on_overlay_config_change`, oba prepinace) pripravu
-    znova naplanuje - ako `SlotCard.on_enabled_change`; vypnutie zastavi
-    rozbehnutu pripravu hned,
-  * velkost / poloha / farba pripravu neplanuju ani nerusia,
-  * Test takej hlasky zaznie hlasom z Windows a nic neposle,
-  * ostava "nic nove pocas pocuvania", styl hlas a svet Hra.
+Now `_slot_na_pripravu` excludes it (the same condition,
+`_ma_obrazok_v_hre`). Consequences the tests guard:
+  * turning the picture on (`on_overlay_config_change`, both switches)
+    schedules the preparation again - like `SlotCard.on_enabled_change`;
+    turning it off stops a running preparation right away,
+  * size / position / colour neither schedule nor cancel the preparation,
+  * Test of such a cue is spoken with the Windows voice and sends nothing,
+  * "nothing new while listening", the voice style and the Play world
+    still hold.
 """
 import ast
 import itertools
@@ -58,9 +59,9 @@ class _Root:
 
 def _atrapa(monkeypatch, slots, obrazky=(True,) * 4, pocuva=False,
             styl="voice", svet="play"):
-    """Atrapa s ozajstnou pripravou a ozajstnym `on_overlay_config_change`.
-    Vlakno pripravy sa nespusta, len zapise (`a.vlakna`); cache si pamata,
-    co sa "poslalo" (`a.posielane`)."""
+    """A dummy with real preparation and the real `on_overlay_config_change`.
+    The preparation thread is not started, only recorded (`a.vlakna`); the
+    cache remembers what was "sent" (`a.posielane`)."""
     import app as app_mod
     import app_audio
     import audio_engine
@@ -80,7 +81,7 @@ def _atrapa(monkeypatch, slots, obrazky=(True,) * 4, pocuva=False,
 
     def ensure(text, voice, rate, abort=None):
         if text in a.hotove:
-            return "hotova.mp3"             # z cache - na siet nejde
+            return "hotova.mp3"             # from the cache - does not go to the network
         a.posielane.append(text)
         a.hotove.add(text)
         return "hotova.mp3"
@@ -103,7 +104,8 @@ def _atrapa(monkeypatch, slots, obrazky=(True,) * 4, pocuva=False,
                  "_zrus_rozbehnutu_pripravu", "_dalsi_cue_slot",
                  "on_overlay_config_change"):
         setattr(a, meno, types.MethodType(getattr(D, meno), a))
-    # `pregenerate` cita `threading` z modulu app_audio (docstring modulu)
+    # `pregenerate` reads `threading` from the app_audio module (see the
+    # module docstring)
     monkeypatch.setattr(app_audio.threading, "Thread",
                         lambda *x, **k: a.vlakna.append(k) or types.SimpleNamespace(
                             start=lambda: None))
@@ -111,7 +113,7 @@ def _atrapa(monkeypatch, slots, obrazky=(True,) * 4, pocuva=False,
 
 
 def _dobehni(a):
-    """Spusti telo posledneho vlakna pripravy na mieste (bez vlakna)."""
+    """Runs the body of the last preparation thread in place (no thread)."""
     a.vlakna[-1]["target"]()
 
 
@@ -120,7 +122,7 @@ def _tri():
 
 
 # --------------------------------------------------------------------------
-# Co sa pripravuje
+# What gets prepared
 # --------------------------------------------------------------------------
 
 def test_hlaska_s_vypnutym_obrazkom_sa_neposiela(monkeypatch):
@@ -133,8 +135,9 @@ def test_hlaska_s_vypnutym_obrazkom_sa_neposiela(monkeypatch):
 
 
 def test_vsetky_obrazky_vypnute_nic_nezacne(monkeypatch):
-    """Hrac vypol vsetky obrazky - appka sa v hre neozve (`_dalsi_cue_slot`
-    vrati None), takze nie je co pripravovat ani posielat."""
+    """The player turned off all pictures - the app does not speak up in game
+    (`_dalsi_cue_slot` returns None), so there is nothing to prepare or
+    send."""
     a = _atrapa(monkeypatch, _tri(), obrazky=(False,) * 4)
     assert a._dalsi_cue_slot() is None
     a.pregenerate(force=True)
@@ -143,10 +146,10 @@ def test_vsetky_obrazky_vypnute_nic_nezacne(monkeypatch):
 
 
 def test_priprava_presne_to_co_hra_vyberie_a_povie_hlasom(monkeypatch):
-    """Pre kazdu kombinaciu vypinacov hlasky a obrazka: pripravuje sa presne
-    ta hlaska, ktoru moze vybrat striedanie v hre (`_dalsi_cue_slot`) a
-    povie ju TTS. Nic navyse (posielanie zbytocne), nic menej (v hre by
-    zaznel hlas z Windows)."""
+    """For every combination of cue and picture switches: exactly the cue that
+    the in-game rotation can pick (`_dalsi_cue_slot`) and that TTS speaks is
+    prepared. Nothing more (needless sending), nothing less (the Windows
+    voice would sound in game)."""
     mody = (MODE_TTS, MODE_COMBO, MODE_SFX, MODE_TTS)
     for zapnute in itertools.product((True, False), repeat=4):
         for obrazky in itertools.product((True, False), repeat=4):
@@ -159,7 +162,7 @@ def test_priprava_presne_to_co_hra_vyberie_a_povie_hlasom(monkeypatch):
 
 
 # --------------------------------------------------------------------------
-# Prepinac obrazka planuje / zastavuje pripravu
+# The picture switch schedules / stops the preparation
 # --------------------------------------------------------------------------
 
 def test_zapnutie_obrazka_hlasku_pripravi(monkeypatch):
@@ -206,8 +209,8 @@ def test_zapnutie_obrazka_bez_slov_ani_v_praci_nic_neposle(monkeypatch):
 
 
 def test_vypnutie_obrazka_uprostred_pripravy_zvysok_neposle(monkeypatch):
-    """Vypnutie obrazka Jaw pocas prvej hlasky: Jaw uz na siet nejde ani
-    v dalsej naplanovanej priprave; Release sa dopripravi."""
+    """Turning off the Jaw picture during the first cue: Jaw does not go to the
+    network even in the next scheduled preparation; Release gets prepared."""
     a = _atrapa(monkeypatch, _tri())
 
     def posli(text, voice, rate, abort=None):
@@ -216,7 +219,7 @@ def test_vypnutie_obrazka_uprostred_pripravy_zvysok_neposle(monkeypatch):
         a.posielane.append(text)
         a.hotove.add(text)
         if len(a.posielane) == 1:
-            a.on_overlay_config_change(1, enabled=False)   # hrac vypne obrazok
+            a.on_overlay_config_change(1, enabled=False)   # the player turns the picture off
         return "hotova.mp3"
 
     a.edge_cache.ensure = posli
@@ -230,9 +233,10 @@ def test_vypnutie_obrazka_uprostred_pripravy_zvysok_neposle(monkeypatch):
 
 
 def test_velkost_poloha_farba_pripravu_nerusia(monkeypatch):
-    """Posuvnik velkosti a tahanie polohy volaju `on_overlay_config_change`
-    mnohokrat za sekundu. Na to, co sa posiela, nemaju vplyv - rozbehnutu
-    pripravu nezastavia a novu neplanuju."""
+    """The size slider and dragging the position call
+    `on_overlay_config_change` many times a second. They have no effect on
+    what is sent - they do not stop a running preparation and do not
+    schedule a new one."""
     a = _atrapa(monkeypatch, _tri())
     seq = a._pregen_seq
     a.on_overlay_config_change(0, scale=1.3)
@@ -244,9 +248,10 @@ def test_velkost_poloha_farba_pripravu_nerusia(monkeypatch):
 
 
 def test_oba_prepinace_obrazka_idu_cez_on_overlay_config_change():
-    """Obrazok sa zapina na stranke hodiniek (app.py, `_build_vhre_page`) aj
-    v dialogu doladenia (ui_dialogs.py, `OverlaySettingsDialog`). Oba musia
-    ist cez `on_overlay_config_change`, inak by pripravu nenaplanovali."""
+    """The picture is turned on on the watch page (app.py, `_build_vhre_page`)
+    and in the fine-tuning dialog (ui_dialogs.py, `OverlaySettingsDialog`).
+    Both must go through `on_overlay_config_change`, otherwise they would not
+    schedule the preparation."""
     for subor in ("app.py", "ui_dialogs.py"):
         with open(os.path.join(KOREN, subor), encoding="utf-8-sig") as fh:
             strom = ast.parse(fh.read())
@@ -257,13 +262,14 @@ def test_oba_prepinace_obrazka_idu_cez_on_overlay_config_change():
 
 
 # --------------------------------------------------------------------------
-# Test / ukazka takej hlasky
+# Test / preview of such a cue
 # --------------------------------------------------------------------------
 
 def test_test_hlasky_s_vypnutym_obrazkom_zaznie_cez_windows(monkeypatch):
-    """Tlacidlo Test (aj ukazka v Nastavenia -> Zvuk) hlasky s vypnutym
-    obrazkom: zaznie hlas z Windows, nic sa nepripravuje ani neodklada na
-    po hre a dennik nesluboval pripravu, ktora nepride."""
+    """The Test button (and the preview in Settings -> Sound) of a cue with its
+    picture off: the Windows voice sounds, nothing is prepared or put off
+    until after the game, and the journal did not promise a preparation
+    that will not come."""
     import app as app_mod
     D = app_mod.DandurfApp
     for pocuva in (False, True):
@@ -275,7 +281,7 @@ def test_test_hlasky_s_vypnutym_obrazkom_zaznie_cez_windows(monkeypatch):
         assert a.hovorene == [("Jaw", "sapi")]
         assert a.posielane == [] and a.vlakna == []
 
-    # Ta ista hlaska so zapnutym obrazkom sa pripravi ako doteraz.
+    # The same cue with its picture on is prepared as before.
     a = _atrapa(monkeypatch, _tri())
     D._speak_text(a, "Jaw", a.slots[1])
     assert a.ui == [a.pregenerate]

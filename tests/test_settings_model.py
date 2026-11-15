@@ -1,9 +1,9 @@
-"""Testy pre settings_model.py - ciste funkcie bez UI/IO (clamp/normalizacia).
+"""Tests for settings_model.py - pure functions, no UI/IO (clamp/normalising).
 
-Spustenie:  pytest tests/ -v
-(Vyzaduje len 'pytest' navyse - `pip install pytest`. Ostatne zavislosti
-projektu (customtkinter, pygame...) sa pri importe settings_model.py
-nepotrebuju, kedze modul je ciste datovy.)
+Running:  pytest tests/ -v
+(Needs only 'pytest' on top - `pip install pytest`. The project's other
+dependencies (customtkinter, pygame...) are not needed when importing
+settings_model.py, since the module is purely data.)
 """
 
 import os
@@ -63,7 +63,8 @@ def test_clamp_int_invalid_returns_default():
 
 
 def test_clamp_int_truncates_float_string():
-    # cez float() medzikrok, takze "7.9" sa oreze na 7, nie zaokruhli na 8
+    # via a float() intermediate step, so "7.9" is truncated to 7, not
+    # rounded to 8
     assert clamp_int("7.9", 0, 10, 0) == 7
 
 
@@ -81,13 +82,13 @@ def test_optional_cooldown_empty_string_is_none():
 
 def test_optional_cooldown_valid_value_clamped():
     assert optional_cooldown(2.5) == 2.5
-    assert optional_cooldown(9999) == 600.0  # horny strop podla settings_model
+    assert optional_cooldown(9999) == 600.0  # upper cap according to settings_model
     assert optional_cooldown(-5) == 0.0
 
 
 # --------------------------------------------------------------------------
-# normalize_slot - najdolezitejsia funkcia: kazdy nacitany/importovany
-# slot (aj zo starej verzie appky) prechadza cez toto.
+# normalize_slot - the most important function: every loaded/imported
+# slot (even from an old version of the app) goes through this.
 # --------------------------------------------------------------------------
 
 def test_normalize_slot_empty_dict_has_all_default_keys():
@@ -96,8 +97,8 @@ def test_normalize_slot_empty_dict_has_all_default_keys():
 
 
 def test_normalize_slot_none_or_garbage_input_still_returns_valid_slot():
-    # normalize_slot musi prezit aj uplne nezmyselny vstup (napr. z
-    # poskodeneho/rucne upraveneho JSON) - vzdy vrati platny slot dict.
+    # normalize_slot must survive even completely nonsensical input (e.g.
+    # from a damaged/hand-edited JSON) - it always returns a valid slot dict.
     for garbage in (None, "text", 123, [1, 2, 3]):
         slot = normalize_slot(garbage)
         assert set(slot.keys()) == set(DEFAULT_SLOT.keys())
@@ -123,7 +124,7 @@ def test_normalize_slot_unknown_extra_keys_are_dropped():
 
 
 def test_normalize_slot_migrates_legacy_audio_mode_to_sfx():
-    # stara schema (Dandurf 2.0) pouzivala mode="audio" namiesto "sfx"
+    # the old schema (Dandurf 2.0) used mode="audio" instead of "sfx"
     slot = normalize_slot({"mode": "audio"})
     assert slot["mode"] == MODE_SFX
 
@@ -157,7 +158,7 @@ def test_normalize_slot_none_text_fields_become_empty_string():
 
 
 def test_normalize_slot_voice_path_none_becomes_empty_string():
-    # voice_path (vlastna nahravka hlasu) - rovnaka poistka ako audio_path.
+    # voice_path (own voice recording) - the same safeguard as audio_path.
     slot = normalize_slot({"voice_path": None})
     assert slot["voice_path"] == ""
 
@@ -168,21 +169,21 @@ def test_normalize_slot_voice_path_preserved():
 
 
 def test_normalize_slot_generuje_uid_ked_chyba():
-    # Bez uid by sa mena nahravok krizili medzi profilmi (B1). normalize ho
-    # musi doplnit - neprazdny retazec.
+    # Without a uid the recording names would clash between profiles (B1).
+    # normalize has to fill it in - a non-empty string.
     slot = normalize_slot({})
     assert isinstance(slot["uid"], str) and slot["uid"]
 
 
 def test_normalize_slot_zachova_existujuce_uid():
-    # Raz pridelene uid musi zostat stabilne, inak by sa odkaz na nahravku
-    # rozpadol pri kazdom nacitani.
+    # A uid once assigned must stay stable, otherwise the link to the
+    # recording would fall apart on every load.
     slot = normalize_slot({"uid": "trvale123"})
     assert slot["uid"] == "trvale123"
 
 
 def test_normalize_slot_dve_prazdne_dostanu_rozne_uid():
-    # Dva cerstve sloty nesmu dostat rovnake uid (inak by zdielali subor).
+    # Two fresh slots must not get the same uid (or they would share a file).
     a = normalize_slot({})
     b = normalize_slot({})
     assert a["uid"] != b["uid"]
@@ -193,12 +194,13 @@ def test_normalize_slot_dve_prazdne_dostanu_rozne_uid():
 # --------------------------------------------------------------------------
 
 def test_normalize_overlay_config_defaults_when_not_dict():
-    """Rozbity zapis -> vizual ZAPNUTY.
+    """Broken entry -> visual ON.
 
-    Do 19. 9. tu bolo `is False`. Vyzeralo to nevinne, ale znamenalo to, ze
-    appka bez zapnuteho vizualu nepusti ziadnu hlasku (`app._cue_can_fire`),
-    takze chybajuci alebo rozbity kluc ju umlcal natrvalo. Chybajuci zaznam
-    znamena "nevieme", nie "hrac si to vypol".
+    Until 19. 9. this said `is False`. It looked innocent, but it meant
+    that the app without an enabled visual lets no cue through
+    (`app._cue_can_fire`), so a missing or broken key silenced it for
+    good. A missing entry means "we don't know", not "the player turned
+    it off".
     """
     cfg = normalize_overlay_config(None, 0)
     assert cfg["enabled"] is True
@@ -206,12 +208,13 @@ def test_normalize_overlay_config_defaults_when_not_dict():
 
 
 def test_predvolene_vizualy_su_zapnute():
-    """Cerstva instalacia sa MUSI vediet ozvat.
+    """A fresh installation MUST be able to speak up.
 
-    `app._cue_can_fire` hlasku nepusti, kym nie je zapnuty aspon jeden
-    in-game vizual. Kym boli predvolene vypnute, nova instalacia odohrala
-    cely vecer a nepovedala ani slovo - automat sa natiahol a zakazdym po
-    90 sekundach ticho vypadol.
+    `app._cue_can_fire` does not let a cue through until at least one
+    in-game visual is enabled. While they were off by default, a new
+    installation played through a whole evening and did not say a word -
+    the state machine wound up and every time quietly dropped out after
+    90 seconds.
     """
     cfgs = default_overlay_configs()
     assert len(cfgs) == 4
@@ -226,13 +229,14 @@ def test_normalize_overlay_config_clamps_scale_and_position():
     assert 0.0 <= cfg["pos_y"] <= 100.0
 
 
-# POZN: tu bol `test_normalize_dojo_intensity_clamps_and_defaults` -
-# odstraneny spolu s `normalize_dojo_intensity()` v settings_model, ked
-# zmizol fotopas nad titulkovou listou aj jeho posuvnik v Nastaveniach.
+# NOTE: here used to be
+# `test_normalize_dojo_intensity_clamps_and_defaults` - removed together
+# with `normalize_dojo_intensity()` in settings_model, when the photo band
+# above the title bar and its slider in Settings disappeared.
 
 
 # --------------------------------------------------------------------------
-# Vybratelne statistiky na Dnes - ukladanie/nacitanie vyberu
+# Selectable stats on Today - saving/loading the selection
 # --------------------------------------------------------------------------
 
 def test_normalize_dashboard_stats_defaults_when_not_a_list():
@@ -251,11 +255,11 @@ def test_normalize_dashboard_stats_round_trip_all_known_ids():
 
 
 # ---------------------------------------------------------------------------
-# sekcia "O appke" — odkazy na autora
+# the "About" section — links to the author
 # ---------------------------------------------------------------------------
 
 def test_odkazy_na_komunitu_su_pouzitelne():
-    """Odkazy idú do sveta, takže sa nesmú rozbiť ticho."""
+    """The links go out into the world, so they must not break silently."""
     import guide_content
     odkazy = guide_content.COMMUNITY_LINKS
     assert len(odkazy) >= 3
@@ -263,7 +267,7 @@ def test_odkazy_na_komunitu_su_pouzitelne():
     assert len(set(mena)) == len(mena), "duplicitný názov: %s" % mena
     for nazov, url in odkazy:
         assert nazov.strip(), odkazy
-        assert url.startswith("https://"), url      # nikdy http
+        assert url.startswith("https://"), url      # never http
         assert " " not in url, url
 
 
@@ -275,11 +279,12 @@ def test_v_odkazoch_su_vsetky_platformy():
 
 
 def test_discord_v_appke_nie_je():
-    """Na hlásenie chýb a spoluprácu je GitHub, nie Discord.
+    """Bug reports and collaboration go to GitHub, not Discord.
 
-    Diskusia na GitHube ostáva verejná, dohľadateľná a viazaná na kód.
-    Navyše pozvánka na Discord expiruje a po expirácii prestane fungovať
-    všetkým, čo si appku už stiahli — bez toho, aby sa to autor dozvedel.
+    A discussion on GitHub stays public, searchable and tied to the code.
+    Also, a Discord invite expires, and after it expires it stops working
+    for everyone who has already downloaded the app — without the author
+    ever finding out.
     """
     import guide_content
     domeny = " ".join(u for _, u in guide_content.COMMUNITY_LINKS).lower()
@@ -287,32 +292,36 @@ def test_discord_v_appke_nie_je():
 
 
 def test_about_hovori_o_licencii_pravdivo():
-    """GPLv3 predaj NEZAKAZUJE — zakazuje zavretie.
+    """GPLv3 does NOT FORBID selling — it forbids closing.
 
-    Text v „O appke“ je verejné vyhlásenie o licencii a nesmie tvrdiť niečo
-    iné než samotná licencia (GPLv3) a LICENSE-DESIGN.md.
+    The text in "About" is a public statement about the licence and must
+    not claim anything other than the licence itself (GPLv3) and
+    LICENSE-DESIGN.md.
     """
     import i18n
     for jazyk in ("sk", "en"):
         telo = i18n.tr_lang(jazyk, "about.body")
         assert "GPLv3" in telo, jazyk
-        # sľub o otvorenosti musí byť sprevádzaný povinnosťou odovzdať zdroj
+        # a promise of openness must come with the obligation to hand over
+        # the source
         assert ("zdrojový kód" in telo or "source" in telo), jazyk
 
 
 def test_about_priznava_ako_appka_vznikla():
-    """Autor chcel mať výslovne napísané, že to je vibe coded a že nie je
-    programátor. Je to jeho rozhodnutie a nemá z textu vypadnúť."""
+    """The author wanted it written explicitly that this is vibe coded and
+    that he is not a programmer. It is his decision and it must not drop
+    out of the text."""
     import i18n
     assert "vibe cod" in i18n.tr_lang("sk", "about.body").lower()
     assert "vibe cod" in i18n.tr_lang("en", "about.body").lower()
 
 
 def test_appka_vystupuje_iba_ako_dandurfin():
-    """Autor chce v celej appke vystupovať len pod menom Dandurfin.
+    """The author wants to appear in the whole app only under the name
+    Dandurfin.
 
-    Kontroluje sa všetko, čo uvidí používateľ: text v „O appke“ aj metadáta
-    exe, ktoré Windows ukáže vo Vlastnostiach.
+    Everything the user will see is checked: the text in "About" and the
+    exe metadata that Windows shows in Properties.
     """
     import i18n
     import io
@@ -326,8 +335,9 @@ def test_appka_vystupuje_iba_ako_dandurfin():
 
 
 def test_copyright_je_v_appke_vidiet():
-    """GPLv3 odporúča, aby interaktívny program vypísal krátke oznámenie
-    o autorstve a záruke — a hlavne je to sľub hráčovi, pod čím appku dostal."""
+    """GPLv3 recommends that an interactive program prints a short notice
+    about authorship and warranty — and above all it is a promise to the
+    player about the terms the app came under."""
     import i18n
     for jazyk in ("sk", "en"):
         t = i18n.tr_lang(jazyk, "about.copyright")
@@ -336,19 +346,19 @@ def test_copyright_je_v_appke_vidiet():
 
 
 def test_nazov_appky_je_holy_zanshin():
-    """„DojoSync" nič nehovorilo. Zrozumiteľnosť nesie veta vedľa mena."""
+    """„DojoSync" said nothing. The sentence by the name makes it clear."""
     import paths
     assert paths.APP_NAME == "Zanshin"
-    # a starý názov musí ostať v migrácii, inak nainštalovanej appke
-    # zmiznú dáta — `data_dir()` ich hľadá pod APP_NAME
+    # and the old name must stay in the migration, otherwise an installed
+    # app loses its data — `data_dir()` looks for it under APP_NAME
     assert "Zanshin DojoSync" in paths.LEGACY_APP_NAMES
 
 
 def test_licencia_je_vidiet_v_titulnej_liste():
-    """Appka tvrdí, že je slobodná — nech to stojí tam, kde to vidno vždy.
+    """The app claims to be free — let it stand where it is always visible.
 
-    Je to to isté tvrdenie ako „všetko ostáva u teba": buď je vidieť stále,
-    alebo mu netreba veriť.
+    It is the same claim as "everything stays with you": either it is
+    visible all the time, or there is no need to believe it.
     """
     import app
     assert app.LICENCIA == "GPLv3"
@@ -358,14 +368,15 @@ def test_licencia_je_vidiet_v_titulnej_liste():
 
 
 def test_subor_LICENSE_existuje_a_je_cely():
-    """Bez neho platí podľa autorského práva „všetky práva vyhradené“ —
-    teda presný opak toho, čo appka o sebe tvrdí v lište aj v „O appke“."""
+    """Without it, copyright law means "all rights reserved" — i.e. exactly the
+    opposite of what the app claims about itself in the title bar and in
+    "About"."""
     import io
     import os
     cesta = os.path.join(os.path.dirname(__file__), "..", "LICENSE")
     assert os.path.exists(cesta), "LICENSE chýba"
     t = io.open(cesta, encoding="utf-8").read()
-    # doslovný text FSF má 674 riadkov; kontrolujeme kotvy, nie dĺžku
+    # the verbatim FSF text has 674 lines; we check anchors, not the length
     for kus in ("GNU GENERAL PUBLIC LICENSE", "Version 3, 29 June 2007",
                 "TERMS AND CONDITIONS",
                 "How to Apply These Terms to Your New Programs"):

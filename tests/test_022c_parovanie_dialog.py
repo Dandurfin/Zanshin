@@ -1,18 +1,18 @@
 # -*- coding: utf-8 -*-
-"""Okno parovania hodiniek uz nie je slepe (0.2.2, audit "Parovaci dialog").
+"""Watch pairing window is no longer blind (0.3, audit "Parovaci dialog").
 
-Doteraz:
-  * okno nemalo ziadny stav - ci parovanie ide, bolo vidno len za modalnym
-    oknom,
-  * krok 5 radil "zapni senzor", hoci prijem zaplo uz samotne otvorenie
-    navodu - kto poslúchol, prijem si VYPOL,
-  * rada o firewalle stala pod "pripoji sa, ale tep nechodi", teda pri
-    opacnom pripade, nez kde patri,
-  * anglicka hlavicka ukazovala doslova "THIS PC\\u2019S",
-  * okno bez ramu nemalo polohu.
+Until now:
+  * the window had no status - whether pairing was working could be seen only
+    behind the modal window,
+  * step 5 advised "switch the sensor on", although just opening the guide
+    had already switched receiving on - whoever obeyed switched receiving OFF,
+  * the firewall advice stood under "connects, but heart rate does not come",
+    i.e. under the opposite case from where it belongs,
+  * the English header literally showed "THIS PC\\u2019S",
+  * the frameless window had no position.
 
-Testy bezia bez Tk: `stav_parovania` je funkcia modulu a metody dialogu sa
-volaju na atrape.
+Tests run without Tk: `stav_parovania` is a module function and the dialog's
+methods are called on a stub.
 """
 import ast
 import os
@@ -69,7 +69,7 @@ def _app(**kw):
 
 
 # --------------------------------------------------------------------------
-# Stav pod adresou - zo skutocneho stavu prijmu
+# Status under the address - from the real receiving state
 # --------------------------------------------------------------------------
 
 def test_cakam_na_telefon():
@@ -98,11 +98,11 @@ def test_bez_hr_stats_aspon_surove_cislo():
 
 
 def test_connected_bez_vzorky_este_nie_je_ok():
-    """O tom, ci tep chodi, rozhoduje surovy `_hr_last_bpm` (ako stitok).
+    """The raw `_hr_last_bpm` decides if heart rate is coming (like the label).
 
-    "connected" bez vzorky vznika, ked `start_listening` pocas parovania
-    otvori novu relaciu (prvy start to urobi sam) - telefon je ale stale
-    pripojeny, takze nie "cakam, kym sa telefon pripoji"."""
+    "connected" without a sample arises when `start_listening` opens a new
+    session during pairing (the first start does that by itself) - but the
+    phone is still connected, so not "waiting for the phone to connect"."""
     a = _app(_hr_state="connected", _hr_last_bpm=None, hr_stats=_Stats(80))
     assert ui_dialogs.stav_parovania(a) == ("caka", i18n.tr("hr.pair_status_linked"))
 
@@ -126,7 +126,7 @@ def test_prijem_sa_nezapol():
     druh, text = ui_dialogs.stav_parovania(
         _app(_hr_state="disconnected", hr_monitoring_enabled=False))
     assert druh == "chyba" and text == i18n.tr("hr.pair_status_off")
-    # znova otvorit navod = `open_watch_pairing` -> `_enable_hr_monitoring`
+    # reopening the guide = `open_watch_pairing` -> `_enable_hr_monitoring`
     assert "self._enable_hr_monitoring()" in zdroj_metody("open_watch_pairing")
 
 
@@ -147,11 +147,11 @@ def test_stav_sa_obnovuje_kazdu_sekundu_a_po_zavreti_prestane():
     d._obnov_stav()
     assert stitok == {"text": i18n.tr("hr.pair_status_ok", bpm=70), "text_color": "S"}
     assert naplanovane[0][0] == 1000 and d._stav_job == "job"
-    # zmena stavu sa prejavi v dalsom kole
+    # the state change shows in the next round
     d.app._hr_state, d.app.hr_monitoring_enabled = "busy_gave_up", False
     naplanovane[0][1]()
     assert stitok["text_color"] == "D"
-    # po zavreti uz nic
+    # nothing after closing
     d._zavrete = True
     pocet = len(naplanovane)
     naplanovane[-1][1]()
@@ -166,7 +166,7 @@ def test_stav_je_pod_adresou_nad_krokmi():
 
 
 # --------------------------------------------------------------------------
-# on_close (sprievodca po nom spusti prehliadku) a zavretie
+# on_close (the guide starts the tour after it) and closing
 # --------------------------------------------------------------------------
 
 def _zatvaratelny(on_close):
@@ -184,7 +184,7 @@ def test_on_close_sa_zavola_raz_aj_pri_dvojitom_zavreti():
     volania = []
     d, zrusene, stav = _zatvaratelny(lambda: volania.append(1))
     ui_dialogs.WatchPairingDialog.close(d)
-    ui_dialogs.WatchPairingDialog.close(d)       # Escape po kliku na Zavriet
+    ui_dialogs.WatchPairingDialog.close(d)       # Escape after a click on Close
     assert volania == [1]
     assert stav == {"typing": False, "destroy": 1}
     assert zrusene == ["job-1"] and d._stav_job is None
@@ -217,19 +217,19 @@ def test_on_close_je_volitelny_parameter():
 
 
 # --------------------------------------------------------------------------
-# Poloha okna
+# Window position
 # --------------------------------------------------------------------------
 
 def test_okno_je_vycentrovane_spolocnym_pomocnikom():
     init = _metoda_dialogu("__init__")
-    # 0.2.2 (audit UX): spolocny pomocnik dialogov - stred cez
-    # `vycentrovana_geometria` a rozmer zmenseny na pracovnu plochu
+    # 0.3 (UX audit): the shared dialog helper - centred via
+    # `vycentrovana_geometria` and the size shrunk to the work area
     assert "ui_kit.umiestni_dialog(self.top, app.root, 560, 640" in init
     assert 'self.top.geometry("560x640")' not in init
 
 
 # --------------------------------------------------------------------------
-# Texty krokov a rad
+# Step texts and advice
 # --------------------------------------------------------------------------
 
 def test_krok5_uz_nerada_prepinat():
@@ -238,7 +238,7 @@ def test_krok5_uz_nerada_prepinat():
     assert "netreba nič prepínať" in telo and "zapni" not in telo.lower()
     for jazyk in i18n.LANGUAGES:
         text = i18n.tr_lang(jazyk, "hr.step5_body")
-        # ziaden jazyk uz necituje prepinac "Pocuvat tep z hodiniek"
+        # no language quotes the switch "Pocuvat tep z hodiniek" any more
         assert i18n.tr_lang(jazyk, "settings.hr_enable_switch") not in text, jazyk
         assert "BPM" in text, jazyk
 
@@ -268,8 +268,8 @@ def test_kontrolny_zoznam_ma_styri_body_vo_vsetkych_jazykoch():
 
 
 def test_mena_ponuk_windowsu_su_skutocne():
-    """sk overene v slovenskych Windows 11 (Nastavenia, Windows Zabezpecenie),
-    en podla anglickych Windows 11."""
+    """sk verified in Slovak Windows 11 (Nastavenia, Windows Zabezpecenie),
+    en according to English Windows 11."""
     sk = i18n.tr_lang("sk", "hr.noconnect_body")
     for meno in ("Nastavenia → Sieť a internet", "Typ profilu siete: Súkromná sieť",
                  "Windows Zabezpečenie → Firewall a ochrana siete",
@@ -295,7 +295,7 @@ def test_firewall_presiel_z_trouble_do_noconnect():
 
 
 # --------------------------------------------------------------------------
-# THIS PC’S - doslovne lomitko v texte
+# THIS PC’S - a literal backslash in the text
 # --------------------------------------------------------------------------
 
 def test_hlavicka_adresy_bez_doslovneho_escape():
@@ -306,8 +306,9 @@ def test_hlavicka_adresy_bez_doslovneho_escape():
 
 
 def test_mrtve_kopie_su_prec():
-    """V zdroji uz nie je ziadne zdvojene lomitko pred u2019 (aj mrtve kopie
-    hr.pair_this_pc ja..pt a stare hr.step3_body boli zmazane)."""
+    """There is no doubled backslash before u2019 in the source any more (the
+    dead copies hr.pair_this_pc ja..pt and the old hr.step3_body were deleted
+    too)."""
     src = zdroj_suboru("i18n.py")
     assert "\\\\u2019" not in src
 
@@ -327,7 +328,7 @@ def test_check_translations_prejde(monkeypatch, capsys):
 
 def test_check_translations_chyti_doslovny_escape(monkeypatch, capsys):
     zly = {jazyk: "OK" for jazyk in i18n.LANGUAGES}
-    zly["en"] = "THIS PC\\u2019S ADDRESS"          # doslovne lomitko + u2019
+    zly["en"] = "THIS PC\\u2019S ADDRESS"          # literal backslash + u2019
     monkeypatch.setitem(i18n.STRINGS, "test.zly_escape", zly)
     kod, vystup = _spusti_kontrolu(monkeypatch, capsys)
     assert kod == 1
@@ -335,7 +336,7 @@ def test_check_translations_chyti_doslovny_escape(monkeypatch, capsys):
 
 
 # --------------------------------------------------------------------------
-# QR v navode neposiela do „Ako sparovat hodinky…“ (to je to iste okno)
+# QR in the guide does not point to "How to pair your watch…" (same window)
 # --------------------------------------------------------------------------
 
 @pytest.mark.parametrize("kluc", ["hr.qr_android", "hr.qr_ios"])
@@ -347,7 +348,7 @@ def test_qr_v_navode_posiela_na_ramik_hore(kluc):
         assert karta == i18n.tr(kluc), jazyk
         assert i18n.tr("hr.pair_button") not in navod, jazyk
         assert navod.split("\n")[-1] == i18n.tr("hr.qr_addr_above"), jazyk
-        # meno appky, cena a "nevyskusane" ostavaju
+        # the app name, price and "not tested yet" stay
         assert navod.split("\n")[:-1] == karta.split("\n")[:-1], jazyk
 
 
@@ -358,5 +359,5 @@ def test_navod_vola_qr_s_v_navode():
 
 
 def test_skutocny_znak_escape_nie_je():
-    """Znak ’ (U+2019) v texte je v poriadku - chyba je len doslovne \\uXXXX."""
+    """The ’ (U+2019) in a text is fine - the bug is only a literal \\uXXXX."""
     assert "’" in i18n.STRINGS["hr.pair_this_pc"]["en"]

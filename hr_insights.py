@@ -1,24 +1,25 @@
-"""Analyza historie relacii tepu - jemne odporucania, nie diagnozy.
+"""Analysis of the heart-rate session history - gentle tips, not diagnoses.
 
-Co to robi
-----------
-Prejde ulozene suhrny relacii (hr_sessions.json) a hlada vzory NAPRIEC
-relaciami, ktore z jednej relacie vidiet nie je:
+What it does
+------------
+Goes through the saved session summaries (hr_sessions.json) and looks for
+patterns ACROSS sessions that cannot be seen from one session:
 
-  * pokojova zakladna stupa/klesa tyzden po tyzdni,
-  * zotavenie tepu (HRR) sa zlepsuje/zhorsuje,
-  * kedy v relacii chodia spustenia dychania hustejsie (prva hodina vs.
-    az po dvoch hodinach),
-  * cas nad hranicou rastie.
+  * the resting baseline rises/falls week by week,
+  * heart-rate recovery (HRR) gets better/worse,
+  * when in a session the breathing triggers come more densely (the first
+    hour vs. only after two hours),
+  * the time above the limit grows.
 
-Kazdy vysledok je (kluc do i18n, parametre, ton). Texty su formulovane ako
-"co vidime a co by si mohol skusit" - nikdy "si zdravy/chory". Modul je
-cisto datovy: ziadny Tk, ziadna siet, ziadne I/O okrem save/load JSON,
-takze sa da spustit v pozadi (threading) aj testovat priamo.
+Every result is (i18n key, parameters, tone). The texts are worded as
+"what we see and what you could try" - never "you are healthy/ill". The
+module is purely data: no Tk, no network, no I/O except save/load JSON,
+so it can run in the background (threading) and be tested directly.
 
-Prahy su zamerne konzervativne (aspon 3 relacie, rozdiel aspon 4 BPM,
-spustenia aspon 2x hustejsie a nie nahodou), aby appka nehlasila "trend"
-z dvoch nahodnych vecerov.
+The thresholds are deliberately conservative (at least 3 sessions, a
+difference of at least 4 BPM, triggers at least 2x denser and not by
+chance), so that the app does not report a "trend" from two random
+evenings.
 """
 
 import json
@@ -29,43 +30,48 @@ import hr_stats
 from paths import nahrad_subor
 
 MIN_SESSIONS = 3
-BASELINE_DELTA_BPM = 4.0       # od kolkych BPM je zmena zakladne "trend"
+BASELINE_DELTA_BPM = 4.0       # from how many BPM a baseline change is a "trend"
 HRR_DELTA_BPM = 4.0
 WEEK_S = 7 * 86400.0
 LONG_SESSION_S = 90 * 60.0
 VERY_LONG_SESSION_S = 150 * 60.0
 
-# Kedy prichadzaju spustenia (postreh 3). Porovnava sa HUSTOTA - kolko
-# spusteni pride na cas relacie v okne - nie ich podiel. (Cas relacie, nie
-# cas hrania: `duration_s` bezi od zapnutia senzora, aj cez menu a AFK.)
-# Podiel sa myli uz na rovnomernych spusteniach: v 90-min relacii je prva hodina dve tretiny
-# casu, takze aj uplne rovnomerne spustenia davaju ~67 % "v prvej hodine"
-# a stary prah 66 % hlasil vzor, ktory tam nebol. V 4-5 h relaciach to
-# iste robilo "po dvoch hodinach" (prah 50 %) - a to s tonom "watch".
-EARLY_WINDOW_S = 3600.0        # "v prvej hodine"
-LATE_FROM_S = 7200.0           # "az po dvoch hodinach"
-RATE_RATIO = 2.0               # okno musi byt aspon 2x hustejsie nez zvysok
-MIN_TRIGGERS = 6               # menej spusteni v porovnani = vecer, nie vzor
-# Ako velmi moze byt nepomer nahoda. Pri par spusteniach je aj 2x nahoda:
-# simulacia rovnomernych spusteni (3-5 relacii po 90-300 min, 1-3 za
-# hodinu, s odstupom a stropom z trigger.py) dala so samotnym "2x a aspon
-# 6 spusteni" hlasku v 4-18 % pripadov, s touto poistkou okolo 2 % (aj ked
-# su napate vecery kratsie alebo dlhsie nez pokojne - viz ocakavanie po
-# relaciach v analyze()).
-# Cena: z troch 90-min relacii sa skutocny rozbeh ukaze malokedy (po
-# prvej hodine je v nich len pol hodiny na porovnanie) - postreh pride
-# az s dalsimi relaciami. Radsej ticho nez plany poplach.
+# When the triggers come (insight 3). What is compared is the DENSITY - how
+# many triggers there are per session time in the window - not their share.
+# (Session time, not playing time: `duration_s` runs from when the sensor is
+# switched on, also through menus and AFK.)
+# The share is wrong already with evenly spread triggers: in a 90-min session
+# the first hour is two thirds of the time, so even perfectly even triggers
+# give ~67 % "in the first hour" and the old 66 % threshold reported a
+# pattern that was not there. In 4-5 h sessions the same happened with
+# "after two hours" (50 % threshold) - and with the "watch" tone at that.
+EARLY_WINDOW_S = 3600.0        # "in the first hour"
+LATE_FROM_S = 7200.0           # "only after two hours"
+RATE_RATIO = 2.0               # the window must be at least 2x denser than the rest
+MIN_TRIGGERS = 6               # fewer triggers in the comparison = an evening, not a pattern
+# How much the imbalance may be chance. With a few triggers even 2x is
+# chance: a simulation of evenly spread triggers (3-5 sessions of 90-300
+# min, 1-3 per hour, with the gap and cap from trigger.py) gave, with just
+# "2x and at least 6 triggers", the message in 4-18 % of cases, with this
+# safeguard around 2 % (even when the tense evenings are shorter or longer
+# than the calm ones - see the per-session expectation in analyze()).
+# The price: from three 90-min sessions a real ramp-up shows rarely (after
+# the first hour there is only half an hour in them to compare) - the
+# insight only comes with further sessions. Rather silence than a false
+# alarm.
 CHANCE_P = 0.05
 
-# Kolko POSLEDNYCH relacii sa pyta pri odporucaniach o tichu. Tri su
-# minimum, z ktoreho sa da povedat "deje sa to opakovane" a nie "mal si
-# jeden pokojny vecer".
+# How many of the LAST sessions the tips about silence ask about. Three is
+# the minimum from which you can say "it keeps happening" and not "you had
+# one calm evening".
 TICHYCH_RELACII = 3
-# Ked je najdlhsi usek nad prahom aspon takouto castou potrebneho drzania,
-# je to "tesne vedla" - vtedy ma zmysel radit zmenu politiky. Ked je to
-# hlboko pod, problem je inde (prah, hranica tepu) a rada by mylila.
+# When the longest stretch above the threshold is at least this share of
+# the required hold, it is a "near miss" - then it makes sense to suggest a
+# policy change. When it is deep below, the problem is elsewhere
+# (threshold, heart-rate limit) and the tip would mislead.
 TESNE_VEDLA = 0.5
-# Od kolkych zruseni vypadkom na relaciu sa to uz neda zvalit na nahodu.
+# From how many dropout cancellations per session it can no longer be
+# put down to chance.
 VYPADKOV_VELA = 3.0
 
 TONE_INFO = "info"
@@ -79,9 +85,9 @@ def _mean(values):
 
 
 def _zadrzanych(sessions):
-    """Kolko natiahnuti appka v tychto relaciach SAMA zrusila
-    (`cues_withheld`, 0.2 stress-gate). Stare relacie ho nemaju - 0;
-    pokazena hodnota sa nerata."""
+    """How many armings the app cancelled ITSELF in these sessions
+    (`cues_withheld`, 0.2 stress-gate). Old sessions do not have it - 0;
+    a broken value is not counted."""
     spolu = 0.0
     for s in sessions:
         zadrzane = s.get("cues_withheld")
@@ -96,7 +102,7 @@ def _zadrzanych(sessions):
 
 
 def _cislo_or_0(hodnota):
-    """Cislo zo suhrnu relacie; chybajuce alebo pokazene = 0."""
+    """A number from the session summary; missing or broken = 0."""
     try:
         return float(hodnota or 0)
     except (TypeError, ValueError):
@@ -108,13 +114,15 @@ def _valid(sessions):
     for s in sessions or []:
         if not isinstance(s, dict):
             continue
-        # Importovana relacia je cudzie telo. Postreh "tvoj pokojovy tep
-        # rastie" postaveny na nej by bol tvrdenie o niekom inom.
+        # An imported session is someone else's body. An insight "your resting
+        # heart rate is rising" built on it would be a claim about someone
+        # else.
         if s.get("imported"):
             continue
-        # Pokazena relacia (kroky citane ako tep) tu doteraz prechadzala a
-        # vyrobila neexistujuce varovanie aj hlasku "zotavenie +50 BPM" z
-        # poctu krokov (B8). Ten isty filter ako pri kalibracii.
+        # A broken session (steps read as heart rate) used to get through here
+        # and produced a non-existent warning and the message "recovery
+        # +50 BPM" from the step count (B8). The same filter as for
+        # calibration.
         if hr_stats.je_podozriva(s):
             continue
         try:
@@ -132,8 +140,9 @@ def _insight(key, tone=TONE_INFO, **params):
 
 
 def _binom_tail(k, n, p):
-    """P(X >= k) pre X ~ Bin(n, p). V logaritmoch, aby to nepretieklo ani
-    pri tisickach spusteni za roky hrania (math.comb * float by padol)."""
+    """P(X >= k) for X ~ Bin(n, p). In logarithms, so that it does not overflow
+    even with thousands of triggers over years of playing (math.comb * float
+    would fail)."""
     lp, lq = math.log(p), math.log1p(-p)
     ln_n = math.lgamma(n + 1)
     return sum(math.exp(ln_n - math.lgamma(i + 1) - math.lgamma(n - i + 1)
@@ -142,34 +151,36 @@ def _binom_tail(k, n, p):
 
 
 def _denser(inside, outside, t_inside, t_outside):
-    """Chodia spustenia v okne ZRETELNE hustejsie nez mimo neho?
+    """Do the triggers in the window come CLEARLY more densely than outside it?
 
-    `inside`/`outside` su pocty spusteni, `t_inside`/`t_outside` kolko by
-    ich v okne a mimo neho bolo, keby v kazdej relacii chodili rovnomerne
-    (sucet podielov okna cez spustenia). Platit musi oboje:
-      * v okne je ich aspon RATE_RATIO-krat viac oproti ocakavaniu nez mimo
-        neho - aby to bol rozdiel, ktory stoji za vetu;
-      * pri rovnomernom rozlozeni by taky nepomer vznikol nahodou nanajvys
-        s pravdepodobnostou CHANCE_P. Binomicky chvost s priemernym podielom
-        je pri roznych dlzkach relacii opatrnejsi nez presny (Hoeffding
-        1956), takze chyba ide smerom k tichu.
+    `inside`/`outside` are trigger counts, `t_inside`/`t_outside` how many
+    of them there would be in the window and outside it if they came evenly
+    in every session (the sum of the window shares over the triggers). Both
+    must hold:
+      * in the window there are at least RATE_RATIO times more of them
+        relative to expectation than outside it - so that it is a
+        difference worth a sentence;
+      * with an even spread such an imbalance would come about by chance
+        with a probability of at most CHANCE_P. The binomial tail with the
+        average share is more cautious with different session lengths than
+        the exact one (Hoeffding 1956), so the error goes towards silence.
     """
     n = inside + outside
     if n < MIN_TRIGGERS or t_inside <= 0 or t_outside <= 0:
         return False
-    # inside/t_inside >= RATE_RATIO * outside/t_outside, bez delenia nulou
+    # inside/t_inside >= RATE_RATIO * outside/t_outside, no division by zero
     if inside * t_outside < RATE_RATIO * outside * t_inside:
         return False
     p = t_inside / (t_inside + t_outside)
-    if not 0.0 < p < 1.0:       # pokazene trvanie (inf/nan) - radsej ticho
+    if not 0.0 < p < 1.0:       # broken duration (inf/nan) - rather silence
         return False
     return _binom_tail(inside, n, p) <= CHANCE_P
 
 
 def _split_recent(sessions, now, field):
-    """Relacie s danym polom: posledny tyzden vs. tyzden pred nim. Ak by
-    v niektorom tyzdni boli menej nez 2, spadne na 'posledne 3 vs.
-    predosle 3' - stale porovnavame porovnatelne kusy."""
+    """Sessions with the given field: the last week vs. the week before it.
+    If there were fewer than 2 in either week, it falls back to 'last 3 vs.
+    previous 3' - we always compare comparable pieces."""
     with_field = [s for s in sessions if s.get(field) is not None]
     recent = [s for s in with_field if now - float(s.get("started", 0)) <= WEEK_S]
     previous = [s for s in with_field
@@ -182,7 +193,7 @@ def _split_recent(sessions, now, field):
 
 
 def analyze(sessions, now=None):
-    """Vrati zoznam insightov pre danu historiu (moze byt prazdny)."""
+    """Returns the list of insights for the given history (may be empty)."""
     now = float(now) if now else time.time()
     valid = _valid(sessions)
     insights = []
@@ -192,7 +203,7 @@ def analyze(sessions, now=None):
 
     flagged = False
 
-    # 1. pokojova zakladna - stupa alebo klesa
+    # 1. resting baseline - rising or falling
     recent, previous, basis = _split_recent(valid, now, "baseline_bpm")
     if recent:
         diff = _mean(s["baseline_bpm"] for s in recent) - _mean(s["baseline_bpm"] for s in previous)
@@ -202,7 +213,7 @@ def analyze(sessions, now=None):
         elif diff <= -BASELINE_DELTA_BPM:
             insights.append(_insight("resting_down", TONE_GOOD, delta=int(round(-diff))))
 
-    # 2. zotavenie tepu (HRR)
+    # 2. heart-rate recovery (HRR)
     recent, previous, basis = _split_recent(valid, now, "hrr_bpm")
     if recent:
         diff = _mean(s["hrr_bpm"] for s in recent) - _mean(s["hrr_bpm"] for s in previous)
@@ -212,16 +223,17 @@ def analyze(sessions, now=None):
             insights.append(_insight("hrr_down", TONE_WATCH, delta=int(round(-diff))))
             flagged = True
 
-    # 3. kedy prichadzaju spustenia dychania
+    # 3. when the breathing triggers come
     #
-    # "Skoro" = prva hodina proti zvysku, v relaciach od 90 min. "Neskoro" =
-    # po dvoch hodinach proti prvym dvom, len v relaciach od 150 min - len
-    # tam je po dvoch hodinach aspon pol hodiny na porovnanie.
+    # "Early" = the first hour against the rest, in sessions from 90 min.
+    # "Late" = after two hours against the first two, only in sessions from
+    # 150 min - only there is there at least half an hour after two hours to
+    # compare.
     #
-    # Ocakavanie sa pocita PO RELACIACH, nie zo suctu casov: kazde spustenie
-    # prinesie podiel okna vo SVOJEJ relacii. So suctom casov by napata
-    # 90-min relacia vedla pokojnych 5-h relacii vyzerala ako "prva hodina
-    # je hustejsia", hoci v ziadnej relacii nebola (Simpsonov paradox).
+    # The expectation is computed PER SESSION, not from the sum of times: every
+    # trigger brings the window share in ITS OWN session. With a sum of times a
+    # tense 90-min session next to calm 5-h sessions would look like "the first
+    # hour is denser", although it was not in any session (Simpson's paradox).
     early = after_early = 0
     t_early = t_after_early = 0.0
     late = before_late = 0
@@ -229,7 +241,7 @@ def analyze(sessions, now=None):
     for s in valid:
         offsets = s.get("trigger_offsets_s") or []
         dur = float(s.get("duration_s", 0))
-        # nan/inf: preskocit len tuto relaciu, nie umlcat postreh navzdy
+        # nan/inf: skip only this session, do not silence the insight forever
         if not math.isfinite(dur) or dur < LONG_SESSION_S:
             continue
         very_long = dur >= VERY_LONG_SESSION_S
@@ -254,9 +266,9 @@ def analyze(sessions, now=None):
                     late += 1
                 else:
                     before_late += 1
-    # {share} ostava obycajny podiel spusteni v okne - veta "X % spusteni
-    # prislo v prvej hodine" je doslova pravdiva; to, ze je to VIAC, nez
-    # by zodpovedalo casu, overil _denser.
+    # {share} stays the plain share of triggers in the window - the sentence
+    # "X % of triggers came in the first hour" is literally true; that it is
+    # MORE than the time would correspond to was checked by _denser.
     if _denser(early, after_early, t_early, t_after_early):
         insights.append(_insight("triggers_early", TONE_INFO,
                                  share=int(round(100.0 * early / (early + after_early)))))
@@ -265,7 +277,7 @@ def analyze(sessions, now=None):
                                  share=int(round(100.0 * late / (late + before_late)))))
         flagged = True
 
-    # 4. cas nad hranicou rastie (podiel relacie)
+    # 4. time above the limit grows (share of the session)
     def over_share(s):
         dur = float(s.get("duration_s", 0)) or 1.0
         return float(s.get("time_over_s", 0)) / dur
@@ -279,15 +291,17 @@ def analyze(sessions, now=None):
                                      minutes=int(round(recent_abs / 60.0))))
             flagged = True
 
-    # 5. PRECO APPKA MLCI
+    # 5. WHY THE APP IS SILENT
     #
-    # Toto su jedine odporucania, ktore hovoria hracovi, CO MA UROBIT - a
-    # preto stoja na tvrdych cislach zo spustaca (`longest_above_s`,
-    # `above_runs`, `runs_cancelled_gap`), nie na dojme z tepu.
+    # These are the only tips that tell the player WHAT TO DO - and that is
+    # why they stand on hard numbers from the trigger (`longest_above_s`,
+    # `above_runs`, `runs_cancelled_gap`), not on an impression of the heart
+    # rate.
     #
-    # Poradie NIE JE lubovolne. Vypadky sa pytaju ako prve: pri nich je
-    # "najdlhsi usek" rozsekany dierami v datach, takze rada "ozvi sa
-    # castejsie" by poslala hraca ladit prah namiesto hodiniek.
+    # The order is NOT arbitrary. Dropouts are asked about first: with them
+    # the "longest stretch" is chopped up by holes in the data, so the tip
+    # "speak up more often" would send the player to tune the threshold
+    # instead of the watch.
     posledne = [s for s in valid if s.get("above_runs") is not None][-TICHYCH_RELACII:]
     if len(posledne) >= TICHYCH_RELACII:
         hlasok = sum(int(s.get("auto_triggers") or 0) for s in posledne)
@@ -299,28 +313,32 @@ def analyze(sessions, now=None):
                                      n=int(round(vypadkov))))
             flagged = True
         elif hlasok == 0 and any(s.get("cue_rung") == "pause" for s in posledne):
-            # 0.2 (rebrik hlasky): appka mala hlasky sama vypnute - "nemala
-            # som sa preco ozvat", "len na chvilu" ani "nic som si nevsimla"
-            # by nebola pravda. Preco, povie veta v Historii a dotaznik.
+            # 0.2 (cue ladder): the app had switched cues off itself - "I had
+            # no reason to speak up", "only briefly" or "I haven't noticed
+            # anything" would not be true. Why, the sentence in History and the
+            # questionnaire say.
             flagged = True
         elif hlasok == 0 and any(_cislo_or_0(s.get("snoozed_s")) > 0
                                  for s in posledne):
-            # 24. 9.: "teraz nie" relaciu uz nezatvara. Kym platilo, automat
-            # spal a `above_runs` ani `longest_above_s` ten cas nevidia -
-            # "nedostala sa nad hranicu" / "len na chvilu" by vysvetlovali
-            # ticho, ktore si hrac vybral sam. Co sa stalo, povie dotaznik.
+            # 24. 9.: "not now" no longer closes the session. While it was in
+            # effect, the state machine slept and neither `above_runs` nor
+            # `longest_above_s` see that time - "did not get above the limit" /
+            # "only briefly" would explain a silence the player chose
+            # themselves. What happened, the questionnaire says.
             flagged = True
         elif hlasok == 0 and behov == 0:
-            # Telo sa ani raz nedostalo nad prah - politika nepomoze,
-            # hranica tepu je na hraca nastavena privysoko.
+            # The body did not get above the threshold even once - the policy
+            # will not help, the heart-rate limit is set too high for the
+            # player.
             insights.append(_insight("cue_never_above", TONE_INFO,
                                      n=len(posledne)))
             flagged = True
         elif hlasok == 0 and _zadrzanych(posledne) > 0:
-            # 0.2 (stress-gate): spustac sa natiahol, ale appka sama mlcala
-            # (brana, odstup). Zataz teda hore vydrzala a "len na chvilu" /
-            # "tesne" by klamalo. Radsej ziadna rada (ani "nic som si
-            # nevsimla") - co sa stalo, povie dotaznik po relacii.
+            # 0.2 (stress-gate): the trigger armed, but the app stayed silent
+            # itself (gate, gap). So the load held up and "only briefly" /
+            # "it was close" would lie. Rather no tip at all (not even "I
+            # haven't noticed anything") - what happened, the questionnaire
+            # after the session says.
             flagged = True
         elif hlasok == 0 and behov > 0:
             najdlhsi = max(float(s.get("longest_above_s") or 0) for s in posledne)
@@ -341,14 +359,15 @@ def analyze(sessions, now=None):
 
 
 # --------------------------------------------------------------------------
-# Ulozenie vysledku (aby sa nemusel pocitat pri kazdom otvoreni stranky)
+# Saving the result (so it does not have to be computed on every page open)
 # --------------------------------------------------------------------------
 
 def save_insights(path, insights, log=None, world=None):
-    """`world` = svet, z ktoreho relacii sa postrehy ratali (B3-worlds).
+    """`world` = the world whose sessions the insights came from (B3-worlds).
 
-    Bez neho by sa po prepnuti sveta pri starte ukazali postrehy druheho
-    sveta - appka ich preto pri nezhode zahodi a prepocita (viz app.py)."""
+    Without it, after the world was switched at start, the insights of the
+    other world would show up - so on a mismatch the app throws them away
+    and recomputes them (see app.py)."""
     try:
         payload = {"computed_at": time.time(), "insights": list(insights or [])}
         if world is not None:

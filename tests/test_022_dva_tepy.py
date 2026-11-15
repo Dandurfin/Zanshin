@@ -1,23 +1,25 @@
 # -*- coding: utf-8 -*-
-"""Dva rozne tepy v jednom zdroji - appka to rozpozna a povie (0.2.2).
+"""Two different heart rates in one source - the app notices and says so (0.3).
 
-Appka na hodinkach vie do jedneho OBS zdroja pisat dva rady tepu prepletene
-(v tej istej sekunde hodnota z jedneho radu a hned z druheho, jeden rad o
-5-10 BPM nizsie). Meranie
-potom dostava tep, ktory skace hore-dole, a hrac nema ako zistit preco.
+The app on the watch can write two heart-rate streams interleaved into one
+OBS source (in the same second a value from one stream and right after from
+the other, one stream 5-10 BPM lower). The measurement
+then gets a heart rate that jumps up and down, and the player has no way of
+finding out why.
 
-Strazi sa:
-  * rozpoznanie (`heart_rate.dva_rady_v_okne`, `DvaRadyTepu`): dva rady
-    5-10 BPM od seba sa najdu do ~20-30 s; jeden sumny rad pri 1 Hz,
-    duplikaty, jednorazove spicky, davka po zaseknutej Wi-Fi ani splyvajuce
-    rady pri pokojnom tepe poplach nevyvolaju,
-  * prijimac to hlasi RAZ za beh a len pre pomenovany zdroj, tep ide dalej
-    nezmeneny, do app.log ide meno zdroja bez hodnot,
-  * appka zapise jeden riadok do dennika a ukaze text pri prepinaci - len
-    kym tep chodi, UDP a stav spojenia maju prednost, novy beh ho zahodi,
-  * texty su vo vsetkych 11 jazykoch, README a KNOWN_ISSUES hovoria pravdu.
+Guarded:
+  * detection (`heart_rate.dva_rady_v_okne`, `DvaRadyTepu`): two streams
+    5-10 BPM apart are found within ~20-30 s; a single noisy stream at 1 Hz,
+    duplicates, one-off spikes, a burst after a stuck Wi-Fi, or streams that
+    merge at a calm heart rate do not raise an alarm,
+  * the receiver reports it ONCE per run and only for a named source, the
+    heart rate goes on unchanged, app.log gets the source name without values,
+  * the app writes one line to the journal and shows a text by the switch -
+    only while heart rate is coming in, UDP and the connection state take
+    precedence, a new run drops it,
+  * the texts are in all 11 languages, README and KNOWN_ISSUES tell the truth.
 
-Vsetky rady su umele (nahodne s pevnym seedom) - ziadne skutocne namerane data.
+All streams are artificial (random with a fixed seed) - no real measured data.
 """
 import logging
 import os
@@ -41,11 +43,11 @@ SEMENA = range(12)
 
 
 # --------------------------------------------------------------------------
-# umele rady [(cas, bpm)]
+# artificial streams [(cas, bpm)]
 # --------------------------------------------------------------------------
 
 def _tep(rng, n, start=80.0):
-    """Pomaly sa meniaci "skutocny" tep - nahodna prechadzka."""
+    """A slowly changing "real" heart rate - a random walk."""
     hr, out = start, []
     for _ in range(n):
         hr = min(170.0, max(55.0, hr + rng.gauss(0, 0.7)))
@@ -61,7 +63,7 @@ def _jeden_sumny(seed, dlzka=300, sum_bpm=2.5, jitter=0.25):
 
 
 def _s_duplikatmi(seed, dlzka=300):
-    """Kazde citanie pride dvakrat, druhe o 0,5 s neskor - neskodne."""
+    """Every reading arrives twice, the second 0.5 s later - harmless."""
     out = []
     for t, bpm in _jeden_sumny(seed, dlzka, jitter=0.0):
         out += [(t, bpm), (t + 0.5, bpm)]
@@ -69,7 +71,7 @@ def _s_duplikatmi(seed, dlzka=300):
 
 
 def _dva_rady(seed, odstup, dlzka=90, t0=0.0):
-    """Kazdu sekundu jedna hodnota z vyssieho radu a o 0,5 s z nizsieho."""
+    """Each second one value of the higher stream, 0.5 s later the lower."""
     rng = random.Random(seed)
     hr = _tep(rng, dlzka)
     out = []
@@ -80,7 +82,7 @@ def _dva_rady(seed, odstup, dlzka=90, t0=0.0):
 
 
 def _dva_rady_v_paroch(seed, odstup, dlzka=180):
-    """Par sprav (vyssi, nizsi rad) kazde 2-4 s - riedka kadencia hodiniek."""
+    """Pair of messages (higher, lower) every 2-4 s - sparse watch cadence."""
     rng = random.Random(seed)
     hr = _tep(rng, dlzka + 5)
     out, t = [], 0.0
@@ -93,7 +95,7 @@ def _dva_rady_v_paroch(seed, odstup, dlzka=180):
 
 
 def _prvy_poplach(rad):
-    """Cas prvej vzorky, pri ktorej okno nesie dva rady - alebo None."""
+    """Time of the first sample whose window carries two streams - or None."""
     okno = heart_rate.DvaRadyTepu()
     for t, bpm in rad:
         if okno.pridaj(bpm, t):
@@ -102,11 +104,11 @@ def _prvy_poplach(rad):
 
 
 # --------------------------------------------------------------------------
-# 1. rozpoznanie
+# 1. detection
 # --------------------------------------------------------------------------
 
 def test_prahy():
-    """Cisla, na ktorych stoji rozpoznanie (preco - viz heart_rate.py)."""
+    """The numbers the detection rests on (why - see heart_rate.py)."""
     assert heart_rate.DVA_TEPY_OKNO_S == 60.0
     assert heart_rate.DVA_TEPY_BLIZKO_S == 0.65
     assert heart_rate.DVA_TEPY_SKOK_BPM == 4
@@ -120,7 +122,7 @@ def test_prahy():
 @pytest.mark.parametrize("seed", SEMENA)
 def test_jeden_sumny_rad_pri_1_hz_nie(seed):
     assert _prvy_poplach(_jeden_sumny(seed)) is None
-    # aj vela sumny a s horsim jitterom Wi-Fi
+    # even very noisy and with worse Wi-Fi jitter
     assert _prvy_poplach(_jeden_sumny(seed, sum_bpm=4.0, jitter=0.35)) is None
 
 
@@ -139,24 +141,24 @@ def test_dva_prepletene_rady_sa_najdu_do_20_s(seed, odstup):
 @pytest.mark.parametrize("seed", SEMENA)
 @pytest.mark.parametrize("odstup", (5, 8))
 def test_dva_rady_v_riedkych_paroch_sa_najdu_do_30_s(seed, odstup):
-    """Par sprav kazde 2-4 s: okno potrebuje 16 vzoriek, cize ~8 parov
-    (na tychto seedoch 20-23 s)."""
+    """A pair of messages every 2-4 s: the window needs 16 samples, i.e. ~8
+    pairs (20-23 s on these seeds)."""
     kedy = _prvy_poplach(_dva_rady_v_paroch(seed, odstup))
     assert kedy is not None and kedy <= 30.0, kedy
 
 
 @pytest.mark.parametrize("seed", SEMENA)
 def test_splyvajuce_rady_nie_az_ked_sa_rozidu(seed):
-    """Pri pokojnom tepe su oba rady rovnake (alebo o 1 BPM) - to nie je
-    poplach. Az ked sa rozidu, appka to najde."""
+    """At a calm heart rate both streams are the same (or 1 BPM apart) - that
+    is not an alarm. Only when they drift apart does the app find it."""
     rng = random.Random(seed)
     hr = _tep(rng, 240)
     rad = []
-    for i in range(120):                       # 2 minuty spolu
+    for i in range(120):                       # 2 minutes together
         rad.append((float(i), round(hr[i])))
         rad.append((i + 0.5, round(hr[i]) + rng.choice((-1, 0, 0, 1))))
     assert _prvy_poplach(rad) is None
-    for i in range(120, 240):                  # nizsi rad o 8 BPM dole
+    for i in range(120, 240):                  # lower stream 8 BPM down
         rad.append((float(i), round(hr[i])))
         rad.append((i + 0.5, round(hr[i]) - 8))
     kedy = _prvy_poplach(rad)
@@ -169,15 +171,15 @@ def test_jednorazove_spicky_nie(seed):
     rad = []
     for t, bpm in _jeden_sumny(seed, sum_bpm=1.0, jitter=0.0):
         rad.append((t, bpm))
-        if rng.random() < 0.05:                 # obcas ujdena hodnota navyse
+        if rng.random() < 0.05:                 # now and then a stray extra value
             rad.append((t + 0.3, bpm + rng.choice((-15, 15))))
     assert _prvy_poplach(rad) is None
 
 
 @pytest.mark.parametrize("seed", SEMENA)
 def test_davky_po_zaseknutej_wifi_nie(seed):
-    """Po pripojeni pride 25 starych sprav naraz, potom kazdych 20 s davka
-    12 sprav za sebou - stale jeden (sumny) rad."""
+    """After connecting, 25 old messages arrive at once, then every 20 s a
+    burst of 12 messages in a row - still one (noisy) stream."""
     rad = _jeden_sumny(seed, sum_bpm=4.0)
     t0 = rad[25][0]
     rad = [(t0 + 0.002 * i, b) for i, (_t, b) in enumerate(rad[:25])] + rad[25:]
@@ -205,7 +207,7 @@ def test_okno_zabuda_a_je_ohranicene():
     okno = heart_rate.DvaRadyTepu()
     for t, bpm in _dva_rady(1, 8, dlzka=30):
         okno.pridaj(bpm, t)
-    # potom minuta jedneho radu - stare dvojice z okna vypadnu
+    # then a minute of a single stream - the old pairs drop out of the window
     for i in range(70):
         vysledok = okno.pridaj(80, 30.0 + i)
     assert vysledok is False
@@ -216,24 +218,24 @@ def test_okno_zabuda_a_je_ohranicene():
 
 
 # --------------------------------------------------------------------------
-# 2. prijimac: raz za beh, len pomenovany zdroj, tep ide dalej
+# 2. receiver: once per run, only a named source, heart rate goes on
 # --------------------------------------------------------------------------
 
 def test_raz_za_beh_a_len_pomenovany_zdroj():
     run = heart_rate._Run(1)
     hlasenia = [run.note_bpm("Tep", bpm, t) for t, bpm in _dva_rady(2, 8)]
     assert hlasenia.count(True) == 1
-    # UDP / klient bez mena zdroja: nehlada sa
+    # UDP / a client without a source name: not checked
     run = heart_rate._Run(2)
     assert not any(run.note_bpm(None, bpm, t) for t, bpm in _dva_rady(2, 8))
-    # sprava bez tepu (kroky) do okna nejde
+    # a message without heart rate (steps) does not go into the window
     assert run.note_bpm("Kroky", None, 0.0) is False
     assert run.dva_tepy == {}
 
 
 def test_kazdy_zdroj_ma_vlastne_okno_a_je_ich_obmedzene():
-    """Vyssi rad do "Tep", nizsi do "HR": v kazdom zdroji jeden rad - to je
-    v poriadku a poplach to nie je."""
+    """Higher stream into "Tep", lower into "HR": one stream in each source -
+    that is fine and not an alarm."""
     run = heart_rate._Run(1)
     for i, (t, bpm) in enumerate(_dva_rady(3, 8)):
         assert run.note_bpm("Tep" if i % 2 == 0 else "HR", bpm, t) is False
@@ -261,7 +263,7 @@ def test_emit_nahlasi_raz_a_tep_ide_dalej_nezmeneny(monkeypatch, caplog):
     for t, bpm in rad:
         hodiny[0] = t
         mon._emit(str(bpm).encode(), run, "Tep")
-        mon._emit(b"1045", run, "Kroky")         # kroky okno neovplyvnia
+        mon._emit(b"1045", run, "Kroky")         # steps do not affect the window
     assert tepy == [bpm for _t, bpm in rad], "tep ide von bez zmeny"
     assert stavy == [("two_series", "Tep")]
     riadky = [r.getMessage() for r in caplog.records
@@ -278,7 +280,7 @@ def test_meno_zdroja_do_dennika_bez_zalomeni_a_skratene():
 
 
 # --------------------------------------------------------------------------
-# 3. appka: dennik raz za beh, text pri prepinaci, prednost
+# 3. app: journal once per run, text by the switch, precedence
 # --------------------------------------------------------------------------
 
 def _nic(*_a, **_k):
@@ -320,7 +322,7 @@ def test_appka_zapise_do_dennika_raz_za_beh():
     assert a.denn == [tr("log.hr_two_series", source="Tep")]
     assert "Tep" in a.denn[0]
     assert a.stitky, "text pri prepinaci sa musi prekreslit"
-    # nic z toho, co robi padnute spojenie
+    # none of what a dropped connection does
     assert a._hr_state == "connected" and a._hr_generation == 5
     assert a.hr_monitoring_enabled is True
 
@@ -342,8 +344,9 @@ def test_stitok_ked_tep_chodi_ukaze_cislo_aj_upozornenie():
 
 
 def test_stav_spojenia_a_udp_maju_prednost():
-    """Upozornenie patri k tepu, ktory chodi. Bez dat hrac potrebuje vediet
-    skutocny stav spojenia - ten ostava presne ako doteraz."""
+    """The warning belongs to a heart rate that is coming in. Without data
+    the player needs to know the real connection state - that stays
+    exactly as before."""
     a = _atrapa()
     _stav(a, "two_series", "Tep")
     a._hr_state, a._hr_last_bpm = "linked", None
@@ -356,7 +359,7 @@ def test_stav_spojenia_a_udp_maju_prednost():
     assert _stitok(a)[0] == tr("settings.hr_status_udp_off")
     a._hr_state = "busy"
     assert _stitok(a)[0] == tr("settings.hr_status_busy")
-    # tep je spat v tom istom behu - upozornenie tiez
+    # heart rate is back in the same run - so is the warning
     a._hr_state, a._hr_last_bpm = "connected", 75
     assert tr("settings.hr_status_two_series") in _stitok(a)[0]
 
@@ -364,21 +367,22 @@ def test_stav_spojenia_a_udp_maju_prednost():
 def test_vypnutie_a_restart_upozornenie_zahodia():
     a = _atrapa()
     _stav(a, "two_series", "Tep")
-    # vypnuty senzor (generacia 0)
+    # sensor switched off (generation 0)
     a._hr_generation, a._hr_state, a._hr_last_bpm = 0, "disconnected", None
     assert _stitok(a)[0] == tr("settings.hr_status_disconnected")
-    # novy beh (zapnutie, restart, iny port) ma novu generaciu
+    # a new run (switching on, restart, another port) has a new generation
     a._hr_generation, a._hr_state, a._hr_last_bpm = 6, "connected", 70
     assert _stitok(a)[0] == "❤️ 70 BPM"
-    # a v novom behu sa smie nahlasit znova - raz
+    # and in the new run it may be reported again - once
     _stav(a, "two_series", "Tep", gen=6)
     _stav(a, "two_series", "Tep", gen=6)
     assert len(a.denn) == 2
 
 
 def test_stop_a_start_menia_generaciu():
-    """Na tom stoji "zmizne po vypnuti / restarte" - priznak sa nikde rucne
-    nenuluje, zahodi ho nova generacia behu."""
+    """This is what "disappears after switching off / restart" rests on -
+    the flag is never reset by hand anywhere, a new run generation drops
+    it."""
     assert "self._hr_generation = 0" in zdroj_metody("stop_heart_rate_monitor")
     assert ("self._hr_generation = self.heart_rate_monitor.start("
             in zdroj_metody("start_heart_rate_monitor"))
@@ -386,7 +390,7 @@ def test_stop_a_start_menia_generaciu():
 
 
 # --------------------------------------------------------------------------
-# 4. texty a dokumenty
+# 4. texts and documents
 # --------------------------------------------------------------------------
 
 def test_texty_maju_vsetky_jazyky_a_su_kratke():
@@ -396,7 +400,7 @@ def test_texty_maju_vsetky_jazyky_a_su_kratke():
         assert i18n.tr_lang("sk", kluc) != i18n.tr_lang("en", kluc)
     for jazyk in i18n.LANGUAGES:
         assert "{source}" in i18n.STRINGS["log.hr_two_series"][jazyk], jazyk
-        # stitok stoji za cislom tepu - kratky
+        # the label stands after the heart-rate number - short
         assert len(i18n.tr_lang(jazyk, "settings.hr_status_two_series")) <= 80, jazyk
     assert len(i18n.LANGUAGES) == 11
     for jazyk in ("cs", "bg"):
@@ -411,13 +415,15 @@ def _plain(meno):
 
 
 def test_readme_a_known_issues_hovoria_to_iste_co_kod():
-    # Audit 0.2.2d: nevydana 0.2.2 nepatri do navodu pre 0.2.1 - README ma
-    # len riadok v Troubleshooting (stitok + co s tym), median je v
-    # docs/HOW-IT-WORKS.md a cely bod v KNOWN_ISSUES.
+    # Audit 0.3d: the unreleased 0.3 does not belong in the guide for 0.2.1 -
+    # README has only a line in Troubleshooting (the label + what to do about
+    # it), the median is in docs/HOW-IT-WORKS.md and the full point in
+    # KNOWN_ISSUES.
     stitok = i18n.STRINGS["settings.hr_status_two_series"]["en"]
     readme = _plain("README.md")
     ako = _plain("docs/HOW-IT-WORKS.md")
-    # Od 0.2.2 (davka 4) je bod o oprave v CHANGELOG.md, nie v KNOWN_ISSUES.
+    # Since 0.3 (batch 4) the point about the fix is in CHANGELOG.md, not in
+    # KNOWN_ISSUES.
     known = _plain("CHANGELOG.md")
     assert "*%s*" % stitok in readme
     assert "*%s*" % stitok in known
@@ -428,7 +434,7 @@ def test_readme_a_known_issues_hovoria_to_iste_co_kod():
     assert hr_stats.ZOBRAZ_OKNO_S == 3.0
     assert "measuring still uses every reading" in ako
     assert "still use every reading" in known
-    # 0.2.2 este nevyslo - dokumenty to hovoria a verzia sa nezdvihla
+    # 0.3 is not out yet - the documents say so and the version was not bumped
     riadok = readme[readme.index("*%s*" % stitok):][:200]
     assert "(from 0.3)" in riadok
     assert "From 0.3" in ako

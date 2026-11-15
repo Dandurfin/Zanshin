@@ -1,23 +1,23 @@
-"""Volby hraca - cast hlavnej appky (DandurfApp z app.py).
+"""Player's preferences - part of the main app (DandurfApp from app.py).
 
-PrefsMixin je mixin DandurfApp: app.py ho dedi a cely stav (jazyk, svet,
-tema, paleta, hlasitost, profily, widgety) zije na DandurfApp. Tu su len
-metody, ktore s nim pracuju cez `self` - mixin nema __init__ ani vlastne
-atributy.
+PrefsMixin is a mixin of DandurfApp: app.py inherits it and the whole state
+(language, world, theme, palette, volume, profiles, widgets) lives on
+DandurfApp. Here are only the methods that work with it through `self` - the
+mixin has no __init__ and no attributes of its own.
 
-Styri sekcie presunute z app.py bez zmeny:
-  * prepinanie jazyka - prestavba okna v novom jazyku,
-  * prepinanie sveta (hra / praca) - svet, jeho vzhlad a prepinace
-    (konstanta ALGORITMUS_SVET ostala v DandurfApp - tieto metody ju
-    necitaju, cita ju `_kriticky_popis` v app.py a `_open_hr_session` v
-    app_session.py),
-  * prepinanie temy - prefarbenie uz postaveneho okna,
-  * settings - nacitanie a ulozenie dandurf_settings.json, hlasitost,
-    vyvazenie SFX/hlas a lista "Edge TTS chyba".
+Four sections moved from app.py unchanged:
+  * language switching - rebuilding the window in the new language,
+  * world switching (play / work) - the world, its look and switches
+    (the constant ALGORITMUS_SVET stayed in DandurfApp - these methods do
+    not read it, it is read by `_kriticky_popis` in app.py and
+    `_open_hr_session` in app_session.py),
+  * theme switching - recolouring the already built window,
+  * settings - loading and saving dandurf_settings.json, volume,
+    SFX/voice balance and the "Edge TTS missing" banner.
 
-Pozor v testoch: `load_settings` / `save_settings` citaju SETTINGS_PATH z
-tohto modulu - test ho musi presmerovat tu (`app_prefs.SETTINGS_PATH`),
-nie na module app.
+WARNING in tests: `load_settings` / `save_settings` read SETTINGS_PATH from
+this module - the test must redirect it here (`app_prefs.SETTINGS_PATH`),
+not on the app module.
 """
 
 import json
@@ -56,13 +56,14 @@ from settings_model import (DEFAULT_AUDIO, DEFAULT_BREATH_EXHALE_S,
 from app_spolocne import (DEFAULT_SNOOZE_HOTKEY, LABEL_TO_LANG, LANG_NATIVE_LABELS,
                           SNOOZE_HOTKEY_MINUTES, app_log)
 
-# Oznam o obnove nastaveni (`_oznam_obnovu_nastaveni`) az ked okno stoji.
+# Notice about the restored settings (`_oznam_obnovu_nastaveni`) only once
+# the window is up.
 OZNAM_OBNOVY_MS = 1200
 
 
 def _citaj_nastavenia(cesta):
-    """Obsah suboru nastaveni ako dict. Vynimka, ked to dict nie je - aj
-    platny JSON zoznam alebo cislo je pre nastavenia pokazeny subor."""
+    """Contents of the settings file as a dict. Raises when it is not a dict -
+    even a valid JSON list or number is a broken file for settings."""
     with open(cesta, "r", encoding="utf-8") as fh:
         obsah = json.load(fh)
     if not isinstance(obsah, dict):
@@ -71,17 +72,18 @@ def _citaj_nastavenia(cesta):
 
 
 def zaloha_nastaveni(cesta):
-    """Doterajsi PLATNY subor nastaveni skopiruje do `<cesta>.bak` (atomicky).
+    """Copies the previous VALID settings file to `<cesta>.bak` (atomically).
 
-    Len platny: keby sa subor medzitym pokazil, zalohovat ho by prepisalo
-    jedinu dobru kopiu. Zaloha je teda vzdy o jeden zapis pozadu - to je
-    posledny stav, ktory sa dal nacitat. Vracia True, ked sa zalohovalo.
+    Only a valid one: if the file got broken in the meantime, backing it up
+    would overwrite the only good copy. So the backup is always one write
+    behind - that is the last state that could be loaded. Returns True when
+    a backup was made.
     """
     try:
         with open(cesta, "rb") as fh:
             obsah = fh.read()
     except OSError:
-        return False                      # este neexistuje (prvy start)
+        return False                      # does not exist yet (first start)
     try:
         if not isinstance(json.loads(obsah.decode("utf-8")), dict):
             return False
@@ -91,22 +93,23 @@ def zaloha_nastaveni(cesta):
     tmp = bak + ".tmp"
     with open(tmp, "wb") as fh:
         fh.write(obsah)
-    # .bak moze na chvilu drzat antivirus alebo indexovanie (WinError 5 v logu
-    # skusobnej kopie) - `nahrad_subor` skusi znova. Ked nevyjde ani tak,
-    # chyba ide k volajucemu ako predtym, len bez zabudnuteho .bak.tmp vedla
-    # nastaveni.
+    # .bak may be held briefly by an antivirus or indexing (WinError 5 in the
+    # log of the trial copy) - `nahrad_subor` retries. If even that fails, the
+    # error goes to the caller as before, just without a forgotten .bak.tmp
+    # next to the settings.
     nahrad_subor(tmp, bak, uprac_zdroj=True)
     return True
 
 
 def nacitaj_nastavenia(cesta, teraz=None):
-    """Nacita nastavenia. Vracia (dict alebo None, obnova alebo None).
+    """Loads the settings. Returns (dict or None, restore or None).
 
-    Subor neexistuje -> (None, None): prvy start, predvolene. Subor sa neda
-    precitat -> pokazeny sa ODLOZI ako `<cesta>.corrupt-RRRRmmdd-HHMMSS`
-    (nech sa da zachranit a nech ho prvy `save_settings` neprepise) a skusi
-    sa `.bak`. `obnova` = {"odlozene": meno odlozeneho suboru (bez cesty -
-    cesta v %APPDATA% nesie meno uctu), "zo_zalohy": bool}.
+    File does not exist -> (None, None): first start, defaults. File cannot
+    be read -> the broken one is MOVED ASIDE as
+    `<cesta>.corrupt-RRRRmmdd-HHMMSS` (so it can be rescued and so the first
+    `save_settings` does not overwrite it) and `.bak` is tried. `obnova` =
+    {"odlozene": name of the moved-aside file (without the path - the path
+    in %APPDATA% carries the account name), "zo_zalohy": bool}.
     """
     if not os.path.exists(cesta):
         return None, None
@@ -119,11 +122,12 @@ def nacitaj_nastavenia(cesta, teraz=None):
                            time.localtime(time.time() if teraz is None else teraz))
     odlozene = "%s.corrupt-%s" % (cesta, znacka)
     try:
-        # S opakovanim aj tu: kratky zamok by inak skoncil len kopiou a
-        # pokazeny subor by ostal na mieste. Zdroj sa pri chybe NEMAZE.
+        # With retries here too: a short lock would otherwise end with just a
+        # copy and the broken file would stay in place. The source is NOT
+        # deleted on error.
         nahrad_subor(cesta, odlozene)
     except OSError:
-        # Subor drzi ina appka (editor, synchronizacia) - aspon kopia.
+        # Another app holds the file (editor, sync) - at least a copy.
         try:
             shutil.copy2(cesta, odlozene)
         except OSError:
@@ -137,9 +141,10 @@ def nacitaj_nastavenia(cesta, teraz=None):
     except Exception:
         app_log.exception("load_settings: ani zaloha %s.bak sa neda precitat", cesta)
     if loaded is not None:
-        # Zalohu hned vratit na miesto. Keby appka spadla skor, nez prvy
-        # `save_settings` subor zapise, dalsi start by subor nenasiel a
-        # zacal by ako prvy start - hoci dobra zaloha lezi vedla.
+        # Put the backup back in place right away. If the app crashed before
+        # the first `save_settings` writes the file, the next start would not
+        # find the file and would begin as a first start - even though a good
+        # backup lies next to it.
         try:
             tmp = cesta + ".tmp"
             shutil.copyfile(cesta + ".bak", tmp)
@@ -147,16 +152,17 @@ def nacitaj_nastavenia(cesta, teraz=None):
         except OSError:
             app_log.exception("load_settings: zalohu sa nepodarilo vratit na miesto")
     if odlozene is None:
-        # Bez odlozenej kopie nema hrac co hladat - oznam by klamal.
+        # Without a moved-aside copy the player has nothing to look for - the
+        # notice would lie.
         return loaded, None
     return loaded, {"odlozene": os.path.basename(odlozene),
                     "zo_zalohy": loaded is not None}
 
 
 class PrefsMixin:
-    """Jazyk, svet, tema a nastavenia (mixin DandurfApp)."""
+    """Language, world, theme and settings (mixin of DandurfApp)."""
 
-    # ---------- prepinanie jazyka ----------
+    # ---------- language switching ----------
 
     @staticmethod
     def _lang_switch_value(code):
@@ -168,21 +174,23 @@ class PrefsMixin:
             return
         self.lang = code
         set_lang(code)
-        # Hlas jazyka (`VOICE_HINTS`) len ked su hlasky aktivneho profilu
-        # naozaj v tom jazyku - prepnutie ich neprelozi, viz `_hlas_k_hlaskam`.
+        # The language's voice (`VOICE_HINTS`) only when the active profile's
+        # cues really are in that language - switching does not translate them,
+        # see `_hlas_k_hlaskam`.
         self._hlas_k_hlaskam(self.slot_dicts())
         self.save_settings()
         was_listening = self.listening
-        # Zmena jazyka meni TEXTY, takze sa (na rozdiel od zmeny temy) musi
-        # cele okno postavit nanovo cez `_build_ui` - 1300+ widgetov, ktore
-        # sa inak pred hracom skladaju po castiach (blikanie). Zmrazime
-        # kreslenie na cas prestavby a prekreslime raz na konci.
+        # Changing the language changes TEXTS, so (unlike a theme change) the
+        # whole window has to be rebuilt via `_build_ui` - 1300+ widgets that
+        # would otherwise assemble piece by piece in front of the player
+        # (flicker). We freeze drawing for the rebuild and redraw once at the
+        # end.
         ui_kit.freeze_repaint(self.root, True)
         try:
             self._build_ui()
             self.refresh_edge_banner()
             if audio_engine.EDGE_AVAILABLE:
-                # popisy hlasov (zena/muz) su v jazyku rozhrania
+                # voice descriptions (female/male) are in the UI language
                 self._load_edge_voices(pregen=False)
             self.refresh_voice_box()
             self.refresh_slot_summaries()
@@ -196,31 +204,34 @@ class PrefsMixin:
         finally:
             self.root.update_idletasks()
             ui_kit.freeze_repaint(self.root, False)
-        # Pregeneracia Edge TTS nie je UI - az po odmrazeni okna.
+        # Edge TTS pregeneration is not UI - only after the window is unfrozen.
         if self.engine == ENGINE_EDGE:
             self.pregenerate()
 
     def _hlas_k_hlaskam(self, slots):
-        """Predvoleny Edge hlas -> hlas jazyka appky, ak su v nom hlasky `slots`.
+        """Default Edge voice -> voice of the app language, if `slots` cues use it.
 
-        VOICE_HINTS je tu kvoli hlaskam, ktorych vstavane slova nie su
-        anglicke (ja/zh/ru/bg, od 0.2.2 aj es/de/fr/pt): anglicky hlas by ich
-        nevyslovil alebo skomolil. Do 0.2.1d sa hlas menil podla
-        jazyka ROZHRANIA - lenze prepnutie jazyka texty existujucich profilov
-        neprelozi (vstavane slova sa beru pri zalozeni profilu, pre sk/cs
-        anglicke). Po prepnuti na japoncinu tak japonsky hlas cital anglicke
-        "Grounded" a mohol ho skomolit alebo mlcat - presne to, com mal
-        VOICE_HINTS zabranit.
+        VOICE_HINTS is here for cues whose built-in words are not English
+        (ja/zh/ru/bg, since 0.3 also es/de/fr/pt): an English voice would
+        not pronounce them or would garble them. Up to 0.2.1d the voice
+        changed by the INTERFACE language - but switching the language does
+        not translate the texts of existing profiles (built-in words are
+        taken when the profile is created, English for sk/cs). So after
+        switching to Japanese a Japanese voice read the English "Grounded"
+        and could garble it or stay silent - exactly what VOICE_HINTS was
+        meant to prevent.
 
-        Teraz rozhoduje jazyk TEXTOV (`jazyky_hlasok`): hlas sa zmeni, len ked
-        su hovoriace hlasky vstavanymi slovami jazyka appky - po prepnuti
-        jazyka (profil zalozeny v tom jazyku) aj pri novom profile (jeho
-        slova su v jazyku appky). Vlastne ci zmiesane texty -> hlas ostava.
-        Hlas iny nez predvoleny sa nemeni nikdy (`suggested_voice`), ani
-        spat: appka nevie, ci ho hrac vybral sam.
+        Now the language of the TEXTS decides (`jazyky_hlasok`): the voice
+        changes only when the speaking cues are built-in words of the app
+        language - after switching the language (profile created in that
+        language) and also for a new profile (its words are in the app
+        language). Custom or mixed texts -> the voice stays. A voice other
+        than the default is never changed (`suggested_voice`), not even
+        back: the app does not know whether the player picked it.
 
-        Vracia True, ked sa hlas zmenil - volajuci obnovi vyber hlasu a
-        pripravu hlasok (`schedule_pregenerate` / `pregenerate`).
+        Returns True when the voice changed - the caller refreshes the voice
+        selection and the cue preparation (`schedule_pregenerate` /
+        `pregenerate`).
         """
         if self.lang not in jazyky_hlasok(slots):
             return False
@@ -231,31 +242,33 @@ class PrefsMixin:
         app_log.info("hlas %s k hlaskam v jazyku %s", novy, self.lang)
         return True
 
-    # ---------- prepinanie sveta (hra / praca) ----------
+    # ---------- world switching (play / work) ----------
 
     @staticmethod
     def _world_label(world):
-        """'play'/'work' -> "Hra"/"Praca" v jazyku rozhrania."""
+        """'play'/'work' -> "Play"/"Work" in the UI language."""
         return tr("world.work") if world == "work" else tr("world.play")
 
     def _world_labels(self):
         return [self._world_label("play"), self._world_label("work")]
 
     def _on_world_label(self, label):
-        """Klik na segment "Hra | Praca" (lista hore aj Nastavenia)."""
+        """Click on the "Play | Work" segment (title bar and Settings)."""
         self.set_world("work" if label == self._world_label("work") else "play")
 
     def set_world(self, world):
-        """Prepne svet: vzhlad, historiu, postrehy. BEZIACU RELACIU NIE.
+        """Switches the world: look, history, insights. NOT THE RUNNING SESSION.
 
-        Vzhlad ide cez `on_theme_switch` - prefarbenie bez prestavby okna,
-        vratane HUD-u a vizualov v hre (v rohu oka to trochu blikne, s tym
-        sa pocita). Detail v Historii je index do zoznamu relacii sveta,
-        takze sa nuluje. Postrehy druheho sveta sa zahodia a prepocitaju.
+        The look goes via `on_theme_switch` - recolouring without rebuilding
+        the window, including the HUD and the in-game visuals (it flickers a
+        little in the corner of the eye, that is expected). The detail in
+        History is an index into the world's session list, so it is reset.
+        The other world's insights are thrown away and recomputed.
 
-        Otvorena relacia ostava vo svete, v ktorom zacala
-        (`_session_world`), aj s tym, ci smie mat hlas - prezriet si
-        pracovne statistiky uprostred hry teda hru neprepise na pracu.
+        An open session stays in the world it started in
+        (`_session_world`), including whether it may have a voice - looking
+        at work statistics in the middle of a game does not rewrite the game
+        as work.
         """
         world = hr_stats.normalize_activity(world) or hr_stats.WORLD_DEFAULT
         if world == self.world:
@@ -266,21 +279,22 @@ class PrefsMixin:
         self._hr_insights = []
         self._hr_insights_at = None
         tema_pred = self.theme_key
-        # `on_theme_switch` sam ulozi nastavenia - uz aj s novym svetom.
+        # `on_theme_switch` saves the settings itself - already with the new
+        # world.
         self.on_theme_switch(tr(f"theme.{theme_mod.WORLD_THEME[world]}.label"))
         if self.theme_key == tema_pred:
             self.save_settings()
         self._sync_world_switches()
-        # "V hre" sa vo svete Praca vola "Obrazovka" (0.2.2 davka 4,
-        # `app_today._sync_world_nazvy`; atrapy v testoch ho nemaju).
+        # "In-game" is called "Screen" in the Work world (0.3 batch 4,
+        # `app_today._sync_world_nazvy`; the test fakes do not have it).
         nazvy = getattr(self, "_sync_world_nazvy", None)
         if callable(nazvy):
             nazvy()
         app_log.info("svet prepnuty na %s", world)
-        # Prepnutie POCAS SLEDOVANIA (0.2.2): relacia aj jej pripomienky
-        # ostavaju vo svete, v ktorom zacala (hlas, zvuky, `_hlasky_hovoria`)
-        # - historia kazdeho sveta tak ostane cista. Povie sa to raz, nech
-        # hrac necaka, ze sa Hra uprostred zmeni na Pracu.
+        # Switching WHILE WATCHING (0.3): the session and its cues stay in
+        # the world they started in (voice, sounds, `_hlasky_hovoria`) - so
+        # each world's history stays clean. It is said once, so the player
+        # does not expect Play to turn into Work midway.
         svet_relacie = getattr(self, "_session_world", None)
         if (getattr(self, "_hr_session_open", False)
                 and svet_relacie in hr_stats.ACTIVITY_KINDS and svet_relacie != world):
@@ -293,15 +307,15 @@ class PrefsMixin:
             app_log.exception("historia: prekreslenie po prepnuti sveta zlyhalo")
         self._refresh_dnes_stats()
         self.run_hr_analysis()
-        # V Praci hlaska nehovori, takze sa pre nu nic nepripravuje
-        # (`_hlasky_hovoria`); po navrate do Hry sa hlasky dopripravia.
+        # In Work a cue does not speak, so nothing is prepared for it
+        # (`_hlasky_hovoria`); after returning to Play the cues get prepared.
         self.schedule_pregenerate(200)
 
     def _sync_world_switches(self):
-        """Oba prepinace sveta (lista, Nastavenia) ukazu aktualny svet.
+        """Both world switches (title bar, Settings) show the current world.
 
-        CTkSegmentedButton si vybrany segment nezmeni sam, ked svet prepne
-        nieco ine nez klik priamo naň."""
+        CTkSegmentedButton does not change its selected segment by itself
+        when the world is switched by something other than a click on it."""
         label = self._world_label(self.world)
         lista = getattr(self, "titlebar", None)
         if lista is not None and hasattr(lista, "set_world"):
@@ -312,31 +326,33 @@ class PrefsMixin:
                 prepinac.set(label)
             except Exception:
                 pass
-            # `set()` CTk meni len vypln - text zvoleneho sveta (akcent)
-            # treba prekreslit, aj po prefarbeni temy.
+            # CTk `set()` changes only the fill - the text of the selected
+            # world (accent) has to be redrawn, also after the theme recolour.
             ui_kit.oznac_zvoleny_segment(prepinac, getattr(self, "pal", None) or {})
 
-    # ---------- prepinanie temy ----------
+    # ---------- theme switching ----------
 
     def on_theme_switch(self, label):
-        """Prepne temu PREFARBENIM uz postaveneho okna, nie prestavbou.
+        """Switches the theme by RECOLOURING the built window, not rebuilding it.
 
-        Predtym sa volalo `_build_ui()`, ktore znicilo a odznova postavilo
-        vsetko: odmerane 1374 widgetov, 101 878 volani Tk a **2,97 s**
-        blokovania, pocas ktorych sa okno pred hracom skladalo po castiach
-        (29 roznych medzistavov). Ziadne jedno pomale miesto tam nebolo -
-        je to holy objem, kazdy CustomTkinter widget sa kresli na vlastne
-        platno.
+        Before, `_build_ui()` was called, which destroyed and rebuilt
+        everything: measured 1374 widgets, 101 878 Tk calls and **2,97 s**
+        of blocking, during which the window assembled piece by piece in
+        front of the player (29 different intermediate states). There was
+        no single slow spot - it is sheer volume, every CustomTkinter
+        widget draws on its own canvas.
 
-        Farby su jediné, co sa pri zmene temy meni (texty ostavaju), takze
-        staci prejst strom a prepisat ich - viz `theme_recolor`.
+        Colours are the only thing that changes with the theme (texts
+        stay), so it is enough to walk the tree and rewrite them - see
+        `theme_recolor`.
 
-        Keby prefarbenie z akehokolvek dovodu zlyhalo, padne sa spat na
-        povodnu prestavbu: radsej pomale a spravne nez rychle a rozbite.
+        If the recolour failed for any reason, it falls back to the
+        original rebuild: better slow and correct than fast and broken.
 
-        Od 0.2 (B3-worlds) tema patri svetu - vola sa cez `set_world`, nie
-        priamo; inak by sa vzhlad a svet rozisli (pri dalsom starte by tema
-        aj tak nasledovala svet).
+        Since 0.2 (B3-worlds) the theme belongs to the world - it is called
+        via `set_world`, not directly; otherwise the look and the world
+        would drift apart (on the next start the theme would follow the
+        world anyway).
         """
         key = theme_mod.ZEN if label == tr("theme.zen.label") else theme_mod.MODERN
         if key == self.theme_key:
@@ -366,17 +382,17 @@ class PrefsMixin:
         self._refresh_guide_panel_theme()
 
     def _recolor_ui(self, stara_pal, nova_pal):
-        """Prepise farby celeho okna bez toho, aby sa cokolvek znicilo."""
+        """Recolours the whole window without destroying anything."""
         mapa = theme_recolor.build_color_map(stara_pal, nova_pal)
         ui_shell.set_theme_pal(nova_pal)
         self.root.configure(fg_color=nova_pal["bg"])
-        # HUD a in-game vizualy su samostatne Toplevel okna s vlastnou
-        # cestou na zmenu temy (overlay_manager.set_palette / hud.set_style
-        # vyssie) - do prefarbenia stromu ich nepustame.
+        # The HUD and the in-game visuals are separate Toplevel windows with
+        # their own path for changing the theme (overlay_manager.set_palette /
+        # hud.set_style above) - we keep them out of the tree recolour.
         theme_recolor.recolor_tree(self.root, mapa, skip=(tk.Toplevel,))
 
-        # Co sa prefarbit NEDA, lebo je to obrazok alebo vlastna kopia
-        # palety - kazdy taky prvok ma svoj `set_pal()`.
+        # What can NOT be recoloured, because it is an image or its own copy of
+        # the palette - each such element has its own `set_pal()`.
         for widget in (getattr(self, "sidebar", None),
                        getattr(self, "titlebar", None)):
             if widget is None:
@@ -392,15 +408,17 @@ class PrefsMixin:
             except Exception:
                 pass
 
-        # Grafy a karty statistik: `recolor_tree` vie prepisat VOLBY
-        # widgetu, ale nie to, co uz lezi na platne - ciara by ostala v
-        # starej farbe, kym ju nieco neprekresli. Zivy graf sa zahoji sam
-        # pri najblizsej vzorke tepu, graf v Historii stoji.
-        # KamaeBar tu chybal. Nie je to `PalCanvas`, ale holy `tk.Canvas`, a
-        # kresli sa z vlastnej `self.pal` - po prepnuti temy tak ostaval hnedy
-        # plat so zlatou linkou v indigovom okne. Je to hlavicka stranky Dnes,
-        # cize prva vec, ktoru po prepnuti vidno.
-        # `SlotIcon` je obrazok vizualu so zapecenou farbou (V hre, Spustace).
+        # Charts and stat cards: `recolor_tree` can rewrite the widget's
+        # OPTIONS, but not what already lies on the canvas - a line would stay
+        # in the old colour until something redraws it. The live chart heals
+        # itself with the next heart-rate sample, the chart in History stays.
+        # KamaeBar was missing here. It is not a `PalCanvas` but a bare
+        # `tk.Canvas`, and it draws from its own `self.pal` - so after a theme
+        # switch a brown panel with a golden line stayed in an indigo window.
+        # It is the header of the Today page, i.e. the first thing you see
+        # after the switch.
+        # `SlotIcon` is a visual's image with the colour baked in (In-game,
+        # Cues).
         for widget in self._najdi_widgety((ui_kit.PalCanvas, ui_kit.StatCard,
                                            ui_kit.QrReveal, ui_kit.KamaeBar,
                                            ui_kit.SlotIcon)):
@@ -409,29 +427,33 @@ class PrefsMixin:
             except Exception:
                 app_log.exception("set_pal zlyhal na %r", widget)
 
-        # Stred stranky Dnes je tk.Canvas s vlastnou kresbou (dojo + enso +
-        # text) - rovnaky pripad ako KamaeBar: `recolor_tree` prepise nanajvys
-        # OPTION `bg`, ale nie to, co lezi na platne. Enso je navyse OBRAZOK
-        # (farba zapecena), takze si pyta explicitny `set_pal`, ktory zaroven
-        # zahodi cache snimok a prekresli cely stred v novej teme (`_emit` ->
-        # `_refresh_dnes_backdrop`). `self.enso` je `_EnsoHero`, nie widget,
-        # takze ho `_najdi_widgety` nenajde.
+        # The middle of the Today page is a tk.Canvas with its own drawing
+        # (dojo + enso + text) - the same case as KamaeBar: `recolor_tree`
+        # rewrites at most the OPTION `bg`, but not what lies on the canvas.
+        # The enso is also an IMAGE (colour baked in), so it needs an explicit
+        # `set_pal`, which also throws away the frame cache and redraws the
+        # whole middle in the new theme (`_emit` -> `_refresh_dnes_backdrop`).
+        # `self.enso` is an `_EnsoHero`, not a widget, so `_najdi_widgety` does
+        # not find it.
         try:
             if getattr(self, "enso", None) is not None:
                 self.enso.set_pal(nova_pal)
         except Exception:
             app_log.exception("set_pal zlyhal na ense (stred Dnes)")
 
-        # `ui_kit.Collapsible` ZVLAST a so `zostup=True`.
+        # `ui_kit.Collapsible` SEPARATELY and with `zostup=True`.
         #
-        # Farbu hlavicky si pocita z vlastnej palety az v okamihu rozbalenia,
-        # takze rozbalena sekcia by po prepnuti temy svietila prizvukom zo
-        # starej. Do zoznamu vyssie ho ale dat NEMOZNO: ten sa do najdeneho
-        # widgetu uz nezanara a Collapsible by tienil vsetko, co v nom lezi -
-        # graf vlozeny do zabalenej sekcie by ostal v starej teme.
-        # Jeho vlastny `set_pal` sa deti nedotyka, takze zostup nic nepokazi.
-        # `SubNav` si aktivnu kartu (linka v akcente) pocita z vlastnej
-        # palety - bez novej by dalsi klik na kartu vratil staru temu.
+        # It computes its header colour from its own palette only at the moment
+        # it is expanded, so an expanded section would glow with the old
+        # theme's accent after a theme switch. But it can NOT be put in the
+        # list above: that one no longer descends into a found widget and
+        # Collapsible would shadow everything inside it - a chart placed in a
+        # collapsed section would stay in the old theme.
+        # Its own `set_pal` does not touch the children, so descending breaks
+        # nothing.
+        # `SubNav` computes its active tab (the accent line) from its own
+        # palette - without the new one the next click on a tab would bring
+        # back the old theme.
         for widget in self._najdi_widgety((ui_kit.Collapsible, ui_kit.SubNav),
                                           zostup=True):
             try:
@@ -439,15 +461,16 @@ class PrefsMixin:
             except Exception:
                 app_log.exception("set_pal zlyhal na %r", widget)
 
-        # Prepinac sveta (predtym temy) si sam od seba nezmeni vybrany
-        # segment, ked svet zmeni nieco ine nez klik naň (lista hore vs.
-        # Nastavenia, sprievodca). Pri prestavbe to riesi `.set()` v
-        # `_build_ui`, tu ho musime zavolat sami - inak by prepinac
-        # ukazoval stary svet, hoci appka uz bezi v novom.
+        # The world switch (formerly the theme switch) does not change its
+        # selected segment by itself when the world is changed by something
+        # other than a click on it (title bar vs. Settings, the guide). On a
+        # rebuild `.set()` in `_build_ui` handles it, here we have to call it
+        # ourselves - otherwise the switch would show the old world although
+        # the app already runs in the new one.
         self._sync_world_switches()
-        # Obdobie trendu v Historii je tiez segmentovy prepinac: prefarbenie
-        # stromu mu prepise text vsetkych segmentov na jednu farbu, zvoleny
-        # segment treba zvyraznit znova.
+        # The trend period in History is also a segmented switch: the tree
+        # recolour rewrites the text of all segments to one colour, the
+        # selected segment has to be highlighted again.
         obdobie = getattr(self, "history_period_switch", None)
         if obdobie is not None:
             ui_kit.oznac_zvoleny_segment(obdobie, nova_pal)
@@ -455,11 +478,11 @@ class PrefsMixin:
         self._redraw_dnes_preview(nova_pal)
 
     def _najdi_widgety(self, triedy, zostup=False):
-        """Widgety danych tried v okne (bez samostatnych Toplevel okien).
+        """Widgets of the given classes in the window (no separate Toplevels).
 
-        `zostup=False` sa pri najdenom widgete dalej nezanara - jeho
-        `set_pal` si potomkov prefarbi sam. StatCard si tak prefarbi svoj
-        mikrograf a netreba ho hladat zvlast.
+        `zostup=False` does not descend further into a found widget - its
+        `set_pal` recolours its descendants itself. So a StatCard recolours
+        its own micro-chart and does not need to be searched for separately.
         """
         najdene = []
         zasobnik = [self.root]
@@ -478,13 +501,13 @@ class PrefsMixin:
         return najdene
 
     def _najdi_keycapy(self):
-        """Klavesy spustacov - maju vlastny `set_pal`, lebo v teme Sumi ma
-        `keycap_text` tu istu hodnotu ako `accent` a mechanicka mapa by im
-        dala akcent (viz theme_recolor)."""
+        """Trigger keys - they have their own `set_pal`, because in the Sumi theme
+        `keycap_text` has the same value as `accent` and the mechanical map
+        would give them the accent (see theme_recolor)."""
         return self._najdi_widgety(ui_kit.Keycap)
 
     def _redraw_dnes_preview(self, pal):
-        """Nahlad HUD na stranke Dnes je PIL obrazok - prekresli sa."""
+        """HUD preview on the Today page is a PIL image - it gets redrawn."""
         label = getattr(self, "dnes_preview_label", None)
         if label is None or not label.winfo_exists():
             return
@@ -506,35 +529,36 @@ class PrefsMixin:
     # ---------- settings ----------
 
     def load_settings(self):
-        # Jazyk sa zisti hned na zaciatku - ukazkove sloty pre nove
-        # instalacie musia byt uz vygenerovane v spravnom jazyku.
+        # The language is detected right at the start - the sample slots for
+        # new installs must already be generated in the right language.
         #
-        # POZN: tu stalo natvrdo `LANG_SK`. Appku si stiahne aj
-        # Nemec alebo Japonec a pri prvom spusteni na neho vyskoci
-        # slovencina - vratane tlacidla "Sparovat hodinky", ktore je
-        # prvym krokom onboardingu. Prva instalacia teraz berie jazyk
-        # Windowsu a ked ho nepozname, anglictinu.
+        # NOTE: `LANG_SK` was hard-coded here. The app is also downloaded by
+        # Germans or Japanese, and on the first start Slovak popped up at them,
+        # including the "Sparovat hodinky" (Pair your watch) button, which is
+        # the first step of the onboarding. A first install now takes the
+        # Windows language and, if we do not know it, English.
         lang = system_lang()
-        # JEDEN ZLY BAJT UZ NEZMAZE VSETKO (0.2.2). Doteraz nečitatelny subor
-        # = predvolene profily, texty aj polohy, a `__init__` ho o sekundu
-        # prepisal (`save_settings`). Teraz sa pokazeny subor odlozi bokom a
-        # nacita sa posledna zaloha (`.bak`, viz `save_settings`); hrac sa to
-        # dozvie raz (`_oznam_obnovu_nastaveni`).
+        # ONE BAD BYTE NO LONGER WIPES EVERYTHING (0.3). Until now an
+        # unreadable file = default profiles, texts and positions, and
+        # `__init__` overwrote it a second later (`save_settings`). Now the
+        # broken file is moved aside and the last backup is loaded (`.bak`, see
+        # `save_settings`); the player learns about it once
+        # (`_oznam_obnovu_nastaveni`).
         loaded, obnova = nacitaj_nastavenia(SETTINGS_PATH)
         try:
             self._nastavenia_obnova = obnova
         except Exception:
             pass
-        # POZN: tu stalo `in (LANG_SK, LANG_EN, LANG_JA)` - zoznam
-        # z cias, ked appka vedela tri jazyky. Prepinac v
-        # Nastaveniach ich medzitym ponuka DEVAT a volbu korektne
-        # ulozi, ale tento filter ju pri dalsom starte zahodil a
-        # spadol spat na slovencinu. A kedze `__init__` hned po
-        # starte vola `save_settings()`, zdegradovana hodnota sa
-        # zapisala spat do suboru - volba hraca bola nenavratne
-        # prec. Overene: zh, ru, es, de, fr, pt sa stratili vsetky,
-        # prezili len sk/en/ja. Porovnavaj vzdy voci `LANGUAGES`,
-        # nie voci rucne prepisanej trojici.
+        # NOTE: `in (LANG_SK, LANG_EN, LANG_JA)` stood here - a list
+        # from the times when the app knew three languages. The switch
+        # in Settings meanwhile offers NINE of them and saves the choice
+        # correctly, but this filter threw it away on the next start and
+        # fell back to Slovak. And since `__init__` calls
+        # `save_settings()` right after start, the degraded value was
+        # written back to the file - the player's choice was gone for
+        # good. Verified: zh, ru, es, de, fr, pt were all lost, only
+        # sk/en/ja survived. Always compare against `LANGUAGES`, not
+        # against a hand-copied trio.
         if loaded is not None and loaded.get("lang") in LANGUAGES:
             lang = loaded["lang"]
         set_lang(lang)
@@ -543,27 +567,28 @@ class PrefsMixin:
         data = {
             "profiles": [{"name": default_profile_name, "slots": default_slots()}],
             "active_profile": default_profile_name,
-            # cooldown / rate / volume / balance / overlap - viz
-            # settings_model.DEFAULT_AUDIO (to iste pouziva aj tlacidlo
-            # "Vratit odporucane" na stranke Zvuk)
+            # cooldown / rate / volume / balance / overlap - see
+            # settings_model.DEFAULT_AUDIO (the same is used by the
+            # "Restore recommended" button on the Sound page)
             **DEFAULT_AUDIO,
             "voice_id": "",
             "engine_pref": ENGINE_EDGE,
-            # Prvy start: Windows v jazyku z VOICE_HINTS (napr. bulharsky,
-            # nemecky) dostane hlas svojho jazyka - predvolene hlasky su v nom.
+            # First start: Windows in a language from VOICE_HINTS (e.g.
+            # Bulgarian, German) gets a voice of its language - the default
+            # cues are in it.
             "edge_voice": suggested_voice(lang),
             "theme": theme_mod.DEFAULT_THEME,
-            # Svet (B3-worlds). Novy hrac zacina v Hre - je to appka pre
-            # hracov; hlavny svet si vyberie v onboardingu (krok 4).
+            # World (B3-worlds). A new player starts in Play - it is an app for
+            # gamers; they pick their main world in the onboarding (step 4).
             "world": hr_stats.WORLD_DEFAULT,
-            # Styl hlasky (hlas / zvuk bez slov / len obraz). Urcuje vrchol
-            # rebrika hlasky (`rebrik.py`); chybajuci kluc = hlas.
+            # Cue style (voice / sound without words / picture only). Sets the
+            # top of the cue ladder (`rebrik.py`); a missing key = voice.
             "cue_style": rebrik.STYL_HLAS,
             "first_run": True,
             "tour_seen": False,
             "tour_step": 0,
-            # Anglictina aj pre slovenske rozhranie: HUD a popisky v hre
-            # koncia na streame a na screenshotoch v obchode.
+            # English even for the Slovak interface: the HUD and the in-game
+            # labels end up on the stream and on screenshots in the store.
             "game_lang": LANG_EN,
             "lang": lang,
             "start_minimized": False,
@@ -576,9 +601,9 @@ class PrefsMixin:
             "zanshin_graduated": False,
             "zanshin_graduated_at": None,
             "snooze_hotkey": DEFAULT_SNOOZE_HOTKEY,
-            # Vybral si skratku hrac sam (Nastavenia -> Vseobecne)? Kym nie,
-            # smie ju appka pri zrazke s rozlozenim klavesnice vymenit
-            # (`_vyber_skratku_pri_starte`, 0.2.2).
+            # Did the player pick the shortcut themselves (Settings ->
+            # General)? Until then the app may swap it on a clash with the
+            # keyboard layout (`_vyber_skratku_pri_starte`, 0.3).
             "snooze_hotkey_chosen": False,
             "background_opacity": background.DEFAULT_OPACITY,
             "monitor_target": DEFAULT_MONITOR_TARGET,
@@ -602,13 +627,14 @@ class PrefsMixin:
                         pslots = p.get("slots")
                         pslots = ([normalize_slot(s) for s in pslots if isinstance(s, dict)]
                                   if isinstance(pslots, list) else [])
-                        # Profil bez slotov dostane styri kategorie - pridat
-                        # si ich hrac uz nema ako (tlacidlo je prec).
+                        # A profile without slots gets four categories - the
+                        # player has no way to add them any more (the button is
+                        # gone).
                         profiles.append({"name": name,
                                          "slots": pslots or [normalize_slot(s)
                                                              for s in default_slots()]})
                 if not profiles:
-                    # migracia zo starej plochej schemy (Dandurf/pred-profilova verzia)
+                    # migration from the old flat schema (Dandurf/pre-profile version)
                     legacy_slots = loaded.get("slots")
                     if isinstance(legacy_slots, list) and legacy_slots:
                         legacy_slots = [normalize_slot(s) for s in legacy_slots
@@ -633,57 +659,59 @@ class PrefsMixin:
                     data["overlay_configs"] = [normalize_overlay_config(overlay_raw[i], i)
                                               for i in range(4)]
                 else:
-                    # migracia zo stareho jednoducheho prepinaca (len dychovy
-                    # kruh, slot 4) - ostatne 3 nove vizualy ostanu vypnute.
+                    # migration from the old simple switch (only the breathing
+                    # circle, slot 4) - the other 3 new visuals stay off.
                     cfgs = default_overlay_configs()
                     cfgs[3]["enabled"] = bool(loaded.get("breathing_overlay_enabled", False))
                     data["overlay_configs"] = cfgs
                 data["hr_ip"] = str(loaded.get("hr_ip") or ANY_INTERFACE)
-                # 65432 bol stary predvoleny port z cias, ked prijimac vedel
-                # len UDP. Appky pre OBS (vratane HeartRateOnStream) chodia na
-                # 4455, takze na tom starom porte by hrac cakal donekonecna -
-                # jednorazovo ho presunieme na funkcny predvoleny.
+                # 65432 was the old default port from the times when the
+                # receiver knew only UDP. Apps for OBS (including
+                # HeartRateOnStream) go to 4455, so on that old port the player
+                # would wait forever - we move it once to the working default.
                 stored_port = clamp_int(loaded.get("hr_port"), 1, 65535, HR_DEFAULT_PORT)
                 data["hr_port"] = HR_DEFAULT_PORT if stored_port == 65432 else stored_port
                 data["hr_monitoring_enabled"] = bool(loaded.get("hr_monitoring_enabled", False))
                 data["zanshin_graduated"] = bool(loaded.get("zanshin_graduated", False))
                 _zg = loaded.get("zanshin_graduated_at")
                 data["zanshin_graduated_at"] = _zg if isinstance(_zg, (int, float)) else None
-                # Prazdny retazec = vypnute. Nezmyselna kombinacia sa
-                # ticho vrati na predvolenu - hrac ju mohol prepisat
-                # rucne v JSON a appka kvoli tomu padnut nesmie.
+                # Empty string = off. A nonsensical combination silently
+                # falls back to the default - the player could have edited it
+                # by hand in the JSON and the app must not crash because of it.
                 hk = loaded.get("snooze_hotkey", DEFAULT_SNOOZE_HOTKEY)
                 hk = "" if hk in (None, "") else str(hk).strip().lower()
                 data["snooze_hotkey"] = (
                     hk if (hk == "" or hotkey.is_valid(hk))
                     else DEFAULT_SNOOZE_HOTKEY)
                 data["snooze_hotkey_chosen"] = bool(loaded.get("snooze_hotkey_chosen", False))
-                # Jemnost pozadia. Strop je v `background.py`, nie tu -
-                # kto ho chce zmenit, meni ho na jednom mieste.
+                # Background subtlety. The cap is in `background.py`, not
+                # here - whoever wants to change it changes it in one place.
                 data["background_opacity"] = background.clamp_opacity(
                     loaded.get("background_opacity"))
                 data["monitor_target"] = normalize_monitor_target(loaded.get("monitor_target"))
                 data["hud_config"] = normalize_hud_config(loaded.get("hud_config"))
-                # POZN: tu sa nacitavalo aj "dojo_intensity" (fotopas nad
-                # titulkovou listou). Kluc uz nikto necita - v starych
-                # dandurf_settings.json moze zostat, len sa ignoruje a pri
-                # dalsom ulozeni vypadne.
+                # NOTE: "dojo_intensity" was loaded here too (photo strip above
+                # the title bar). Nobody reads the key any more - it may stay
+                # in old dandurf_settings.json files, it is just ignored and
+                # drops out on the next save.
                 data["dashboard_stats"] = normalize_dashboard_stats(loaded.get("dashboard_stats"))
                 data["breath_inhale_s"], data["breath_exhale_s"] = normalize_breath_seconds(
                     loaded.get("breath_inhale_s"), loaded.get("breath_exhale_s"))
-                # JEDNORAZOVA NAPRAVA: vsetky styri vizualy vypnute.
+                # ONE-TIME FIX: all four visuals off.
                 #
-                # Do 19. 9. boli vypnute PREDVOLENE a `_cue_can_fire` bez
-                # zapnuteho vizualu hlasku nepusti - appka teda v tomto stave
-                # mlci a hrac nema ako zistit preco. Nikto si to takto
-                # nezvolil, vzniklo to predvolbou, tak to raz narovname.
+                # Until 19. 9. they were off BY DEFAULT and `_cue_can_fire`
+                # does not let a cue through without a visual on - so in this
+                # state the app stays silent and the player has no way to find
+                # out why. Nobody chose this, it came from the default, so we
+                # fix it once.
                 #
-                # NAOZAJ RAZ (0.2). Predpoklad "kto si ich vypne sam, ma aspon
-                # jeden zapnuty" neplatil - UI dovoli vypnut vsetky styri, a
-                # appka ich potom pri KAZDOM starte zapla spat, hoci log
-                # slubil, ze sa vypnut daju. Po prvom nacitani sa do nastaveni
-                # zapise `visuals_repaired` a dalej je vypnutie rozhodnutie
-                # hraca, ktore appka neobchadza.
+                # REALLY ONCE (0.2). The assumption "whoever turns them off
+                # themselves has at least one on" did not hold - the UI lets
+                # you turn off all four, and the app then turned them back on
+                # at EVERY start, although the log promised they could be
+                # turned off. After the first load `visuals_repaired` is
+                # written to the settings and from then on turning them off is
+                # the player's decision, which the app does not get around.
                 if (not loaded.get("visuals_repaired")
                         and all(not cfg["enabled"] for cfg in data["overlay_configs"])):
                     for cfg in data["overlay_configs"]:
@@ -699,16 +727,18 @@ class PrefsMixin:
                 game_lang = loaded.get("game_lang")
                 if game_lang in LANGUAGES or game_lang == LANG_SAME_AS_APP:
                     data["game_lang"] = game_lang
-                # Ulozena tema je ZNACKA "prvy start uz bol" - tak to aj
-                # ostava; samotny vzhlad uz ale urcuje svet (nizsie).
+                # A saved theme is the MARKER "first start already happened" -
+                # and it stays that way; but the look itself is now decided by
+                # the world (below).
                 if loaded.get("theme") in (theme_mod.ZEN, theme_mod.MODERN):
                     data["theme"] = loaded["theme"]
                     data["first_run"] = False
-                # SVET (B3-worlds). Chybajuci alebo nezmyselny -> Hra.
-                # MIGRACIA: nastavenia zo starsej verzie svet nemaju, a to aj
-                # ked mal hrac vybrane Aizome. Svet sa z temy NEODVODZUJE -
-                # inak by sa mu hranie zacalo ratat ako praca; ide do Hry a
-                # tema ide za svetom (rozhodnutie zadavatela).
+                # WORLD (B3-worlds). Missing or nonsensical -> Play. MIGRATION:
+                # settings from an older version have no world, even when the
+                # player had Aizome selected. The world is NOT DERIVED from the
+                # theme - otherwise their gaming would start counting as work;
+                # it goes to Play and the theme follows the world (the product
+                # owner's decision).
                 data["world"] = (hr_stats.normalize_activity(loaded.get("world"))
                                  or hr_stats.WORLD_DEFAULT)
                 data["cue_style"] = rebrik.normalize_cue_style(loaded.get("cue_style"))
@@ -717,17 +747,19 @@ class PrefsMixin:
                 app_log.exception("load_settings: castocne poskodeny/neocakavany "
                                   "obsah %s - pouzijem defaulty pre chybajuce polia",
                                   SETTINGS_PATH)
-        # Vzhlad patri svetu - aj po poskodenom subore, aj pri prvom starte.
+        # The look belongs to the world - also after a damaged file, also on
+        # the first start.
         data["theme"] = theme_mod.WORLD_THEME.get(data["world"], theme_mod.DEFAULT_THEME)
         for profile in data["profiles"]:
-            # Profil s menej nez styrmi slotmi (rucne zalozeny v 0.1, kde sa
-            # sloty pridavali tlacidlom, alebo po odstraneni) dostane chybajuce
-            # kategorie na koniec, VYPNUTE. Tlacidlo "+ Pridat spustac" je
-            # prec, takze inak by sa kategoria do profilu uz nedala vratit.
+            # A profile with fewer than four slots (created by hand in 0.1,
+            # where slots were added with a button, or after a removal) gets
+            # the missing categories at the end, OFF. The "+ Pridat spustac" (+
+            # Add trigger) button is gone, so otherwise the category could no
+            # longer be put back into the profile.
             profile["slots"] = doplnit_kategorie(profile["slots"])
             for index, slot in enumerate(profile["slots"]):
-                # Stare predvolene slovo ("Teeth", ja 脱力, zh 放松) -> nove.
-                # Len pri nacitani, viz `settings_model.migrate_slot_text`.
+                # Old default word ("Teeth", ja 脱力, zh 放松) -> new.
+                # Only on load, see `settings_model.migrate_slot_text`.
                 slot["text"] = migrate_slot_text(slot["text"], index)
                 slot["audio_path"] = resolve_audio_path(slot["audio_path"])
                 slot["voice_path"] = resolve_audio_path(slot["voice_path"])
@@ -746,8 +778,9 @@ class PrefsMixin:
             "balance": int(self.balance_value),
             "engine_pref": self.engine_pref,
             "edge_voice": self.edge_voice_id,
-            # `theme` sa uklada dalej: je to znacka "prvy start uz bol"
-            # (`load_settings`). Pri starte ju aj tak prepise svet.
+            # `theme` is still saved: it is the marker "first start already
+            # happened" (`load_settings`). On start the world overwrites it
+            # anyway.
             "theme": self.theme_key,
             "world": getattr(self, "world", hr_stats.WORLD_DEFAULT),
             "cue_style": getattr(self, "cue_style", rebrik.STYL_HLAS),
@@ -761,9 +794,9 @@ class PrefsMixin:
             "game_lang": getattr(self, "game_lang", LANG_EN),
             "hr_ip": self.hr_ip,
             "hr_port": int(self.hr_port),
-            # Senzor vypnuty chybou portu/vazby ide do suboru ako zapnuty:
-            # nebolo to rozhodnutie hraca a dalsi start to ma skusit znova
-            # (app_session._senzor_vypla_chyba, 0.2.2).
+            # A sensor switched off by a port/bind error goes to the file as
+            # on: it was not the player's decision and the next start should
+            # try again (app_session._senzor_vypla_chyba, 0.3).
             "hr_monitoring_enabled": bool(
                 self.hr_monitoring_enabled
                 or getattr(self, "_hr_vypnute_chybou", False)),
@@ -777,28 +810,28 @@ class PrefsMixin:
             "dashboard_stats": list(self.dashboard_stats),
             "breath_inhale_s": float(self.breath_inhale_s),
             "breath_exhale_s": float(self.breath_exhale_s),
-            # Jednorazova naprava vypnutych vizualov uz prebehla (alebo
-            # nebola treba) - viz `load_settings`. Odteraz su vypnute
-            # vizualy volba hraca.
+            # The one-time fix of switched-off visuals has already run (or was
+            # not needed) - see `load_settings`. From now on switched-off
+            # visuals are the player's choice.
             "visuals_repaired": True,
-            # Upozornenie na nainstalovanu 0.2 uz zaznelo (raz, viz
-            # `_upozorni_na_staru_instalaciu`).
+            # The warning about an installed 0.2 has already been shown (once,
+            # see `_upozorni_na_staru_instalaciu`).
             "old_installer_warned": bool(getattr(self, "old_installer_warned", False)),
         }
-        # Pred kazdym zapisom: doterajsi PLATNY subor -> .bak. Zlyhanie
-        # zalohy nesmie zastavit samotne ulozenie (subor moze drzat
-        # antivirus alebo synchronizacia), preto ma vlastny try.
+        # Before every write: the previous VALID file -> .bak. A failure of the
+        # backup must not stop the save itself (the file may be held by an
+        # antivirus or sync), so it has its own try.
         try:
             zaloha_nastaveni(SETTINGS_PATH)
         except Exception:
             app_log.exception("save_settings: zalohu nastaveni sa nepodarilo zapisat")
         try:
-            # Atomicky zapis: najprv .tmp, az potom os.replace() - rovnaky
-            # vzor ako uz appka pouziva v sfx_assets._save_wav()/_try_download().
-            # Bez tohto by pad/vypadok POCAS zapisu (a uklada sa pri kazdej
-            # zmene slidera!) mohol nechat prazdny/orezany JSON a s nim aj
-            # stratu vsetkych profilov pri buducom starte. Kratky zamok
-            # suboru (antivirus, indexovanie) prezije `nahrad_subor`.
+            # Atomic write: first .tmp, only then os.replace() - the same pattern
+            # the app already uses in sfx_assets._save_wav()/_try_download().
+            # Without this a crash/power cut DURING the write (and it saves on
+            # every slider change!) could leave an empty/truncated JSON and with
+            # it the loss of all profiles at the next start. A short file lock
+            # (antivirus, indexing) is survived thanks to `nahrad_subor`.
             tmp_path = f"{SETTINGS_PATH}.tmp"
             with open(tmp_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
@@ -808,12 +841,13 @@ class PrefsMixin:
             app_log.exception("save_settings zlyhalo")
 
     def _oznam_obnovu_nastaveni(self):
-        """Raz po starte: nastavenia sa nedali nacitat (`nacitaj_nastavenia`).
+        """Once after start: settings could not be loaded (`nacitaj_nastavenia`).
 
-        Riadok do dennika a sprava, az ked okno stoji (`after`) - start sa
-        kvoli nej nezastavi. Vola sa z `__init__` po postaveni okna, lebo
-        dennik pred tym neexistuje a text musi byt v jazyku z obnovenych
-        nastaveni (ten nastavil `load_settings`)."""
+        A journal line and a message, only once the window is up (`after`) -
+        the start does not stop because of it. Called from `__init__` after
+        the window is built, because the journal does not exist before that
+        and the text must be in the language from the restored settings
+        (set by `load_settings`)."""
         obnova = getattr(self, "_nastavenia_obnova", None)
         self._nastavenia_obnova = None
         if not obnova:
@@ -826,7 +860,7 @@ class PrefsMixin:
 
         def _ukaz():
             try:
-                # okno appky, nie systemove (0.2.2, davka 4)
+                # the app's own window, not a system one (0.3, batch 4)
                 ui_kit.notify(getattr(self, "root", None), getattr(self, "pal", None),
                               APP_NAME, text, kind="warning")
             except Exception:
@@ -893,35 +927,38 @@ class PrefsMixin:
                 tr("msgbox.edge_still_missing", err=audio_engine.EDGE_IMPORT_ERROR),
                 kind="warning")
 
-    # ---------- skratka "teraz nie" (0.2.2) ----------
+    # ---------- "not now" shortcut (0.3) ----------
     #
-    # Registracia samotna je v app.py (`start_snooze_hotkey`, cita
-    # TRAY_AVAILABLE). Tu je to, co sa okolo nej rozhoduje: zrazka s
-    # rozlozenim klavesnice pri starte, vyber v Nastaveniach -> Vseobecne a
-    # zapis skratky pre vety, ktore ju hracovi menuju.
+    # The registration itself is in app.py (`start_snooze_hotkey`, reads
+    # TRAY_AVAILABLE). Here is what gets decided around it: the clash with
+    # the keyboard layout at start, the choice in Settings -> General and
+    # the shortcut's wording for the sentences that name it to the player.
 
     def _skratka_teraz_nie(self):
-        """Pekny zapis skratky, LEN ked je naozaj zaregistrovana; inak "".
+        """Display form of the shortcut, ONLY if really registered; else "".
 
-        Pas (`kamae.snoozed_sub`) a prehliadka podla toho vyberu vetu:
-        vypnutu alebo cudzim programom drzanu skratku slubovat nesmu."""
+        The bar (`kamae.snoozed_sub`) and the tour pick their sentence by
+        it: they must not promise a shortcut that is off or held by
+        another program."""
         drzi = getattr(self, "_hotkey", None)
         if drzi is None or not getattr(drzi, "registered", False):
             return ""
         return hotkey.format_combo(getattr(self, "snooze_hotkey", "") or "")
 
     def _vyber_skratku_pri_starte(self, kolizia=None):
-        """Pred registraciou: predvolena skratka by zhltla pismeno?
+        """Before registering: would the default shortcut swallow a letter?
 
-        AltGr je na Windows Ctrl+Alt - na polskom rozlozeni AltGr+Z pise
-        "ż" a zaregistrovane Ctrl+Alt+Z by ho hracovi bralo v kazdom okne.
-        Plati LEN pre predvolenu skratku, ktoru si hrac sam nevybral
-        (`snooze_hotkey_chosen`); jeho vlastnu volbu appka nemeni. Nahrada je
-        prva volna predvolba (`hotkey.prva_volna`), inak ziadna. Povie sa to
-        RAZ: nahrada sa ulozi, takze pri dalsom starte uz predvolena nie je.
+        AltGr is Ctrl+Alt on Windows - on the Polish layout AltGr+Z types
+        "ż" and a registered Ctrl+Alt+Z would take it from the player in
+        every window. Applies ONLY to the default shortcut that the player
+        did not pick themselves (`snooze_hotkey_chosen`); the app does not
+        change their own choice. The replacement is the first free preset
+        (`hotkey.prva_volna`), otherwise none. It is said ONCE: the
+        replacement is saved, so on the next start it is no longer the
+        default.
 
-        `kolizia(combo) -> znak` sa da vlozit (testy). Vracia nahradu, ""
-        (skratka vypnuta) alebo None (nic sa nemenilo)."""
+        `kolizia(combo) -> znak` can be injected (tests). Returns the
+        replacement, "" (shortcut off) or None (nothing changed)."""
         combo = getattr(self, "snooze_hotkey", "") or ""
         if combo != DEFAULT_SNOOZE_HOTKEY or getattr(self, "snooze_hotkey_chosen", False):
             return None
@@ -941,7 +978,8 @@ class PrefsMixin:
                         new=hotkey.format_combo(nahrada)))
         else:
             self.log(tr("log.hotkey_layout_off", combo=stara, char=znak))
-        # app.log po anglicky aj v nemcine ("Ctrl", nie "Strg") - ako `hotkey`
+        # app.log in English even in German ("Ctrl", not "Strg") - like
+        # `hotkey`
         app_log.info("hotkey: %s pise znak na rozlozeni klavesnice, nahrada: %s",
                      hotkey.format_combo(combo, lang="en"), nahrada or "ziadna")
         try:
@@ -951,12 +989,13 @@ class PrefsMixin:
         return nahrada
 
     def _snooze_hotkey_volby(self, kolizia=None):
-        """[(popis, kombinacia)] pre rozbalovacku skratky.
+        """[(label, combination)] for the shortcut dropdown.
 
-        Predvolby (`hotkey.PRESETS`), skratka z rucne upraveneho suboru, ak
-        medzi nimi nie je, a na konci "vypnuta" (""). Predvolba, ktora by na
-        niektorom rozlozeni pisala znak, sa NESKRYVA (hrac ju mohol mat
-        vybratu), len sa oznaci, ktory znak by zhltla."""
+        Presets (`hotkey.PRESETS`), the shortcut from a hand-edited file if
+        it is not among them, and at the end "off" (""). A preset that
+        would type a character on some layout is NOT HIDDEN (the player may
+        have had it selected), it is only marked with the character it
+        would swallow."""
         zisti = kolizia or hotkey.znak_kolizie
         kombinacie = list(hotkey.PRESETS)
         sucasna = getattr(self, "snooze_hotkey", "") or ""
@@ -976,7 +1015,7 @@ class PrefsMixin:
         return volby
 
     def _snooze_hotkey_sub(self):
-        """Veta pod vyberom skratky - podla toho, co naozaj plati."""
+        """The sentence under the shortcut choice - by what really applies."""
         combo = getattr(self, "snooze_hotkey", "") or ""
         if not combo:
             return tr("settings.snooze_hotkey_off_sub")
@@ -986,10 +1025,11 @@ class PrefsMixin:
         return tr("settings.snooze_hotkey_sub", combo=pekne, minutes=SNOOZE_HOTKEY_MINUTES)
 
     def _build_snooze_hotkey_row(self, parent, pal):
-        """Nastavenia -> Vseobecne: vyber skratky "teraz nie" (0.2.2).
+        """Settings -> General: choosing the "not now" shortcut (0.3).
 
-        Do 0.2.2 sa dala zmenit len rucne v subore nastaveni - a kto mal
-        skratku obsadenu inym programom alebo mu brala pismeno, nemal ako."""
+        Before 0.3 it could only be changed by hand in the settings file -
+        and whoever had the shortcut taken by another program, or had it
+        eat a letter, had no way to do it."""
         panel = ui_kit.Panel(parent, pal, title=tr("settings.snooze_hotkey_title"))
         panel.pack(fill="x", pady=(14, 0))
         row = ui_kit.SettingRow(panel.body, pal, tr("settings.snooze_hotkey"),
@@ -1006,15 +1046,17 @@ class PrefsMixin:
         self.snooze_hotkey_menu.pack()
 
     def _refresh_snooze_hotkey_row(self):
-        """Riadok skratky podla toho, co naozaj plati. Vola sa po volbe v
-        Nastaveniach aj PO REGISTRACII PRI STARTE (`__init__`): riadok sa
-        stavia v `_build_ui` skor, nez sa skratka zaregistruje, a start ju
-        moze aj vymenit (`_vyber_skratku_pri_starte`) - bez toho by riadok
-        tvrdil, ze obsadena skratka funguje, a ponuka ukazovala staru.
+        """Shortcut row by what really applies. Called after the choice in
+        Settings and also AFTER THE REGISTRATION AT START (`__init__`): the
+        row is built in `_build_ui` before the shortcut is registered, and
+        the start may also swap it (`_vyber_skratku_pri_starte`) - without
+        this the row would claim that a taken shortcut works, and the menu
+        would show the old one.
 
-        Ked Windows registraciu nestihne do 2 s, vola sa este raz - az po
-        skutocnom vysledku z vlakna skratky (`_po_registracii_skratky`, 0.2.2
-        davka 4b). Dovtedy riadok netvrdi, ze skratku drzi iny program."""
+        When Windows does not finish the registration within 2 s, it is
+        called once more - only after the real result from the shortcut
+        thread (`_po_registracii_skratky`, 0.3 batch 4b). Until then the
+        row does not claim that another program holds the shortcut."""
         row = getattr(self, "snooze_hotkey_row", None)
         label = getattr(row, "sub_label", None)
         if label is None:
@@ -1022,7 +1064,7 @@ class PrefsMixin:
         try:
             label.configure(text=self._snooze_hotkey_sub())
         except Exception:
-            pass            # stranka sa prave prestavuje
+            pass            # the page is being rebuilt right now
         var = getattr(self, "snooze_hotkey_var", None)
         sucasna = getattr(self, "snooze_hotkey", "") or ""
         popis = next((p for p, c in getattr(self, "_snooze_hotkey_podla_popisu", {}).items()
@@ -1035,10 +1077,11 @@ class PrefsMixin:
                 pass
 
     def on_snooze_hotkey_pick(self, label):
-        """Hrac vybral skratku. Plati HNED: stara sa odregistruje a nova
-        zaregistruje (`start_snooze_hotkey`). Ked ju drzi iny program,
-        volba OSTAVA (do suboru ide), len riadok a dennik to povedia - po
-        zatvoreni toho programu zabere pri dalsom starte."""
+        """The player picked a shortcut. It applies AT ONCE: the old one is
+        unregistered and the new one registered (`start_snooze_hotkey`).
+        When another program holds it, the choice STAYS (it goes to the
+        file), only the row and the journal say so - once that program is
+        closed, it takes effect on the next start."""
         combo = getattr(self, "_snooze_hotkey_podla_popisu", {}).get(label)
         if combo is None:
             return

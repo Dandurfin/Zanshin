@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
-"""Svet pocas relacie a VPN/virtualne adaptery (0.2.2, davka 4).
+"""The world during a session and VPN/virtual adapters (0.3, batch 4).
 
-* Prepnutie Hra <-> Praca pocas sledovania meni len pohlad: relacia aj jej
-  pripomienky ostavaju vo svete, v ktorom zacala; dennik to povie raz.
-* Adresa PC pre hodinky: fyzicky adapter pred VPN/virtualnym, virtualne
-  nesu stitok a pod adresou je veta. Bezne "Ethernet"/"Wi-Fi" nie su
-  virtualne. Len vymyslene adaptery a dokumentacne adresy (192.0.2.x...)."""
+* Switching Play <-> Work while watching changes only the view: the session
+  and its cues stay in the world they started in; the journal says so once.
+* The PC address for the watch: a physical adapter before a VPN/virtual one,
+  virtual ones carry a label and there is a sentence under the address.
+  Ordinary "Ethernet"/"Wi-Fi" are not virtual. Only made-up adapters and
+  documentation addresses (192.0.2.x...)."""
 import pytest
 
 import app as app_mod
@@ -14,7 +15,7 @@ import rebrik
 from i18n import tr
 
 # --------------------------------------------------------------------------
-# Svet relacie
+# The session's world
 # --------------------------------------------------------------------------
 
 
@@ -28,11 +29,11 @@ def _appka(svet="work", svet_relacie="play", otvorena=True):
 
 
 def test_hlas_pocas_relacie_ide_za_svetom_relacie():
-    # hra zacala v Hre, hrac sa pozrel na Pracu - pripomienky stale hovoria
+    # the game started in Play, the player looked at Work - cues still speak
     assert _appka("work", "play")._hlasky_hovoria() is True
-    # zacala v Praci, prepol na Hru - stale len obrazom
+    # started in Work, switched to Play - still picture only
     assert _appka("play", "work")._hlasky_hovoria() is False
-    # bez relacie plati zobrazeny svet
+    # without a session the displayed world applies
     assert _appka("work", "play", otvorena=False)._hlasky_hovoria() is False
     assert _appka("play", "work", otvorena=False)._hlasky_hovoria() is True
 
@@ -55,7 +56,7 @@ def test_prepnutie_sveta_pocas_relacie_povie_jeden_riadok():
     assert a.world == "work" and a._session_world == "play"
     assert a.denn == [tr("log.world_switch_session", world=tr("world.play"),
                          new=tr("world.work"))]
-    # spat do sveta relacie: nic nove sa nehovori
+    # back to the session's world: nothing new is said
     a.set_world("play")
     assert len(a.denn) == 1
 
@@ -74,7 +75,7 @@ def test_relacia_peceti_svet_pri_otvoreni():
 
 
 # --------------------------------------------------------------------------
-# VPN a virtualne adaptery
+# VPN and virtual adapters
 # --------------------------------------------------------------------------
 
 @pytest.mark.parametrize("meno, popis, typ", [
@@ -135,10 +136,10 @@ def test_virtualne_adresy_z_vlozeneho_zdroja():
                      ("198.51.100.7", "Tailscale", "Tailscale Tunnel", 53),
                      ("203.0.113.4", "vEthernet (WSL)", "Hyper-V Virtual Ethernet Adapter", 6)]
     assert netinfo.virtualne_adresy(zdroj) == {"198.51.100.7", "203.0.113.4"}
-    # adresa, ktoru ma aj fyzicky adapter, sa neoznaci
+    # an address that a physical adapter has too is not marked
     dvojita = lambda: [("192.0.2.10", "Ethernet", "", 6), ("192.0.2.10", "Tailscale", "", 53)]
     assert netinfo.virtualne_adresy(dvojita) == set()
-    # chyba zdroja = ziadne virtualne, ziadna vynimka
+    # source error = no virtual ones, no exception
     def zle():
         raise OSError("iphlpapi nejde")
     assert netinfo.virtualne_adresy(zle) == set()
@@ -180,8 +181,9 @@ def test_okno_parovania_ukaze_vetu_pod_virtualnou_adresou():
     zdroj = zdroj_suboru("ui_dialogs.py")
     assert "self._virtualne = self._virtual_ips()" in zdroj
     assert 'tr("hr.ip_virtual_note")' in zdroj
-    # Stitok hlavnej adresy je od skeptika UX vlastny riadok pod adresou, nie
-    # koniec riadku mono 20 (tam sa orezal a vytlacil "Ukazat IP") - spravanie
-    # stazi tests/test_022e_ux_skeptik.py.
+    # Since the UX skeptic, the main address's label is its own row under
+    # the address, not the end of the mono 20 row (there it got cut off and
+    # pushed out "Show IP") - the behaviour is guarded by
+    # tests/test_022e_ux_skeptik.py.
     assert "self.ip_virtual_label = ctk.CTkLabel(" in zdroj
     assert 'net_in, text=tr("hr.ip_virtual")' in zdroj

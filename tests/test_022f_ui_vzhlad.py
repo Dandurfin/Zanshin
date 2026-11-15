@@ -1,19 +1,19 @@
 # -*- coding: utf-8 -*-
-"""Vzhlad po davke 4b auditu UX (0.2.2): mriezka Pravidelnost, riadok
-"Zdroj hlasu", pas Dnes pri obsadenom porte, drobny cerveny text a ram
-dialogov.
+"""Look after batch 4b of the UX audit (0.3): the Consistency grid, the
+"Voice source" row, the Today bar with a taken port, small red text and the
+dialog frame.
 
-Strazi sa:
-  * mriezka Pravidelnost zvacsi stvorceky podla sirky (najviac CELL_MAX),
-    popisky mesiacov sedia nad stlpcami a dni vedla riadkov,
-  * stav pripravy hlasu a "Skusit znova" su vnutri riadku "Zdroj hlasu"
-    (nad jeho deliacou linkou) a prazdny stav nezabera miesto,
-  * pri obsadenom porte je v paneli tepu len tlacidlo (jedna sprava, nie
-    dve) a text pasu ma pod sebou tmavu podlozku nad fotkou,
-  * drobny cerveny text je `danger_text` (>= 4,5:1), nikdy `danger`,
-  * kazdy dialog appky (DialogChrome) ma 1 px ram v `rule`.
+Guarded:
+  * the Consistency grid enlarges the squares by width (at most CELL_MAX),
+    the month labels sit above the columns and the days next to the rows,
+  * the voice preparation status and "Try again" are inside the "Voice
+    source" row (above its divider line) and the empty state takes no space,
+  * with a taken port the heart-rate panel has only the button (one
+    message, not two) and the bar text has a dark backing over the photo,
+  * small red text is `danger_text` (>= 4,5:1), never `danger`,
+  * every app dialog (DialogChrome) has a 1 px frame in `rule`.
 
-Synteticke data; skutocne Tk len so schovanym oknom.
+Synthetic data; real Tk only with a hidden window.
 """
 import os
 import re
@@ -61,7 +61,7 @@ def _tk_root():
 
 
 # --------------------------------------------------------------------------
-# 7: mriezka Pravidelnost
+# 7: the Consistency grid
 # --------------------------------------------------------------------------
 
 def test_stvorcek_rastie_kym_tyzdne_nezaplnia_sirku():
@@ -77,9 +77,10 @@ def test_stvorcek_rastie_kym_tyzdne_nezaplnia_sirku():
 def test_stvorcek_ma_strop_aj_dno():
     G = ui_kit.DayGrid
     assert G.rozmer_bunky(3000, 26) == (float(G.CELL_MAX), float(G.GAP_MAX))
-    # par tyzdnov v sirokom okne: stvorceky nie su obrie
+    # a few weeks in a wide window: the squares are not giant
     assert G.rozmer_bunky(1000, 3)[0] == G.CELL_MAX
-    # uzke okno: najmensi stvorcek, zaciatok historie sa oreze (`_redraw`)
+    # narrow window: the smallest square, the start of the history is cut off
+    # (`_redraw`)
     assert G.rozmer_bunky(200, 26)[0] == G.CELL
     assert G.rozmer_bunky(0, 26) == (float(G.CELL), float(G.GAP))
     assert G.rozmer_bunky(500, 0) == (float(G.CELL), float(G.GAP))
@@ -93,7 +94,7 @@ def test_vyska_mriezky_ide_s_velkostou_stvorceka():
 
 
 class _Platno:
-    """Atrapa tk.Canvas: polozky s textom a suradnicami, bbox ~7 px/znak."""
+    """tk.Canvas fake: items with text and coordinates, bbox ~7 px/char."""
 
     def __init__(self, sirka):
         self.sirka = sirka
@@ -153,7 +154,7 @@ def _mriezka(sirka, tyzdnov=26):
 
 
 def _bunky(g):
-    """Stvorceky dni (bez legendy - ta ma pevnych 10 px)."""
+    """Day squares (without the legend - that has a fixed 10 px)."""
     return [x for x in g.canvas.polozky.values() if x["druh"] == "poly"
             and max(x["coords"][0::2]) - min(x["coords"][0::2]) >= g.CELL - 0.01]
 
@@ -167,13 +168,13 @@ def test_mriezka_zaplni_panel_a_popisky_sedia():
     pravy_okraj = max(max(b["coords"][0::2]) for b in bunky)
     assert 0.95 * 700 < pravy_okraj <= 700, "26 tyzdnov cez celu sirku"
     assert len(xs) == 26
-    # mesiace: kazdy popisok zacina presne nad niektorym stlpcom
+    # months: each label starts exactly above some column
     mesiace = [x for x in p if x["druh"] == "text" and x.get("anchor") == "sw"
                and x["text"] in g._months]
     assert len(mesiace) >= 5
     for m in mesiace:
         assert any(abs(m["coords"][0] - x) < 0.6 for x in xs), m
-    # dni: stred popisku na strede riadku
+    # days: the label's centre at the row's centre
     ys = sorted({round(min(b["coords"][1::2]), 3) for b in bunky})
     assert len(ys) == 7
     vyska = min(max(b["coords"][1::2]) - min(b["coords"][1::2]) for b in bunky)
@@ -200,7 +201,7 @@ def test_cislo_dni_ostava_hore_pri_raste_mriezky():
 
 
 # --------------------------------------------------------------------------
-# 8: stav pripravy hlasu v riadku "Zdroj hlasu"
+# 8: voice preparation status in the "Voice source" row
 # --------------------------------------------------------------------------
 
 def test_stav_hlasu_a_skusit_znova_su_v_riadku_zdroja_hlasu():
@@ -239,10 +240,10 @@ def test_prazdny_stav_hlasu_nezabera_miesto():
     assert not stitok.zabaleny
     app_audio.AudioMixin.set_edge_status(a, "Pripravujem hlas…")
     assert stitok.zabaleny and stitok.cfg["text"] == "Pripravujem hlas…"
-    # "Skusit znova" ide az ZA stav
+    # "Try again" goes only AFTER the status
     a._ukaz_skusit_hlas_znova(True)
     assert tlacidlo.zabaleny and tlacidlo.pack_kw.get("after") is stitok
-    # novy stav tlacidlo schova, prazdny stav schova aj stitok
+    # a new status hides the button, an empty status also hides the label
     app_audio.AudioMixin.set_edge_status(a, "")
     assert not stitok.zabaleny and not tlacidlo.zabaleny
 
@@ -258,7 +259,7 @@ def test_settingrow_ma_verejny_stlpec_textu():
 
 
 # --------------------------------------------------------------------------
-# 9: obsadeny port na Dnes
+# 9: taken port on Today
 # --------------------------------------------------------------------------
 
 @pytest.mark.parametrize("tema", TEMY)
@@ -272,7 +273,7 @@ def test_emptystate_schova_len_vetu(tema):
         stav.ukaz_vetu(False)
         assert stav.label.winfo_manager() == ""
         assert stav.action.winfo_manager() == "pack", "tlacidlo ostava"
-        stav.ukaz_vetu(False)                      # dvakrat nic nepokazi
+        stav.ukaz_vetu(False)                      # twice breaks nothing
         stav.ukaz_vetu(True)
         assert stav.pack_slaves() == [stav.label, stav.action], "veta zase nad tlacidlom"
         holy = ui_kit.EmptyState(root, theme.tokens(tema), "Len veta.")
@@ -290,8 +291,8 @@ def test_obsadeny_port_schova_vetu_panela_tepu():
 
 
 def test_text_pasu_ma_podlozku_nad_fotkou():
-    """Podlozka je obrazok s alfou MEDZI dojom a textom (tag "dtext", aby
-    sa posuvala s textom) - nie box s hranou."""
+    """The backing is an image with alpha BETWEEN the dojo and the text (tag
+    "dtext", so it moves with the text) - not a box with an edge."""
     import app_today
     if app_today._ImageTk is None:
         pytest.skip("bez PIL ImageTk")
@@ -311,7 +312,7 @@ def test_text_pasu_ma_podlozku_nad_fotkou():
         poradie = list(c.find_all())
         assert poradie.index(dojo) < poradie.index(podlozka[0]) < poradie.index(text)
         assert "podlozka" in a._dnes_tk_imgs, "referencia na obrazok sa drzi"
-        # bez fotky (len farebny podklad) sa nic nekresli
+        # without a photo (only a colour background) nothing is drawn
         b = types.SimpleNamespace(_dnes_dojo_tk=None, _dnes_tk_imgs={})
         c2 = tk.Canvas(root, width=100, height=100)
         c2.create_text(50, 50, text="x", tags=("dtext",))
@@ -322,7 +323,7 @@ def test_text_pasu_ma_podlozku_nad_fotkou():
 
 
 # --------------------------------------------------------------------------
-# 10: drobny cerveny text
+# 10: small red text
 # --------------------------------------------------------------------------
 
 @pytest.mark.parametrize("tema", TEMY)
@@ -366,14 +367,15 @@ def test_stara_paleta_bez_danger_text_nepadne():
 
 
 # --------------------------------------------------------------------------
-# 11: ram dialogov
+# 11: dialog frame
 # --------------------------------------------------------------------------
 
 @pytest.mark.parametrize("tema", TEMY)
 def test_ram_dialogu_je_hrana_plochy(tema):
     pal = theme.tokens(tema)
     assert ui_kit.DIALOG_RAM_TOKEN == "rule"
-    # ram okna je vidno proti hlavnemu oknu za nim aj proti vlastnemu pozadiu
+    # the window frame is visible against the main window behind it and
+    # against its own background
     assert _kontrast(pal[ui_kit.DIALOG_RAM_TOKEN], pal["bg"]) >= 1.5
 
 
@@ -403,7 +405,8 @@ def test_dialogchrome_da_ram_kazdemu_dialogu():
     import inspect
     kod = inspect.getsource(ui_kit.DialogChrome.__init__)
     assert "nastav_ram_okna(top, pal)" in kod
-    # oznam, otazka aj volba (aj okno pri prvom krizi) idu cez DialogChrome
+    # notice, question and choice (also the window at the first close X) go
+    # through DialogChrome
     assert "chrome = DialogChrome(top, pal, title" in inspect.getsource(ui_kit._okno_appky)
     for meno in ("ui_dialogs.py", "color_picker.py", "guide_panel.py"):
         zdroj = zdroj_suboru(meno)

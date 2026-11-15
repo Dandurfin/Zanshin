@@ -1,22 +1,23 @@
 # -*- coding: utf-8 -*-
-"""Stiahnuty edge-tts v ZAMRAZENOM .exe (hlas_kniznica.py, 0.2.2h).
+"""The downloaded edge-tts in the FROZEN .exe (hlas_kniznica.py, 0.3h).
 
-Overene nazivo testovacim .exe z PyInstalleru 6.22 (onedir, konzolove aj
-bez konzoly, pribaleny edge-tts 7.2.8, ktory Microsoft odmieta): pri starte
-sa novsi stiahnuty 7.3.1 nacita pod skutocnym menom "edge_tts" pred
-importerom PyInstalleru (vsetky podmoduly zo stiahnutej kniznice), za behu
-sa vymeni pod aliasom a hlaska prejde. Tieto testy drzia dve veci, ktore
-z toho vyplynuli:
+Verified live with a test .exe from PyInstaller 6.22 (onedir, with and
+without a console, bundled edge-tts 7.2.8, which Microsoft refuses): at
+start the newer downloaded 7.3.1 is loaded under the real name "edge_tts"
+before the PyInstaller importer (all submodules from the downloaded
+library), at runtime it is swapped under an alias and the cue goes
+through. These tests hold two things that followed from this:
 
-  * podmodul, ktory stiahnuty balik nema, sa nesmie dotiahnut z pribaleneho
-    edge_tts (importer PyInstalleru je cestovy hladac - tu ho zastupuje
-    obycajny priecinok na sys.path),
-  * modul, ktory .exe nema a novy edge-tts po nom siahne az pri synteze
-    (import vo funkcii), je "incompatible" (treba novsi Zanshin), nie
-    vseobecna chyba - v .exe vysla povodne "error" bez mena modulu.
+  * a submodule that the downloaded package lacks must not be pulled in
+    from the bundled edge_tts (the PyInstaller importer is a path finder -
+    here it is stood in for by an ordinary folder on sys.path),
+  * a module that the .exe lacks and that the new edge-tts reaches for
+    only during synthesis (an import inside a function) is "incompatible"
+    (a newer Zanshin is needed), not a general error - in the .exe it
+    originally came out as "error" without the module name.
 
-Ziadny test nejde na siet: `_otvor` aj `_syntetizuj` su v autouse fixture
-nahradene chybou, synteza ide len lokalnou atrapou.
+No test goes to the network: `_otvor` and `_syntetizuj` are replaced by an
+error in an autouse fixture, synthesis goes only through a local dummy.
 """
 import asyncio
 import hashlib
@@ -140,12 +141,12 @@ def _nase_hladace():
 
 
 # --------------------------------------------------------------------------
-# Modul, ktory .exe nema, az pri synteze
+# A module the .exe lacks, only during synthesis
 # --------------------------------------------------------------------------
 
 def _modul(save_navyse):
     ns = {}
-    exec(COMMUNICATE % save_navyse, ns)        # atrapa, nic zo siete
+    exec(COMMUNICATE % save_navyse, ns)        # a dummy, nothing from the network
     return type("M", (), {"ATRAPA": True, "Communicate": ns["Communicate"]})
 
 
@@ -230,12 +231,13 @@ def test_aktualizacia_s_chybajucim_modulom_pri_synteze_nic_nezmeni(monkeypatch, 
 
 
 # --------------------------------------------------------------------------
-# Start: stiahnuty balik sa nemiesa s pribalenym
+# Start: the downloaded package does not mix with the bundled one
 # --------------------------------------------------------------------------
 
 def test_pri_starte_sa_podmodul_nedotiahne_z_pribaleneho(monkeypatch, tmp_path):
-    """Pribaleny edge_tts (v .exe ho servuje cestovy importer PyInstalleru)
-    ma podmodul, ktory stiahnuty nema - ten sa nesmie dotiahnut odtial."""
+    """Bundled edge_tts (in the .exe served by PyInstaller's path importer)
+    has a submodule the downloaded one lacks - it must not be pulled in
+    from there."""
     pribaleny = tmp_path / "pribaleny" / "edge_tts"
     pribaleny.mkdir(parents=True)
     (pribaleny / "__init__.py").write_text("__version__ = '1.0.0'\nPRIBALENY = True\n")

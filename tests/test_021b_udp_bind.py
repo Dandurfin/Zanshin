@@ -1,19 +1,22 @@
 # -*- coding: utf-8 -*-
-"""UDP na porte tepu sa neotvorilo - uz nie potichu (0.2.1, BUG 3).
+"""UDP on the heart-rate port did not open - no longer silently (0.2.1, BUG 3).
 
-`heart_rate._udp_loop` pri zlyhani vazby (port drzi iny program, chyba
-pristupu) doteraz skoncil holym `return`: ziadny riadok v denniku, ziadny
-stav. Hrac s appkou, ktora posiela len UDP/OSC (iPhone), tak pozeral na
-"Pripaja sa..." a nemal ako zistit preco.
+`heart_rate._udp_loop`, when binding failed (port held by another program,
+access error), used to end with a bare `return`: no line in the journal, no
+state. A player with an app that sends only UDP/OSC (iPhone) thus stared at
+"Pripaja sa..." (Connecting...) and had no way to find out why.
 
-Strazi sa:
-  * zlyhanie sa nahlasi (vlastny druh "udp_busy"/"udp_error") - RAZ za beh,
-  * TCP (appky pre OBS) pritom prijima dalej a tep z neho chodi,
-  * appka z toho spravi jeden riadok v denniku a text pri prepinaci, ale
-    NEzhodi prijem ani relaciu (nie je to "busy"/"error" padnuteho TCP).
+What is guarded:
+  * the failure is reported (its own kind "udp_busy"/"udp_error") - ONCE per
+    run,
+  * TCP (apps for OBS) meanwhile keeps receiving and the heart rate keeps
+    coming from it,
+  * the app turns it into one line in the journal and a text by the switch,
+    but does NOT bring down receiving or the session (it is not the
+    "busy"/"error" of a failed TCP).
 
-Skutocne sockety len na 127.0.0.1 a na volnom porte - firewall sa nepyta a
-pripadnej bezucej appke na 4455 sa nic nestane.
+Real sockets only on 127.0.0.1 and on a free port - the firewall does not
+ask and a possibly running app on 4455 is not affected.
 """
 import errno
 import json
@@ -47,8 +50,9 @@ def _cakaj(podmienka, limit=5.0):
 
 
 def _obsad_udp_port():
-    """UDP socket, ktory drzi port volny pre TCP - presne ta situacia, ked
-    port tepu drzi len iny UDP program (TCP a UDP su dva rozne priestory)."""
+    """A UDP socket that leaves the port free for TCP - exactly the situation
+    when the heart-rate port is held only by another UDP program (TCP and
+    UDP are two different spaces)."""
     for _ in range(20):
         blokator = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         blokator.bind((HOST, 0))
@@ -74,11 +78,11 @@ def _volny_port():
 
 
 # ---------------------------------------------------------------------------
-# minimalny klient obs-websocket - tak, ako sa sprava appka na hodinkach
+# minimal obs-websocket client - behaving the way the watch app does
 # ---------------------------------------------------------------------------
 
 def _ramec(payload):
-    """Textovy ramec od klienta - podla RFC 6455 vzdy maskovany."""
+    """Text frame from the client - always masked according to RFC 6455."""
     mask = os.urandom(4)
     n = len(payload)
     if n < 126:
@@ -95,7 +99,8 @@ class _Klient:
                 self.sock = socket.create_connection((HOST, port), timeout=5.0)
                 break
             except ConnectionRefusedError:
-                # listen() este nebezal (vola sa tesne po starte UDP vlakna)
+                # listen() has not run yet (it is called right after the UDP
+                # thread starts)
                 if pokus == 2:
                     raise
                 time.sleep(0.1)
@@ -151,7 +156,7 @@ class _Klient:
 
 
 class _SpyLog:
-    """Nahrada `heart_rate.log` - zapisuje si varovania do suboru logu."""
+    """Stand-in for `heart_rate.log` - records warnings for the log file."""
 
     def __init__(self):
         self.varovania = []
@@ -169,7 +174,7 @@ class _SpyLog:
 class _Prijimac:
     def __init__(self):
         self.bpm = []
-        self.stavy = []             # (druh, payload, generacia)
+        self.stavy = []             # (kind, payload, generation)
         self._lock = threading.Lock()
         self.klienti = []
         self.mon = heart_rate.HeartRateMonitor(
@@ -209,14 +214,14 @@ def prijimac():
 
 @pytest.fixture
 def spy_log(monkeypatch):
-    # `_udp_loop` byva v heart_rate - modulovy `log` sa podstrkuje tam
+    # `_udp_loop` lives in heart_rate - the module `log` is swapped in there
     spy = _SpyLog()
     monkeypatch.setattr(heart_rate, "log", spy)
     return spy
 
 
 # ---------------------------------------------------------------------------
-# 1. prijimac: obsadeny UDP port sa nahlasi raz, TCP bezi dalej
+# 1. receiver: a busy UDP port is reported once, TCP keeps running
 # ---------------------------------------------------------------------------
 
 def test_obsadeny_udp_port_sa_nahlasi_raz_a_tcp_prijima_dalej(prijimac, spy_log):
@@ -226,30 +231,32 @@ def test_obsadeny_udp_port_sa_nahlasi_raz_a_tcp_prijima_dalej(prijimac, spy_log)
         assert _cakaj(lambda: prijimac.udp(gen)), prijimac.stavy
         assert prijimac.udp(gen) == [("udp_busy", port)]
 
-        # TCP zije: hodinky sa pripoja cez obs-websocket a tep prejde
+        # TCP is alive: the watch connects via obs-websocket and the heart rate
+        # gets through
         k = prijimac.klient(port)
         k.pripoj_a_posli_tep(77)
         assert _cakaj(lambda: 77 in prijimac.bpm), prijimac.stavy
         assert "client" in prijimac.druhy(gen)
 
-        # ...a UDP sa za ten cas nenahlasilo znova (ziadny spam z vlakna)
+        # ...and UDP did not report again meanwhile (no spam from the thread)
         time.sleep(3 * heart_rate.HeartRateMonitor.TICK_TIMEOUT_S)
         assert prijimac.udp(gen) == [("udp_busy", port)], prijimac.stavy
-        # zlyhanie UDP nie je padnuty TCP - appka by inak zhodila cely prijem
+        # a UDP failure is not a failed TCP - the app would otherwise bring all
+        # receiving down
         assert "busy" not in prijimac.druhy() and "error" not in prijimac.druhy()
         assert prijimac.mon.running
     finally:
         blokator.close()
 
-    # do suboru logu jeden riadok - s portom, bez adresy PC
+    # one line to the log file - with the port, without the PC address
     assert len(spy_log.varovania) == 1, spy_log.varovania
     assert str(port) in spy_log.varovania[0]
     assert HOST not in spy_log.varovania[0]
 
 
 def test_kazdy_start_hlasi_raz_nie_viac(prijimac, spy_log):
-    """"Raz za beh": restart senzora (zmena portu, dalsi pokus po obsadenom
-    TCP) je novy beh a smie to povedat znova - ale zase len raz."""
+    """"Once per run": a sensor restart (port change, another try after a busy
+    TCP) is a new run and may say it again - but again only once."""
     blokator, port = _obsad_udp_port()
     try:
         prva = prijimac.mon.start(HOST, port)
@@ -266,8 +273,8 @@ def test_kazdy_start_hlasi_raz_nie_viac(prijimac, spy_log):
 
 
 def test_ina_chyba_udp_sa_nahlasi_s_dovodom_a_tcp_prijima(prijimac, spy_log):
-    """Nie kazde zlyhanie je obsadeny port (napr. WSAEACCES pri porte, ktory
-    si rezervoval Windows). Hrac ma vidiet dovod, TCP ide dalej."""
+    """Not every failure is a busy port (e.g. WSAEACCES for a port reserved by
+    Windows). The player should see the reason, TCP goes on."""
     port = _volny_port()
     povodny = prijimac.mon._bind
 
@@ -290,19 +297,19 @@ def test_ina_chyba_udp_sa_nahlasi_s_dovodom_a_tcp_prijima(prijimac, spy_log):
 
 
 def test_volny_udp_port_nic_nehlasi(prijimac, spy_log):
-    """Bez chyby ticho - riadok patri len skutocnemu zlyhaniu."""
+    """No error, no noise - the line belongs only to a real failure."""
     port = _volny_port()
     gen = prijimac.mon.start(HOST, port)
     assert _cakaj(lambda: "connecting" in prijimac.druhy(gen))
     run = prijimac.mon._run
-    # UDP sa registruje vo vlastnom vlakne - listener + UDP = 2 sockety
+    # UDP registers in its own thread - listener + UDP = 2 sockets
     assert _cakaj(lambda: len(run._sockets) >= 2, limit=2.0)
     assert prijimac.udp() == []
     assert spy_log.varovania == []
 
 
 # ---------------------------------------------------------------------------
-# 2. appka: riadok v denniku a text pri prepinaci, prijem ani relacia nepadaju
+# 2. app: a journal line and a switch text; receiving and session stay up
 # ---------------------------------------------------------------------------
 
 def _nic(*_a, **_k):
@@ -342,9 +349,9 @@ def _stitok(a):
 def test_appka_zapise_obsadeny_udp_raz_a_prijem_nezhodi():
     a = _atrapa()
     _stav(a, "udp_busy", 4455)
-    _stav(a, "udp_busy", 4455)          # ta ista sprava znova - uz nie
+    _stav(a, "udp_busy", 4455)          # the same message again - not any more
     assert a.denn == [tr("log.hr_udp_busy", port=4455)], a.denn
-    # nic z toho, co robi "busy"/"error" padnuteho TCP
+    # nothing of what the "busy"/"error" of a failed TCP does
     assert a._hr_state == "connecting"
     assert a._hr_generation == 5
     assert a.hr_monitoring_enabled is True
@@ -374,7 +381,7 @@ def test_stitok_pri_prepinaci_hovori_len_tcp_kym_sa_nikto_nepripojil():
     assert _stitok(a) == tr("settings.hr_status_udp_off")
     a._hr_state = "no_client"
     assert _stitok(a) == tr("settings.hr_status_udp_off")
-    # hodinky drzia TCP spojenie - UDP nikomu nechyba, plati skutocny stav
+    # the watch holds TCP - nobody misses UDP, the real state applies
     a._hr_state = "linked"
     assert _stitok(a) == tr("settings.hr_status_waiting")
     a._hr_state, a._hr_last_bpm = "connected", 72
@@ -382,8 +389,9 @@ def test_stitok_pri_prepinaci_hovori_len_tcp_kym_sa_nikto_nepripojil():
 
 
 def test_novy_beh_priznak_zahodi_sam():
-    """Restart senzora ma novu generaciu - stary priznak na stitku neostane
-    a nova sprava sa do dennika zapise znova (raz za beh)."""
+    """A sensor restart has a new generation - the old flag does not stay on
+    the label and the new message is written to the journal again (once per
+    run)."""
     a = _atrapa()
     _stav(a, "udp_busy", 4455)
     a._hr_generation = 6
@@ -391,7 +399,7 @@ def test_novy_beh_priznak_zahodi_sam():
     _stav(a, "udp_busy", 4455, gen=6)
     assert len(a.denn) == 2
     assert _stitok(a) == tr("settings.hr_status_udp_off")
-    # vypnuty senzor (generacia 0) nic o UDP netvrdi
+    # a switched-off sensor (generation 0) claims nothing about UDP
     a._hr_generation, a._hr_state = 0, "disconnected"
     assert _stitok(a) == tr("settings.hr_status_disconnected")
 
@@ -403,7 +411,7 @@ def test_texty_maju_vsetky_jazyky():
         for jazyk in i18n.LANGUAGES:
             assert i18n.tr_lang(jazyk, kluc).strip(), (kluc, jazyk)
         assert i18n.tr_lang("sk", kluc) != i18n.tr_lang("en", kluc)
-    # riadok hovori aj to, co funguje dalej - nie len, co nejde (0.2.2: bez
-    # zargonu TCP - menuje appku pre Android, ktora ide cez TCP dalej)
+    # the line also says what keeps working - not only what does not (0.3:
+    # no TCP jargon - it names the app for Android, which keeps going via TCP)
     assert "Android" in i18n.tr_lang("sk", "log.hr_udp_busy")
     assert "Android" in i18n.tr_lang("en", "log.hr_udp_error")

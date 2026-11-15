@@ -1,15 +1,16 @@
-"""Logika hromadneho vyberu a odstranenia spustacov - bez Tk.
+"""Logic of bulk selection and removal of triggers - without Tk.
 
-Karta slotu (SlotCard) drzi vela Tk widgetov, ktore sa tu vytvorit nedaju.
-Testujeme preto ROZHODOVANIE, nie widgety: ktore indexy sa maju odstranit,
-kedy sa odstranenie odmietne, a ci to, co ostane, sedi. Rovnaka disciplina
-ako pri hr_stats/display - cistu logiku drzat oddelene od UI a testovat ju
-priamo.
+The slot card (SlotCard) holds many Tk widgets that cannot be created
+here. So we test the DECISION, not the widgets: which indexes are to be
+removed, when the removal is refused, and whether what remains is right.
+The same discipline as with hr_stats/display - keep pure logic separate
+from the UI and test it directly.
 
-Tieto testy su zaroven regresna poistka na chybu, ktoru mal redizajn:
-rebind padal, lebo volal .configure(text=) na Keycap widgete, ktory taku
-metodu nema. `set_key` uz preto vola set_text() - test to strazi na urovni
-API kontraktu (Keycap MUSI mat set_text a NESMIE sa spoliehat na configure).
+These tests are also a regression safeguard against a bug the redesign
+had: rebind crashed because it called .configure(text=) on a Keycap
+widget that has no such method. `set_key` therefore now calls
+set_text() - the test guards it at the level of the API contract (Keycap
+MUST have set_text and MUST NOT rely on configure).
 """
 
 import os
@@ -22,27 +23,27 @@ from _zdroj_appky import subory_appky, zdroj_appky, zdroj_metody  # noqa: E402
 
 
 # --------------------------------------------------------------------------
-# Cista logika vyberu - zamerne oddelena od SlotCard, aby sa dala testovat
+# Pure selection logic - kept apart from SlotCard on purpose, to be testable
 # --------------------------------------------------------------------------
 
 def plan_removal(selected_flags):
-    """[bool] za kazdy slot -> (indexy_na_odstranenie, povolene?).
+    """[bool] per slot -> (indexes_to_remove, allowed?).
 
-    Toto je presne pravidlo z DandurfApp.remove_selected_slots vytiahnute do
-    cistej funkcie: odstranit sa da lubovolna podmnozina OKREM tej, ktora by
-    zmazala uplne vsetko - aspon jeden spustac musi ostat, inak profil
-    nema co spustat.
+    This is exactly the rule from DandurfApp.remove_selected_slots pulled
+    out into a pure function: any subset can be removed EXCEPT one that
+    would delete absolutely everything - at least one trigger must remain,
+    otherwise the profile has nothing to trigger.
     """
     selected = [i for i, on in enumerate(selected_flags) if on]
     if not selected:
         return [], False
     if len(selected) >= len(selected_flags):
-        return selected, False       # zakazane: nesmie ostat prazdno
+        return selected, False       # forbidden: it must not be left empty
     return selected, True
 
 
 def apply_removal(items, selected_flags):
-    """Co ostane po odstraneni oznacenych (poradie zachovane)."""
+    """What remains after removing the marked ones (order kept)."""
     drop = set(i for i, on in enumerate(selected_flags) if on)
     return [x for i, x in enumerate(items) if i not in drop]
 
@@ -79,13 +80,14 @@ def test_apply_removes_single():
 
 
 # --------------------------------------------------------------------------
-# API kontrakt Keycap - regresia rebindu
+# Keycap API contract - rebind regression
 # --------------------------------------------------------------------------
 
-# customtkinter/numpy tu nie su, tak sa moduly neimportuju - kontrakt sa
-# overuje CITANIM zdrojaku (regex/AST), nie behom. To je zamer: test ma
-# strazit chybu aj v prostredi bez GUI kniznic (napr. CI), presne tam, kde
-# by sa rucne odchytit nedala.
+# customtkinter/numpy are not here, so the modules are not imported - the
+# contract is checked by READING the source (regex/AST), not by running.
+# That is intentional: the test should guard the bug even in an
+# environment without GUI libraries (e.g. CI), exactly where it could not
+# be caught by hand.
 
 def _read(name):
     here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -94,8 +96,8 @@ def _read(name):
 
 
 def test_keycap_defines_set_text():
-    """ui_kit.Keycap MUSI definovat set_text() - rebind aj set_key() nan
-    spoliehaju. Bez neho rebind spadne v momente prepisu popisku."""
+    """ui_kit.Keycap MUST define set_text() - rebind and set_key() rely on
+    it. Without it rebind crashes the moment the label is rewritten."""
     import re
     src = _read("ui_kit.py")
     body = src[src.index("class Keycap"):]
@@ -105,21 +107,21 @@ def test_keycap_defines_set_text():
 
 
 def test_klavesovy_hook_sa_nevratil():
-    """Poistka proti tichemu navratu globalneho hooku.
+    """Safeguard against a silent return of the global hook.
 
-    Bol to jediny kus appky, ktory navonok vyzeral ako keylogger, a cely
-    SAFETY.md sa o jeho odstranenie opiera. Keby ho niekto (vratane
-    buduceho ja) vratil - napr. aby "islo znova priradit klaves" - nech to
-    padne tu a nie az v momente, ked sa niekto pyta, preco appka pocuva
-    klavesnicu.
+    It was the only piece of the app that from the outside looked like a
+    keylogger, and the whole SAFETY.md rests on its removal. If someone
+    (including future me) brought it back - e.g. so that "reassigning a
+    key works again" - let it fail here and not only at the moment
+    someone asks why the app is listening to the keyboard.
 
-    Testuje sa staticky, aby to bezalo bez Tk.
+    Tested statically, so that it runs without Tk.
     """
     import re
-    # Hlada sa IMPORT, nie slovo - v komentaroch sa pynput spomina zamerne
-    # (vysvetluju, preco tam uz nie je).
+    # It looks for the IMPORT, not the word - pynput is mentioned in comments
+    # on purpose (they explain why it is no longer there).
     dovoz = re.compile(r"^\s*(?:from\s+pynput|import\s+pynput)", re.M)
-    # appka = app.py aj mixiny DandurfApp v app_*.py
+    # the app = app.py and the DandurfApp mixins in app_*.py
     for subor in (*subory_appky(), "ui_dialogs.py", "ui_kit.py"):
         src = _read(subor)
         assert not dovoz.search(src), f"{subor} znova importuje pynput"
@@ -133,8 +135,8 @@ def test_klavesovy_hook_sa_nevratil():
 
 
 def test_remove_selected_guards_against_emptying():
-    """DandurfApp.remove_selected_slots musi odmietnut zmazanie vsetkych
-    slotov - staticka kontrola, ze tam ta poistka je."""
+    """DandurfApp.remove_selected_slots must refuse deleting all slots - a
+    static check that the safeguard is there."""
     block = zdroj_metody("remove_selected_slots")
     assert "slot_only_one" in block, \
         "remove_selected_slots musi mat poistku proti zmazaniu vsetkeho"

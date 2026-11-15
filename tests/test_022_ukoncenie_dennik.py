@@ -1,25 +1,29 @@
 # -*- coding: utf-8 -*-
-"""Ukoncenie z listy nespadne na zniceny dennik (0.2.2).
+"""Quitting from the tray does not crash on a destroyed journal (0.3).
 
-Pad z app.log buildu (Ukoncit z ikony v liste):
+The crash from the build's app.log (Quit from the tray icon):
 
     _quit -> stop_listening -> _close_hr_session -> log
     TclError: invalid command name "...!panel2.!ctkframe.!ctkframe2.!ctktextbox.!text"
 
-Pricina: `_close_hr_session` pri zatvarani caka na dotaznik
-(`_ask_session_context` -> `root.wait_window`). V tej vnorenej slucke Tk sa
-vybavilo aj druhe "Ukoncit" z listy - druhy `_quit` prebehol cely az po
-`root.destroy()`, dotaznik zanikol s oknom a prvy `_quit` sa vratil do
-zniceneho okna. Cesta widgetu v chybe je z PRVEJ stavby okna (`.!ctkframe`),
-takze nejde o zastaralu referenciu po prestavbe - dennik znicil `root.destroy()`.
+Cause: on closing, `_close_hr_session` waits for the questionnaire
+(`_ask_session_context` -> `root.wait_window`). In that nested Tk loop a
+second "Quit" from the tray got handled too - the second `_quit` ran
+completely, up to `root.destroy()`, the questionnaire died with the window
+and the first `_quit` returned into a destroyed window. The widget path in
+the error is from the FIRST build of the window (`.!ctkframe`), so it is
+not a stale reference after a rebuild - the journal was destroyed by
+`root.destroy()`.
 
-Strazi sa:
-  * `log` na znicenom denniku nespadne a riadok ide do app.log BEZ adresy PC,
-    zivy dennik do suboru nepise nic (test_ip_skryta),
-  * `_quit` prejde vsetky kroky, aj ked niektory spadne - a relacia sa
-    uklada prva,
-  * druhe "Ukoncit" pocas dotaznika len zavrie dotaznik a ukoncenie dokonci
-    prvy `_quit` (skutocne Tk, skutocne metody appky na atrape).
+Guarded:
+  * `log` on a destroyed journal does not crash and the line goes to
+    app.log WITHOUT the PC's address, a live journal writes nothing to the
+    file (test_ip_skryta),
+  * `_quit` goes through all the steps even if one of them crashes - and
+    the session is saved first,
+  * a second "Quit" during the questionnaire only closes the
+    questionnaire, and the first `_quit` finishes quitting (real Tk, real
+    app methods on a dummy).
 """
 import os
 import sys
@@ -42,7 +46,7 @@ def _D():
 
 
 class _Zapisovac:
-    """Nahrada `app_log` - nic nejde do skutocneho logs/app.log."""
+    """Stand-in for `app_log` - nothing goes to the real logs/app.log."""
 
     def __init__(self):
         self.zaznamy = []
@@ -84,14 +88,15 @@ def _ctk_root():
 
 
 # --------------------------------------------------------------------------
-# maska adries vo volnom texte (pre nahradny riadok v app.log)
+# masking addresses in free text (for the fallback line in app.log)
 # --------------------------------------------------------------------------
 
 def test_maska_skryje_ipv4_aj_ipv6_v_texte():
     out = netinfo.mask_ips_in_text(f"Pocuvam na {IP}:4455 (UDP aj TCP)")
     assert IP not in out
     assert netinfo.MASKA_IPV4 in out and ":4455" in out
-    # Adresa na konci vety - bodka za nou nesmie masku vypnut.
+    # An address at the end of a sentence - the full stop after it must
+    # not switch the mask off.
     veta = netinfo.mask_ips_in_text(f"Tep chodi z {IP}. Dalsia veta")
     assert IP not in veta and f"{netinfo.MASKA_IPV4}. Dalsia" in veta
     out6 = netinfo.mask_ips_in_text("adresa fe80::1c2b:3aff:fe4d:5e6f a 2001:db8::7")
@@ -101,7 +106,7 @@ def test_maska_skryje_ipv4_aj_ipv6_v_texte():
 
 
 def test_maska_necha_cas_verziu_a_nuly():
-    """0.0.0.0 nie je adresa PC (viz `mask_ip`); cas a verzia adresou nie su."""
+    """0.0.0.0 is no PC address (see `mask_ip`); nor are time and version."""
     text = "[12:34:56] Zanshin 0.3 (predtym 0.2.1) pocuva na 0.0.0.0, relacia 1:02:03, cislo 1.2.3.4.5."
     assert netinfo.mask_ips_in_text(text) == text
     assert netinfo.mask_ips_in_text("") == ""
@@ -109,7 +114,7 @@ def test_maska_necha_cas_verziu_a_nuly():
 
 
 # --------------------------------------------------------------------------
-# `log` na znicenom denniku
+# `log` on a destroyed journal
 # --------------------------------------------------------------------------
 
 def _atrapa_pre_log(log_text):
@@ -135,15 +140,16 @@ def test_log_na_znicenom_denniku_nespadne_a_ide_do_suboru_bez_ip(zapisovac, co_z
         dennik = ctk.CTkTextbox(root, height=110)
         dennik.pack()
         if co_zanika == "root":
-            root.destroy()             # presne to, co spravil vnoreny `_quit`
+            root.destroy()             # exactly what the nested `_quit` did
         else:
             dennik.destroy()
-        # Predpoklad: toto je ta chyba z app.log - bez opravy by ju `log` pustil dalej.
+        # Premise: this is the error from app.log - without the fix `log`
+        # would let it through.
         with pytest.raises(tk.TclError):
             dennik.configure(state="normal")
 
         a = _atrapa_pre_log(dennik)
-        a.log(f"Relacia ulozena, prijem na {IP}")          # nesmie vyhodit
+        a.log(f"Relacia ulozena, prijem na {IP}")          # must not raise
 
         assert a._last_log_line.endswith(f"prijem na {IP}")
         riadky = [m for u, m in zapisovac.zaznamy if u == "info"]
@@ -176,7 +182,7 @@ def test_log_so_zivym_dennikom_pise_len_do_okna(zapisovac):
 
 
 # --------------------------------------------------------------------------
-# `_quit` prejde vsetky kroky
+# `_quit` goes through all the steps
 # --------------------------------------------------------------------------
 
 KROKY = ["hud", "vizualy", "ovladac", "hotkey", "senzor tepu", "game_watcher",
@@ -184,8 +190,8 @@ KROKY = ["hud", "vizualy", "ovladac", "hotkey", "senzor tepu", "game_watcher",
 
 
 def _atrapa_pre_quit(poradie, padne=None):
-    """Atrapa so skutocnym `_quit` a `stop_listening`. `padne` = meno kroku,
-    ktory vyhodi vynimku."""
+    """A dummy with the real `_quit` and `stop_listening`. `padne` = the name
+    of the step that raises an exception."""
     D = _D()
 
     def f(meno):
@@ -211,7 +217,8 @@ def _atrapa_pre_quit(poradie, padne=None):
         a._hr_session_open = False
         poradie.append("ulozenie")
         if padne == "ulozenie":
-            # Ako v app.log: relacia sa ulozila, potom spadol zapis do dennika.
+            # As in app.log: the session was saved, then writing to the
+            # journal crashed.
             import tkinter as tk
             raise tk.TclError('invalid command name ".!ctktextbox.!text"')
 
@@ -237,12 +244,12 @@ def _atrapa_pre_quit(poradie, padne=None):
 
 
 def test_quit_dokonci_ukoncenie_aj_ked_stop_listening_spadne(zapisovac):
-    """Presne pad z app.log: relacia ulozena, potom vynimka zo `stop_listening`."""
+    """The exact app.log crash: session saved, then `stop_listening` raises."""
     poradie = []
     a = _atrapa_pre_quit(poradie, padne="ulozenie")
-    a._quit()                                           # nesmie vyhodit
+    a._quit()                                           # must not raise
 
-    assert poradie[0] == "ovladac"          # `stop_listening` zacina ovladacom
+    assert poradie[0] == "ovladac"          # `stop_listening` starts with the controller
     assert poradie[1] == "ulozenie", "relacia sa uklada pred vsetkym ostatnym"
     assert poradie.count("ulozenie") == 1
     assert poradie[2:] == ["after_cancel"] + KROKY, poradie
@@ -273,7 +280,7 @@ def test_quit_bez_chyb_nic_neloguje_a_poradie_ostava(zapisovac):
 
 
 # --------------------------------------------------------------------------
-# druhe "Ukoncit" pocas dotaznika - skutocne Tk a skutocne metody appky
+# a second "Quit" during the questionnaire - real Tk and real app methods
 # --------------------------------------------------------------------------
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Tk okno appky je vec Windows")
@@ -295,8 +302,8 @@ def test_druhe_ukoncit_pocas_dotaznika_nerozbije_prve(zapisovac, monkeypatch, tm
     dennik.configure(state="disabled")
 
     class _Dotaznik:
-        """Nahrada SessionEndDialog: pocas cakania prveho `_quit` pride druhe
-        "Ukoncit" z listy (tray -> quit_app -> ui_call)."""
+        """Stand-in for SessionEndDialog: while the first `_quit` waits, a
+        second "Quit" comes from the tray (tray -> quit_app -> ui_call)."""
 
         def __init__(self, app, summary, cues=0, silent=0):
             self.top = tk.Toplevel(app.root)
@@ -368,7 +375,8 @@ def test_druhe_ukoncit_pocas_dotaznika_nerozbije_prve(zapisovac, monkeypatch, tm
         def _k(*_a, **_kw):
             poradie.append(meno)
             if meno == "hlas":
-                # posledny krok pred `root.destroy()` - dennik este zije
+                # the last step before `root.destroy()` - the journal is
+                # still alive
                 obsah_dennika.append(dennik.get("1.0", "end"))
         return _k
 
@@ -392,11 +400,12 @@ def test_druhe_ukoncit_pocas_dotaznika_nerozbije_prve(zapisovac, monkeypatch, tm
         chyby_tk.append("ukoncenie nedobehlo")
         povodny_destroy()
 
-    root.after(0, a.quit_app)                 # prve "Ukoncit" z listy
+    root.after(0, a.quit_app)                 # the first "Quit" from the tray
     root.after(8000, _poistka)
     try:
-        # Zakladna slucka Tk: `CTk.mainloop` pred prvym zobrazenim vola `update()`
-        # a to by prve "Ukoncit" vybavilo este pred sluckou - skutocna appka uz v nej je.
+        # The basic Tk loop: `CTk.mainloop` calls `update()` before the first
+        # display, and that would handle the first "Quit" before the loop - the
+        # real app is already in it.
         tk.Tk.mainloop(root)
     finally:
         try:
@@ -408,8 +417,9 @@ def test_druhe_ukoncit_pocas_dotaznika_nerozbije_prve(zapisovac, monkeypatch, tm
     assert len(ulozene) == 1, "relacia sa ulozi prave raz"
     assert poradie == ["dotaznik", "dotaznik zavrety", "hud", "vizualy", "hotkey",
                        "senzor tepu", "hlas", "lista", "destroy"], poradie
-    # Prvy `_quit` pokracoval v ZIVOM okne: riadok o ulozeni aj o vypnuti
-    # pocuvania su v denniku, nic neslo nahradnou cestou do suboru.
+    # The first `_quit` carried on in a LIVE window: the lines about saving
+    # and about switching listening off are in the journal, nothing went to
+    # the file via the fallback path.
     text = obsah_dennika[0]
     assert tr("log.hr_session_saved", avg=80, max=120, peak=40) in text
     assert tr("log.listening_off") in text

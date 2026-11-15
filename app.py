@@ -1,20 +1,22 @@
-"""Hlavna appka (DandurfApp) - hlavne okno, prepojenie sfx/TTS pipeline,
-profily, tray ikona.
+"""Main app (DandurfApp) - main window, sfx/TTS pipeline wiring,
+profiles, tray icon.
 
-Toto je kompozicny koren appky: vytvara a prepaja AudioDispatcher/
-SpeechWorker (audio_engine.py), GamepadListener (gamepad.py),
-GameProcessWatcher (game_profiles.py), SomaticOverlayManager (overlay.py)
-a vsetky dialogy/karty (ui_dialogs.py).
+This is the app's composition root: it creates and wires up
+AudioDispatcher/SpeechWorker (audio_engine.py), GamepadListener
+(gamepad.py), GameProcessWatcher (game_profiles.py),
+SomaticOverlayManager (overlay.py) and all dialogs/tabs (ui_dialogs.py).
 
-Cast metod DandurfApp byva v mixinoch app_*.py (napr. app_data.DataMixin),
-ktore DandurfApp dedi. Mixiny nesu len metody - cely stav ostava tu.
+Some DandurfApp methods live in the app_*.py mixins (e.g.
+app_data.DataMixin), which DandurfApp inherits. The mixins carry only
+methods - all the state stays here.
 
-OD VERZIE 2.1 TU NIE JE ZIADNY KLAVESOVY HOOK. Hlasku nespusta stlacenie,
-ale telo: `trigger.CueTrigger` sleduje zataz z hodiniek a `activity.py`
-zistuje cez `GetLastInputInfo`, ci je hrac aktivny - to vracia jedine
-pocet milisekund od posledneho vstupu, nie to, co sa stlacilo. Rozhodnutie
-o doruceni ostava v DandurfApp (mixin app_today.TodayMixin), lebo je tesne
-prepojene s UI (ui_call/log_threadsafe) a s overlay vrstvou.
+SINCE VERSION 2.1 THERE IS NO KEYBOARD HOOK HERE. A cue is not triggered
+by a key press but by the body: `trigger.CueTrigger` watches the load from
+the smartwatch, and `activity.py` uses `GetLastInputInfo` to find out
+whether the player is active - it returns only the number of milliseconds
+since the last input, not what was pressed. The delivery decision stays in
+DandurfApp (mixin app_today.TodayMixin), because it is tightly coupled to
+the UI (ui_call/log_threadsafe) and to the overlay layer.
 """
 
 import os
@@ -24,10 +26,11 @@ import tkinter as tk
 
 import customtkinter as ctk
 
-# DOLEZITE poradie: `gamepad` MUSI byt naimportovany skor nez `audio_engine`
-# (gamepad pri importe nastavi SDL_AUDIODRIVER=dummy pre bezokenny joystick;
-# audio_engine tento env var pri svojom importe odstrani tesne pred
-# pygame.mixer.init() - ak by sa poradie obratilo, mixer by ostal nemy).
+# IMPORTANT ordering: `gamepad` MUST be imported before `audio_engine`
+# (on import, gamepad sets SDL_AUDIODRIVER=dummy for the windowless
+# joystick; audio_engine removes this env var on its own import right before
+# pygame.mixer.init() - if the order were reversed, the mixer would stay
+# mute).
 import gamepad
 import activity
 import audio_engine
@@ -49,9 +52,9 @@ from i18n import LANG_EN, tr
 from overlay import SomaticOverlayManager
 from paths import APP_NAME, AUDIO_DIR, DATA_DIR, TTS_CACHE_DIR
 
-# Licencia tak, ako ju vidno v titulnej liste. NIE je to prekladany retazec:
-# "GPLv3" je nazov licencie, rovnako ako "Zanshin" je nazov appky - prelozit
-# ho by znamenalo tvrdit, ze ide o inu licenciu.
+# The licence as shown in the title bar. It is NOT a translatable string:
+# "GPLv3" is the name of the licence, just as "Zanshin" is the name of the
+# app - translating it would mean claiming it is a different licence.
 LICENCIA = "GPLv3"
 from settings_model import (DEFAULT_AUDIO,
                             DASHBOARD_MAX_CARDS,
@@ -70,20 +73,21 @@ from collections import deque
 import hotkey
 import hud_paint
 
-# Mixiny DandurfApp (app_*.py) sa importuju az tu, za vsetkymi modulmi
-# vyssie: co potrebuju, je uz nacitane, takze nemenia poradie importov
-# (gamepad pred audio_engine). Vynimky su `background`, `data_io` a
-# `theme_recolor` - app.py ich uz sam nepouziva a nacita ich az mixin (pri
-# importe `background` len nacita PIL, `data_io` a `theme_recolor` len
-# definuju konstanty a funkcie). Mena spolocne pre app.py aj mixiny
-# (app_log, nazvy jazykov, skratka "Teraz nie", ImageTk) su v
-# app_spolocne.py - mixin nesmie importovat app (kruhovy import).
+# The DandurfApp mixins (app_*.py) are imported only here, after all the
+# modules above: what they need is already loaded, so they do not change
+# the import order (gamepad before audio_engine). The exceptions are
+# `background`, `data_io` and `theme_recolor` - app.py itself no longer uses
+# them and they are loaded only by the mixin (on import `background` only
+# loads PIL, `data_io` and `theme_recolor` only define constants and
+# functions). Names shared by app.py and the mixins (app_log, language
+# names, the "Not now" shortcut, ImageTk) are in app_spolocne.py - a mixin
+# must not import app (circular import).
 from app_spolocne import (LANG_NATIVE_LABELS, SNOOZE_HOTKEY_MINUTES,
                           _ImageTk, app_log, stranka_vhre)
-# Tieto dve mena app.py sam nepouziva: DEFAULT_SNOOZE_HOTKEY cita
-# `load_settings` v app_prefs, LABEL_TO_LANG prepinace jazyka v app_prefs
-# a app_hud. Importuju sa, aby `app.DEFAULT_SNOOZE_HOTKEY` a
-# `app.LABEL_TO_LANG` (do 0.2.1 konstanty app.py) ostali platne.
+# app.py itself does not use these two names: DEFAULT_SNOOZE_HOTKEY is read
+# by `load_settings` in app_prefs, LABEL_TO_LANG by the language switches in
+# app_prefs and app_hud. They are imported so that `app.DEFAULT_SNOOZE_HOTKEY`
+# and `app.LABEL_TO_LANG` (app.py constants up to 0.2.1) stay valid.
 from app_spolocne import DEFAULT_SNOOZE_HOTKEY, LABEL_TO_LANG  # noqa: F401
 from app_data import DataMixin
 from app_prefs import PrefsMixin
@@ -112,148 +116,159 @@ except Exception:
 class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
                  TodayMixin, ProfilesMixin, SessionMixin, CuesMixin,
                  HistoryMixin):
-    # ZALOZNY slot, ked nie je zapnuty ani jeden. 3 = dychovy kruh.
+    # FALLBACK slot when none is enabled. 3 = breathing circle.
     #
-    # Do 18. 9. to bol JEDINY slot, ktory automaticka hlaska pouzivala.
-    # Bolo to spravne rozhodnutie pre meranie (vsetky okna z jednej
-    # kategorie) a zle pre appku: rovnaka veta stokrat za vecer prestane
-    # fungovat. Teraz sa kategorie striedaju kolo-dokola
-    # (`measure.next_slot`) a kategoria sa zapisuje do kazdeho okna, takze
-    # faza 8 zbiera data od dnes.
+    # Until 18. 9. this was the ONLY slot the automatic cue used.
+    # That was the right decision for measurement (all windows from one
+    # category) and the wrong one for the app: the same sentence a hundred
+    # times an evening stops working. Now the categories rotate round-robin
+    # (`measure.next_slot`) and the category is written into every window, so
+    # phase 8 is collecting data from today on.
     #
-    # Vyber kategorie podla toho, co komu ZABERA, je stale faza 8 - to
-    # potrebuje data. Striedanie je rovnomerne, nie personalizovane.
+    # Choosing the category by what WORKS for whom is still phase 8 - that
+    # needs data. The rotation is even, not personalised.
     CUE_SLOT_INDEX = 3
 
-    # Klavesove sloty vo faze 2 nespustaju nic. Kod sa zatial NEMAZE
-    # (to je faza 3) - toto je jediny vypinac a da sa v dev vrstve otocit.
+    # In phase 2 the key slots trigger nothing. The code is NOT deleted yet
+    # (that is phase 3) - this is the only switch and it can be flipped in
+    # the developer overlay.
     KEY_SLOTS_ENABLED = False
 
-    # Obsadeny TCP port: kolkokrat a po akom case sa skusi vazba znova.
-    # (Obsadeny UDP sa neopakuje - TCP bezi dalej, viz "udp_busy".)
-    # Tri pokusy po 8 s prekleni beznu pricinu - druha instancia appky, ktora
-    # sa prave zatvara. Dlhsie uz nie je docasne.
+    # Busy TCP port: how many times and after how long the bind is retried.
+    # (A busy UDP port is not retried - TCP keeps running, see "udp_busy".)
+    # Three attempts 8 s apart bridge the usual cause - a second instance of
+    # the app that is just closing. Anything longer is no longer temporary.
     HR_BIND_RETRIES = 3
     HR_BIND_RETRY_MS = 8000
 
-    # POHYB: od kolkych krokov za minutu sa appka neozve.
+    # MOVEMENT: from how many steps per minute the app stays silent.
     #
-    # PRECO VOBEC: tep od pohybu odlisit NEJDE. Uendes a kol. (2026, JMIR,
-    # N=127) ukazali, ze model s 55 EKG priznakmi ma pri strednej fyzickej
-    # aktivite specificitu 0,418 - takmer sest z desiatich okien chodze
-    # oznaci ako stres. Jeden BPM kazdych ~1 az 3 s (kadencia hodiniek, viz
-    # `trigger.MAX_KROK_S`) to nezvladne tobozu. Brana
-    # na kroky teda nie je opatrnost, je to jedina cesta.
+    # WHY AT ALL: heart rate from movement CANNOT be told apart. Uendes et al.
+    # (2026, JMIR, N=127) showed that a model with 55 ECG features has a
+    # specificity of 0.418 at moderate physical activity - it flags almost six
+    # out of ten walking windows as stress. One BPM every ~1 to 3 s (the
+    # watch's cadence, see `trigger.MAX_KROK_S`) manages that even less. So
+    # the step gate is not caution, it is the only way.
     #
-    # PRECO NIE 100 (etablovana hranica strednej intenzity, 3 METy):
-    # pomala chodza po byte ma 60-90 krokov/min a tep zdvihne o 10-20 bpm -
-    # presne nas artefakt, ktory by stoerka prepustila.
+    # WHY NOT 100 (the established moderate-intensity threshold, 3 METs):
+    # slow walking around the flat is 60-90 steps/min and raises heart rate by
+    # 10-20 bpm - exactly our artefact, which a threshold of 100 would let
+    # through.
     #
-    # PRECO NIE NULA: literatura pocita s pasom na hrudi. Krokomer na
-    # ZAPASTI pocita pohyb ruky a hranie je samy pohyb ruky, takze nula by
-    # pravdepodobne zahodila vsetko.
+    # WHY NOT ZERO: the literature assumes a chest strap. A step counter on
+    # the WRIST counts hand movement, and playing is all hand movement, so
+    # zero would probably throw everything away.
     #
-    # 15 je PREDBEZNE cislo od zadavatela, nie namerane. Prvych 10 sprav s
-    # krokmi kazdej relacie sa zapisuje do denniku (`_metrics_log_left`)
-    # prave preto, aby sa dalo nahradit hodnotou z vlastnych dat.
+    # 15 is a PROVISIONAL number from the product owner, not measured. The
+    # first 10 step messages of each session are written to the journal
+    # (`_metrics_log_left`) precisely so it can be replaced with a value from
+    # our own data.
     KROKY_PRAH_ZA_MIN = 15.0
 
-    # Z akeho sveta sa rata kriticky tep a prah zataze. Rozhodnutie
-    # zadavatela (B3-worlds): LEN z hry - oba su definovane ako percentily
-    # HRANIA (`hr_stats.dynamicky_kriticky`, `dynamicky_prah_zataze`). Na
-    # testovacich datach jedina pracovna relacia v spolocnom pool-e stiahla
-    # cas hrania nad prahom z ~23 % na ~9 % (ciel je ~20 %). Pokojova
-    # zakladna ostava zo vsetkeho: telo je jedno.
+    # Which world the critical heart rate and the load threshold are computed
+    # from. Product owner's decision (B3-worlds): ONLY from play - both are
+    # defined as percentiles of PLAYING (`hr_stats.dynamicky_kriticky`,
+    # `dynamicky_prah_zataze`). On test data a single work session in the
+    # shared pool pulled play time above the threshold from ~23 % to ~9 %
+    # (the target is ~20 %). The resting baseline still comes from everything:
+    # there is only one body.
     ALGORITMUS_SVET = "play"
 
-    # Bocne menu ma 4 hlavne polozky + enso (Dnes, Historia, V hre,
-    # Nastavenia); "vhre" je od redizajnu "Sumi noc" samostatna stranka,
-    # nie karta - SETTINGS_TABS su len karty VNUTRI Nastaveni. Kluce su
-    # zaroven kluce stranok, takze sidebar._select(kluc) / _navigate(kluc)
-    # fungujú pre vsetky (paleta, onboarding "Sparovat teraz" -> vhre,
-    # guided tour).
-    # "guide" tu bol do 18. 9. ako samostatna karta. Vysvetlivky a teoria
-    # patria k HLASKAM - clovek ich hlada prave vtedy, ked cita, co ktora
-    # hlaska hovori, nie o dve karty dalej. Kluc ale ZIJE DALEJ: odkazuje
-    # sa nan sprievodca, prikazova paleta aj `Sidebar.GROUPS`, a `_navigate`
-    # ho presmeruje na "spustace" (viz nizsie).
+    # The side menu has 4 main items + the enso (Today, History, In-game,
+    # Settings); since the "Sumi noc" redesign "vhre" is a separate page, not
+    # a tab - SETTINGS_TABS are only the tabs INSIDE Settings. The keys are
+    # also page keys, so sidebar._select(kluc) / _navigate(kluc)
+    # work for all of them (command palette, onboarding "Pair a watch now" ->
+    # vhre, guided tour).
+    # "guide" was a separate tab here until 18. 9. The explanations and theory
+    # belong with the CUES - people look for them exactly when they are reading
+    # what each cue says, not two tabs further on. But the key LIVES ON: the
+    # guide, the command palette and `Sidebar.GROUPS` refer to it, and
+    # `_navigate` redirects it to "spustace" (see below).
     SETTINGS_TABS = ("spustace", "zvuk", "vseobecne")
 
-    # Stare kluce -> kam sa dnes chodí. Bez toho by `_navigate("guide")`
-    # prepadlo na `pages.show("guide")`, teda na stranku, ktora neexistuje,
-    # a okno by ostalo prazdne - ticho, bez vynimky.
+    # Old keys -> where they go today. Without this, `_navigate("guide")`
+    # would fall through to `pages.show("guide")`, i.e. to a page that does
+    # not exist, and the window would stay empty - silently, no exception.
     TAB_ALIAS = {"guide": "spustace"}
-    # Appka je dashboard s viacerymi pevne rozmiestnenymi panelmi (HUD,
-    # paleta prikazov, mriezka statistik), nie textovy editor - volne
-    # roztahovanie okna rozbijalo layouty (najma CommandPalette). Namiesto
-    # opravovania kazdeho panela pre kazdu moznu velkost okno drzi jeden
-    # pevny rozmer, nastaveny programovo cez geometry() - ziadne rucne
-    # tahanie za hrany (viz enable_frameless() a minsize==maxsize nizsie).
-    # Su to LOGICKE px: CTk ich nasobi mierkou displeja. Kde sa okno do
-    # pracovnej plochy nezmesti (notebook 1080p pri 150 %, 1366x768),
-    # zmensi sa cela appka naraz, nie rozmer okna (viz
+    # The app is a dashboard with several fixed-layout panels (HUD, command
+    # palette, stats grid), not a text editor - freely resizing the window
+    # broke the layouts (especially CommandPalette). Instead of fixing every
+    # panel for every possible size, the window keeps one fixed size, set in
+    # code through geometry() - no dragging the edges by hand (see
+    # enable_frameless() and minsize==maxsize below).
+    # These are LOGICAL px: CTk multiplies them by the display scale. Where the
+    # window does not fit the work area (a 1080p laptop at 150 %, 1366x768),
+    # the whole app shrinks at once, not the window size (see
     # `ui_kit.umiestni_pevne_okno`).
     WINDOW_W, WINDOW_H = 1180, 760
-    # Znacka v strede stranky Dnes. Pri 68 px (povodne miesto v bocnom
-    # paneli) mal prstenec "natiahnute" 1,4 px a strácal sa. 168 px je
-    # velkost z makety - pri nej ma prstenec okolo 4 px a v periferii sa
-    # naozaj zachyti. Nad 100 px sa sada kresli s dvojnasobnym (nie
-    # trojnasobnym) prevzorkovanim, viz `ui_shell._EnsoButton`.
+    # The mark in the centre of the Today page. At 68 px (its original place
+    # in the side panel) the ring had a "stretched" 1.4 px and got lost. 168 px
+    # is the size from the mockup - at that size the ring is about 4 px and
+    # really registers in peripheral vision. Above 100 px the set is drawn
+    # with double (not triple) supersampling, see `ui_shell._EnsoButton`.
     ENSO_SIZE = 168
-    # Krytie mäkkeho stredoveho zavoja za ensom a textom. < 255, aby dojo
-    # PRESVITALO (priehladne) - nie tmavy box, len tolko stmavenia, kolko
-    # text potrebuje na citatelnost (zvysok nesie tienik pod textom).
+    # Opacity of the soft central veil behind the enso and the text. < 255 so
+    # the dojo SHOWS THROUGH (translucent) - not a dark box, only as much
+    # darkening as the text needs to be readable (the rest is carried by the
+    # shadow under the text).
     DNES_SCRIM_PEAK = 120
-    # Tempo prekreslovania stredu (enso + dych dojo). 120 ms ~ 8/s = plynuly
-    # obeh svetla po ense, rovnako ako mal widget.
+    # Redraw pace of the centre (enso + dojo breathing). 120 ms ~ 8/s = a
+    # smooth run of light around the enso, just like the widget had.
     DNES_TICK_MS = 120
 
-    # Kontrolka tepu v bocnom paneli (`_watch_pulse_state` v app_hud.py).
-    # hysterezia pasma: nove pasmo musi vydrzat, inak by kontrolka na
-    # hranici (napr. stres kolisajuci okolo 25) blikala medzi dvoma
-    # farbami pri kazdom tepe
+    # Heart-rate indicator in the side panel (`_watch_pulse_state` in
+    # app_hud.py).
+    # zone hysteresis: a new zone has to hold, otherwise the indicator on the
+    # boundary (e.g. stress hovering around 25) would blink between two
+    # colours on every beat
     WATCH_ZONE_HOLD_S = 1.5
 
-    # Hero prazdneho stavu na Dnes (zive dojo v app_today.py).
-    HERO_PERIOD_S = 10.0        # 5 s nádych + 5 s výdych — tempo pásu aj kruhu
+    # Empty-state hero on Today (the live dojo in app_today.py).
+    HERO_PERIOD_S = 10.0        # 5 s inhale + 5 s exhale — pace of the bar and the circle
 
-    # Presun karty na Dnes potiahnutim (`_dashboard_drag` v app_today.py).
+    # Moving a card on Today by dragging (`_dashboard_drag` in app_today.py).
     DASHBOARD_DRAG_PX = 8
 
-    # Senzor tepu bez klienta (`_schedule_no_client_check` v app_session.py).
-    # Ak sa do tolkoto ms po zapnuti nepripoji ani jeden klient, stav sa
-    # zmeni z "connecting" na "no_client" - iny problem, iny text (B2).
+    # Heart-rate sensor without a client (`_schedule_no_client_check` in
+    # app_session.py). If no client connects within this many ms after
+    # switching on, the state changes from "connecting" to "no_client" - a
+    # different problem, a different text (B2).
     HR_NO_CLIENT_AFTER_MS = 20000
 
-    # Stred Dnes po zmene rozmeru (`_naplanuj_backdrop` v app_today.py).
-    # Kolko sa caka, kym sa rozmer ustali. Pri presune okna medzi monitormi
-    # vystreli Windows `<Configure>` viackrat rychlo za sebou a KAZDY z nich
-    # ma iny rozmer, takze straz na `_backdrop_size` ich nezachyti. Kedze
-    # `background.load()` skaluje fotku cez LANCZOS priamo v Tk vlakne,
-    # niekolko prepoctov tesne po sebe okno viditelne zasekne.
+    # Centre of Today after a resize (`_naplanuj_backdrop` in app_today.py).
+    # How long to wait for the size to settle. When the window is moved
+    # between monitors, Windows fires `<Configure>` several times in quick
+    # succession and EACH of them has a different size, so the guard on
+    # `_backdrop_size` does not catch them. Since `background.load()` scales
+    # the photo with LANCZOS right in the Tk thread, several recomputes in a
+    # row visibly freeze the window.
     BACKDROP_DEBOUNCE_MS = 150
 
-    # Stranka Historia: tabulka, trend a detail relacie (app_history.py).
-    HISTORY_ROWS = 30          # najnovsich relacii v tabulke
+    # History page: table, trend and session detail (app_history.py).
+    HISTORY_ROWS = 30          # newest sessions in the table
 
-    # (id, i18n kluc nazvu, theme token farby) - poradie chipov aj vo vybere
+    # (id, i18n key of the name, theme token of the colour) - also the order
+    # of the chips in the picker
     #
-    # FARBA ZNACI STAV, NIE METRIKU (0.2.2, audit UX). Detail relacie mal
-    # 7 farieb v 11 bunkach a "najvyssi tep" v `danger` - bezne herne
-    # maximum vyzeralo ako poplach, co ide proti "nie je to zdravotnicka
-    # pomocka". Teraz: cislo je `text`; farbu pasma (`zone_*`) ma len
-    # hodnota, ktora pasmom JE (pokoj, cas nad hranicou); `blue` len
-    # zotavenie (HRR), lebo modra = pokojne/nizke (viz `theme.py`).
+    # COLOUR MEANS STATE, NOT METRIC (0.3, UX audit). The session detail had
+    # 7 colours in 11 cells and "highest heart rate" in `danger` - an ordinary
+    # in-game maximum looked like an alarm, which goes against "this is not a
+    # medical device". Now: a number is `text`; a zone colour (`zone_*`) only
+    # goes to a value that IS a zone (calm, time over the limit); `blue` only
+    # to recovery (HRR), because blue = calm/low (see `theme.py`).
     HISTORY_METRICS = (
-        # farby z radu pasiem (theme.ZONE_TOKENS), nie success/warn - graf
-        # a pas pasiem vedla neho musia hovorit tou istou farebnou recou
+        # colours from the zone series (theme.ZONE_TOKENS), not success/warn -
+        # the chart and the zone bar next to it must speak the same colour
+        # language
         ("baseline", "metric.baseline.title", "zone_calm"),
         ("hrr", "metric.hrr.title", "blue"),
         ("over", "metric.over.title", "zone_high"),
         ("peak", "metric.peak.title", "text"),
-        # 0.2 - Historia ma ukazat cely obraz, nielen tep: ako dlho sa
-        # hralo, kolko z toho v pokoji, ako dobre appka pocula a kolko
-        # hlasok poslala. Id a farby su tie iste ako karty na Dnes.
+        # 0.2 - History should show the whole picture, not just heart rate:
+        # how long the play lasted, how much of it in calm, how well the app
+        # could hear and how many cues it sent. The ids and colours are the
+        # same as the cards on Today.
         ("session_len", "metric.session_len.title", "text"),
         ("calm_time", "metric.calm_time.title", "zone_calm"),
         ("signal", "metric.signal.title", "text"),
@@ -265,25 +280,26 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
     _METRIC_INFO_KEY = {"baseline": "baseline", "hrr": "hrr", "over": "zones", "peak": "peak",
                         "session_len": "session_len", "calm_time": "calm_time",
                         "signal": "signal", "breath": "breath"}
-    # Co sa kresli stlpcami: veliciny, ktorych prirodzena nula nieco
-    # znamena (nula minut nad hranicou je vypoved). Zakladna a zotavenie
-    # su ciara - stlpec od nuly by na usek 60-70 BPM nechal par pixelov.
-    # Signal tiez: zije okolo 95-100 % a stlpec od nuly by kazdy vypadok
-    # schoval do par pixelov na vrchu.
+    # What is drawn as bars: quantities whose natural zero means something
+    # (zero minutes over the limit is a statement). Baseline and recovery are
+    # a line - a bar from zero would leave a few pixels for the 60-70 BPM
+    # range. Signal too: it lives around 95-100 % and a bar from zero would
+    # hide every dropout in a few pixels at the top.
     _METRIC_BARS = frozenset({"over", "peak", "session_len", "calm_time", "breath"})
-    # Bucket drzi sekundy a pokrytie 0..1; graf ukazuje minuty a percenta.
+    # A bucket holds seconds and coverage 0..1; the chart shows minutes and
+    # percentages.
     _METRIC_SCALE = {"over": 1 / 60.0, "session_len": 1 / 60.0,
                      "calm_time": 1 / 60.0, "signal": 100.0}
-    # Desatinne miesta na osi a v "prvy -> posledny". Hlasky su priemer na
-    # relaciu (1,5 je poctivejsie nez zaokruhlenych 2).
+    # Decimal places on the axis and in "first -> last". Cues are an average
+    # per session (1.5 is more honest than a rounded 2).
     _METRIC_DECIMALS = {"over": 1, "breath": 1}
 
-    # Detail jednej relacie: (kluc bunky, i18n kluc popisku, token farby).
-    # Popisky su tie iste slova ako v tabulke a na kartach - nove len tam,
-    # kde take slovo este nebolo.
+    # Detail of one session: (cell key, i18n key of the label, colour token).
+    # The labels are the same words as in the table and on the cards - new
+    # ones only where no such word existed yet.
     HISTORY_DETAIL_COLS = 4
-    # Farby podla pravidla pri HISTORY_METRICS: cislo `text`, pasmo `zone_*`,
-    # zotavenie `blue`. Maximum tepu uz NIE JE `danger`.
+    # Colours by the rule at HISTORY_METRICS: a number is `text`, a zone
+    # `zone_*`, recovery `blue`. The heart-rate maximum is NO LONGER `danger`.
     HISTORY_DETAIL_CELLS = (
         ("duration", "history.col_duration", "text"),
         ("avg", "history.col_avg", "text"),
@@ -300,51 +316,54 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
 
     def __init__(self, root):
         self.root = root
-        # Bez preblikavania pri presune medzi monitormi s roznou mierkou:
-        # potlaci CTk pokles na alpha 0.15 pocas prepoctu DPI (viz ui_kit).
+        # No flicker when moving between monitors with different scaling:
+        # suppresses CTk's drop to alpha 0.15 during the DPI recompute (see
+        # ui_kit).
         ui_kit.potlac_dpi_alpha_blik(self.root)
         self.root.title(APP_NAME)
-        # Pevny rozmer (viz komentar pri WINDOW_W vyssie) - appka nema
-        # rucny resize za hrany, minsize/maxsize su rovnake ako geometry.
+        # Fixed size (see the comment at WINDOW_W above) - the app has no
+        # manual resize by the edges, minsize/maxsize are the same as geometry.
         #
-        # Okno sa da zmensit len mierkou a tu treba zvolit SKOR, nez vznikne
-        # prvy widget (sprievodca prveho spustenia aj `_build_ui`): po zmene
-        # mierky CTk prestavuje kazdy existujuci widget. Predtym okno vzniklo
-        # tam, kam ho dal Windows, v plnej velkosti - na 1366x768 alebo
-        # 1080p pri 150 % bolo vyssie nez plocha a Nastavenia na spodku
-        # bocneho menu boli pod listou uloh. Teraz je vycentrovane v
-        # pracovnej ploche monitora pod kurzorom; kde sa zmesti, mierka
-        # ostava ako doteraz.
+        # The window can only be shrunk by scaling, and that has to be chosen
+        # BEFORE the first widget exists (the first-start guide as well as
+        # `_build_ui`): after a scale change CTk rebuilds every existing
+        # widget. Previously the window appeared wherever Windows put it, at
+        # full size - on 1366x768 or 1080p at 150 % it was taller than the
+        # screen and Settings at the bottom of the side menu were under the
+        # taskbar. Now it is centred in the work area of the monitor under the
+        # cursor; where it fits, the scale stays as before.
         mierka, mon = ui_kit.umiestni_pevne_okno(
             self.root, self.WINDOW_W, self.WINDOW_H)
         if mierka < 1.0 and mon is not None:
-            # Do technickeho logu, nie do dennika: hracovi to nic nehovori,
-            # ale pri hlaseni "vsetko je nejake male" je to prva otazka.
+            # To the technical log, not the journal: it tells the player
+            # nothing, but with a report like "everything is kind of small" it
+            # is the first question.
             app_log.info("okno sa nezmestilo do plochy %dx%d (%d dpi), "
                          "appka zmensena na %.1f %%", mon.work_width,
                          mon.work_height, mon.dpi, mierka * 100.0)
         self.root.minsize(self.WINDOW_W, self.WINDOW_H)
         self.root.maxsize(self.WINDOW_W, self.WINDOW_H)
-        # Vlastna titulkova lista (FAZA 2 redesignu) - odstrani OS ram;
-        # samotna TitleBar (v _build_ui) uz len kresli nahradu. Vola sa
-        # raz tu, nie v _build_ui, lebo ten len nici DETI root-u, nie
-        # samotny root a jeho bindingy.
+        # Custom title bar (redesign PHASE 2) - removes the OS frame; the
+        # TitleBar itself (in _build_ui) only draws the replacement. Called
+        # once here, not in _build_ui, because that only destroys the root's
+        # CHILDREN, not the root itself and its bindings.
         enable_frameless(self.root)
 
         self.listening = False
         self.rebind_index = None
-        # POZN: tu boli `keyboard_listener`, `mouse_listener`,
-        # `rebind_kb_listener`, `rebind_mouse_listener` - zvyšky po pynput
-        # hookoch, ktoré fáza 3 zrušila. Nastavovali sa na None a už ich nikto
-        # nečítal (B28). Vstup sa dnes zisťuje cez `GetLastInputInfo`.
+        # NOTE: here used to be `keyboard_listener`, `mouse_listener`,
+        # `rebind_kb_listener`, `rebind_mouse_listener` - leftovers from the
+        # pynput hooks that phase 3 removed. They were set to None and nobody
+        # read them any more (B28). Input is detected today via
+        # `GetLastInputInfo`.
         self.gamepad = gamepad.GamepadListener(self.on_gamepad_button,
                                                self.on_gamepad_status)
         self._rebind_gamepad_temp = False
         self.tray_icon = None
         self.typing = False
         self._ready = False
-        # Okno je zahalene (DWM cloak), kym sa pri starte cele nenakresli -
-        # viz `_zahal_do_dokreslenia` / `_odhal_hotove_okno`.
+        # The window is cloaked (DWM cloak) until it is fully drawn at
+        # startup - see `_zahal_do_dokreslenia` / `_odhal_hotove_okno`.
         self._zahalene = False
         self._listen_started = None
         self.log_collapsed = True
@@ -361,16 +380,17 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
 
         settings = self.load_settings()
         self.lang = settings["lang"]
-        # DVA SVETY, JEDNO TELO (0.2, B3-worlds). Svet (hra/praca) urcuje
-        # vzhlad (`theme.WORLD_THEME`), ktoru historiu a postrehy appka
-        # ukazuje a ci hlaska smie zaznit. `load_settings` uz zarucil, ze
-        # tema sedi so svetom.
+        # TWO WORLDS, ONE BODY (0.2, B3-worlds). The world (play/work) decides
+        # the look (`theme.WORLD_THEME`), which history and insights the app
+        # shows and whether a cue may sound. `load_settings` has already
+        # ensured that the theme matches the world.
         self.world = settings["world"]
-        # Svet BEZIACEJ relacie - pecati sa pri jej otvoreni a prepinac ho
-        # uz nezmeni (viz `_open_hr_session`).
+        # The world of the RUNNING session - sealed when it opens, and the
+        # switch no longer changes it (see `_open_hr_session`).
         self._session_world = self.world
-        # Styl hlasky, ktory si hrac vybral, a stupen rebrika beziacej
-        # relacie (0.2, `rebrik.py`). Stupen sa urci pri otvoreni relacie.
+        # The cue style the player chose, and the ladder step of the running
+        # session (0.2, `rebrik.py`). The step is decided when the session
+        # opens.
         self.cue_style = settings["cue_style"]
         self._cue_style_rel = self.cue_style
         self._cue_rung = rebrik.vrchol(self.world, self.cue_style)
@@ -379,11 +399,13 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         self.pal = theme_mod.tokens(self.theme_key)
 
         self.start_minimized = bool(settings["start_minimized"])
-        # Uz raz povedane, ze × appku neukonci, len schova do listy (`on_close`).
+        # Already told once that × does not quit the app, only hides it in the
+        # tray (`on_close`).
         self.tray_close_explained = bool(settings["tray_close_explained"])
-        # Upozornenie na nainstalovanu 0.2 uz zaznelo (`_upozorni_na_staru_
-        # instalaciu`). Uz TU, nie az pri upozorneni: prvy `save_settings`
-        # nizsie by inak zapisal False a varovanie by chodilo pri kazdom starte.
+        # The warning about an installed 0.2 has already been shown
+        # (`_upozorni_na_staru_instalaciu`). Read HERE already, not only at the
+        # warning: otherwise the first `save_settings` below would write False
+        # and the warning would come on every start.
         self.old_installer_warned = bool(settings.get("old_installer_warned"))
         self.auto_profile_enabled = bool(settings["auto_profile_enabled"]) and PSUTIL_AVAILABLE
         self.overlay_configs = settings["overlay_configs"]
@@ -394,45 +416,50 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
             wizard = OnboardingWizard(self.root, prvy_start=True)
             self.root.wait_window(wizard.top)
             if getattr(wizard, "quit_requested", False):
-                # Hrac uvod zavrel (krizik, Esc, Alt+F4) a potvrdil Ukoncit.
-                # NIC sa neuklada: tema v nastaveniach chyba, takze dalsi
-                # start ukaze uvod znova - presne to mu otazka slubila. Zatial
-                # nebezi port, skratka ani hlas, ktore by bolo treba zastavit
-                # (jedine vlakno je priprava zvukov sprievodcu - daemon,
-                # subory zapisuje cez .tmp + replace), a `main()` este
-                # nespustil cakanie na druhy start.
+                # The player closed the introduction (cross, Esc, Alt+F4) and
+                # confirmed Quit. NOTHING is saved: the theme is missing from
+                # settings, so the next start shows the introduction again -
+                # exactly what the question promised them. No port, shortcut or
+                # voice is running yet that would need stopping (the only
+                # thread is the guide's sound preparation - a daemon, it writes
+                # files via .tmp + replace), and `main()` has not yet started
+                # waiting for a second start.
                 self.root.destroy()
                 raise SystemExit(0)
             if wizard.confirmed:
-                # Krok 4 vybera HLAVNY SVET; `choice` je jeho tema.
+                # Step 4 chooses the MAIN WORLD; `choice` is its theme.
                 self.world = theme_mod.theme_world(wizard.choice)
                 self._session_world = self.world
                 self.theme_key = theme_mod.WORLD_THEME[self.world]
                 self.pal = theme_mod.tokens(self.theme_key)
                 self._apply_diagnostics(settings, wizard.diagnostics)
                 settings["volume"] = wizard.volume_value
-                # Krok 5: ako sa ma appka ozvat (styl hlasky). None = hrac
-                # nevybral nic a ostava predvoleny hlas (ako "neviem").
+                # Step 5: how the app should speak up (cue style). None = the
+                # player chose nothing and the default voice stays (like "Not
+                # sure").
                 self._prevezmi_styl_z_onboardingu(wizard)
-                # ak hrac v onboardingu klikol "Sparovat hodinky teraz",
-                # otvorime parovaci dialog az PO dostaveni okna (viz koniec
-                # __init__) - teraz appka este nie je hotova
+                # if the player clicked "Pair a watch now" in onboarding, we
+                # open the pairing dialog only AFTER the window is fully built
+                # (see the end of __init__) - right now the app is not ready
+                # yet
                 self._pending_pairing = bool(getattr(wizard, "wants_pairing", False))
-            # Prvy start sa NIKDY neschovava do lišty - okno musi ostat
-            # viditelne, aktivne a v popredi bez ohladu na `start_minimized`.
+            # The first start NEVER hides into the tray - the window must stay
+            # visible, active and in the foreground regardless of
+            # `start_minimized`.
             #
-            # POZOR (Tk na Windows): bezramove okno (overrideredirect), ktore
-            # sa withdraw()-lo este PRED prvym zobrazenim, sa jednym
-            # deiconify() NEUKAZE - ostane v stave "withdrawn" a hrac po
-            # onboardingu vidi len plochu (guided tour potom plaval nad
-            # prazdnou obrazovkou). Pomaha spracovat cakajuce udalosti a
-            # zavolat deiconify znova; overene nazivo (gui_harness_onboarding).
+            # WARNING (Tk on Windows): a frameless window (overrideredirect) on
+            # which withdraw() was called even BEFORE it was first shown does
+            # NOT APPEAR after a single deiconify() - it stays "withdrawn" and
+            # after onboarding the player sees only the desktop (the guided
+            # tour then floated over an empty screen). What helps is processing
+            # pending events and calling deiconify again; verified live
+            # (gui_harness_onboarding).
             #
-            # Zahalit az TU, za sprievodcom: ten je `transient(root)`, takze
-            # pocas neho root zahaleny byt nesmie. Hrac potom stavbu stranok
-            # (vratane preblikajucich Nastaveni) nevidi - okno sa ukaze
-            # naraz a hotove az po __init__, ked sa rozbehne slucka Tk
-            # (viz `_odhal_hotove_okno`).
+            # Cloak only HERE, after the guide: it is `transient(root)`, so the
+            # root must not be cloaked while it is open. The player then does
+            # not see the pages being built (including the flickering
+            # Settings) - the window shows up all at once, finished, only after
+            # __init__, when the Tk loop starts (see `_odhal_hotove_okno`).
             self._zahal_do_dokreslenia()
             self.root.deiconify()
             self.root.update()
@@ -442,13 +469,15 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
 
         self.monitor_target = settings["monitor_target"]
         self.hud_config = settings["hud_config"]
-        # Na Dnes najviac DASHBOARD_MAX_CARDS kariet (mriezka 2x2). Dlhsi
-        # zoznam sa dal dostat len rucnou upravou JSON - vybrat sa neda.
+        # Today shows at most DASHBOARD_MAX_CARDS cards (a 2x2 grid). A longer
+        # list could only be had by editing the JSON by hand - it cannot be
+        # picked.
         self.dashboard_stats = list(settings["dashboard_stats"])[:DASHBOARD_MAX_CARDS]
         self.breath_inhale_s = float(settings["breath_inhale_s"])
         self.breath_exhale_s = float(settings["breath_exhale_s"])
-        # Prah zataze si appka rata sama pri kazdej relacii z vlastnych dat
-        # (`hr_stats.dynamicky_prah_zataze`). None = este nie je z coho.
+        # The app computes the load threshold itself for every session from its
+        # own data (`hr_stats.dynamicky_prah_zataze`). None = nothing to
+        # compute it from yet.
         self._prah_z_dat = None
         self._prah_z_relacii = 0
         self.overlay_manager = SomaticOverlayManager(self.root, pal=self.pal)
@@ -460,146 +489,162 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
                                            pos=(cfg["pos_x"], cfg["pos_y"]),
                                            color=cfg.get("color") or "")
 
-        # Plain-python zrkadla - listener vlakna nesmu citat Tk premenne.
-        # Odstup pri RUCNOM spusteni (Test, HUD nahlad). Konstanta - viz
-        # POZN pri zrusenom paneli "Casovanie" na stranke Zvuk.
+        # Plain-python mirrors - listener threads must not read Tk variables.
+        # Cooldown for a MANUAL trigger (Test, HUD preview). A constant - see
+        # the NOTE at the removed "Timing" panel on the Sound page.
         self.cooldown_value = DEFAULT_COOLDOWN
         self.rate_value = int(settings["rate"])
         self.volume_value = int(settings["volume"])
         self.tour_seen = bool(settings.get("tour_seen", False))
-        # Strop na posledny krok: do 0.2.1 mala prehliadka 10 krokov a ulozena
-        # pozicia z nej by v Nastaveniach ukazala "krok 9 z 6".
+        # Capped at the last step: up to 0.2.1 the tour had 10 steps, and a
+        # saved position from it would show "step 9 of 6" in Settings.
         self.tour_step = min(max(0, int(settings.get("tour_step", 0) or 0)),
                              GuidedTour.STEP_COUNT - 1)
-        # Jazyk toho, co appka kresli DO HRY - viz `_game_text`.
+        # Language of what the app draws INTO THE GAME - see `_game_text`.
         self.game_lang = settings.get("game_lang", LANG_EN)
         self.balance_value = int(settings["balance"])
-        # Konstanty pre RUCNE spustenie (tlacidlo Test, HUD nahlad).
-        # Nastavit sa nedaju - ako casto sa appka ozve, riadi volba
-        # "Ako casto sa ozvem" na stranke Hlasky, a to je jedine miesto.
+        # Constants for a MANUAL trigger (Test button, HUD preview).
+        # They cannot be set - how often the app speaks up is governed by the
+        # "How often I speak up" option on the Cues page, and that is the only
+        # place.
         self.overlap_value = False
         self.last_global_trigger_time = 0.0
 
-        # --- Senzor Tepu (Wi-Fi / UDP biofeedback) ---
+        # --- Heart-Rate Sensor (Wi-Fi / UDP biofeedback) ---
         self.hr_ip = str(settings["hr_ip"])
-        # SKRYTA IP (0.2): adresa PC sa na obrazovke neukaze sama - okno
-        # appky byva na streame aj na screenshote pre testera. Odkryje ju
-        # az "Ukazat IP" (parovanie, Nastavenia) a len do restartu: ZAMERNE
-        # len v pamati, do nastaveni sa nezapisuje (viz netinfo.mask_ip).
+        # HIDDEN IP (0.2): the PC's address is not shown on screen by itself -
+        # the app window often ends up on a stream or in a screenshot for a
+        # tester. It is revealed only by "Show IP" (pairing, Settings) and only
+        # until restart: DELIBERATELY only in memory, it is not written to
+        # settings (see netinfo.mask_ip).
         self.show_ip = False
         self.show_ip_var = None
         self.hr_ip_entry = None
         self.hr_port = int(settings["hr_port"])
-        # Vypocitana hodnota, nie nastavenie. Realne cislo pride pri prvom
-        # otvoreni relacie z `hr_stats.dynamicky_kriticky`; dovtedy zaloha.
+        # A computed value, not a setting. The real number comes the first time
+        # a session opens, from `hr_stats.dynamicky_kriticky`; until then the
+        # fallback value.
         self.hr_critical_bpm = int(hr_stats.KRITICKY_ZALOHA)
         self.hr_monitoring_enabled = bool(settings["hr_monitoring_enabled"])
         self.zanshin_graduated = bool(settings["zanshin_graduated"])
         self.zanshin_graduated_at = settings.get("zanshin_graduated_at")
         self._hr_state = "disconnected"   # disconnected | connecting | connected
         self._hr_last_bpm = None
-        # Tep, ktory appka v tomto behu pocula, prestal chodit ("vypadol") -
-        # na rozdiel od "este nic neprislo". Len zobrazenie a zaznam; spustac
-        # ma vlastne pozastavenie (`_suspend_cue_trigger`). `_hr_lost_od` je
-        # cas poslednej vzorky pred vypadkom (pre riadok v denniku).
+        # Heart rate that the app heard during this run has stopped coming
+        # ("dropped out") - as opposed to "nothing has arrived yet". Display
+        # and log only; the trigger has its own pause (`_suspend_cue_trigger`).
+        # `_hr_lost_od` is the time of the last sample before the dropout (for
+        # the journal line).
         self._hr_lost = False
         self._hr_lost_od = None
         self._hr_over_since = None
         self._hr_overlay_warned = False
         self._hr_client_linked = False
-        # Generacia bezuceho prijimacieho vlakna (0 = ziadne). Aktualizacie
-        # so starou generaciou zahadzujeme - inak by indikator zamrzol na
-        # poslednom BPM aj po vypnuti senzora.
+        # Generation of the running receiver thread (0 = none). We drop updates
+        # with an old generation - otherwise the indicator would freeze on the
+        # last BPM even after the sensor is switched off.
         self._hr_generation = 0
         self.hr_status_label = None
         self.hr_enabled_var = None
-        self.hr_ip_show_switch = None     # "Ukazat IP" pri poli adresy
+        self.hr_ip_show_switch = None     # "Show IP" next to the address field
         self.heart_rate_monitor = HeartRateMonitor(
             self.on_hr_bpm, self.on_hr_status, on_metrics=self.on_hr_metrics)
-        # Kolko sprav s krokmi este zapisat do denniku. Nastavuje sa pri
-        # otvoreni relacie - potrebujeme vediet, CO hodinky naozaj posielaju,
-        # aby sa prah pohybu dal nastavit z dat a nie od oka.
+        # How many step messages are still to be written to the journal. Set
+        # when a session opens - we need to know WHAT the watch really sends,
+        # so the movement threshold can be set from data and not by eye.
         self._metrics_log_left = 0
-        # Statistika tepu (zakladna, zataz, suhrn relacie) + zivy HUD panel.
-        # `HeartStats` je cisto datova a vola sa vyhradne z GUI vlakna cez
-        # `_apply_hr_bpm`, takze nepotrebuje zamok.
+        # Heart-rate statistics (baseline, load, session summary) + the live
+        # HUD panel. `HeartStats` is pure data and is called only from the GUI
+        # thread via `_apply_hr_bpm`, so it needs no lock.
         self.hr_stats = hr_stats.HeartStats(self.hr_critical_bpm)
         self.hr_sessions_path = os.path.join(DATA_DIR, "hr_sessions.json")
-        # Priebeh vecera po udalostiach (bod 6 zadania z 18. 9.). Doteraz
-        # sa `_cue_log` len spocital do dialogu a zahodil - spatne sa
-        # nedalo precitat, kedy sa co stalo a preco appka mlcala.
+        # The evening's course, event by event (point 6 of the spec from
+        # 18. 9.). Until now `_cue_log` was only counted into a dialog and
+        # thrown away - you could not read back when what happened and why
+        # the app stayed silent.
         self.hr_events_path = os.path.join(DATA_DIR, "hr_events.jsonl")
-        # Meracie okna okolo hlasok. Vlastny subor, nie sucast suhrnu
-        # relacie: `hr_sessions.json` drzi poslednych MAX_SESSIONS relacii
-        # a starsie ticho zahadzuje, takze okna by mizli prave vtedy, ked
-        # ich zacne byt dost na to, aby sa z nich dalo nieco precitat.
+        # Measurement windows around cues. A separate file, not part of the
+        # session summary: `hr_sessions.json` keeps the last MAX_SESSIONS
+        # sessions and silently drops older ones, so the windows would
+        # disappear exactly when there start to be enough of them to read
+        # something from.
         self.hr_windows_path = os.path.join(DATA_DIR, "hr_windows.json")
-        # Ci hrac prave nieco robi - GetLastInputInfo, ziadny hook.
-        # Zaznam sluzi ako treti kanal v meracom okne (popri tepe a zatazi)
-        # a vo faze 2 z neho bude aj rozpoznanie pauzy.
+        # Whether the player is doing something right now - GetLastInputInfo,
+        # no hook. The record serves as the third channel in the measurement
+        # window (alongside heart rate and load), and in phase 2 pause
+        # detection will also come from it.
         self.activity = activity.ActivityTracker()
         self._activity_job = None
-        # Uz 20 minut ani kratka pauza vo vstupe (gyro ovladaca, pacicka bez
-        # mrtvej zony)? Tichy riadok na Dnes, raz za relaciu - viz
-        # `_tick_nonstop_input`.
+        # 20 minutes without even a short pause in input (controller gyro, a
+        # stick without a dead zone)? A quiet line on Today, once per session -
+        # see `_tick_nonstop_input`.
         self._nonstop_input = activity.NonstopInputWatch()
         self._dnes_nonstop_text = ""
-        # Stavovy automat hlasky: zataz nad prahom 90 s -> natiahnute ->
-        # caka na pauzu -> hlaska. Cisty modul, testovany bez Tk.
+        # The cue state machine: load above the threshold for 90 s -> armed ->
+        # waits for a pause -> cue. A pure module, tested without Tk.
         self.cue_trigger = trigger.CueTrigger()
-        self._cue_log = []           # natiahnutia aj zrusenia, do suhrnu relacie
-        # Kolkokrat zlyhalo obnovenie stranky Dnes. Viz `_refresh_dnes_stats`:
-        # jeho telo je v jednom `except`, takze rozbita stranka sa inak
-        # neprejavi nicim - ani chybou, ani v gui_screenshots.
+        self._cue_log = []           # armings and cancellations, for the session summary
+        # How many times refreshing the Today page failed. See
+        # `_refresh_dnes_stats`: its body is in a single `except`, so a broken
+        # page would otherwise show up as nothing at all - neither as an error,
+        # nor in gui_screenshots.
         self._dnes_refresh_fails = 0
-        # Je spustac natiahnuty? JEDINY zdroj pravdy pre UI. Prstenec na ense
-        # aj text v dychajucom pase cítaju odtialto - keby si kazdy odvodzoval
-        # stav sam (napr. z `cue_trigger.is_armed`), raz sa rozidu a nikto si
-        # toho nevsimne. Zapisuje sa vyhradne v `_set_enso_armed`.
+        # Is the trigger armed? The ONLY source of truth for the UI. The ring
+        # on the enso and the text in the breathing bar both read from here -
+        # if each derived the state on its own (e.g. from
+        # `cue_trigger.is_armed`), one day they would drift apart and nobody
+        # would notice. Written only in `_set_enso_armed`.
         self._cue_armed = False
-        # Volania z vlakien, ktore prisli pred `mainloop()`. Strop je
-        # poistka: keby sa slucka nikdy nerozbehla, fronta nesmie rast.
+        # Calls from threads that arrived before `mainloop()`. The cap is a
+        # safeguard: if the loop never started, the queue must not grow.
         self._ui_pending = deque(maxlen=200)
         self.snooze_hotkey = settings["snooze_hotkey"]
-        # Skratku si hrac vybral sam - appka mu ju pri zrazke s rozlozenim
-        # klavesnice nevymeni (`_vyber_skratku_pri_starte`, 0.2.2).
+        # The player picked the shortcut themselves - the app will not swap it
+        # for them on a clash with the keyboard layout
+        # (`_vyber_skratku_pri_starte`, 0.3).
         self.snooze_hotkey_chosen = bool(settings.get("snooze_hotkey_chosen", False))
-        # Posledna registracia skratky zlyhala (drzi ju iny program) - riadok
-        # v Nastaveniach to povie (`_snooze_hotkey_sub`).
+        # The last shortcut registration failed (another program holds it) -
+        # the line in Settings says so (`_snooze_hotkey_sub`).
         self._hotkey_zlyhala = False
-        # Fotka na pozadi. Vymena obrazku aj vypnutie su v
-        # `background.py` - tu sa drzi uz len zvolena jemnost.
+        # Background photo. Changing the picture and turning it off are both
+        # in `background.py` - here only the chosen softness is kept.
         self.background_opacity = settings["background_opacity"]
         self._hotkey = None
-        # postrehy z analyzy historie (hr_insights) - posledny ulozeny
-        # vysledok sa ukaze hned, cerstvy sa dopocita v pozadi po starte
+        # insights from the history analysis (hr_insights) - the last saved
+        # result is shown right away, a fresh one is computed in the
+        # background after start
         self.hr_insights_path = os.path.join(DATA_DIR, "hr_insights.json")
         _stored = hr_insights.load_insights(self.hr_insights_path)
-        # Postrehy su za JEDEN svet (B3-worlds). Ulozene za iny svet - alebo
-        # zo starsej verzie, ktora ich ratala zo vsetkeho spolu - sa neukazu;
-        # cerstve sa dopocitaju chvilu po starte (`run_hr_analysis`).
+        # Insights are per ONE world (B3-worlds). Ones saved for another world
+        # - or from an older version that computed them from everything
+        # together - are not shown; fresh ones are computed shortly after start
+        # (`run_hr_analysis`).
         if _stored.get("world") != self.world:
             _stored = {}
         self._hr_insights = list(_stored.get("insights") or [])
         self._hr_insights_at = _stored.get("computed_at")
         self._hr_analysis_thread = None
-        # Analyza odmietnuta, lebo este bezala predosla (napr. hned po
-        # prepnuti sveta) - dobehne znova, ked ta skonci. Viz `run_hr_analysis`.
+        # Analysis refused because the previous one was still running (e.g.
+        # right after a world switch) - it runs again when that one finishes.
+        # See `run_hr_analysis`.
         self._hr_analysis_rerun = False
         self._hr_rerun_job = None
         self._hr_session_open = False
-        # PRVA RELACIA PO UVODE JE NASTAVOVANIE (0.2.2): uvod, parovanie a
-        # prehliadka su pokoj pri stole, nie hranie. Prva ulozena relacia
-        # dostane `setup` a prahy sa z nej neucia (`_suhrn_relacie`,
-        # `hr_stats.ciste_relacie`); `_close_hr_session` znacku po ulozeni
-        # zhodi. Len pocas behu s uvodom - po restarte uz nie.
+        # THE FIRST SESSION AFTER THE INTRODUCTION IS SETUP (0.3): the
+        # introduction, pairing and the tour are calm at the desk, not playing.
+        # The first saved session gets `setup` and the thresholds do not learn
+        # from it (`_suhrn_relacie`, `hr_stats.ciste_relacie`);
+        # `_close_hr_session` drops the mark after saving. Only during a run
+        # with the introduction - not after a restart.
         self._relacia_nastavovania = bool(settings["first_run"])
-        # Kolko sekund relacie bol HUD viditelny (biofeedback: videny tep sa
-        # podvedome reguluje). Snima sa v `_tick_cue_trigger`, aby chytilo aj
-        # prepnutie uprostred hrania; do suhrnu ide ako podiel z AKTIVNEHO casu.
-        # `_hud_active_s` je ten isty cas, len bez podmienky viditelnosti -
-        # delime nim (nie hrubym trvanim), lebo tik zahadzuje medzery >=5 s
-        # (uspanie PC), takze inak by podiel po uspani umelo klesol.
+        # How many seconds of the session the HUD was visible (biofeedback: a
+        # heart rate you can see gets regulated subconsciously). Sampled in
+        # `_tick_cue_trigger` so it also catches a toggle in the middle of play;
+        # it goes into the summary as a share of the ACTIVE time.
+        # `_hud_active_s` is the same time, only without the visibility
+        # condition - we divide by it (not by the raw duration), because the
+        # tick drops gaps >=5 s (PC sleep), so otherwise the share would
+        # artificially fall after a sleep.
         self._hud_vis_s = 0.0
         self._hud_active_s = 0.0
         self._hud_tick_t = None
@@ -615,7 +660,7 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         self.slots = []
         self.profiles = settings["profiles"]
         self.active_profile_name = settings["active_profile"]
-        self.voice_map = {}          # popis -> SAPI voice id
+        self.voice_map = {}          # description -> SAPI voice id
         self.saved_voice_id = settings["voice_id"]
         self.rate_var = None
 
@@ -625,12 +670,12 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
                        if self.engine_pref == ENGINE_EDGE and not audio_engine.EDGE_AVAILABLE
                        else self.engine_pref)
         self.edge_voice_id = settings["edge_voice"]
-        self.edge_voice_map = {}     # popis -> ShortName
+        self.edge_voice_map = {}     # description -> ShortName
         self.edge_cache = EdgeTTSCache(self.log_threadsafe)
         self.edge_status_label = None
         self.edge_retry_btn = None
-        # "Aktualizovat hlas" (0.2.2): riadok s tlacidlom a odkazom na nove
-        # vydanie; kym aktualizacia bezi, priprava hlasok caka na jej vysledok.
+        # "Update voice" (0.3): a row with the button and a link to the new
+        # release; while the update runs, cue preparation waits for its result.
         self.edge_update_row = None
         self.edge_update_btn = None
         self.edge_releases_btn = None
@@ -638,10 +683,11 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         self._pregen_po_aktualizacii = False
         self._pregen_job = None
         self._pregen_seq = 0
-        # Hlaska, ktora pocas pocuvania chybala v cache (`_speak_text`) -
-        # dogeneruje sa az po `stop_listening`, nie uprostred hry.
+        # A cue that was missing from the cache while listening (`_speak_text`)
+        # - it is generated only after `stop_listening`, not in the middle of a
+        # game.
         self._pregen_po_hre = False
-        # Prvy start caka so sledovanim na pripravu hlasu
+        # The first start waits with watching until the voice is prepared
         # (`_zacni_sledovat_po_priprave_hlasu`).
         self._prvy_start_caka = False
         self._prvy_start_job = None
@@ -661,10 +707,11 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
 
         self._build_ui()
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
-        # Vypnutie / restart / odhlasenie Windows: Tk na Windows mapuje
-        # WM_QUERYENDSESSION na protokol WM_SAVE_YOURSELF a obsluhu zavola
-        # synchronne, kym Windows caka. Bez toho vypnutie PC zahodilo celu
-        # relaciu - WM_DELETE_WINDOW pri nom nepride (`_pri_vypinani_windows`).
+        # Windows shutdown / restart / sign-out: Tk on Windows maps
+        # WM_QUERYENDSESSION to the WM_SAVE_YOURSELF protocol and calls the
+        # handler synchronously while Windows waits. Without this, shutting
+        # down the PC threw away the whole session - WM_DELETE_WINDOW does not
+        # arrive then (`_pri_vypinani_windows`).
         self.root.protocol("WM_SAVE_YOURSELF", self._pri_vypinani_windows)
         self.root.bind_all("<Control-k>", lambda e: self.open_command_palette())
         if TRAY_AVAILABLE:
@@ -678,28 +725,31 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         self.log(tr("log.ready"))
         self.log(tr("log.safe_mode"))
         if self._vizualy_napravene:
-            # Appka si prave sama zapla vizualy, ktore ju umlcovali. Nema to
-            # spravit potichu - hrac ma vediet, ze sa mu nieco v nastaveniach
-            # zmenilo, a ma to vediet vratit.
+            # The app has just turned on, by itself, the visuals that were
+            # muting it. It must not do that silently - the player should know
+            # that something in their settings changed, and be able to undo it.
             self.log(tr("log.vizualy_napravene", page=stranka_vhre(self)))
-        # Nastavenia sa nedali nacitat a appka siahla po zalohe alebo po
-        # predvolenych - povie to raz, teraz uz do dennika (`load_settings`).
+        # The settings could not be loaded and the app reached for the backup
+        # or the defaults - it says so once, now into the journal
+        # (`load_settings`).
         self._oznam_obnovu_nastaveni()
-        # Relacia, ktora sa minule neulozila (pad, Spravca uloh, vypadok
-        # prudu), ide do historie SKOR, nez senzor otvori novu - a od teraz
-        # sa otvorena relacia kazdych 5 minut odklada (kontrolny bod).
+        # A session that did not get saved last time (crash, Task Manager,
+        # power cut) goes into the history BEFORE the sensor opens a new one -
+        # and from now on the open session is saved aside every 5 minutes
+        # (checkpoint).
         self._obnov_rozpracovanu_relaciu()
         self._naplanuj_rozpracovanu_relaciu()
-        # Nainstalovana 0.2 zdiela priecinok dat - jej odinstalator by pri
-        # "Nie" zmazal aj tuto historiu. Pri prvom starte nie (bezi
-        # sprievodca), povie sa to pri dalsom.
+        # An installed 0.2 shares the data folder - its uninstaller would, on
+        # "Nie" (No), delete this history too. Not on the first start (the
+        # guide is running), it is said on the next one.
         if not settings["first_run"]:
             self._upozorni_na_staru_instalaciu()
 
         if PSUTIL_AVAILABLE:
-            # Zoznam procesov sa cita LEN pri zapnutom auto-profile. Predtym
-            # sken bezal vzdy a vypnuty prepinac len zahodil vysledok - appka
-            # tak kazde 4 s citala mena procesov aj hracovi, ktory to vypol.
+            # The process list is read ONLY when auto-profile is on. Previously
+            # the scan always ran and the switch turned off only discarded the
+            # result - so every 4 s the app read process names even for a
+            # player who had turned it off.
             if self.auto_profile_enabled:
                 self._start_game_watcher()
         else:
@@ -707,30 +757,32 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
 
         if self.hr_monitoring_enabled:
             self.start_heart_rate_monitor()
-        # POZN: tu sa zapinala volitelna Steamworks vrstva. Zanshin nema
-        # ziadnu integraciu so Steamom (0.2) - vrstva bez SDK aj tak nerobila
-        # nic, takze appka bezi presne ako doteraz.
+        # NOTE: the optional Steamworks layer used to be switched on here.
+        # Zanshin has no Steam integration at all (0.2) - the layer did
+        # nothing without the SDK anyway, so the app runs exactly as before.
         self._tick_session()
         self._tick_activity()
-        # analyza historie tepu v pozadi (nie na GUI vlakne), az ked okno stoji
+        # heart-rate history analysis in the background (not on the GUI
+        # thread), only once the window is up
         self.root.after(1500, self.run_hr_analysis)
 
-        # Okno musi po spustani ostat viditelne a v popredi - do systemovej
-        # listy sa appka schova len na vyslovnu ziadost pouzivatela (tlacidlo
-        # "Minimalizovat do lišty" alebo zavretie okna, ak je to tak
-        # nastavene), nikdy automaticky.
+        # After start the window must stay visible and in the foreground - the
+        # app hides into the system tray only at the user's explicit request
+        # (the "Minimize to tray" button, or closing the window if it is set
+        # up that way), never automatically.
         #
-        # Ukazat ho ale az NAKRESLENE: Windows kresli len zobrazene okno, takze
-        # bez zahalenia by hrac videl najprv priesvitny ram a potom skladanie
-        # po kusoch (lista, pas, prazdna stranka, statistiky, dojo).
+        # But show it only once it is DRAWN: Windows only paints a shown
+        # window, so without cloaking the player would first see a translucent
+        # frame and then the assembly piece by piece (title bar, breathing bar,
+        # empty page, stats, dojo).
         self._zahal_do_dokreslenia()
         self.root.deiconify()
         self.root.lift()
         self.root.focus_force()
         if self._zahalene:
             self.root.after(0, self._odhal_hotove_okno)
-            # Poistka: okno nesmie nikdy ostat neviditelne, nech sa stane
-            # cokolvek (odhalenie sa nespusti, CTk zmeni poradie krokov...).
+            # Safeguard: the window must never stay invisible, whatever happens
+            # (the reveal does not run, CTk changes the order of steps...).
             self.root.after(self.ODHAL_POISTKA_MS, lambda: self._odhal_hotove_okno(
                 pokus=self.ODHAL_MAX_POKUSOV))
         if self.start_minimized and not settings["first_run"] and TRAY_AVAILABLE:
@@ -741,45 +793,48 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
             self.show_assets_progress()
         threading.Thread(target=self._ensure_sfx_assets, daemon=True).start()
         if audio_engine.EDGE_AVAILABLE:
-            # Zoznam Edge hlasov je pevny (`EDGE_FALLBACK_VOICES`) a NESTAHUJE
-            # sa. Predtym sa pri kazdom starte s Edge - a ten je predvoleny -
-            # tahal katalog z Microsoftu, len aby sa orezal presne na tento
-            # zoznam. Na Microsoft ide appka az pri priprave hlasok
-            # (`pregenerate`), a to len ked hlasky v hre naozaj hovoria.
+            # The list of Edge voices is fixed (`EDGE_FALLBACK_VOICES`) and is
+            # NOT downloaded. Previously every start with Edge - which is the
+            # default - pulled the catalogue from Microsoft, only to trim it
+            # down to exactly this list. The app goes to Microsoft only during
+            # cue preparation (`pregenerate`), and only when the in-game cues
+            # really speak.
             self._load_edge_voices()
         else:
             self.log(tr("log.edge_tts_missing"))
 
-        # Po onboardingu appka ZACNE POCUVAT sama.
+        # After onboarding the app STARTS LISTENING by itself.
         #
-        # Predtym hrac preklikal styri kroky o tom, co appka robi, a
-        # pristal na stranke s hlaskou "Zastavené. Spúšťače nereagujú." -
-        # za cely uvod ani raz nepocul, na co si to instaloval. Tlacidlo na
-        # poslednom kroku sa vola "spustit", tak nech to naozaj spusti;
-        # zastavit sa da jednym klikom na ten isty pas.
-        # Az teraz, ked uz su vlakna spustene: doruci to, co stihli
-        # zalogovat pred rozbehnutim slucky.
+        # Previously the player clicked through four steps about what the app
+        # does and landed on a page with the message
+        # "Zastavené. Spúšťače nereagujú." (Stopped. Triggers do not react.) -
+        # in the whole introduction they never once heard what they had
+        # installed it for. The button on the last step is called "start", so
+        # let it really start; stopping takes one click on the same bar.
+        # Only now, when the threads are already running: deliver what they
+        # managed to log before the loop started.
         self.root.after(0, self._flush_ui_pending)
 
-        # Predvolena skratka, ktora by na niektorom rozlozeni klavesnice
-        # zhltla pismeno (AltGr = Ctrl+Alt), sa este pred registraciou vymeni.
+        # The default shortcut, which on some keyboard layouts would swallow a
+        # letter (AltGr = Ctrl+Alt), is swapped before it is even registered.
         self._vyber_skratku_pri_starte()
         self.start_snooze_hotkey()
-        # Riadok v Nastaveniach vznikol pred registraciou: obsadenu (alebo
-        # vymenenu) skratku musi povedat uz od startu.
+        # The line in Settings was created before registration: it must report
+        # a taken (or swapped) shortcut right from the start.
         self._refresh_snooze_hotkey_row()
 
         if settings["first_run"]:
-            # Az PO priprave hlasu (najviac `PRVY_START_MAX_S`): kym appka
-            # sleduje, na Microsoft nechodi, takze start o 250 ms neskor
-            # pripravu hned zastavil a prvy vecer hovoril hlasom z Windows.
+            # Only AFTER the voice is prepared (at most `PRVY_START_MAX_S`):
+            # while the app is watching, it does not go to Microsoft, so a
+            # start 250 ms later stopped the preparation right away and the
+            # first evening spoke with the Windows voice.
             self._zacni_sledovat_po_priprave_hlasu()
 
-        # Ak hrac v onboardingu klikol "Sparovat hodinky teraz", otvorime
-        # parovaci dialog az teraz - okno appky uz je hotove a viditelne.
-        # Prva prehliadka ide az PO nom (`on_close`), nie namiesto neho:
-        # predtym ju parovanie uplne vynechalo, lebo bola len vo vetve elif.
-        # Dva sprievodcovia sa pritom stale neprekryvaju.
+        # If the player clicked "Pair a watch now" in onboarding, we open the
+        # pairing dialog only now - the app window is already finished and
+        # visible. The first tour comes only AFTER it (`on_close`), not instead
+        # of it: previously pairing skipped it completely, because it was only
+        # in the elif branch. The two guides still never overlap.
         prehliadka = settings["first_run"] and not self.tour_seen
         if getattr(self, "_pending_pairing", False):
             self._pending_pairing = False
@@ -789,26 +844,28 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         elif prehliadka:
             self.root.after(600, self.start_tour)
 
-    # ---------- start bez preblikania ----------
+    # ---------- start without flicker ----------
     #
-    # Pri starte bolo okno na obrazovke skor, nez bolo nakreslene: prvy obraz
-    # takmer cely priesvitny (presvitala plocha), potom 4-8 medzikrokov. Pri
-    # prvom spusteni po onboardingu bolo vidno skladat sa vsetky stranky.
-    # Nebolo to mnozstvom dat (pri dnesnej velkosti historie) - Windows
-    # posiela kreslenie len ZOBRAZENEMU oknu a Tk kresli lenivo. DWM cloak
-    # (`ui_kit.zahal_okno`) okno zobrazi a necha nakreslit, len ho neukaze.
+    # At start the window was on screen before it was drawn: the first frame
+    # almost fully transparent (the desktop showed through), then 4-8
+    # intermediate steps. On the first start after onboarding you could see
+    # all the pages assembling. It was not the amount of data (at today's
+    # history size) - Windows sends painting only to a SHOWN window and Tk
+    # paints lazily. The DWM cloak (`ui_kit.zahal_okno`) shows the window and
+    # lets it be drawn, it just does not display it.
 
-    # Kolkokrat po 10 ms pockat, kym CTk v `mainloop()` okno schova a znova
-    # ukaze (spolu zhruba 1-2 s, casovace Tk na Windows su hrubsie). Potom
-    # sa okno odhali aj tak. Bezne to CTk stihne za menej nez 0,1 s.
+    # How many times to wait 10 ms for CTk in `mainloop()` to hide the window
+    # and show it again (roughly 1-2 s in total, Tk timers on Windows are
+    # coarser). After that the window is revealed anyway. Normally CTk
+    # manages it in under 0.1 s.
     ODHAL_MAX_POKUSOV = 100
-    # Posledna poistka: najneskor po 10 s je okno viditelne vzdy.
+    # Last safeguard: after 10 s at the latest the window is always visible.
     ODHAL_POISTKA_MS = 10000
 
     def _zahal_do_dokreslenia(self):
-        """Zahali okno tesne pred prvym zobrazenim. Ked to Windows neprijme
-        (starsi system, chyba), `_zahalene` ostane False a start bezi ako
-        doteraz - len s preblikanim."""
+        """Cloaks the window right before it is first shown. When Windows
+        does not accept it (older system, error), `_zahalene` stays False
+        and the start runs as before - just with the flicker."""
         if not getattr(self, "_zahalene", False):
             self._zahalene = ui_kit.zahal_okno(self.root, True)
 
@@ -819,18 +876,19 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
             return False
 
     def _odhal_hotove_okno(self, pokus=0):
-        """Ukaze okno az ked je cele nakreslene - naraz, nie po kusoch.
+        """Shows the window only when fully drawn - all at once, not in pieces.
 
-        CTk v `mainloop()` okno este raz schova, prepocita a ukaze (tmava
-        lista, `_windows_set_titlebar_color`); `after(0)` pribehne prave v
-        tom schovanom useku. Kym okno nie je "normal", skusi to znova o
-        10 ms - najviac `ODHAL_MAX_POKUSOV`-krat, potom odhali aj tak.
+        In `mainloop()` CTk hides the window once more, recomputes it and
+        shows it again (dark title bar, `_windows_set_titlebar_color`);
+        `after(0)` runs exactly in that hidden stretch. While the window
+        is not "normal", it tries again in 10 ms - at most
+        `ODHAL_MAX_POKUSOV` times, then reveals it anyway.
 
-        Cakanie je ZAMERNE mimo try/finally: `return` zvnutra by cez
-        `finally` odhalil okno predcasne, este nenakreslene. Samotne
-        odhalenie je vo `finally`, takze prebehne aj ked kreslenie spadne.
-        Ked by zlyhalo aj odhalenie, `_zahalene` ostane True a poistka
-        (`ODHAL_POISTKA_MS`) to skusi znova."""
+        The waiting is DELIBERATELY outside try/finally: a `return` from
+        inside would, via `finally`, reveal the window too early, not yet
+        drawn. The reveal itself is in `finally`, so it happens even when
+        drawing crashes. If the reveal failed too, `_zahalene` stays True
+        and the safeguard (`ODHAL_POISTKA_MS`) tries again."""
         if not getattr(self, "_zahalene", False):
             return
         if pokus < self.ODHAL_MAX_POKUSOV and self._okno_este_schovane():
@@ -840,8 +898,8 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
             except Exception:
                 app_log.exception("start: odklad odhalenia zlyhal - odhalim hned")
         try:
-            self.root.update()               # rozlozenie + WM_PAINT + prekreslenie
-            self._refresh_dnes_backdrop()    # dojo nech je uz v prvom obraze
+            self.root.update()               # layout + WM_PAINT + redraw
+            self._refresh_dnes_backdrop()    # so the dojo is in the very first frame
             self.root.update_idletasks()
         except Exception:
             app_log.exception("start: dokreslenie pred odhalenim zlyhalo")
@@ -852,45 +910,49 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
 
     def _build_ui(self):
         pal = self.pal
-        # Prvky, ktore si vlastnu kopiu palety nedrzia (bubliny s popiskami),
-        # si ju vezmu odtialto - inak by kreslili starym `ui_shell.PAL`.
+        # Elements that do not keep their own copy of the palette (tooltip
+        # bubbles) take it from here - otherwise they would draw with the old
+        # `ui_shell.PAL`.
         ui_shell.set_theme_pal(pal)
         self.root.configure(fg_color=pal["bg"])
-        # rekreacia okna (prepnutie temy/jazyka) znici aj rozostavany
-        # priebeh prípravy SFX - referencie zresetujeme, aby sme sa
-        # nepokusali aktualizovat uz zniceny widget.
+        # recreating the window (theme/language switch) also destroys the
+        # SFX preparation progress in the making - we reset the references so
+        # we do not try to update an already destroyed widget.
         self._assets_progress_frame = None
         self._assets_progress_bar = None
-        # POZOR: HUD aj in-game vizualy su samostatne Toplevel okna, a tie su
-        # tiez detmi root-u. Slepe zmazanie vsetkych deti ich znicilo pri
-        # kazdom prepnuti temy/jazyka - StatsHud si ich uz nikdy nepostavil
-        # a HUD ostal navzdy prazdny. Rusime len obsah hlavneho okna.
+        # WARNING: the HUD and the in-game visuals are separate Toplevel
+        # windows, and they are children of the root too. Blindly deleting all
+        # children destroyed them on every theme/language switch - StatsHud
+        # never rebuilt them and the HUD stayed empty for good. We only clear
+        # the main window's content.
         for child in self.root.winfo_children():
             if isinstance(child, tk.Toplevel):
                 continue
             child.destroy()
 
-        # --- vonkajsi obal: vlastna titulkova lista hore, telo (sidebar +
-        # stranky) pod nou. `enable_frameless()` sa vola len raz v __init__,
-        # nie tu - odstranenie OS ramu netreba opakovat pri kazdom rebuilde. ---
-        # Obal aj telo brali `fg_color` z moduloveho `ui_shell.PAL` - zo
-        # starej zelenkavej palety, ktoru redizajn nahradil. Farba sa tym
-        # navyse vyradila z prefarbovania tem (`theme_recolor` meni len to,
-        # co v palete temy naozaj je), takze pri prepnuti Aizome/Sumi
-        # ostavalo pozadie okna rovnake. Teraz je to `pal["bg"]`.
+        # --- outer wrapper: custom title bar on top, body (sidebar + pages)
+        # below it. `enable_frameless()` is called only once in __init__, not
+        # here - the OS frame need not be removed again on every rebuild. ---
+        # The wrapper and the body took `fg_color` from the module-level
+        # `ui_shell.PAL` - from the old greenish palette the redesign replaced.
+        # On top of that, this took the colour out of theme recolouring
+        # (`theme_recolor` only changes what really is in the theme's palette),
+        # so when switching Aizome/Sumi the window background stayed the same.
+        # Now it is `pal["bg"]`.
         appwrap = ctk.CTkFrame(self.root, fg_color=pal["bg"], corner_radius=0)
         appwrap.pack(fill="both", expand=True)
         self.appwrap = appwrap
 
-        # POZN: nad titulkovou listou tu bol `DojoBand` - fotopas pevnej
-        # vysky 130 px (ui_shell.DojoBand + hud_paint.render_dojo_band /
-        # render_lamp_glow). Odstraneny: titulkova lista patri na samy vrch
-        # okna, a pas nad nou bol 130 px mrtveho miesta, ktore len uberalo
-        # z fixnej vysky okna (WINDOW_H). S nim odisiel aj posuvnik
-        # "Pozadie dojo" v Nastaveniach a hodnota `dojo_intensity` - bez
-        # pasu uz nemali co ovladat.
-        # Prepinac sveta (Hra | Praca) sedi v liste vlavo od ⓘ - viz
-        # `set_world` a `ui_shell.TitleBar`.
+        # NOTE: above the title bar there used to be a `DojoBand` here - a
+        # photo strip of fixed height 130 px (ui_shell.DojoBand +
+        # hud_paint.render_dojo_band / render_lamp_glow). Removed: the title
+        # bar belongs at the very top of the window, and the strip above it
+        # was 130 px of dead space that only took away from the fixed window
+        # height (WINDOW_H). Along with it went the "Dojo background" slider
+        # in Settings and the `dojo_intensity` value - without the strip they
+        # had nothing left to control.
+        # The world switch (Play | Work) sits in the title bar left of ⓘ - see
+        # `set_world` and `ui_shell.TitleBar`.
         titlebar = TitleBar(appwrap, root_window=self.root, app_name=APP_NAME,
                             on_close=self.on_close, version=tr("app.version_short"),
                             pal=pal, on_about=self.show_about,
@@ -901,8 +963,8 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
                             world_tip=tr("world.tip"))
         titlebar.pack(fill="x", side="top")
         self.titlebar = titlebar
-        # Patnast klikov na cislo verzie otvori ladenie (§3.2). Lokalna Tk
-        # vazba na jeden widget, nie globalny hook.
+        # Fifteen clicks on the version number open debugging (§3.2). A local
+        # Tk binding on one widget, not a global hook.
         titlebar.on_dev_layer = self.open_dev_layer
 
         body = ctk.CTkFrame(appwrap, fg_color=pal["bg"], corner_radius=0)
@@ -910,7 +972,7 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         self.body = body
 
         self.pages = PageContainer(body)
-        self.page_frames = {}          # kluc -> ramec stranky (hlavne aj karty)
+        self.page_frames = {}          # key -> page frame (main pages and tabs too)
 
         def _navigate(_key):
             self._navigate(_key)
@@ -924,7 +986,7 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
             "pair_live_tip": tr("dock.pulse_live_tip"),
             "dnes": tr("nav.dnes"),
             "historia": tr("nav.historia"),
-            # vo svete Praca "Obrazovka" (`_nazov_vhre`, app_today.py)
+            # in the Work world "Screen" (`_nazov_vhre`, app_today.py)
             "vhre": self._nazov_vhre(),
             "nastavenia": tr("nav.nastavenia"),
             "cmdk": tr("nav.cmdk_hint"),
@@ -934,8 +996,9 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
             "enso_stop_tip": tr("dock.stop_tip"),
             "state_tip": tr("sidebar.state_tip"),
         })
-        # Kontrolka tepu si stav pyta sama pri kazdom tiku - tak bije
-        # plynule bez ohladu na to, ako casto chodia data z hodiniek.
+        # The heart-rate indicator asks for its state itself on every tick -
+        # that way it beats smoothly regardless of how often data arrive from
+        # the watch.
         if getattr(self.sidebar, "pair_btn", None) is not None:
             try:
                 self.sidebar.pair_btn.set_state_source(self._watch_pulse_state)
@@ -959,69 +1022,76 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
 
         self._refresh_nav_badges()
 
-        # command palette (Ctrl+K) - obsah sa generuje nanovo pri kazdom
-        # otvoreni (viz open_command_palette), aby nikdy nezastaral po
-        # pridani/zmazani slotu ci profilu mimo plneho _build_ui. Tlacidlo
-        # v bocnom paneli ju vola priamo cez `on_palette` (viz Sidebar).
+        # command palette (Ctrl+K) - its content is generated anew on every
+        # open (see open_command_palette), so it never goes stale after
+        # adding/deleting a slot or profile outside a full _build_ui. The
+        # button in the side panel calls it directly via `on_palette` (see
+        # Sidebar).
 
-        # POZN: tu sa stavil `QuickDock` - tri ikony dole v bocnom paneli
-        # (🔊 stisit, 😴 odlozit, ⌘ rychly profil). Odstranene vedome, nie
-        # kvoli miestu:
+        # NOTE: `QuickDock` used to be built here - three icons at the bottom
+        # of the side panel (🔊 mute, 😴 snooze, ⌘ quick profile). Removed on
+        # purpose, not for lack of space:
         #
-        #   STISENIE jednym klikom do tejto appky nepatri. Cela jej hodnota
-        #   stoji na tom, ze vyrusi vtedy, ked je telo hore - a to je presne
-        #   chvila, kedy je hrac na nu najviac nastvany. Jednoklikove
-        #   stisenie sa preto pouzije systematicky prave vtedy, ked je
-        #   hlaska najopravnenejsia. Hlasitost sa da stiahnut na nulu v
-        #   Nastaveniach -> Zvuk; ze to trva tri kliky namiesto jedneho, je
-        #   VLASTNOST: vypnut to nadobro ma byt rozhodnutie, nie reflex.
+        #   One-click MUTING does not belong in this app. Its whole value
+        #   rests on interrupting exactly when the body is up - and that is
+        #   precisely the moment the player is most annoyed with it. One-click
+        #   muting would therefore be used systematically exactly when the
+        #   cue is most justified. The volume can be pulled to zero in
+        #   Settings -> Sound; that it takes three clicks instead of one is a
+        #   FEATURE: turning it off for good should be a decision, not a
+        #   reflex.
         #
-        #   ODLOZENIE ostalo, len uz nema tlacidlo - ma globalnu skratku
-        #   (Ctrl+Alt+Z, `start_snooze_hotkey`), ktora funguje aj v hre, a
-        #   tam ju hrac potrebuje. Je casovo ohranicene a samo vyprsi, cize
-        #   to nie je vypinac. Ze prave bezi, ukazuje bodka stavu v rade
-        #   (`_refresh_snooze_indicator`). Od 0.2.1 je aj v ponuke ikony v
-        #   liste (`setup_tray`) - skratku moze drzat ina appka.
+        #   SNOOZE stayed, it just has no button any more - it has a global
+        #   shortcut (Ctrl+Alt+Z, `start_snooze_hotkey`) that works in-game
+        #   too, and that is where the player needs it. It is time-limited
+        #   and expires by itself, so it is not a switch. That it is running
+        #   is shown by the status dot in the row
+        #   (`_refresh_snooze_indicator`). Since 0.2.1 it is also in the tray
+        #   icon's menu (`setup_tray`) - another app may hold the shortcut.
         #
-        #   PROFIL je dosiahnutelny cez ozubene koliesko (Nastavenia ->
-        #   Spustace) a cez paletu Ctrl+K.
+        #   The PROFILE is reachable via the cog (Settings -> Cues) and via
+        #   the Ctrl+K command palette.
 
-        # spatna kompatibilita pre show_assets_progress()/_update_assets_progress()/
-        # refresh_edge_banner(), ktore ocakavaju self.main (rodic pre banner)
-        # a self.main_grid (kotva "pred ktorou" sa banner/progress vlozia).
+        # backward compatibility for
+        # show_assets_progress()/_update_assets_progress()/refresh_edge_banner(),
+        # which expect self.main (the parent for the banner) and self.main_grid
+        # (the "before which" anchor the banner/progress get inserted before).
         self.main = built["dnes"]
         self.main_grid = self._dashboard_anchor_frame
-        # ALIAS, nie druha znacka. Znacka od 2.1 zije v strede stranky Dnes,
-        # ale `guided_tour.py`, `gui_harness_auto.py` aj
-        # `gui_harness_onboarding.py` ju hladaju ako `app.sidebar.enso` -
-        # a hladaju ju MENOM, takze pri premenovani by zlyhali TICHO
-        # (bublina sprievodcu by sa len prestala na nieco ukazovat).
-        # Cez tento alias ju najdu a `Sidebar.set_pal` ju aj dalej prefarbi.
+        # An ALIAS, not a second mark. Since 2.1 the mark lives in the centre
+        # of the Today page, but `guided_tour.py`, `gui_harness_auto.py` and
+        # `gui_harness_onboarding.py` look for it as `app.sidebar.enso` - and
+        # they look for it BY NAME, so a rename would make them fail SILENTLY
+        # (the tour bubble would just stop pointing at anything). Through this
+        # alias they find it, and `Sidebar.set_pal` keeps recolouring it too.
         if getattr(self, "sidebar", None) is not None:
             self.sidebar.enso = self.enso
-        # Prestavba okna (jazyk, zachrana pri teme) postavi bodku stavu nanovo
-        # a ta zacina neodlozena. Pocas "teraz nie", ktore od 24. 9. pocuva
-        # dalej, by potom svietila zelenou "appka pocuva" namiesto jantarovej.
+        # A window rebuild (language, theme rescue) builds the status dot anew
+        # and it starts as not snoozed. During a "not now", which since 24. 9.
+        # keeps listening, it would then glow green "the app is listening"
+        # instead of amber.
         if getattr(self, "_snooze_job", None) is not None:
             self._refresh_snooze_indicator()
 
     def _build_dnes_page(self, page, pal):
-        """Dnes: dychajuci pas (spustit/zastavit), tep so zatazou, suhrn
-        relacie a dennik.
+        """Today: breathing bar (start/stop), heart rate with load, session
+        summary and journal.
 
-        Povodny "Prehlad" mal hore siroke tlacidlo, ktore blikalo dvoma
-        farbami. Tu je namiesto neho `KamaeBar` - jediny pohyblivy prvok v
-        okne, ktory dycha v rovnakom rytme ako dychovy kruh v hre a po
-        zastaveni stoji. Stav sa teda necita z farby, ale z toho, ci sa
-        rozhranie hybe.
+        The original "Dashboard" had a wide button at the top that blinked
+        in two colours. Here, instead, there is `KamaeBar` - the only
+        moving element in the window, which breathes in the same rhythm as
+        the breathing circle in-game and stands still when stopped. So the
+        state is not read from a colour but from whether the interface
+        moves.
         """
         wrap = ctk.CTkFrame(page, fg_color="transparent")
         wrap.pack(fill="both", expand=True, padx=ui_kit.PAGE_GUTTER, pady=(20, 20))
 
-        # --- banner o chybajucom edge-tts (skryty, kym ho refresh_edge_banner nezapne) ---
-        # Drobny text na cervenej vyplni `danger` mal len ~3:1 (0.2.2 davka 4b,
-        # pravidlo v theme.py) - banner je teraz plocha `surface` s ramom
-        # `danger_text`, text v `text`, "Skusit znova" z `ui_kit.button`.
+        # --- missing edge-tts banner (hidden until refresh_edge_banner shows it) ---
+        # Small text on the red `danger` fill had only ~3:1 (0.3 batch 4b, the
+        # rule in theme.py) - the banner is now a `surface` area with a
+        # `danger_text` border, the text in `text`, "Try again" from
+        # `ui_kit.button`.
         self.banner = ctk.CTkFrame(wrap, fg_color=pal["surface"], border_width=1,
                                    border_color=pal["danger_text"],
                                    corner_radius=ui_kit.RADIUS_CONTROL)
@@ -1036,63 +1106,69 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         self._dashboard_anchor_frame = anchor
         anchor.pack(fill="x")
 
-        # HLAVNY VYPINAC: tlacidlo "▶ Spustit sledovanie" / "■ Zastavit
-        # sledovanie" v dychajucom pase (0.2.2 davka 4). Texty ma jedno miesto
-        # (`_texty_pasu`, app_cues.py), aby ich prestavba okna, zmena stavu
-        # aj prepnutie auto-profilu nastavovali rovnako.
+        # MAIN SWITCH: the "▶ Start watching" / "■ Stop watching" button in
+        # the breathing bar (0.3 batch 4). The texts have one place
+        # (`_texty_pasu`, app_cues.py), so that a window rebuild, a state
+        # change and an auto-profile switch all set them the same way.
         self.kamae = ui_kit.KamaeBar(anchor, pal, on_toggle=self.toggle_listening)
         self.kamae.set_texts(*self._texty_pasu())
-        # Znacka (enso) dycha PRESNE s dychovou linkou tejto hlavicky -
-        # jedno okno, jeden rytmus. Viz `KamaeBar.phase()`.
-        # Vpravo nechava miesto posuvnika pod nim, aby pas koncil na tej istej
-        # pravej hrane ako karty (audit: pas siahal o ~25 px dalej).
+        # The mark (enso) breathes EXACTLY with the breathing line of this
+        # header - one window, one rhythm. See `KamaeBar.phase()`.
+        # On the right it leaves room for the scrollbar below it, so the bar
+        # ends on the same right edge as the cards (audit: the bar reached
+        # ~25 px further).
         self.kamae.pack(fill="x", padx=(0, ui_kit.SCROLLBAR_W))
 
-        # Kedy sa appka naposledy ozvala. Zamerne tlmene: je to kontext k
-        # stavu, nie vykon. Ked este nic nebolo, riadok sa vobec nezobrazi -
-        # prazdne "0x" by bolo pocitadlo. Od 2.1 to nie je widget, ale text
-        # kresleny na stred (`_paint_dnes_canvas`); `_refresh_last_cue` len
-        # meni tento retazec a vyziada prekreslenie.
+        # When the app last spoke up. Deliberately muted: it is context for
+        # the state, not an achievement. When nothing has happened yet, the
+        # line is not shown at all - an empty "0x" would be a counter. Since
+        # 2.1 it is not a widget but text drawn in the centre
+        # (`_paint_dnes_canvas`); `_refresh_last_cue` only changes this string
+        # and requests a redraw.
         self._dnes_lastcue_text = ""
 
-        # Okno ma pevnych 1180x760 (viz WINDOW_W/H) a pod dychajucim pasom
-        # ostava asi 600 px. Kym tam boli len dve karty, vyslo to; s tretim
-        # panelom uz nie a dennik by z okna vypadol. Pas ostava PEVNE hore
-        # (jeho rytmus je stav appky a nesmie odrolovat), vsetko pod nim sa
-        # posuva - rovnako ako na Historii.
+        # The window is a fixed 1180x760 (see WINDOW_W/H) and below the
+        # breathing bar about 600 px remain. While there were only two cards,
+        # it fit; with a third panel it no longer does and the journal would
+        # fall out of the window. The bar stays FIXED at the top (its rhythm is
+        # the app's state and must not scroll away), everything below it
+        # scrolls - just like on History.
         body = ui_kit.stranka_scroll(wrap, pal)
         body.pack(fill="both", expand=True)
         self.dnes_body = body
 
-        # --- stav | statistiky ---
-        # Tazisko stranky je STAV, nie cisla. Vlavo znacka, ktora stav nesie,
-        # vpravo cisla. Panel s tepom a krivkou sa presunul POD tuto dvojicu
-        # - je to podrobnost, nie to prve, co ma hrac vidiet.
+        # --- state | stats ---
+        # The page's centre of gravity is the STATE, not numbers. On the left
+        # the mark that carries the state, on the right the numbers. The panel
+        # with heart rate and the curve moved BELOW this pair - it is a
+        # detail, not the first thing the player should see.
         cols = ctk.CTkFrame(body, fg_color="transparent")
         cols.pack(fill="x", pady=(14, 0))
         cols.grid_columnconfigure(0, weight=1)
-        # 300 px pevne: v nemcine a japoncine su popisky kariet dlhsie a pri
-        # pruznej sirke by sa zalamovali inak v kazdom jazyku.
+        # 300 px fixed: in German and Japanese the card labels are longer, and
+        # with a flexible width they would wrap differently in every language.
         cols.grid_columnconfigure(1, weight=0, minsize=300)
         cols.grid_rowconfigure(0, weight=1)
 
-        # Vysku riadku urcuje pravy stlpec (karty a pasma). Kym nie je ziadna
-        # relacia s tepom, karty su schovane (`_sync_dnes_prazdny_stav`) a
-        # stlpec je nizky - stred si preto drzi vlastne minimum, do ktoreho sa
-        # zmesti znacka, nadpis aj najdlhsia veta stavu (obsadeny port).
+        # The row height is set by the right column (cards and zones). Until
+        # there is a session with heart rate, the cards are hidden
+        # (`_sync_dnes_prazdny_stav`) and the column is low - so the centre
+        # keeps its own minimum that fits the mark, the heading and the
+        # longest status sentence (port taken).
         stred = ctk.CTkFrame(cols, fg_color="transparent", height=340)
         stred.grid(row=0, column=0, sticky="nsew", padx=(0, 14))
         self.dnes_stred = stred
 
-        # STRED = tk.Canvas, nie ramcek s labelmi.
+        # CENTRE = tk.Canvas, not a frame with labels.
         #
-        # PRECO: CTk/tk widget nevie byt priehladny nad fotkou -
-        # `fg_color="transparent"` zdedi PLNU farbu rodica, takze enso aj text
-        # nad dojom vzdy sedeli na tmavom STVORCI (a ziaden scrim ho nezakryl,
-        # lebo box je nepriehladny obdlznik). Canvas kresli dojo, enso
-        # (PRIEHLADNE PNG cez `create_image`) aj text (`create_text` = bez
-        # pozadia) na jednu plochu - box zmizne, dojo vidno cele, enso aj text
-        # plavaju. Kresli sa v `_paint_dnes_canvas`, riadi `_refresh_dnes_backdrop`.
+        # WHY: a CTk/tk widget cannot be transparent over a photo -
+        # `fg_color="transparent"` inherits the parent's SOLID colour, so the
+        # enso and the text over the dojo always sat on a dark SQUARE (and no
+        # scrim covered it, because the box is an opaque rectangle). The Canvas
+        # draws the dojo, the enso (a TRANSPARENT PNG via `create_image`) and
+        # the text (`create_text` = no background) onto one surface - the box
+        # disappears, the whole dojo is visible, the enso and the text float.
+        # Drawn in `_paint_dnes_canvas`, driven by `_refresh_dnes_backdrop`.
         self.dnes_canvas = tk.Canvas(stred, highlightthickness=0, bd=0,
                                      bg=pal["bg"], takefocus=0)
         self.dnes_canvas.place(x=0, y=0, relwidth=1, relheight=1)
@@ -1100,12 +1176,13 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         self.dnes_canvas.bind("<Motion>", self._dnes_canvas_motion)
         self.dnes_canvas.bind("<Leave>",
                               lambda _e: self._dnes_set_cursor(""))
-        self._dnes_tk_imgs = {}      # drzi ImageTk referencie (Tk ich inak zahodi)
-        self._dnes_hit = {}          # klikacia zona: "enso" -> (x0,y0,x1,y1)
+        self._dnes_tk_imgs = {}      # holds ImageTk references (Tk drops them otherwise)
+        self._dnes_hit = {}          # click zone: "enso" -> (x0,y0,x1,y1)
         self._dnes_cursor = ""
         self._dnes_fonts = {}
-        # Trvale polozky canvasu (dojo, enso) a podpisy proti zbytocnemu
-        # prekresleniu - nova stranka zacina nacisto (stary canvas je zniceny).
+        # Persistent canvas items (dojo, enso) and signatures against needless
+        # redrawing - a new page starts from scratch (the old canvas is
+        # destroyed).
         self._dnes_items = None
         self._dnes_frame_sig = None
         self._dnes_text_sig = None
@@ -1114,47 +1191,52 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         self._dnes_titul = ""
         self._dnes_veta = ""
         self._dnes_lastcue_text = ""
-        # Nova stranka (aj po zmene jazyka): veta o uceni sa napise nanovo v
-        # novom jazyku a prazdny stav (`_sync_dnes_prazdny_stav`) sa nastavi
-        # na nove widgety - stare priznaky patrili znicenej stranke.
+        # A new page (also after a language change): the sentence about
+        # learning is written anew in the new language and the empty state
+        # (`_sync_dnes_prazdny_stav`) is set up on the new widgets - the old
+        # flags belonged to the destroyed page.
         self._dnes_learning_text = ""
         self._dnes_learning_key = None
         self._dnes_ma_tep_stav = None
 
-        # ZNACKA (残 v ense) + spinac stavu. Uz to NIE JE widget, ale kresba na
-        # Canvase (`ui_shell._EnsoHero`). API ostava rovnake, takze alias
-        # `sidebar.enso`, `_apply_listening_visuals`, `_set_enso_armed` aj
-        # harness (`enso._live`/`_armed`) fungujú nezmenene. Spinac zije v pase
-        # (`ui_kit.KamaeBar`); enso je to, co sa cita, a klik naň prepina.
+        # The MARK (残 in the enso) + the state toggle. It is NO LONGER a
+        # widget but a drawing on the Canvas (`ui_shell._EnsoHero`). The API
+        # stays the same, so the alias `sidebar.enso`,
+        # `_apply_listening_visuals`, `_set_enso_armed` and the harness
+        # (`enso._live`/`_armed`) work unchanged. The toggle lives in the bar
+        # (`ui_kit.KamaeBar`); the enso is what gets read, and a click on it
+        # toggles.
         self.enso = ui_shell._EnsoHero(pal, size=self.ENSO_SIZE,
                                        on_change=self._on_enso_change)
         try:
             if getattr(self, "zanshin_graduated", False):
-                self.enso.graduate()   # uz promovany - enso ostava zlaty mesiac
+                self.enso.graduate()   # already graduated - the enso stays a golden moon
         except Exception:
             app_log.exception("promocia: obnova mesiaca pri starte zlyhala")
-        # Enso dycha PRESNE s dychovou linkou v hlavicke - jedno okno, jeden
-        # rytmus. Viz `KamaeBar.phase()`.
+        # The enso breathes EXACTLY with the breathing line in the header -
+        # one window, one rhythm. See `KamaeBar.phase()`.
         try:
             self.enso.set_phase_source(self.kamae.phase)
         except Exception:
             app_log.exception("enso: napojenie na dych zlyhalo")
 
         self._build_dnes_backdrop(stred, pal)   # scrim + <Configure>
-        # NAPLNIT HNED. Text sa inak pise len z `_apply_listening_visuals` a
-        # `_set_enso_armed`, a ani jedno pri stavbe okna nebezi - po cerstvom
-        # starte by stala znacka nad prazdnym miestom.
+        # FILL IT RIGHT AWAY. Otherwise the text is written only from
+        # `_apply_listening_visuals` and `_set_enso_armed`, and neither runs
+        # while the window is built - after a fresh start the mark would stand
+        # over an empty space.
         self._refresh_dnes_state_text()
         self._refresh_dnes_backdrop(force=True)
 
-        # --- tep a zataz (podrobnosti, pod stavom) ---
+        # --- heart rate and load (details, below the state) ---
         hr_panel = ui_kit.Panel(body, pal, title=tr("dnes.hr_title"))
         hr_panel.pack(fill="x", pady=(16, 0))
         self.hr_panel = hr_panel
 
-        # Cislo tepu a veta k nemu su v jednom ramci: pred prvou relaciou s
-        # tepom sa schova cely (velke "--" by bolo len dalsie predstierane
-        # meranie) - viz `_sync_dnes_prazdny_stav`.
+        # The heart-rate number and its sentence are in one frame: before the
+        # first session with heart rate the whole frame is hidden (a big "--"
+        # would be just another faked measurement) - see
+        # `_sync_dnes_prazdny_stav`.
         bpm_box = ctk.CTkFrame(hr_panel.body, fg_color="transparent")
         bpm_box.pack(fill="x")
         self.dnes_bpm_box = bpm_box
@@ -1166,13 +1248,14 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         ctk.CTkLabel(bpm_row, text=tr("dnes.bpm_unit"), font=ui_kit.ui(11),
                      text_color=pal["text_faint"]).pack(side="left", padx=(9, 0),
                                                         pady=(14, 0))
-        # "aby pouzivatel vedel": veta pri cisle + rozbalitelne co to znamena
+        # "so the user knows": a sentence by the number + an expandable meaning
         self.dnes_info_bpm = self._metric_info(bpm_box, pal, "bpm")
         self.dnes_info_bpm.pack(fill="x", pady=(2, 0))
 
-        # "zive" prvky (krivka, zataz) su v jednom ramci, ktory sa bez hodiniek
-        # schova a namiesto neho sa ukaze prazdny stav (dnes_empty) - inak by
-        # sa v kompaktnom okne nezmestili oba a prazdna krivka nic nehovori
+        # the "live" elements (curve, load) are in one frame, which is hidden
+        # without a watch and replaced by the empty state (dnes_empty) -
+        # otherwise both would not fit in the compact window, and an empty
+        # curve says nothing
         live = ctk.CTkFrame(hr_panel.body, fg_color="transparent")
         self.dnes_live = live
         self.dnes_spark = ui_kit.Sparkline(live, pal, height=62)
@@ -1190,11 +1273,12 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         self.dnes_info_load = self._metric_info(live, pal, "load", wrap=360)
         self.dnes_info_load.pack(fill="x", pady=(9, 0))
 
-        # --- stopa relacie ---
-        # Krivka nad tymto je zive okno poslednych troch minut. Toto je
-        # cely vecer: kde tep vyskocil, ako dlho tam ostal a kedy appka
-        # spustila dychanie. Dovtedy sa dala relacia precitat az v
-        # Historii, a aj tam len ako riadok cisel.
+        # --- session trace ---
+        # The curve above this is a live window of the last three minutes. This
+        # is the whole evening: where heart rate jumped, how long it stayed
+        # there and when the app started the breathing. Until then a session
+        # could only be read in History, and even there only as a row of
+        # numbers.
         ui_kit.linka(live, pal).pack(fill="x", pady=(14, 0))
         trace_head = ctk.CTkFrame(live, fg_color="transparent")
         trace_head.pack(fill="x", pady=(10, 0))
@@ -1207,30 +1291,34 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         self.dnes_trace.pack(fill="x", pady=(4, 0))
         live.pack(fill="x")
 
-        # PRAZDNY STAV (0.2.2 davka 4, `ui_kit.EmptyState`): kym nechodi tep,
-        # jedna veta a jedna akcia - "Sparovat hodinky" (otvori navod a zapne
-        # prijem tepu, `open_watch_pairing`). Do 0.2.2 tu bol aj tlmeny
-        # nahlad HUD-u s vymyslenym tepom 72 a nadpis nad vetou - nahlad
-        # predstieral meranie a nadpis opakoval nadpis panela.
-        # Po pripojeni sa schova (_refresh_dnes_stats).
+        # EMPTY STATE (0.3 batch 4, `ui_kit.EmptyState`): while no heart rate
+        # is coming in, one sentence and one action - "Pair your watch" (opens
+        # the instructions and switches on heart-rate receiving,
+        # `open_watch_pairing`). Up to 0.3 there was also a dimmed HUD preview
+        # here with a made-up heart rate of 72 and a heading above the
+        # sentence - the preview faked a measurement and the heading repeated
+        # the panel's heading. It hides once connected (_refresh_dnes_stats).
         self.dnes_empty = ui_kit.EmptyState(
             hr_panel.body, pal, tr("dnes.empty_body"), action=tr("dnes.empty_btn"),
             command=self.open_watch_pairing)
-        # ktory z dvojice (live / empty) je vidno, riesi _refresh_dnes_stats
+        # which of the pair (live / empty) is visible is handled by
+        # _refresh_dnes_stats
 
-        # "Moje štatistiky" - volitelna mriezka 2x2 (nahradza povodny pevny
-        # 7-riadkovy StatList). "✎ upraviť" otvori popup so vsetkymi
-        # metrikami, zvolit sa daju najviac 4 (DASHBOARD_MAX_CARDS); vyber aj
-        # poradie sa uklada do settings (self.dashboard_stats).
+        # "My stats" - an optional 2x2 grid (replaces the original fixed
+        # 7-row StatList). "✎ edit" opens a popup with all the metrics, at most
+        # 4 can be chosen (DASHBOARD_MAX_CARDS); both the choice and the order
+        # are saved to settings (self.dashboard_stats).
         stats_wrap = ctk.CTkFrame(cols, fg_color="transparent")
         stats_wrap.grid(row=0, column=1, sticky="nsew", padx=(8, 0))
 
-        # --- rychly prepinac HUD (tep v hre) ---
-        # Vpravo hore, hned po ruke: zapnut/vypnut widget tepu bez chodenia do
-        # Nastaveni. Ci ho hrac ma zapnuty, ovplyvnuje vysledok (biofeedback -
-        # videny tep sa podvedome reguluje), preto sa oplati mat to na ocaich.
-        # ⚙ vedla otvori plne HUD nastavenia (Nastavenia -> Vseobecne, sekcia
-        # panela s tepom) - do 0.2.2 viedlo na stranku V hre, kde HUD nie je.
+        # --- quick HUD toggle (heart rate in game) ---
+        # Top right, right at hand: turn the heart-rate widget on/off without
+        # going to Settings. Whether the player has it on affects the result
+        # (biofeedback - a heart rate you can see gets regulated
+        # subconsciously), so it is worth keeping it in sight.
+        # ⚙ next to it opens the full HUD settings (Settings -> General, the
+        # heart-rate panel section) - up to 0.3 it led to the In-game page,
+        # where the HUD is not.
         hud_row = ctk.CTkFrame(stats_wrap, fg_color="transparent")
         hud_row.pack(fill="x", pady=(0, 12))
         ctk.CTkLabel(hud_row, text=tr("hud.quick_label").upper(), font=ui_kit.ui(11, "bold"),
@@ -1246,8 +1334,9 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
             command=lambda: self.on_hud_config_change(
                 enabled=self.hud_quick_var.get())).pack(side="right", padx=(0, 8))
 
-        # Hlavicka a mriezka kariet sa pred prvou relaciou s tepom schovaju -
-        # styri karty s pomlckami nic nehovoria (`_sync_dnes_prazdny_stav`).
+        # The header and the card grid are hidden before the first session with
+        # heart rate - four cards with dashes say nothing
+        # (`_sync_dnes_prazdny_stav`).
         stats_head = ctk.CTkFrame(stats_wrap, fg_color="transparent")
         stats_head.pack(fill="x", pady=(0, 10))
         self.dnes_stats_head = stats_head
@@ -1267,16 +1356,17 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         self.dashboard_cards = {}
         self._rebuild_dashboard_stats_grid()
 
-        # --- kde si dnes bol ---
-        # Pod mriezkou kariet ostavala prazdna polovica stlpca. `zone_seconds`
-        # pritom appka pocita od zaciatku a nikde ich neukazovala - styri
-        # cisla, ktore z relacie povedia viac nez ktorekolvek jedno.
+        # --- where you were today ---
+        # Below the card grid half the column stayed empty. Meanwhile the app
+        # has computed `zone_seconds` from the start and showed them nowhere -
+        # four numbers that say more about a session than any single one.
         zone_panel = ui_kit.Panel(stats_wrap, pal, title=tr("dnes.zones_title"))
         zone_panel.pack(fill="both", expand=True, pady=(12, 0))
         self.dnes_zone_panel = zone_panel
-        # Pruh, riadky aj veta pod nimi su v jednom ramci - pred prvou
-        # relaciou s tepom ho nahradi jedna veta (`dnes_zone_empty`): styri
-        # riadky "0 %" vyzerali ako meranie, nie ako "zatial nic".
+        # The strip, the rows and the sentence below them are in one frame -
+        # before the first session with heart rate it is replaced by a single
+        # sentence (`dnes_zone_empty`): four rows of "0 %" looked like a
+        # measurement, not like "nothing yet".
         zone_obsah = ctk.CTkFrame(zone_panel.body, fg_color="transparent")
         zone_obsah.pack(fill="x")
         self.dnes_zone_obsah = zone_obsah
@@ -1285,11 +1375,12 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         self.dnes_zone_bar = ui_kit.ZoneBar(zone_obsah, pal)
         self.dnes_zone_bar.pack(fill="x", pady=(0, 10))
         self.dnes_zone_rows = {}
-        # Nazov vlavo, PODIEL vpravo - a nic medzi tym. Do 2.1 tu bola aj
-        # farebna bodka a cas ("0:00   65 %"). Bodka opakovala farbu pruhu,
-        # ktory je priamo nad riadkami a v tom istom poradi, a cas hovoril
-        # to iste, co podiel, len inak. Styri riadky po troch udajoch robili
-        # z panelu tabulku; ma to byt jeden pohlad.
+        # Name on the left, SHARE on the right - and nothing in between. Up
+        # to 2.1 there was also a coloured dot and a time ("0:00   65 %"). The
+        # dot repeated the colour of the strip, which is right above the rows
+        # and in the same order, and the time said the same as the share, just
+        # differently. Four rows of three values each turned the panel into a
+        # table; it should be one glance.
         for zone in ui_kit.ZoneBar.ORDER:
             row = ctk.CTkFrame(zone_obsah, fg_color="transparent")
             row.pack(fill="x", pady=2)
@@ -1303,10 +1394,11 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
             zone_obsah, text=tr("dnes.zones_hint"), font=ui_kit.ui(10),
             text_color=pal["text_faint"], anchor="w", justify="left", wraplength=280)
         self.dnes_zone_note.pack(fill="x", pady=(10, 0))
-        # Ktory z dvojice (pasma / veta) a ci su karty vidno, riesi
-        # `_sync_dnes_prazdny_stav` (z `_refresh_dnes_stats`).
+        # Which of the pair (zones / sentence) and whether the cards are
+        # visible is handled by `_sync_dnes_prazdny_stav` (from
+        # `_refresh_dnes_stats`).
 
-        # --- dennik ---
+        # --- journal ---
         log_panel = ui_kit.Panel(body, pal)
         log_panel.pack(fill="x", pady=(16, 0))
         log_head = ctk.CTkFrame(log_panel.body, fg_color="transparent")
@@ -1331,9 +1423,10 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         if not self.log_collapsed:
             self.log_body.pack(fill="x")
 
-        # "Preco to funguje" - jedna veta pod vsetkym, s odkazom do
-        # Sprievodcu. Zamerne nenapadne: kto to vie, necita to; kto si nie
-        # je isty, ci appka nie je len placebo, ma jeden klik k vede za nou.
+        # "Why it works" - one sentence below everything, with a link to the
+        # Guide. Deliberately inconspicuous: whoever knows it does not read it;
+        # whoever is not sure the app is not just a placebo is one click away
+        # from the science behind it.
         why = ctk.CTkFrame(body, fg_color="transparent")
         why.pack(fill="x", pady=(14, 0))
         ctk.CTkLabel(why, text=tr("dnes.why_line"), font=ui_kit.ui(11),
@@ -1347,10 +1440,11 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         self._refresh_dnes_stats()
 
     def _icon_image(self, name, size):
-        """Piktogram z `hud_paint` ako CTkImage do tlacidla.
+        """A pictogram from `hud_paint` as a CTkImage for a button.
 
-        Referencie sa drzia v zozname - CTkImage bez referencie zmaze
-        zberac odpadu a tlacidlo ostane bez ikony.
+        The references are kept in a list - a CTkImage without a reference
+        gets deleted by the garbage collector and the button is left
+        without an icon.
         """
         try:
             img = hud_paint.render_slot_icon(name, size, hud_paint.Style(self.pal))
@@ -1362,25 +1456,26 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         self._button_icons.append(photo)
         return photo
 
-    # ---------- stranky Nastaveni a V hre ----------
+    # ---------- Settings and In-game pages ----------
 
     def _build_spustace_page(self, page, pal):
-        """Spustace: profil, jeho zdielanie, a mapa spustacov.
+        """Cues: the profile, sharing it, and the trigger map.
 
-        Stranka sa uz nevola "Profily" - profil je mechanizmus, spustac je
-        to, co pouzivatel naozaj nastavuje. Profil ostava, len prestal byt
-        nazvom celej stranky.
+        The page is no longer called "Profiles" - the profile is the
+        mechanism, the trigger is what the user really sets. The profile
+        stays, it just stopped being the name of the whole page.
         """
-        # JEDEN SCROLL NA CELU STRANKU.
+        # ONE SCROLL FOR THE WHOLE PAGE.
         #
-        # Do 18. 9. scrolloval len zoznam slotov (vnoreny CTkScrollableFrame)
-        # a zvysok stranky stal. Malo to dve nevyhody: pod sloty sa nedalo
-        # nic dat (vysvetlivky, teoria), a `before=self.slots_container`
-        # padalo na TclError, lebo zlozeny widget nie je spravovany packom -
-        # tichá chyba, ktorá sa len zapísala do crash.log.
+        # Until 18. 9. only the slot list scrolled (a nested
+        # CTkScrollableFrame) and the rest of the page stood still. That had
+        # two drawbacks: nothing could be put below the slots (explanations,
+        # theory), and `before=self.slots_container` failed with a TclError,
+        # because a compound widget is not managed by pack - a silent error
+        # that was only written to crash.log.
         #
-        # Teraz scrolluje celok a `slots_container` je obycajny ramec, ktory
-        # `rebuild_slots` bez problemu vyprazdni.
+        # Now the whole thing scrolls and `slots_container` is a plain frame
+        # that `rebuild_slots` empties without any problem.
         wrap = ui_kit.stranka_scroll(page, pal)
         wrap.pack(fill="both", expand=True, padx=ui_kit.PAGE_GUTTER, pady=(20, 20))
         self.spustace_scroll = wrap
@@ -1393,13 +1488,13 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
 
         self._build_citlivost_card(wrap, pal)
 
-        # --- lista profilu ---
+        # --- profile bar ---
         bar = ctk.CTkFrame(wrap, fg_color=pal["surface"], corner_radius=ui_kit.RADIUS_CONTROL,
                            border_width=1, border_color=pal["line_soft"])
         bar.pack(fill="x", pady=(16, 14))
         inner = ctk.CTkFrame(bar, fg_color="transparent")
-        # padx 16 ako telo panela a karty pripomienok pod listou - pri 14
-        # zacinal obsah listy o 2 px (3 px pri 150 %) vlavo od nich.
+        # padx 16 like the panel body and the cue cards below the bar - at 14
+        # the bar's content started 2 px (3 px at 150 %) to the left of them.
         inner.pack(fill="x", padx=16, pady=11)
 
         self.profile_var = tk.StringVar(value=self.active_profile_name)
@@ -1408,10 +1503,10 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
             variable=self.profile_var, command=self.on_profile_switch)
         self.profile_switch.pack(side="left", padx=(0, 6))
 
-        # Vedlajsie akcie profilu ako vedlajsie tlacidla (ram >= 3:1), bez
-        # emoji z prekladu (`bez_ikony`). Zmazanie NIE JE hned vedla
-        # "+ Novy" - stoji ako destruktivna akcia na konci radu, aby sa
-        # nedalo trafit omylom pri zakladani profilu.
+        # Secondary profile actions as secondary buttons (border >= 3:1),
+        # without the emoji from the translation (`bez_ikony`). Delete is NOT
+        # right next to "+ New" - it stands as a destructive action at the end
+        # of the row, so it cannot be hit by mistake when creating a profile.
         for text, command in ((tr("profile.new"), self.new_profile_dialog),
                               (ui_kit.bez_ikony(tr("profile.export")), self.export_profile_code),
                               (ui_kit.bez_ikony(tr("profile.import")), self.import_profile_dialog)):
@@ -1423,9 +1518,10 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         self.auto_profile_var = tk.BooleanVar(value=self.auto_profile_enabled)
         auto_text = tr("settings.auto_profile") if PSUTIL_AVAILABLE \
             else tr("settings.auto_profile_unavailable")
-        # Vlastny riadok pod profilmi: veta pod prepinacom povie, ktore hry
-        # appka pozna, ze sama spusti aj zastavi pocuvanie a ze vypnuta
-        # procesy necita - vedla styroch tlacidiel profilu by sa nezmestila.
+        # Its own row below the profiles: the sentence under the switch says
+        # which games the app knows, that it starts and stops listening by
+        # itself, and that when off it does not read processes - it would not
+        # fit next to the four profile buttons.
         auto_row = ctk.CTkFrame(bar, fg_color="transparent")
         auto_row.pack(fill="x", padx=16, pady=(0, 11))
         auto_switch = ui_kit.switch(auto_row, pal, text=auto_text,
@@ -1442,24 +1538,27 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
                          wraplength=640, anchor="w", justify="left").pack(
                 fill="x", pady=(4, 0))
 
-        # --- mapa spustacov ---
-        # FAZA 3: legenda tlacidiel gamepadu (A=X, B=O, ...) tu bola preto,
-        # ze sa tlacidlom dala spustit hlaska. Uz sa neda - ovladac len
-        # hlasi, ze je hrac aktivny. Kluc `slots.gamepad_hint` v i18n
-        # ostava, kym sa stranka vo faze 5 neprekresli.
+        # --- trigger map ---
+        # PHASE 3: the gamepad button legend (A=X, B=O, ...) was here because a
+        # cue could be triggered with a button. It no longer can - the
+        # controller only reports that the player is active. The key
+        # `slots.gamepad_hint` in i18n stays until the page is redrawn in
+        # phase 5.
         #
-        # TLACIDLO "+ Pridat spustac" TU UZ NIE JE (0.2). Hlasky maju pevne
-        # styri kategorie (Tazisko, Celust, Uvolnenie, Dych) - kazda so svojim
-        # vizualom v hre. Piaty a dalsi slot nemal vizual ani kategoriu, takze
-        # `_dalsi_cue_slot` ho preskakoval a sam od seba nezaznel nikdy; log
-        # pritom hracovi slubil, ze "kedy sa ozve, rozhoduje appka sama".
-        # Stare nastavenia s viac nez styrmi slotmi sa nacitaju dalej (nic sa
-        # nemaze) - navyse sloty zaznia len cez tlacidlo Test.
+        # THE "+ Add trigger" BUTTON IS NO LONGER HERE (0.2). Cues have four
+        # fixed categories (Grounding, Jaw, Release, Breath) - each with its
+        # own in-game visual. A fifth or further slot had no visual or
+        # category, so `_dalsi_cue_slot` skipped it and it never sounded on its
+        # own; meanwhile the log promised the player that "the app decides by
+        # itself when it speaks up".
+        # Old settings with more than four slots still load (nothing is
+        # deleted) - the extra slots sound only via the Test button.
 
-        # --- lista hromadneho vyberu (skryta, kym nie je nic oznacene) ---
-        # Objavi sa az ked hrac zaskrtne aspon jeden slot - inak by nad
-        # zoznamom trvalo visel prazdny pruh. Odstranenie viacerych slotov
-        # naraz je jedna akcia s jednym potvrdenim, nie klikanie po jednom.
+        # --- bulk-selection bar (hidden until something is selected) ---
+        # It only appears when the player ticks at least one slot - otherwise
+        # an empty strip would hang permanently above the list. Removing
+        # several slots at once is one action with one confirmation, not
+        # clicking one by one.
         self.bulk_bar = ctk.CTkFrame(wrap, fg_color=pal["surface_alt"],
                                      corner_radius=ui_kit.RADIUS_CONTROL, border_width=1,
                                      border_color=pal["line_soft"], height=44)
@@ -1475,14 +1574,14 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         ui_kit.button(bulk_inner, pal, tr("slots.clear_selection"), kind="quiet",
                       height=28, font=ui_kit.ui(11),
                       command=self.clear_slot_selection).pack(side="right", padx=(0, 8))
-        # zabalene NEbude - pack az v _on_slot_selection_change
+        # NOT packed - pack only in _on_slot_selection_change
 
-        # Kotva, pred ktoru sa lista vklada. `before=` musi ukazovat na
-        # widget, ktory JE spravovany packom - a CTkScrollableFrame nim nie
-        # je: navonok je to zlozeny widget a packnuty je az jeho vnutorny
-        # ramec. `before=self.slots_container` preto vyhodilo TclError a
-        # lista sa nezobrazila nikdy (chyba sa len ticho zapisala do
-        # crash.log, appka bezala dalej).
+        # The anchor the bar is inserted before. `before=` must point to a
+        # widget that IS managed by pack - and CTkScrollableFrame is not:
+        # outwardly it is a compound widget and only its inner frame is packed.
+        # `before=self.slots_container` therefore raised a TclError and the bar
+        # never showed (the error was only silently written to crash.log, the
+        # app kept running).
         self._bulk_anchor = ctk.CTkFrame(wrap, fg_color="transparent", height=0)
         self._bulk_anchor.pack(fill="x")
 
@@ -1493,66 +1592,69 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
             self.profiles[0])
         self.rebuild_slots(active_profile["slots"])
 
-        # VYSVETLIVKY A TEORIA PATRIA SEM, nie o dve karty dalej.
-        # Clovek ich hlada prave vtedy, ked cita, co ktora hlaska hovori -
-        # "preco zrovna celust" sa pyta pri celusti.
-        # Odstup, nie linka (0.2.2, audit UX, davka 4): linka 1 px lezala
-        # tesne nad ramom karty Sprievodcu - dve ciary nad sebou.
+        # THE EXPLANATIONS AND THEORY BELONG HERE, not two tabs further on.
+        # People look for them exactly when they are reading what each cue
+        # says - "why the jaw of all things" is asked at the jaw.
+        # A gap, not a line (0.3, UX audit, batch 4): a 1 px line lay right
+        # above the border of the Guide card - two lines on top of each other.
         ctk.CTkFrame(wrap, fg_color="transparent", height=16).pack(fill="x")
         self._build_guide_into(wrap, pal)
 
     def _build_zvuk_page(self, page, pal):
-        """Zvuk: hlas (kto hovori, akym hlasom, ako rychlo), hlasitost
-        (+ pomer zvuk/hlas) a casovanie (pauza, prekryvanie).
+        """Sound: the voice (who speaks, with what voice, how fast), volume
+        (+ the sound/voice mix) and timing (pause, overlap).
 
-        Toto bola jedina stranka nastaveni, ktora redizajn prezila
-        nezmenena: hola mriezka `CTkLabel` + slider, bez jedineho
-        vysvetlenia a bez rozdelenia do skupin. Pritom prave tu su volby,
-        ktorym nazov nestaci - "Pomer zvuk ↔ hlas" ani "Hlášky sa môžu
-        prekrývať" sa z dvoch slov pochopit nedaju. Teraz je z nej
-        `ui_kit.SettingRow` ako zo zvysku appky (nazov, veta pod nim,
-        ovladac vpravo) v troch panelocch, a na konci tlacidlo, ktore to
-        da naozaj pocut - hlas sa podla nazvu vybrat neda.
+        This was the only settings page that survived the redesign
+        unchanged: a bare grid of `CTkLabel` + slider, without a single
+        explanation and without grouping. Yet exactly here are the options
+        for which a name is not enough - neither "Sound ↔ voice mix" nor
+        "Cues may overlap" can be understood from two words. Now it is
+        made of `ui_kit.SettingRow` like the rest of the app (name, a
+        sentence below it, the control on the right) in three panels, and
+        at the end a button that lets you really hear it - a voice cannot
+        be chosen by its name.
         """
         wrap = ui_kit.stranka_scroll(page, pal)
         wrap.pack(fill="both", expand=True, padx=ui_kit.PAGE_GUTTER, pady=(20, 20))
         self.zvuk_scroll = wrap
 
-        # Vysvetlenia maju na tejto stranke vela miesta (ovladace su uzke),
-        # takze sirsi zlom nez predvolenych 430 - inak by kazda veta bola
-        # na tri riadky a stranka dvojnasobne dlha.
+        # The explanations have a lot of room on this page (the controls are
+        # narrow), so a wider wrap than the default 430 - otherwise every
+        # sentence would take three lines and the page would be twice as long.
         WRAP = 560
 
-        # Blok posuvnika (posuvnik + popisok hodnoty) ma presne
-        # `ui_kit.CONTROL_W` ako rozbalovacky nad nim a popisok je zarovnany
-        # doprava - vsetky ovladace stranky tak koncia na jednej pravej hrane
-        # (audit: rozbalovacky koncili o ~110 px dalej nez posuvniky).
+        # The slider block (slider + value label) is exactly `ui_kit.CONTROL_W`
+        # wide, like the dropdowns above it, and the label is right-aligned -
+        # so all the page's controls end on one right edge (audit: the
+        # dropdowns ended ~110 px further than the sliders).
         HODNOTA_W = 96
         SLIDER_W = ui_kit.CONTROL_W - HODNOTA_W - 10
 
         def _slider(parent, **kw):
-            """Slider + popisok hodnoty vpravo od neho. Koliesko je zamerne
-            zablokovane: stranka sa posuva a bez toho by rolovanie menilo
-            hodnotu, nad ktorou prave stoji kurzor."""
+            """Slider + a value label to its right. The mouse wheel is
+            deliberately blocked: the page scrolls, and without this
+            scrolling would change the value the cursor is resting on."""
             box = ctk.CTkFrame(parent, fg_color="transparent")
-            # jeden styl posuvnika v celej appke (`ui_kit.slider`)
+            # one slider style across the whole app (`ui_kit.slider`)
             slider = ui_kit.slider(box, pal, width=SLIDER_W, **kw)
             slider.pack(side="left")
             return box
 
         def _hodnota(box, text):
-            """Popisok hodnoty. Je v nom aj slovo ("vyvazene", "pomaly"),
-            lebo holé "5.0 s" nepovie, ci je to vela alebo malo. Dlhsi
-            preklad popisok roztiahne dolava, prava hrana ostane."""
+            """The value label. It also has a word in it ("balanced", "slow"),
+            because a bare "5.0 s" does not say whether that is a lot or
+            a little. A longer translation stretches the label to the
+            left, the right edge stays."""
             label = ctk.CTkLabel(box, text=text, text_color=pal["text_dim"],
                                  width=HODNOTA_W, font=ui_kit.ui(11), anchor="e")
             label.pack(side="left", padx=(10, 0))
             return label
 
-        # --- hlas ---
-        # POZN: nad nim bol vlastny panel bez nadpisu len pre riadok "Ako sa
-        # ozyvam". Je to teraz prvy riadok panela Hlasitost (0.2.2, audit UX,
-        # davka 4: karta pre jednu vetu = ram bez obsahu).
+        # --- voice ---
+        # NOTE: above it there used to be a separate untitled panel just for
+        # the "How I speak up" row. It is now the first row of the Loudness
+        # panel (0.3, UX audit, batch 4: a card for one sentence = a frame
+        # without content).
         voice_panel = ui_kit.Panel(wrap, pal, title=tr("settings.audio_voice_title"))
         voice_panel.pack(fill="x")
 
@@ -1565,30 +1667,31 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
             variable=self.engine_var,
             command=lambda _v: self.on_engine_change())
         self.engine_box.pack()
-        # Stav pripravy Edge hlasok - patri pod prepinac motora, nie vedla
-        # neho: je to hlaska o priebehu, nie dalsie nastavenie. Od 0.2.2
-        # davky 4b je VNUTRI riadku "Zdroj hlasu" (pod jeho vysvetlenim,
-        # `SettingRow.text_col`): pod panelom lezal az za deliacou linkou,
-        # takze vyzeral ako zaciatok riadku "Hlas". Pakuje sa, len ked ma co
-        # povedat (`set_edge_status`) - prazdny stitok by bol riadok medzery.
+        # Status of the Edge cue preparation - it belongs below the engine
+        # switch, not next to it: it is a progress message, not another
+        # setting. Since 0.3 batch 4b it is INSIDE the "Voice source" row
+        # (below its explanation, `SettingRow.text_col`): below the panel it
+        # lay only after the dividing line, so it looked like the start of the
+        # "Voice" row. It is packed only when it has something to say
+        # (`set_edge_status`) - an empty label would be a row of blank space.
         self.edge_status_label = ctk.CTkLabel(
             row.text_col, text="", font=ui_kit.ui(10), text_color=pal["text_dim"],
             anchor="w", justify="left", wraplength=WRAP)
-        # "Skusit znova" (0.2.2): ukaze sa len pod zlyhanou pripravou hlasu
-        # (`_edge_priprava_zlyhala`, app_audio.py); pocas sledovania ju
-        # `pregenerate` aj tak odlozi na po hre.
+        # "Try again" (0.3): shown only below a failed voice preparation
+        # (`_edge_priprava_zlyhala`, app_audio.py); while watching,
+        # `pregenerate` postpones it until after the game anyway.
         self.edge_retry_btn = ui_kit.button(
             row.text_col, pal, tr("common.retry"), command=self.skus_hlas_znova,
             height=28)
-        # "Aktualizovat hlas" (0.2.2, rozhodnutie autora 15. 11. 2026): ked
-        # Microsoft zmeni nieco, co opravi az novsi edge-tts, hrac si ho
-        # stiahne sam - len na klik, nikdy samo a nikdy pocas sledovania
-        # (`aktualizuj_hlas`, app_audio.py; PRIVACY.md). Tiche tlacidlo:
-        # pomocna akcia, nie nastavenie. Riadok je pod stavom a "Skusit
-        # znova" a vidno ho len pri prirodzenom hlase
-        # (`_obnov_aktualizaciu_hlasu`). Odkaz na oficialne vydania vedla
-        # neho sa ukaze, len ked hlas opravi az novy Zanshin; chip, lebo je
-        # to externy odkaz (otvori prehliadac).
+        # "Update voice" (0.3, the author's decision 15. 11. 2026): when
+        # Microsoft changes something that only a newer edge-tts fixes, the
+        # player downloads it themselves - only on a click, never by itself and
+        # never while watching (`aktualizuj_hlas`, app_audio.py; PRIVACY.md). A
+        # quiet button: a helper action, not a setting. The row is below the
+        # status and "Try again" and is only visible with the natural voice
+        # (`_obnov_aktualizaciu_hlasu`). The link to the official releases next
+        # to it shows only when only a new Zanshin fixes the voice; a chip,
+        # because it is an external link (opens the browser).
         rad = ctk.CTkFrame(row.text_col, fg_color="transparent")
         self.edge_update_row = rad
         self.edge_update_btn = ui_kit.button(
@@ -1600,8 +1703,8 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         self.edge_releases_btn = odkaz
         self._obnov_aktualizaciu_hlasu()
         if self._aktualizacia_hlasu_bezi:
-            # prestavba okna (jazyk, tema) uprostred aktualizacie: stav
-            # sa vrati, vysledok ho potom prepise
+            # window rebuild (language, theme) in the middle of an update: the
+            # status comes back, the result then overwrites it
             self.set_edge_status(tr("edge.update.running"), pal["warn"])
 
         row = ui_kit.SettingRow(voice_panel.body, pal, tr("settings.voice"),
@@ -1620,15 +1723,16 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         self.rate_value_label = _hodnota(box, self._rate_label_text())
         box.pack()
 
-        # --- hlasitost ---
+        # --- volume ---
         loud_panel = ui_kit.Panel(wrap, pal, title=tr("settings.audio_volume_title"))
         loud_panel.pack(fill="x", pady=(14, 0))
 
-        # --- ako sa ozyvam (styl hlasky, 0.2) ---
-        # Ta ista otazka ako v 5. kroku onboardingu, s tymi istymi vetami.
-        # Je to strop hlasitosti (hlas > zvuk > obrazok), preto prvy riadok
-        # panela Hlasitost - rozhoduje, ci z riadkov pod nim v hre vobec
-        # nieco zaznie. "Neviem" tu nie je - v onboardingu znamena hlas.
+        # --- how I speak up (cue style, 0.2) ---
+        # The same question as in step 5 of onboarding, with the same
+        # sentences. It is the volume ceiling (voice > sound > picture), hence
+        # the first row of the Loudness panel - it decides whether anything
+        # from the rows below it sounds in-game at all. "Not sure" is not
+        # here - in onboarding it means voice.
         row = ui_kit.SettingRow(loud_panel.body, pal, tr("settings.cue_style"),
                                 tr("settings.cue_style_sub"), wrap=WRAP)
         self.cue_style_var = tk.StringVar(
@@ -1654,44 +1758,45 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         self.balance_value_label = _hodnota(box, self._balance_label_text())
         box.pack()
 
-        # Veta pod ukazkou ide za stylom hlasky - prepisuje ju aj volba
-        # "Ako sa ozyvam" vyssie (`_nastav_styl_hlasky`).
+        # The sentence below the preview follows the cue style - the "How I
+        # speak up" option above rewrites it too (`_nastav_styl_hlasky`).
         row = ui_kit.SettingRow(loud_panel.body, pal, tr("settings.preview"),
                                 self._preview_sub_text(), wrap=WRAP)
         self.preview_sub_label = row.sub_label
         ui_kit.button(row.control, pal, tr("settings.preview_btn"),
                       command=self.preview_sound).pack(anchor="e")
 
-        # POZN: tu bol panel "Casovanie" s posuvnikom "Pauza medzi
-        # pripomienkami" (0,2-30 s) a prepinacom "Hlasky sa mozu prekryvat".
+        # NOTE: here used to be the "Timing" panel with a "Pause between cues"
+        # slider (0.2-30 s) and a "Cues may overlap" switch.
         #
-        # Boli to najvacsie ovladace v sekcii a slubovali presne to, co hrac
-        # hlada - "kratka pauza pripomina casto, dlha ta necha hrat". Na
-        # automaticku hlasku pritom nemali ziadny vplyv: odstup medzi
-        # hlaskami riesi `trigger.params["min_gap_s"]`, ktory ma tvrdu
-        # podlahu 210 s, cize sedemnasobok maxima toho posuvnika. Hrac si
-        # myslel, ze appku vyladil, a nezmenil nic - a este si aj protirecil
-        # s volbou "Ako casto sa ozvem", ktora to robi naozaj.
+        # They were the biggest controls in the section and promised exactly
+        # what the player is looking for - "a short pause reminds often, a long
+        # one lets you play". Yet they had no effect at all on the automatic
+        # cue: the gap between cues is handled by
+        # `trigger.params["min_gap_s"]`, which has a hard floor of 210 s, i.e.
+        # seven times the maximum of that slider. The player thought they had
+        # tuned the app and changed nothing - and on top of that it
+        # contradicted the "How often I speak up" option, which really does it.
         #
-        # Obe hodnoty ostavaju ako konstanty pre RUCNE spustenie (tlacidlo
-        # Test, klik v HUD nahlade), kde davaju zmysel a nikto ich nemusi
-        # nastavovat.
+        # Both values stay as constants for a MANUAL trigger (the Test button,
+        # a click in the HUD preview), where they make sense and nobody has to
+        # set them.
 
-        # --- vratit odporucane ---
-        # Posuvniky sa daju zakrutit do stavu, z ktoreho sa clovek sam
-        # nedostane (hlasitost 3 %, pauza 30 s) a nevie, co bolo povodne.
-        # Jedno tlacidlo, ziadne "naozaj?" - vsetkych pat hodnot je vidno
-        # hned nad nim a spat sa daju posunut rukou.
-        # Posledny riadok panela Hlasitost, nie vlastna karta pre jednu vetu
-        # (audit: karta pre jednu vetu = ram bez obsahu).
+        # --- restore recommended ---
+        # The sliders can be twisted into a state you cannot get out of on your
+        # own (volume 3 %, pause 30 s), without knowing what it was originally.
+        # One button, no "really?" - all five values are visible right above it
+        # and can be moved back by hand.
+        # The last row of the Loudness panel, not a card of its own for one
+        # sentence (audit: a card for one sentence = a frame without content).
         row = ui_kit.SettingRow(loud_panel.body, pal, tr("settings.audio_reset"),
                                 tr("settings.audio_reset_sub"), wrap=WRAP)
         ui_kit.button(row.control, pal, tr("settings.audio_reset_btn"), kind="quiet",
                       command=self.reset_audio_settings).pack(anchor="e")
 
     def _rate_label_text(self):
-        """Rychlost reci ako "+3 · rýchlo". Holé číslo -10..10 nepovie ani
-        smer, ani co znamena - znamienko a slovo áno."""
+        """Speech speed as "+3 · fast". A bare number -10..10 says neither
+        the direction nor what it means - a sign and a word do."""
         value = self.rate_value
         if value <= -3:
             slovo = tr("settings.speed_slow")
@@ -1703,11 +1808,12 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
 
 
     def reset_audio_settings(self):
-        """Vrati hlasitost, pomer, rychlost, pauzu a prekryvanie na
-        odporucane hodnoty (`settings_model.DEFAULT_AUDIO`).
+        """Restores volume, mix, speed, pause and overlap to the
+        recommended values (`settings_model.DEFAULT_AUDIO`).
 
-        Hlas ani motor sa nemenia - to nie je pokazene nastavenie, ale
-        volba, a prepisat ju pod rukou by bolo prekvapenie, nie pomoc.
+        Neither the voice nor the engine changes - that is not a broken
+        setting but a choice, and overwriting it behind the player's back
+        would be a surprise, not help.
         """
         self.volume_var.set(DEFAULT_AUDIO["volume"])
         self.on_volume_change()
@@ -1717,32 +1823,32 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         self.on_rate_change()
         self.log(tr("log.audio_reset"))
 
-    # Veta pod "Ako to znie" podla stylu hlasky (rozhodnutie 24. 9.).
+    # The sentence below "How it sounds" by cue style (decision of 24. 9.).
     PREVIEW_SUB = {rebrik.STYL_HLAS: "settings.preview_sub",
                    rebrik.STYL_ZVUK: "settings.preview_sub_sound",
                    rebrik.STYL_OBRAZ: "settings.preview_sub_visual"}
 
     def _preview_sub_text(self):
-        """Co ukazka naozaj urobi - podla stylu, ktory si hrac vybral."""
+        """What the preview will really do - by the style the player chose."""
         styl = rebrik.normalize_cue_style(getattr(self, "cue_style", None))
         return tr(self.PREVIEW_SUB[styl])
 
     def preview_sound(self):
-        """Prehra prvu zapnutu pripomienku tak, ako sa v hre ozve vo
-        zvolenom STYLE hlasky (`cue_style`, rozhodnutie 24. 9.):
+        """Plays the first enabled cue the way it sounds in-game in the
+        chosen cue STYLE (`cue_style`, decision of 24. 9.):
 
-          * hlas   - `_emit` so zvukom aj slovami, bez vizualu (ako doteraz);
-          * zvuk   - zvuk slotu a jeho obrazok, ziadne slova (`bez_slov`);
-          * obraz  - nic nezaznie, len obrazok.
-        Predtym zaznel hlas vzdy - aj hracovi, ktory si vybral "len obrazok,
-        nic nehovor", a veta pod tlacidlom mu slubovala, ze presne tak to
-        znie v hre.
+          * voice   - `_emit` with sound and words, no visual (as before);
+          * sound   - the slot's sound and its picture, no words (`bez_slov`);
+          * picture - nothing sounds, only the picture.
+        Previously the voice always sounded - even for a player who chose
+        "only a picture, say nothing", and the sentence below the button
+        promised them that this is exactly how it sounds in-game.
 
-        Hlas sa podla nazvu vybrat neda: "Prirodzený hlas (Edge)" a "Hlas
-        z Windows" su dve vety, ktore o vysledku nepovedia nic, a to iste
-        plati pre hlasitost aj pomer zvuk/hlas. Pusta sa `_emit` s
-        realnym slotom (nie `fire_slot`), takze sa ukazka NEpocita do
-        relacie.
+        A voice cannot be chosen by its name: "Natural voice (Edge)" and
+        "Windows voice" are two phrases that say nothing about the result,
+        and the same goes for the volume and the sound/voice mix. `_emit`
+        is run with a real slot (not `fire_slot`), so the preview is NOT
+        counted in the session.
         """
         styl = rebrik.normalize_cue_style(getattr(self, "cue_style", None))
         if styl == rebrik.STYL_HLAS:
@@ -1753,17 +1859,19 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
                 return
             threading.Thread(target=self._emit, args=(slot,), daemon=True).start()
             return
-        # Zvuk aj obraz: obrazok je v tychto styloch cela hlaska (alebo jej
-        # polovica), tak ho ukazka ukaze. Bezi to na Tk vlakne (klik).
-        # Slot sa berie ako v hre (`_dalsi_cue_slot`): zapnuty A so zapnutym
-        # obrazkom v hre. Prvy zapnuty slot bez obrazka by po kliku neukazal
-        # nic a v "len obrazok" ani nic neprehral - tlacidlo by mlcalo a veta
-        # pod nim by slubovala obrazok.
+        # Sound and picture: in these styles the picture is the whole cue (or
+        # half of it), so the preview shows it. This runs on the Tk thread (a
+        # click). The slot is taken as in-game (`_dalsi_cue_slot`): enabled AND
+        # with the in-game picture enabled. The first enabled slot without a
+        # picture would show nothing after the click and in "only a picture"
+        # would not play anything either - the button would stay silent and the
+        # sentence below it would promise a picture.
         slot = next((s for s in self.slots
                      if s.enabled_value and self._ma_obrazok_v_hre(s)), None)
         if slot is None:
-            # V hre by sa v tomto style neozvala vobec (`_dalsi_cue_slot`
-            # vrati None) - povie sa to narovinu, nie tichym klikom.
+            # In-game it would not speak up at all in this style
+            # (`_dalsi_cue_slot` returns None) - this is said plainly, not with
+            # a silent click.
             self.log(tr("log.preview_no_picture"))
             return
         try:
@@ -1775,34 +1883,36 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
                              kwargs={"bez_slov": True}, daemon=True).start()
 
     def _ma_obrazok_v_hre(self, slot):
-        """Ma slot zapnuty obrazok v hre? Ta ista podmienka ako v
-        `_dalsi_cue_slot` - bez nej sa hlaska v hre vobec nedoruci."""
+        """Does the slot have the in-game picture enabled? The same condition
+        as in `_dalsi_cue_slot` - without it the cue is not delivered
+        in-game at all."""
         try:
             return bool(self.overlay_configs[int(slot.index)]["enabled"])
         except (AttributeError, IndexError, KeyError, TypeError, ValueError):
             return False
 
     def _build_vhre_page(self, page, pal):
-        """Hodinky: sparovat a vidiet, co z toho appka kresli do hry.
+        """Watch: pair it and see what the app draws from it into the game.
 
-        Do 18. 9. tu bolo VSETKO, co appka pocas hrania robi - ikonky
-        funkcii, vyber obrazovky, jazyk v hre, panel s tepom aj vysvetlenie
-        anti-cheatu. Bolo to sest sekcii pod sebou a karta, kvoli ktorej sem
-        clovek chodi - sparovanie hodiniek - sa v nich stratila.
+        Until 18. 9. EVERYTHING the app does during play was here - feature
+        icons, screen choice, the in-game language, the heart-rate panel
+        and the anti-cheat explanation. It was six sections one below the
+        other, and the card people come here for - pairing the watch - got
+        lost among them.
 
-        Ostali dve veci, a obe su o tom istom: senzor a to, co z neho vidno
-        na obrazovke. Zvysok si sadol do Vseobecnych nastaveni zabaleny
-        (`_build_ingame_sections_into`) - su to veci, ktore clovek nastavi
-        raz a uz sa k nim nevracia.
+        Two things remained, and both are about the same thing: the sensor
+        and what of it is visible on screen. The rest moved, collapsed,
+        into the General settings (`_build_ingame_sections_into`) - these
+        are things you set once and never come back to.
         """
         scroll = ui_kit.stranka_scroll(page, pal)
         scroll.pack(fill="both", expand=True, padx=ui_kit.PAGE_GUTTER, pady=(20, 20))
         self.vhre_scroll = scroll
 
-        # Sparovanie je prve: bez hodiniek nema widget co kreslit.
+        # Pairing comes first: without a watch the widget has nothing to draw.
         self._build_heart_rate_card(scroll, pal, pady=(0, 0))
 
-        # --- vizualy slotov ---
+        # --- slot visuals ---
         vis_panel = ui_kit.Panel(scroll, pal, title=tr("overlay.dialog_title"))
         vis_panel.pack(fill="x", pady=(14, 0))
         ctk.CTkLabel(vis_panel.body, text=tr("overlay.drag_hint"), font=ui_kit.ui(10),
@@ -1813,11 +1923,11 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         vizualy = ("grounding", "jaw", "release", "breath")
         for index in range(4):
             cfg = self.overlay_configs[index]
-            # Ikona je TEN ISTY obrazok, ktory hrac uvidi v hre
-            # (`ui_kit.SlotIcon` -> `hud_paint.render_slot_icon`), nie emoji z
-            # prekladu - 🥾 💀 🖱️ sa v hre nikdy neukazu a lebka bola
-            # najhlasnejsi symbol tichej appky. Stlpec ma pevnu sirku, takze
-            # nazvy zacinaju na jednej zvislici.
+            # The icon is THE SAME picture the player will see in-game
+            # (`ui_kit.SlotIcon` -> `hud_paint.render_slot_icon`), not the
+            # emoji from the translation - 🥾 💀 🖱️ never show in-game, and the
+            # skull was the loudest symbol of a quiet app. The column has a
+            # fixed width, so the names start on one vertical line.
             title = ui_kit.bez_ikony(tr(f"overlay.slot.{index}"))
             row = ui_kit.SettingRow(vis_panel.body, pal, title,
                                     icon_slot=vizualy[index])
@@ -1829,7 +1939,7 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
                 command=lambda i=index: self.toggle_overlay_test(i))
             test_btn.pack(side="left", padx=(0, 6))
             self.vhre_test_buttons[index] = test_btn
-            # farba piktogramu tohto vizualu (color picker)
+            # the colour of this visual's pictogram (color picker)
             swatch = ctk.CTkButton(
                 row.control, text="", width=26, height=26, corner_radius=ui_kit.RADIUS_CONTROL,
                 fg_color=self._overlay_color(index), border_width=1,
@@ -1844,28 +1954,30 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
                               i, enabled=v.get())).pack(side="left")
             self.vhre_vis_switches.append(var)
 
-        # Prirodzena sirka, nie cez celu kartu: tlacidlo na ~1500 px kricalo
-        # hlasnejsie nez zoznam vizualov, ktory doladuje.
+        # Natural width, not across the whole card: a button ~1500 px wide
+        # shouted louder than the list of visuals it fine-tunes.
         ui_kit.button(vis_panel.body, pal, tr("overlay.fine_tune"),
                       command=self.open_overlay_settings).pack(anchor="w", pady=(12, 0))
 
     def _build_ingame_sections_into(self, parent, pal):
-        """Styri sekcie stiahnute zo stranky hodiniek do Vseobecnych.
+        """Four sections moved from the watch page to General.
 
-        Su ZABALENE zamerne. Ikonky v hre, obrazovka, jazyk v hre a panel s
-        tepom sa nastavia raz pri prvom spusteni; anti-cheat sa precita raz.
-        Rozbalene by z Vseobecnych spravili najdlhsiu stranku appky, po
-        ktorej sa scrolluje za temou a jazykom.
+        They are COLLAPSED on purpose. The in-game icons, the screen, the
+        in-game language and the heart-rate panel are set once at first
+        start; the anti-cheat text is read once. Expanded, they would make
+        General the longest page in the app, one you scroll through to get
+        to the theme and language.
         """
         # --- monitor ---
         mon_panel = ui_kit.Collapsible(parent, pal,
                                        title=tr("overlay.monitor.label"))
         mon_panel.pack(fill="x", pady=(10, 0))
-        # --- jazyk toho, co vidno V HRE ---
-        # Samostatny od jazyka okna zamerne: HUD vlavo dole a popisky pod
-        # vizualmi koncia na streame a na screenshotoch v obchode, kde ich
-        # citaju aj ludia, co jazyk rozhrania nevedia. Preto anglictina
-        # predvolene, aj ked appka bezi po slovensky.
+        # --- language of what is visible IN THE GAME ---
+        # Separate from the window language on purpose: the HUD at the bottom
+        # left and the labels below the visuals end up on stream and in store
+        # screenshots, where they are also read by people who do not know the
+        # UI language. Hence English by default, even when the app runs in
+        # Slovak.
         row = ui_kit.SettingRow(mon_panel.body, pal, tr("settings.game_lang"),
                                 tr("settings.game_lang_sub"), wrap=520)
         self.game_lang_var = tk.StringVar(value=self._game_lang_label(self.game_lang))
@@ -1891,7 +2003,7 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         hud_panel = ui_kit.Collapsible(parent, pal,
                                        title=tr("hud.section_title"))
         hud_panel.pack(fill="x", pady=(10, 0))
-        # ⚙ pri "Tep v hre" na Dnes sem skoci a sekciu rozbali
+        # ⚙ by "Heart rate in game" on Today jumps here and expands the section
         # (`show_hud_settings`).
         self.hud_section = hud_panel
         row = ui_kit.SettingRow(hud_panel.body, pal, tr("hud.enable"), tr("hud.hint"))
@@ -1902,16 +2014,18 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
                       command=lambda: self.on_hud_config_change(
                           enabled=self.hud_enabled_var.get())).pack(side="left")
 
-        # --- IKONKY FUNKCII: podriadena volba, nie samostatna sekcia ---
+        # --- FEATURE ICONS: a subordinate option, not a separate section ---
         #
-        # Do 19. 9. mali vlastny zabaleny panel, a to NAD panelom s tepom.
-        # Lenze `hud.StatsHud` ich kresli dovnutra panela s tepom: kym je
-        # panel vypnuty, prepinac ikoniek nespravi vobec nic. Hrac zapol
-        # vrchny prepinac, nic sa nestalo a nemal ziadnu indiciu, ze mu
-        # chyba druhy o dva panely nizsie. Vyzeralo to ako pokazeny prepinac.
+        # Until 19. 9. they had their own collapsed panel, and ABOVE the
+        # heart-rate panel at that. But `hud.StatsHud` draws them inside the
+        # heart-rate panel: while the panel is off, the icons switch does
+        # nothing at all. The player turned on the top switch, nothing
+        # happened, and they had no hint that they were missing a second one
+        # two panels lower. It looked like a broken switch.
         #
-        # Teraz sedia pod svojim rodicom a kym je panel vypnuty, su
-        # zosedivene - vtedy je hned vidno, co treba zapnut najprv.
+        # Now they sit below their parent and while the panel is off they are
+        # greyed out - then it is immediately clear what has to be turned on
+        # first.
         ui_kit.linka(hud_panel.body, pal).pack(fill="x", pady=(12, 0))
         ctk.CTkLabel(hud_panel.body, text=tr("hud.trigger_row.sub"),
                      font=ui_kit.ui(10), text_color=pal["text_faint"],
@@ -1952,9 +2066,10 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
 
         # --- anti-cheat ---
         #
-        # Je to CISTY TEXT, ziadne nastavenie: co appka voci hre robi a co
-        # nerobi. Clovek si to precita raz, ked sa rozhoduje, ci si ju vobec
-        # pusti - preto zabalene, aby to nezabralo pol stranky navzdy.
+        # It is PURE TEXT, no setting: what the app does and does not do
+        # towards the game. You read it once, when deciding whether to run it
+        # at all - hence collapsed, so it does not take up half the page
+        # forever.
         safety = ui_kit.Collapsible(parent, pal, title=tr("safety.title"))
         safety.pack(fill="x", pady=(10, 0))
         ctk.CTkLabel(safety.body, text=tr("safety.body"), font=ui_kit.ui(11),
@@ -1972,25 +2087,29 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
             pass
         self.on_hud_config_change(**{key: value})
 
-    # POZN: `_on_dojo_slider` a `_update_dojo_readout` tu boli - obsluha
-    # posuvnika "Pozadie dojo" a jeho ziva spatna vazba (pasma vypnute/
-    # jemne/stredne/vyrazne/plne). Zmizli spolu s fotopasom nad titulkovou
-    # listou, ktory jediny ovladali (viz POZN v `_build_ui`).
+    # NOTE: `_on_dojo_slider` and `_update_dojo_readout` used to be here - the
+    # handler of the "Dojo background" slider and its live feedback (bands
+    # off/subtle/medium/strong/full). They disappeared along with the photo
+    # strip above the title bar, which was the only thing they controlled
+    # (see the NOTE in `_build_ui`).
 
     def _build_citlivost_card(self, parent, pal):
-        """Co si appka o mne spocitala. Uz ziadny prepinac.
+        """What the app has computed about me. No switch any more.
 
-        PRECO PREPINAC ZMIZOL: mal tri polohy (menej / bezne / viac) a hrac
-        nemal ako vediet, co ktora urobi PRAVE JEMU. Zataz je skalovana voci
-        jeho vlastnej zakladne, takze to iste cislo znamena u kazdeho nieco
-        ine - a odmerane na realnych datach vyslo, ze rozdiel medzi polohami
-        je mensi nez rozdiel medzi dvoma vecermi.
+        WHY THE SWITCH DISAPPEARED: it had three positions (less / normal /
+        more) and the player had no way of knowing what each would do FOR
+        THEM. Load is scaled against their own baseline, so the same number
+        means something different for everyone - and measured on real data
+        it turned out that the difference between the positions is smaller
+        than the difference between two evenings.
 
-        Prah si appka rata z vlastnych relacii (80. percentil zataze), tak
-        ako uz ratala zakladnu a hranicu vysokeho tepu. Tu sa to len UKAZE.
+        The app computes the threshold from its own sessions (the 80th
+        percentile of load), just as it already computed the baseline and
+        the high-heart-rate limit. Here it is only SHOWN.
         """
-        # BEZ KARTY (0.2.2, audit UX): ram okolo jedinej vety bol karta pre
-        # nic - nadpis a veta stoja priamo na stranke, ako uvod nad nimi.
+        # NO CARD (0.3, UX audit): a frame around a single sentence was a card
+        # for nothing - the heading and the sentence stand directly on the
+        # page, as an introduction above them.
         panel = ctk.CTkFrame(parent, fg_color="transparent")
         panel.pack(fill="x", pady=(18, 0))
         ctk.CTkLabel(panel, text=tr("cue_rate.title"), font=ui_kit.ui(13, "bold"),
@@ -2003,8 +2122,9 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         return panel
 
     def _citlivost_detail_text(self):
-        """Veta sa cita Z PARAMETROV, nie z prekladu - inak by sa po prvej
-        zmene rozisla s tym, co appka naozaj robi."""
+        """The sentence is read FROM THE PARAMETERS, not from the translation -
+        otherwise after the first change it would drift apart from what
+        the app really does."""
         p = self.cue_trigger.params
         if getattr(self, "_prah_z_dat", None) is None:
             return tr("cue_rate.learning",
@@ -2027,25 +2147,26 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
             pass
 
     def _build_guide_into(self, parent, pal):
-        """Vysvetlivky a teoria, vlozene pod obsah hlasok.
+        """Explanations and theory, inserted below the cue content.
 
-        Referencia `self.guide_content` ostava, lebo `gui_screenshots.py`
-        cez nu karty rozbaluje (inak sa rozbalit nedaju nez klikom).
+        The `self.guide_content` reference stays, because
+        `gui_screenshots.py` expands the cards through it (otherwise they
+        can only be expanded by a click).
         """
         self.guide_content = build_guide_into(parent, pal)
 
     def _navigate(self, key):
         key = self.TAB_ALIAS.get(key, key)
-        """Prepne stranku. Karty Nastaveni (SETTINGS_TABS) su vnorene: ukaze
-        skupinu Nastavenia a v nej danu kartu; "nastavenia" samo otvori
-        naposledy pouzitu kartu (prvykrat Spustace).
+        """Switches the page. The Settings tabs (SETTINGS_TABS) are nested:
+        shows the Settings group and the given tab inside it; "nastavenia"
+        on its own opens the last used tab (the first time, Cues).
 
-        POZN: na zaciatku tu bolo `dojo_band.suspend_briefly()`, ktore na
-        180 ms zastavilo prekreslovanie lampionov vo fotopase - rychle
-        preklikavanie v sidebari inak spadalo do stredu toho prekreslenia
-        a vyzeralo to, ze "sa prenastavuje cela appka". Fotopas bol
-        odstraneny (viz POZN v `_build_ui`), takze s nim zmizol aj zdroj
-        toho mihnutia - nie je uz co pozastavovat.
+        NOTE: this used to start with `dojo_band.suspend_briefly()`, which
+        paused redrawing the lanterns in the photo strip for 180 ms - fast
+        clicking through the sidebar otherwise landed in the middle of that
+        redraw and it looked like "the whole app was reconfiguring". The
+        photo strip was removed (see the NOTE in `_build_ui`), so the source
+        of that flicker went with it - there is nothing left to pause.
         """
         if key in self.SETTINGS_TABS:
             self.pages.show("nastavenia")
@@ -2059,24 +2180,26 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
             self.settings_nav.set_active(tab)
         else:
             self.pages.show(key)
-        # Bocny panel musi svietit tam, kde naozaj si - aj ked stranku
-        # prepol kod (ⓘ O appke, ⚙ pri Tep v hre, Ctrl+K, prehliadka), nie
-        # klik v paneli. Inak bol obsah Nastavenia a panel ukazoval "Dnes".
+        # The side panel must light up where you really are - even when the
+        # page was switched by code (ⓘ About, ⚙ by Heart rate in game, Ctrl+K,
+        # the tour), not by a click in the panel. Otherwise the content was
+        # Settings and the panel showed "Today".
         sidebar = getattr(self, "sidebar", None)
         if sidebar is not None and hasattr(sidebar, "mark_active"):
             sidebar.mark_active(key)
 
     def _build_settings_group(self, page, pal):
-        """Skupina Nastavenia: rad kariet hore (Spustace | Zvuk | Sprievodca |
-        Vseobecne) a pod nim vnoreny PageContainer.
+        """The Settings group: a row of tabs at the top (Cues | Sound | Guide |
+        General) and a nested PageContainer below it.
 
-        "V hre" uz nie je karta - je to samostatna polozka v bocnom menu
-        (redizajn "Sumi noc"), pretoze je to najvacsia cast appky.
+        "In-game" is no longer a tab - it is a separate item in the side
+        menu (the "Sumi noc" redesign), because it is the biggest part of
+        the app.
         """
         head = ctk.CTkFrame(page, fg_color="transparent")
-        # Karta je text s 8 px vnutornym okrajom (zaoblenie tlacidla) - rad sa
-        # posuva o tych 8 px dolava, aby TEXT prvej karty zacinal na lavej
-        # hrane stranky, presne nad kartami pod nim.
+        # A tab is text with an 8 px inner margin (the button's rounding) - the
+        # row is shifted 8 px to the left so that the TEXT of the first tab
+        # starts on the page's left edge, exactly above the cards below it.
         head.pack(fill="x", padx=(ui_kit.PAGE_GUTTER - ui_kit.RADIUS_CONTROL,
                                    ui_kit.PAGE_GUTTER), pady=(16, 0))
         self.settings_nav = ui_kit.SubNav(
@@ -2098,54 +2221,57 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         self.settings_nav.set_active(tab)
 
     def _build_nastavenia_page(self, page, pal):
-        """Vseobecne nastavenia (karta v skupine Nastavenia): uz len veci,
-        ktore sa nastavia raz - vzhlad, jazyk, spravanie, sprievodca.
+        """General settings (a tab in the Settings group): now only things
+        that get set once - look, language, behaviour, the guide.
 
-        Scrollovatelny ramec (nie len CTkFrame): pri pevnom rozmere okna
-        (viz DandurfApp.WINDOW_H) sa vsetky panely (Vzhlad/Spravanie/
-        Sprievodca) nemusia zmestit na vysku - bez scrollu by spodne panely
-        boli nedosiahnutelne.
+        A scrollable frame (not just a CTkFrame): with the fixed window
+        size (see DandurfApp.WINDOW_H) all the panels (Look/Behaviour/
+        Guide) may not fit vertically - without scrolling the bottom
+        panels would be unreachable.
 
-        POZN: povodne tu boli vymenovane aj panely "Pozadie dojo" a
-        "Minimalisticky rezim" - oba boli medzitym odstranene, takze uz
-        nie su dovodom pre scroll.
+        NOTE: originally the "Dojo background" and "Minimalist mode"
+        panels were also listed here - both have since been removed, so
+        they are no longer a reason for the scroll.
         """
         wrap = ui_kit.stranka_scroll(page, pal)
         wrap.pack(fill="both", expand=True, padx=ui_kit.PAGE_GUTTER, pady=(20, 20))
 
-        # POZN: prvym panelom tu bolo "Pozadie dojo" - posuvnik intenzity
-        # fotopasu nad titulkovou listou, so zivou spatnou vazbou o
-        # citatelnosti. Pas bol odstraneny (viz POZN v `_build_ui`), takze
-        # posuvnik uz nemal co ovladat. Vzhlad je teraz prvy panel.
-        # FAZA 4: data ako PRVY panel, nie zahrabane dole. Sub "vsetko
-        # ostava u teba" je na store page a je to skutocny rozdiel oproti
-        # konkurencii - ma sa dat overit, nie hladat.
-        # Referencia na scrollovaci ram: `show_about` podla nej posunie
-        # stranku na sekciu O appke. Bez nej by tlacidlo v liste otvorilo
-        # spravnu stranku, ale hrac by na nej ostal hore a sekciu by musel
-        # najst sam - cize by tlacidlo splnilo polovicu svojej ulohy.
+        # NOTE: the first panel here used to be "Dojo background" - an
+        # intensity slider for the photo strip above the title bar, with live
+        # feedback on readability. The strip was removed (see the NOTE in
+        # `_build_ui`), so the slider had nothing left to control. Look is now
+        # the first panel. PHASE 4: data as the FIRST panel, not buried at the
+        # bottom. The "everything stays with you" sub is on the store page and
+        # is a real difference from the competition - it should be easy to
+        # verify, not something you have to look for.
+        # Reference to the scrolling frame: `show_about` uses it to scroll the
+        # page to the About section. Without it the button in the title bar
+        # would open the right page, but the player would stay at its top and
+        # have to find the section themselves - so the button would do only
+        # half of its job.
         self.vseobecne_wrap = wrap
 
         self._build_data_panel(wrap, pal)
 
-        # "O appke" HNED POD DATAMI. Su to dve strany tej istej otazky:
-        # co appka robi s mojimi datami a kto za nou stoji. Clovek, ktory
-        # hlada jedno, obvykle hlada aj druhe.
+        # "About" RIGHT BELOW THE DATA. They are two sides of the same
+        # question: what the app does with my data and who is behind it. People
+        # looking for one usually look for the other too.
         self._build_about_panel(wrap, pal)
 
-        # Veci, ktore appka kresli do hry. Prisli sem zo stranky hodiniek,
-        # kde prekryvali jedinu vec, kvoli ktorej tam clovek chodi.
+        # Things the app draws into the game. They came here from the watch
+        # page, where they covered up the one thing people go there for.
         self._build_ingame_sections_into(wrap, pal)
 
         look = ui_kit.Panel(wrap, pal, title=tr("settings.look_title"))
         look.pack(fill="x", pady=(14, 0))
 
-        # SVET namiesto farebnej temy (0.2, B3-worlds). Vzhlad patri svetu -
-        # Hra je Sumi, Praca Aizome - takze samostatny vyber temy by len
-        # rozbil to, co ma jeden pohlad na okno povedat. Je to ten isty
-        # prepinac ako v liste hore (`set_world`); veta pod nim hovori
-        # poctivo, co vsetko sa s nim meni. (Do 0.2 tu bola "Farebna tema"
-        # s vetou "skus obe" - to by teraz prestitkovalo relacie.)
+        # WORLD instead of a colour theme (0.2, B3-worlds). The look belongs to
+        # the world - Play is Sumi, Work is Aizome - so a separate theme choice
+        # would only break what one look at the window is supposed to say. It
+        # is the same switch as in the title bar at the top (`set_world`); the
+        # sentence below it says honestly everything that changes with it. (Up
+        # to 0.2 there was a "Colour theme" here with the sentence "try both" -
+        # now that would relabel sessions.)
         row = ui_kit.SettingRow(look.body, pal, tr("settings.world"),
                                 tr("settings.world_sub"))
         self.world_switch = ctk.CTkSegmentedButton(
@@ -2156,13 +2282,15 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
             font=ui_kit.ui(12), command=self._on_world_label)
         self.world_switch.set(self._world_label(self.world))
         self.world_switch.pack()
-        # zvoleny svet nesie text v akcente (vypln `accent2` sama nestaci)
+        # the chosen world carries its text in the accent colour (the `accent2`
+        # fill alone is not enough)
         ui_kit.oznac_zvoleny_segment(self.world_switch, pal)
 
-        # Veta pod vyberom jazyka hovori poctivo, co je zdroj a co preklad:
-        # appka je pisana po slovensky, ostatne jazyky su preklady s AI,
-        # ktore este necital rodeny hovoriaci. Ukazuje sa vo vsetkych
-        # jazykoch (sama sa preklada ako ostatne texty).
+        # The sentence below the language choice says honestly what is the
+        # source and what is a translation: the app is written in Slovak, the
+        # other languages are AI translations that no native speaker has read
+        # yet. It is shown in all languages (it is translated like the other
+        # texts).
         row = ui_kit.SettingRow(look.body, pal, tr("settings.language"),
                                 tr("settings.language_sub"),
                                 note=tr("settings.language_note"))
@@ -2172,20 +2300,22 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
             variable=self.lang_var, command=self.on_lang_switch)
         self.lang_switch.pack()
 
-        # POZN: tu bol panel "Spravanie" s jedinym prepinacom "Naraz len
-        # jedna pripomienka". Bol to jediny prepinac v celom paneli, takze
-        # posobil ako dolezite nastavenie - a pritom ho automat necital
-        # vobec: dve hlasky naraz nespusti ani nemoze (`min_gap_s` je 210 s
-        # a vyssie). Cital ho jedine `fire_slot`, teda tlacidlo Test.
-        # Tam ochrana zmysel ma, tak tam ostala - natvrdo, bez prepinaca.
+        # NOTE: here used to be a "Behaviour" panel with a single switch, "Only
+        # one cue at a time". It was the only switch in the whole panel, so it
+        # came across as an important setting - and yet the automation did not
+        # read it at all: it does not and cannot fire two cues at once
+        # (`min_gap_s` is 210 s and up). The only reader was `fire_slot`, i.e.
+        # the Test button. There the protection makes sense, so it stayed
+        # there - hard-coded, without a switch.
 
-        # POZN: prepinac "Minimalisticky rezim" tu bol (zmensoval cele okno
-        # appky na 320x160) - odstraneny. Rovnaka funkcia (BPM + 4 ikonky)
-        # je teraz sucastou HUD panela v hre, viz "Ukazat panel v hre" v
-        # _build_vhre_page - je to spravne miesto, lebo ide o IN-GAME
-        # vizual, nie o rezim samotnej appky.
+        # NOTE: the "Minimalist mode" switch used to be here (it shrank the
+        # whole app window to 320x160) - removed. The same function (BPM + 4
+        # icons) is now part of the in-game HUD panel, see "Show the panel in
+        # game" in _build_vhre_page - that is the right place, because it is an
+        # IN-GAME visual, not a mode of the app itself.
 
-        # Skratka "teraz nie" (0.2.2) - predtym sa dala zmenit len v subore.
+        # The "not now" shortcut (0.3) - previously it could only be changed in
+        # the file.
         self._build_snooze_hotkey_row(wrap, pal)
 
         guide = ui_kit.Panel(wrap, pal, title=tr("settings.guide_title"))
@@ -2199,32 +2329,35 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         self.tour_btn = ui_kit.button(self.tour_row.control, pal,
                                       tr("settings.tour_btn"), command=self.start_tour)
         self.tour_btn.pack(anchor="e")
-        self._refresh_tour_row()      # rozpracovana prehliadka ponuka Pokracovat
+        self._refresh_tour_row()      # an unfinished tour offers Continue
 
     def _build_heart_rate_card(self, page, pal, pady=(14, 0)):
-        """Senzor Tepu (Wi-Fi / UDP) - prijem BPM z hodiniek (napr.
-        HeartRateOnStream for OBS) a automaticky biofeedback trigger
-        dychoveho kruhu (Slot 4) pri dlhodobo zvysenom tepe.
+        """Heart-Rate Sensor (Wi-Fi / UDP) - receives BPM from the watch (e.g.
+        HeartRateOnStream for OBS) and the automatic biofeedback trigger
+        of the breathing circle (Slot 4) on a long-raised heart rate.
 
-        `pady` je odsadenie panela zhora - prvy panel na stranke ho ma
-        nulove, ostatne 14 px (rovnaka konvencia ako zvysok stranky)."""
-        # POZN: karta si tu predtym stavala vlastny CTkFrame s
-        # `pack(padx=20)` a vlastnym nadpisom v mriezke, kym VSETKY ostatne
-        # panely na stranke idu cez `ui_kit.Panel` a pakuju sa bez padx.
-        # Karta tak bola oproti nim odsadena o 20 px a mala iny nadpis aj
-        # okraj - hlasene ako "nesedi so zarovnanim ostatnych". Teraz je to
-        # rovnaky Panel ako zvysok, takze zarovnanie drzi samo od seba.
+        `pady` is the panel's top padding - the first panel on the page
+        has it at zero, the others 14 px (the same convention as the rest
+        of the page)."""
+        # NOTE: the card used to build its own CTkFrame here with
+        # `pack(padx=20)` and its own heading in the grid, while ALL the other
+        # panels on the page go through `ui_kit.Panel` and are packed without
+        # padx. So the card was indented 20 px relative to them and had a
+        # different heading and margin - reported as "does not line up with the
+        # others". Now it is the same Panel as the rest, so the alignment holds
+        # by itself.
         panel = ui_kit.Panel(page, pal, title=tr("settings.hr_section_title"))
         panel.pack(fill="x", pady=pady)
-        self.hr_card = panel          # ciel kroku prehliadky o senzore tepu
+        self.hr_card = panel          # target of the tour step about the HR sensor
         inner = ctk.CTkFrame(panel.body, fg_color="transparent")
         inner.pack(fill="x")
         inner.grid_columnconfigure(1, weight=1)
 
-        # PORADIE KARTY (0.2.2): prijem tepu -> stav -> navod na parovanie ->
-        # az potom sietove polia. Pole s 0.0.0.0 bolo prve, co hrac na karte
-        # videl, a zvadzalo zadat to cislo do telefonu - parovanie potom
-        # zlyhalo bez jedinej hlasky. Adresu PC ukazuje navod, nie pole.
+        # CARD ORDER (0.3): heart-rate receiving -> status -> pairing guide ->
+        # only then the network fields. The field with 0.0.0.0 was the first
+        # thing the player saw on the card, and it tempted them to enter that
+        # number into the phone - pairing then failed without a single message.
+        # The guide shows the PC's address, not the field.
         self.hr_enabled_var = tk.BooleanVar(value=self.hr_monitoring_enabled)
         ui_kit.switch(inner, pal, text=tr("settings.hr_enable_switch"),
                       variable=self.hr_enabled_var, text_color=pal["text"],
@@ -2232,43 +2365,47 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
                       command=self.on_hr_toggle).grid(
             row=0, column=0, columnspan=2, sticky="w", pady=(0, 8))
 
-        # Zalomenie ako popis kritickeho tepu nizsie: od 0.2.2 moze za tepom
-        # stat aj veta o dvoch radoch tepu v jednom zdroji.
+        # Wrapping like the critical heart rate description below: since 0.3
+        # the heart rate may be followed by a sentence about two heart-rate
+        # streams in one source.
         self.hr_status_label = ctk.CTkLabel(inner, text="", font=ui_kit.ui(13, "bold"),
                                             anchor="w", wraplength=430, justify="left")
         self.hr_status_label.grid(row=1, column=0, columnspan=2, sticky="w")
         self.refresh_hr_status_label()
 
-        # Parovanie hodiniek je najmenej intuitivna cast celej appky - hrac
-        # musi vediet, ze appka predstiera OBS a ze si v telefone nastavuje
-        # OBS spojenie. Preto samostatny krokovy navod, nie len hint pod
-        # polickom (viz WatchPairingDialog).
-        # Vedlajsie tlacidlo prirodzenej sirky (`ui_kit.button`), nie zlaty
-        # ram cez celu kartu (~1500 px) - ten bol najhlasnejsim prvkom
-        # stranky a prebijal stav prijmu nad sebou.
+        # Pairing the watch is the least intuitive part of the whole app - the
+        # player has to know that the app pretends to be OBS and that in the
+        # phone they are setting up an OBS connection. Hence a separate
+        # step-by-step guide, not just a hint under the field (see
+        # WatchPairingDialog).
+        # A secondary button of natural width (`ui_kit.button`), not a gold
+        # frame across the whole card (~1500 px) - that was the loudest element
+        # on the page and drowned out the receiving status above it.
         ui_kit.button(inner, pal, tr("hr.pair_button"), height=32,
                       command=self.open_watch_pairing).grid(
             row=2, column=0, columnspan=2, sticky="w", pady=(14, 0))
 
-        # QR na appku do telefonu aj tu, nielen v krokovom navode - kto uz
-        # vie, co robi, si ju chce stiahnut bez otvarania sprievodcu.
-        # Navonok je to len znacka, biely kod sa rozbali az na klik
-        # (viz ui_kit.QrReveal).
+        # The QR code for the phone app is here too, not only in the
+        # step-by-step guide - whoever already knows what they are doing wants
+        # to download it without opening the guide. Outwardly it is just a
+        # badge, the white code only expands on a click (see ui_kit.QrReveal).
         qr_row = ctk.CTkFrame(inner, fg_color="transparent")
         qr_row.grid(row=3, column=0, columnspan=2, sticky="w", pady=(10, 0))
         self.hr_qr = watch_app_qr(qr_row, pal, pady=0)
 
-        # KRITICKY TEP UZ NIE JE POLICKO.
+        # THE CRITICAL HEART RATE IS NO LONGER A FIELD.
         #
-        # Nedal sa nastavit dobre. Vstupuje do vzorca zataze ako
-        # `headroom = max(12, kriticky - zakladna)`, takze pri zakladni 77
-        # davalo hocico do 89 ten isty vysledok - hrac posuval cislo a nic
-        # sa nemenilo. A zaroven urcuje pasmo "kriticka", takze prilis nizka
-        # hodnota spravila z pokojneho vecera 52 % casu v cervenom.
+        # It could not be set well. It enters the load formula as
+        # `headroom = max(12, kriticky - zakladna)`, so with a baseline of 77
+        # anything up to 89 gave the same result - the player moved the number
+        # and nothing changed. And at the same time it defines the "critical"
+        # zone, so a value that was too low turned a calm evening into 52 % of
+        # the time in the red.
         #
-        # Appka si ho rata z vlastnych relacii (`hr_stats.dynamicky_kriticky`,
-        # 90. percentil hrania). Tu sa uz len UKAZUJE, aby bolo vidno, s cim
-        # appka pracuje a ako sa to casom meni.
+        # The app computes it from its own sessions
+        # (`hr_stats.dynamicky_kriticky`, the 90th percentile of playing). Here
+        # it is only SHOWN, so you can see what the app is working with and how
+        # that changes over time.
         self.hr_critical_label = ctk.CTkLabel(
             inner, text=self._kriticky_popis(), font=ui_kit.ui(11),
             text_color=pal["text_dim"], anchor="w", justify="left",
@@ -2277,14 +2414,16 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
                                     pady=(14, 10))
 
         self.hr_ip_var = tk.StringVar(value=self.hr_ip)
-        # Pole IP je skryte ako heslo, kym si ho hrac neodkryje prepinacom
-        # vedla neho (skryta IP, viz `set_show_ip`). Ukladanie hodnoty sa
-        # tym nemeni - maska je len to, ako pole kresli.
+        # The IP field is hidden like a password until the player reveals it
+        # with the switch next to it (hidden IP, see `set_show_ip`). Saving the
+        # value does not change because of it - the mask is only how the field
+        # is drawn.
         self.show_ip_var = tk.BooleanVar(value=self.show_ip)
 
-        # Prepinac sa ukaze, len ked je v poli skutocna adresa: pri 0.0.0.0
-        # nemal co odkryt a hrac cakal, ze mu ukaze adresu PC. Ukazuje ju az
-        # `_apply_hr_ip_mask` (pri kazdej zmene pola).
+        # The switch only shows when there is a real address in the field: with
+        # 0.0.0.0 it had nothing to reveal and the player expected it to show
+        # the PC's address. It is shown by `_apply_hr_ip_mask` (on every change
+        # of the field).
         def _prepinac_ip(bunka):
             self.hr_ip_show_switch = ui_kit.switch(
                 bunka, pal, text=tr("hr.ip_show"), variable=self.show_ip_var,
@@ -2295,8 +2434,8 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
                                           self.hr_ip_var, extra=_prepinac_ip)
         self.hr_ip_var.trace_add("write", lambda *_a: self._apply_hr_ip_mask())
         self._apply_hr_ip_mask()
-        # Vysvetlivka si drzi odkaz: ked je v poli adresa VPN/virtualneho
-        # adaptera, `_apply_hr_ip_mask` k nej prida vetu (0.2.2).
+        # The hint keeps a reference: when the field holds the address of a
+        # VPN/virtual adapter, `_apply_hr_ip_mask` adds a sentence to it (0.3).
         self.hr_ip_hint_label = self._hr_hint(inner, pal, 6, tr("settings.hr_ip_hint"))
         self._hr_ip_virtual_hint(self.hr_ip_var.get())
 
@@ -2306,17 +2445,18 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         self._hr_hint(inner, pal, 8, tr("settings.hr_port_hint"))
 
     def _hr_entry(self, inner, pal, row, label, variable, extra=None):
-        """Jeden riadok "popisok + policko" karty Senzor Tepu.
+        """One "label + field" row of the Heart-Rate Sensor card.
 
-        set_typing() je tu rovnako dolezity ako v slotoch (viz SlotCard):
-        globalny odchytavac klavesnice bezi aj ked hrac prave pise do
-        nastaveni, takze bez tejto poistky by mu pisanie "110" spustilo
-        slot, ktory ma nabindovany na klavesu "1".
+        set_typing() is just as important here as in the slots (see
+        SlotCard): the global keyboard catcher runs even while the player
+        is typing into the settings, so without this safeguard typing
+        "110" would fire the slot they have bound to the "1" key.
 
-        `extra(bunka)` prida vedla policka dalsi ovladac (prepinac
-        "Ukazat IP") - policko ostava na tom istom mieste v osi."""
-        # pevna sirka popisku + rovnaka sirka policka: vsetky tri riadky
-        # (IP, port, tep) sedia v jednej osi (feedback: "nie su v jednej osi")
+        `extra(bunka)` adds another control next to the field (the
+        "Show IP" switch) - the field stays in the same place on the
+        axis."""
+        # fixed label width + the same field width: all three rows (IP, port,
+        # heart rate) sit on one axis (feedback: "they are not on one axis")
         ctk.CTkLabel(inner, text=label, text_color=pal["text"], width=190,
                      anchor="w", justify="left").grid(
             row=row, column=0, sticky="w", pady=6)
@@ -2340,15 +2480,18 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         return entry
 
     def _kriticky_popis(self):
-        """Veta pod polickami senzora - co si appka spocitala a z coho.
+        """The sentence below the sensor fields - what the app computed and
+        from what.
 
-        Z coho = z HERNYCH relacii (B3-worlds), rovnako ako samotny vypocet
-        v `_open_hr_session`; pracovne vecery sa do `n` nerataju.
+        From what = from PLAY sessions (B3-worlds), just like the
+        computation itself in `_open_hr_session`; work evenings are not
+        counted in `n`.
 
-        KRATKE RELACIE SA NERATAJU (0.2.1) - `dynamicky_kriticky` sa uci len
-        z relacii dlhych aspon 5 minut (`hr_stats.je_dost_dlha`). Bez toho
-        by po troch kratkych relaciach veta tvrdila "spocitane z 3 relacii",
-        kym v skutocnosti plati zaloha 110."""
+        SHORT SESSIONS ARE NOT COUNTED (0.2.1) - `dynamicky_kriticky`
+        learns only from sessions at least 5 minutes long
+        (`hr_stats.je_dost_dlha`). Without this, after three short
+        sessions the sentence would claim "computed from 3 sessions",
+        while in fact the fallback of 110 applies."""
         n = len([r for r in hr_stats.ciste_relacie(hr_stats.sessions_in_world(
             self._history_sessions(), self.ALGORITMUS_SVET))
             if hr_stats.je_dost_dlha(r)])
@@ -2369,13 +2512,13 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
             pass
 
     def _hr_hint(self, inner, pal, row, text):
-        """Vysvetlivka pod jedným policom karty Senzor Tepu.
+        """A hint below one field of the Heart-Rate Sensor card.
 
-        Samostatna metoda (namiesto opakovania grid() na kazdom mieste),
-        aby vsetky tri riadky (IP/Port/Tep) mali zarucene rovnake lave
-        zarovnanie aj rovnaky vertikalny odstup - feedback z testu ("rozne
-        odsadenie") ukazal, ze kopirovanie tych istych grid() argumentov na
-        3 miestach sa casom rozide."""
+        A separate method (instead of repeating grid() in every place), so
+        that all three rows (IP/Port/Heart rate) are guaranteed the same
+        left alignment and the same vertical spacing - feedback from a
+        test ("different indentation") showed that copying the same grid()
+        arguments in 3 places drifts apart over time."""
         label = ctk.CTkLabel(inner, text=text, text_color=pal["text_dim"],
                              font=ui_kit.ui(10), wraplength=320, justify="left",
                              anchor="w")
@@ -2396,7 +2539,7 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
             except Exception:
                 pass
 
-    # ---------- sprievodca ----------
+    # ---------- guide ----------
 
     def open_guide_panel(self):
         if self._guide_panel is not None and self._guide_panel.top.winfo_exists():
@@ -2406,14 +2549,14 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         self._guide_panel = GuidePanel(self)
 
     def start_tour(self, from_start=False):
-        """Spusti sprievodnu prehliadku appky (kde co je).
+        """Starts the guided tour of the app (where things are).
 
-        Vola sa raz po prvom onboardingu a kedykolvek z Nastaveni. Drzime si
-        jednu instanciu, aby sa dve prehliadky neprekryvali.
+        It is called once after the first onboarding and any time from
+        Settings. We keep one instance so that two tours do not overlap.
 
-        `from_start=True` zacne od zaciatku; inak nadviaze tam, kde ju hrac
-        naposledy opustil (`tour_step`) - zacinat vzdy odznova znamena, ze
-        druhykrat uz nepozrie nic.
+        `from_start=True` starts from the beginning; otherwise it picks up
+        where the player last left it (`tour_step`) - always starting over
+        means that the second time they will not look at anything.
         """
         existing = getattr(self, "_tour", None)
         if existing is not None:
@@ -2422,25 +2565,27 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         self._tour.start()
 
     def _prehliadka_po_parovani(self):
-        """Prvy start s "Sparovat hodinky teraz": navod na parovanie sa
-        zavrel, teraz pride prva prehliadka. Len ak ju hrac medzitym nevidel
-        a ziadna nebezi - kontroluje sa AZ TERAZ, nie pri otvoreni navodu."""
+        """First start with "Pair a watch now": the pairing guide has
+        closed, now the first tour comes. Only if the player has not seen
+        it in the meantime and none is running - this is checked ONLY
+        NOW, not when the guide opens."""
         if self.tour_seen or getattr(self, "_tour", None) is not None:
             return
-        # Kratky odklad (ako po uvode): `on_close` bezi hned po destroy()
-        # navodu, kym sa hlavne okno este neprekreslilo - bublina meria
-        # polohu ciela na obrazovke a mala by ju zo stareho obrazu.
+        # A short delay (as after the introduction): `on_close` runs right
+        # after the guide's destroy(), before the main window has been
+        # redrawn - the bubble measures the target's position on screen and
+        # would get it from the old frame.
         self.root.after(300, self.start_tour)
 
     def save_tour_progress(self, index):
-        """Kde prehliadka skoncila (0 = dobehla cela)."""
+        """Where the tour ended (0 = it ran to the end)."""
         self.tour_step = max(0, int(index or 0))
         self._refresh_tour_row()
         self.save_settings()
 
     def _refresh_tour_row(self):
-        """Riadok prehliadky v Nastaveniach - rozpracovana prehliadka ponuka
-        Pokracovat a ukaze, kde clovek skoncil."""
+        """The tour row in Settings - an unfinished tour offers Continue and
+        shows where you stopped."""
         row = getattr(self, "tour_row", None)
         button = getattr(self, "tour_btn", None)
         if row is None or button is None:
@@ -2457,7 +2602,7 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
             pass
 
     def mark_tour_seen(self):
-        """Prehliadka dobehla alebo bola preskocena - uz ju sami nespustime."""
+        """Tour done or skipped - we will not start it by ourselves again."""
         self.tour_seen = True
         self._tour = None
         self.save_settings()
@@ -2467,30 +2612,32 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
             self._guide_panel.top.destroy()
             self._guide_panel = GuidePanel(self)
 
-    # ---------- vyvojarska vrstva (faza 5, §3.2) ----------
+    # ---------- developer overlay (phase 5, §3.2) ----------
 
     def open_dev_layer(self):
-        """Otvori ladenie. Volane z patnasteho kliku na cislo verzie."""
+        """Opens debugging. Called by the 15th click on the version number."""
         try:
             DevLayerDialog(self)
         except Exception:
             app_log.exception("vyvojarska vrstva sa nepodarila otvorit")
 
     def apply_dev_params(self, params, silent_share):
-        """Ulozi nove prahy. Platia AZ OD DALSEJ relacie.
+        """Saves the new thresholds. They apply only FROM THE NEXT session.
 
-        Zadanie §3.3: parametre sa menia len medzi relaciami. Dialog to uz
-        vynutil tym, ze pri beziacej relacii polia zamkol; tu sa hodnoty
-        len odlozia a `start_heart_rate_monitor` ich vezme.
+        Spec §3.3: the parameters change only between sessions. The dialog
+        already enforced that by locking the fields during a running
+        session; here the values are only set aside and
+        `start_heart_rate_monitor` picks them up.
         """
         params = dict(params)
-        # TVRDA POISTKA PLATI AJ TU.
+        # THE HARD SAFEGUARD APPLIES HERE TOO.
         #
-        # Vyvojarska vrstva je na ladenie prahov, nie na obchadzanie hranice,
-        # ktora chrani meranie: pri odstupe pod `measure.REFRACTORY_AFTER_S`
-        # (180 s) pristane druha hlaska do meracieho okna prvej a obe okna sa
-        # zneplatnia. Preklep v policku by tak nepokazil jeden vecer, ale
-        # cely tyzden dat - a v datach by to vyzeralo ako "hlaska nezabrala".
+        # The developer overlay is for tuning thresholds, not for getting
+        # around the limit that protects the measurement: with a gap below
+        # `measure.REFRACTORY_AFTER_S` (180 s) the second cue lands in the
+        # first one's measurement window and both windows become invalid. A
+        # typo in the field would then spoil not one evening but a whole week
+        # of data - and in the data it would look like "the cue did not work".
         odstup = params.get("min_gap_s")
         if odstup is not None and float(odstup) < trigger.MIN_GAP_FLOOR_S:
             params["min_gap_s"] = trigger.MIN_GAP_FLOOR_S
@@ -2502,11 +2649,12 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         self.log(tr("dev.applied"))
 
     def dev_force_cue(self):
-        """Vystreli hlasku hned, bez cakania na telo aj na pauzu.
+        """Fires a cue right away, without waiting for the body or a pause.
 
-        Zamerne NEPOUZIVA `cue_trigger` - vynutena hlaska nie je meranie a
-        nesmie sa dostat do okien ani spalit refrakternu zonu. Je to len
-        na to, aby sa dal pocut zvuk a vidiet vizual.
+        It deliberately does NOT USE `cue_trigger` - a forced cue is not a
+        measurement and must not get into the windows or burn the
+        refractory zone. It is only there so the sound can be heard and
+        the visual seen.
         """
         index = self.CUE_SLOT_INDEX
         try:
@@ -2525,11 +2673,12 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         if self.log_text is None:
             print(self._last_log_line)
             return
-        # DENNIK UZ NEMUSI EXISTOVAT. Okno zanikne pri `root.destroy()` v
-        # `_quit`, a kod, ktory v tej chvili este bezi, loguje dalej - napr.
-        # `_close_hr_session` po dotazniku (pad v app.log z buildu: TclError
-        # "invalid command name ...!ctktextbox.!text"). Zapis do dennika je
-        # len zobrazenie, nesmie zhodit volajuceho; riadok ide aspon do suboru.
+        # THE JOURNAL MAY NO LONGER EXIST. The window goes away at
+        # `root.destroy()` in `_quit`, and code still running at that moment
+        # keeps logging - e.g. `_close_hr_session` after the questionnaire (a
+        # crash in app.log from a build: TclError "invalid command name
+        # ...!ctktextbox.!text"). Writing to the journal is only display, it
+        # must not bring down the caller; the line at least goes to the file.
         try:
             self.log_text.configure(state="normal")
             self.log_text.insert("end", f"{self._last_log_line}\n")
@@ -2546,12 +2695,14 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
             pass
 
     def _dennik_bez_okna(self, message):
-        """Riadok dennika, ktory uz nema kam ist - do app.log BEZ adries.
+        """A journal line that has nowhere to go any more - to app.log WITHOUT
+        addresses.
 
-        Riadky dennika mozu niest IP adresu PC (po "Ukazat IP" celu), a
-        app.log ju podla PRIVACY.md obsahovat nesmie - preto maska. Samotny
-        `log` zamerne subor nevola vobec (test_ip_skryta): do suboru ide len
-        tento nahradny riadok, ked okno zaniklo."""
+        Journal lines may carry the PC's IP address (after "Show IP", in
+        full), and according to PRIVACY.md app.log must not contain it -
+        hence the mask. `log` itself deliberately does not touch the file
+        at all (test_ip_skryta): only this substitute line goes to the
+        file, once the window is gone."""
         try:
             app_log.info("dennik (okno uz nie je): %s",
                          netinfo.mask_ips_in_text(message))
@@ -2559,30 +2710,35 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
             pass
 
     def ui_call(self, func):
-        """Naplanuje volanie v GUI vlakne. Bezpecne z lubovolneho vlakna aj
-        pocas ukoncovania aplikacie (vtedy Tk uz volanie odmietne).
+        """Schedules a call on the GUI thread. Safe from any thread, even
+        while the application is shutting down (Tk then rejects the call).
 
-        PRVE ZLYHANIE SA ZALOGUJE. Predtym tu bolo holé `pass` a to skryva
-        celu triedu chyb: `root.after` z cudzieho vlakna vyhodi
-        RuntimeError("main thread is not in main loop") vzdy, ked Tk nebezi
-        na `mainloop()`, a volajuci sa o tom nedozvie nic - callback proste
-        nepride. Stalo sa to pri ladeni hotkey: stlacenie dorazilo az do
-        `_on_snooze_hotkey`, `ui_call` ho zhltol a snooze sa nezapol.
+        THE FIRST FAILURE IS LOGGED. Previously there was a bare `pass`
+        here, and that hides a whole class of bugs: `root.after` from a
+        foreign thread raises RuntimeError("main thread is not in main
+        loop") whenever Tk is not running in `mainloop()`, and the caller
+        learns nothing about it - the callback just never arrives. That
+        happened while debugging the hotkey: the key press got all the way
+        to `_on_snooze_hotkey`, `ui_call` swallowed it and the snooze did
+        not start.
 
-        Dalsie vyskyty sa uz len pocitaju: ked sa appka ukoncuje, odmietnutych
-        volani moze prist vela naraz a log by sa zaplavil.
+        Further occurrences are only counted: when the app is quitting,
+        many rejected calls can arrive at once and the log would be
+        flooded.
         """
         try:
             self.root.after(0, func)
             return
         except RuntimeError:
-            # Tk este nie je v `mainloop()`. Deje sa to pri KAZDOM starte:
-            # `_ensure_sfx_assets` aj priprava Edge hlasok bezia na vlastnom
-            # vlakne uz z `__init__` a logovat zacnu skor,
-            # nez sa slucka rozbehne. Predtym sa tie riadky ticho zahadzovali.
+            # Tk is not in `mainloop()` yet. This happens on EVERY start:
+            # `_ensure_sfx_assets` and the Edge cue preparation both run on
+            # their own thread right from `__init__` and start logging before
+            # the loop gets going. Previously those lines were silently
+            # dropped.
             #
-            # Odlozime a dorucime, ked sa slucka rozbehne - `_flush_ui_pending`
-            # je naplanovany z hlavneho vlakna, takze na nom `after` funguje.
+            # We set them aside and deliver them once the loop runs -
+            # `_flush_ui_pending` is scheduled from the main thread, so `after`
+            # works on it.
             try:
                 self._ui_pending.append(func)
             except Exception:
@@ -2597,8 +2753,8 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
                 "(dalsie vyskyty sa uz nevypisu)")
 
     def _flush_ui_pending(self):
-        """Doruci volania, ktore prisli z vlakien skor, nez sa rozbehol
-        `mainloop()`. Vola sa raz, hned ako sa slucka rozbehne."""
+        """Delivers calls that came from threads before `mainloop()` got
+        going. Called once, as soon as the loop runs."""
         fronta, self._ui_pending = list(self._ui_pending), deque(maxlen=200)
         for func in fronta:
             try:
@@ -2614,24 +2770,26 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
 
     # ---------- start / stop ----------
 
-    # PRVY START: SLEDOVAT AZ PO PRIPRAVE HLASU (0.2.2).
+    # FIRST START: WATCH ONLY AFTER THE VOICE IS PREPARED (0.3).
     #
-    # Po uvode appka zacne sledovat sama (`__init__`). Robila to o 250 ms -
-    # lenze kym sleduje, na Microsoft nechodi ani kvoli priprave hlasok
-    # (`pregenerate`), takze sa priprava hned zastavila a prvy vecer, podla
-    # ktoreho sa appka posudzuje, hovoril vacsinou hlasom z Windows. Teraz
-    # pocka, kym su hlasky v cache, najviac `PRVY_START_MAX_S` (zlyhana
-    # priprava bez siete nesmie start odlozit navzdy). Stav cita
-    # `_kamae_state_text`.
+    # After the introduction the app starts watching by itself (`__init__`).
+    # It did that after 250 ms - but while it is watching it does not go to
+    # Microsoft, not even for cue preparation (`pregenerate`), so the
+    # preparation stopped right away and the first evening, by which the app
+    # gets judged, mostly spoke with the Windows voice. Now it waits until the
+    # cues are in the cache, at most `PRVY_START_MAX_S` (a failed preparation
+    # without a network must not postpone the start forever). The state is
+    # read by `_kamae_state_text`.
     PRVY_START_MAX_S = 15.0
     PRVY_START_KROK_MS = 500
 
     def _hlas_pripraveny(self):
-        """Su hlasky, ktore v hre povie prirodzeny hlas, uz v cache?
+        """Are the cues the natural voice will say in-game already cached?
 
-        True aj ked netreba pripravovat nic (hlas z Windows, Edge chyba, styl
-        bez slov, Praca, vsetky hlasky vypnute - `pregen_jobs` je prazdne):
-        vtedy niet na co cakat. Ta ista otazka ako v `pregenerate`."""
+        True also when nothing needs preparing (Windows voice, Edge
+        missing, a style without words, Work, all cues disabled -
+        `pregen_jobs` is empty): then there is nothing to wait for. The
+        same question as in `pregenerate`."""
         if self.engine != ENGINE_EDGE or not audio_engine.EDGE_AVAILABLE:
             return True
         try:
@@ -2639,14 +2797,16 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
             return all(self.edge_cache.has(text, hlas, rate)
                        for text, hlas in self.pregen_jobs())
         except Exception:
-            # Radsej zacat sledovat hned nez visiet - tak to bolo doteraz.
+            # Better to start watching right away than to hang - that is how it
+            # was until now.
             app_log.exception("prvy start: stav pripravy hlasu sa nedal zistit")
             return True
 
     def _zacni_sledovat_po_priprave_hlasu(self):
-        """Prvy start: sledovanie zacne, az ked je hlas pripraveny alebo po
-        `PRVY_START_MAX_S` - podla toho, co nastane skor. Pripravu spusta
-        `_load_edge_voices` este v `__init__`, toto ju len necha dobehnut."""
+        """First start: watching begins once the voice is prepared or after
+        `PRVY_START_MAX_S` - whichever comes first. The preparation is
+        started by `_load_edge_voices` still in `__init__`, this only lets
+        it finish."""
         if self._hlas_pripraveny():
             self.root.after(250, self.start_listening)
             return
@@ -2657,12 +2817,12 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
                                                self._prvy_start_krok)
 
     def _prvy_start_krok(self):
-        """Raz za `PRVY_START_KROK_MS`: hlas hotovy, alebo cas vyprsal?"""
+        """Once every `PRVY_START_KROK_MS`: voice ready, or time up?"""
         self._prvy_start_job = None
         if not self._prvy_start_caka:
             return
         if self.listening:
-            # Spustil to hrac alebo hra - druhy start netreba.
+            # Started by the player or by a game - no second start needed.
             self._zrus_cakanie_prveho_startu()
             return
         if self._hlas_pripraveny() or time.monotonic() >= self._prvy_start_do:
@@ -2672,7 +2832,7 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
                                                self._prvy_start_krok)
 
     def _zrus_cakanie_prveho_startu(self):
-        """Koniec cakania na hlas - pas uz nesmie slubovat start."""
+        """End of the voice wait - the bar must no longer promise a start."""
         self._prvy_start_caka = False
         job, self._prvy_start_job = self._prvy_start_job, None
         if job is not None:
@@ -2689,30 +2849,34 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
             self.start_listening()
 
     def start_listening(self):
-        """Zapne pocuvanie. Enso od tejto chvile svieti `success`.
+        """Turns listening on. From this moment the enso glows `success`.
 
-        FAZA 3 zmenila, co "pocuvanie" znamena. Doteraz to bolo "bezia
-        klavesove hooky"; teraz je to "appka sleduje telo a smie sa ozvat".
-        Ziadny hook sa uz neinstaluje - aktivita sa zistuje cez
-        `GetLastInputInfo`, co vracia jedine pocet milisekund od posledneho
-        vstupu.
+        PHASE 3 changed what "listening" means. Until then it was "the key
+        hooks are running"; now it is "the app watches the body and may
+        speak up". No hook is installed any more - activity is detected
+        via `GetLastInputInfo`, which returns only the number of
+        milliseconds since the last input.
 
-        Enso je jediny nositel stavu v celom rozhrani, takze toto NIE JE len
-        kozmetika: `_cue_can_fire` sa pyta na `self.listening`, cize kym
-        enso svieti `danger`, appka naozaj mlci.
+        The enso is the only carrier of state in the whole interface, so
+        this is NOT just cosmetics: `_cue_can_fire` asks about
+        `self.listening`, so while the enso glows `danger`, the app really
+        is silent.
         """
         if self.listening:
             return
-        # Prvy start uz na hlas necaka (`_prvy_start_krok`) - spustil to hrac
-        # tlacidlom, hra (auto-profil) alebo samo cakanie. Bez toho by hrac,
-        # ktory dal medzitym ▶ a hned ■, dostal o chvilu druhy start.
+        # The first start no longer waits for the voice (`_prvy_start_krok`) -
+        # it was started by the player with the button, by a game
+        # (auto-profile) or by the waiting itself. Without this, a player who
+        # meanwhile pressed ▶ and right away ■ would get a second start a
+        # moment later.
         if getattr(self, "_prvy_start_caka", False):
             self._zrus_cakanie_prveho_startu()
-        # Drag-test nesmie prezit spustenie pocuvania.
+        # The drag test must not survive listening being started.
         #
-        # Testovaci vizual ma vypnuty klik-through, cize nad hrou pohlcuje
-        # kliky. Hrac, ktory si doladil polohu a potom zapol pocuvanie, ide
-        # vzapati hrat - a mal by uprostred obrazovky nekliknutelnu plochu.
+        # The test visual has click-through turned off, so over the game it
+        # swallows clicks. A player who fine-tuned the position and then turned
+        # on listening goes to play right after - and would have an unclickable
+        # area in the middle of the screen.
         try:
             if self.overlay_manager.stop_all_tests():
                 self.log(tr("log.overlay_test_ukonceny"))
@@ -2720,35 +2884,38 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         except Exception:
             app_log.exception("ukoncenie drag-testu zlyhalo")
         if self.gamepad.available:
-            # Uz nie ako spustac - len ako druhy zdroj informacie o tom, ci
-            # je hrac aktivny, a ako jedina cesta, ako rozoznat ovladac od
-            # klavesnice (`GetLastInputInfo` vidi oboje, ale nepovie co).
+            # No longer as a trigger - only as a second source of information
+            # on whether the player is active, and as the only way to tell a
+            # controller from a keyboard (`GetLastInputInfo` sees both, but
+            # does not say which).
             self.gamepad.start()
         self.activity.set_gamepad_watched(self.gamepad.available)
-        # NOVA MERACIA RELACIA PRI KAZDOM ZAPNUTI POCUVANIA.
+        # A NEW MEASUREMENT SESSION EVERY TIME LISTENING IS TURNED ON.
         #
-        # Relacia bola naviazana na SENZOR, nie na pocuvanie: otvarala sa
-        # jedine v `start_heart_rate_monitor`. Odkedy ju `stop_listening`
-        # korektne zatvara, vzniklo z toho tiche zlyhanie - po prvom cykle
-        # stop/start nebola otvorena ZIADNA relacia a nemeralo sa nic.
-        # (V CSV z 18. 9. to vidno ako styri kratke relacie namiesto jednej:
-        # 17:03, 18:01, 18:04, 18:07 - vznikli len restartom appky, lebo
-        # inak sa nova relacia otvorit nedala.)
+        # The session was tied to the SENSOR, not to listening: it was opened
+        # only in `start_heart_rate_monitor`. Ever since `stop_listening`
+        # closes it properly, this turned into a silent failure - after the
+        # first stop/start cycle NO session was open and nothing was measured.
+        # (In the CSV from 18. 9. this shows as four short sessions instead of
+        # one: 17:03, 18:01, 18:04, 18:07 - they came about only by restarting
+        # the app, because otherwise a new session could not be opened.)
         #
-        # Siete sa pritom NEDOTYKAME: ked prijem uz bezi, restart socketu by
-        # hodinky na chvilu odpojil - a prave kratke vypadky rozbijaju
-        # pocitanie suvislosti (viz body 2 a 5 zadania).
+        # We do NOT TOUCH the network here: when receiving is already running,
+        # a socket restart would disconnect the watch for a moment - and it is
+        # exactly short dropouts that break the continuity counting (see
+        # points 2 and 5 of the spec).
         if self.hr_monitoring_enabled and not getattr(self, "_hr_session_open", False):
             if self.heart_rate_monitor.running:
                 self._open_hr_session(prepoj=False, meria=True)
             else:
-                # `self.listening` este nie je True, tak sa to povie priamo.
+                # `self.listening` is not True yet, so it is said directly.
                 self._open_hr_session(meria=True)
                 self._hr_generation = self.heart_rate_monitor.start(
                     self.hr_ip, self.hr_port)
-        # `stop_listening` spustac pozastavi; bez tohto by ho zdvihla az
-        # nejaka ina cesta a do vtedy by appka mlcala. Kym plati "teraz nie",
-        # nezdvihne nic (`_resume_cue_trigger`) - stisenie plati dalej.
+        # `stop_listening` pauses the trigger; without this it would only be
+        # lifted by some other path and until then the app would stay silent.
+        # While "not now" holds, it lifts nothing (`_resume_cue_trigger`) - the
+        # muting still applies.
         self._resume_cue_trigger()
         self.listening = True
         self.session_counts = {0: 0, 1: 0, 2: 0, 3: 0}
@@ -2762,15 +2929,17 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         self.activity.set_gamepad_watched(False)
         self.listening = False
         self._suspend_cue_trigger(trigger.A_SNOOZE)
-        # RELACIA KONCI TU, nie az pri zatvoreni appky.
-        # `_close_hr_session` visel len na vypnuti SENZORA a na `_quit`.
-        # Kto dal stop a nechal appku otvorenu, mal reláciu stale otvorenu -
-        # neulozila sa, nespytalo sa na kontext, a keby proces skoncil inak
-        # nez cez `_quit`, cely vecer merania sa stratil. Stalo sa to.
+        # THE SESSION ENDS HERE, not only when the app is closed.
+        # `_close_hr_session` hung only on switching the SENSOR off and on
+        # `_quit`. Whoever pressed stop and left the app open still had the
+        # session open - it was not saved, the context question was not asked,
+        # and if the process ended other than through `_quit`, the whole
+        # evening of measurement was lost. It happened.
         #
-        # Ked sa nepocuva, nemoze padnut hlaska, takze uz sa nic nemeria -
-        # relacia nema preco zostat otvorena. `_hr_session_open` strazi, aby
-        # to druhy volajuci (vypnutie senzora, `_quit`) nezopakoval.
+        # When not listening, no cue can fire, so nothing is measured any
+        # more - there is no reason for the session to stay open.
+        # `_hr_session_open` guards against the second caller (switching the
+        # sensor off, `_quit`) repeating it.
         self._close_hr_session()
         self._apply_listening_visuals()
         self.log(tr("log.listening_off"))
@@ -2778,69 +2947,75 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         self._dopriprav_hlasky_po_hre()
 
     def _dopriprav_hlasky_po_hre(self):
-        """Hlasky, ktore pocas hry chybali v cache (`_speak_text`), sa
-        pripravia az teraz - pocas pocuvania appka na Microsoft nechodi."""
+        """Cues that were missing from the cache during the game
+        (`_speak_text`) are prepared only now - while listening the app
+        does not go to Microsoft."""
         if getattr(self, "_pregen_po_hre", False):
             self._pregen_po_hre = False
             self.schedule_pregenerate(200)
 
     def _apply_listening_visuals(self):
-        """Prenesie stav do dychajuceho pasu a do rychleho docku.
+        """Carries the state over to the breathing bar and the quick dock.
 
-        Ziadne blikanie uz netreba - `KamaeBar` si rytmus riadi sam a v
-        zastavenom stave stoji, takze sa tu nespusta ziadny `after()`
-        retazec (povodny `_pulse_status` bezal 2x za sekundu cely cas, co
-        appka bezala).
+        No blinking is needed any more - `KamaeBar` drives its rhythm by
+        itself and stands still when stopped, so no `after()` chain is
+        started here (the original `_pulse_status` ran twice a second the
+        whole time the app was running).
         """
         if self.listening and getattr(self, "_listen_started", None) is None:
             self._listen_started = time.time()
         elif not self.listening:
             self._listen_started = None
-        # Tlacidlo v pase prepne text (Spustit <-> Zastavit) samo v
-        # `set_live` - toto je jedina cesta, ktorou idu vsetky spustenia aj
-        # zastavenia (tlacidlo, ponuka v liste, hra), takze sa nerozidu.
+        # The button in the bar switches its text (Start <-> Stop) by itself in
+        # `set_live` - this is the only path all starts and stops go through
+        # (button, tray menu, game), so they do not drift apart.
         if getattr(self, "kamae", None) is not None:
             self.kamae.set_live(self.listening)
-        # Text stavu na Dnes a bodka v paneli (sleduje, ale tep vypadol).
+        # Status text on Today and the dot in the panel (watching, but the
+        # heart rate dropped out).
         self._refresh_kamae_state_text()
-        # jas fotky za ensom ide za stavom sledovania, nie za hodinkami
+        # the brightness of the photo behind the enso follows the watching
+        # state, not the watch
         if hasattr(self, "_sync_dnes_hero"):
             self._sync_dnes_hero()
         if getattr(self, "sidebar", None) is not None:
             try:
-                # Kontrolka v paneli je jedina informacia o stave na piatich
-                # zo siestich stranok - znacka aj pas zijú na stranke Dnes.
+                # The indicator in the panel is the only status information on
+                # five of the six pages - the mark and the bar live on the
+                # Today page.
                 bodka = getattr(self.sidebar, "state_dot", None)
                 if bodka is not None:
                     bodka.set_live(self.listening)
                 self.sidebar.enso.set_live(self.listening)
-                # Prestavba okna (zmena jazyka, zachrana pri teme) postavi
-                # ENSO NANOVO a to zacina s `_armed = False`, kym
-                # `self._cue_armed` si stav drzi dalej. Pas by potom hlasil
-                # "Natiahnute" nad znackou bez prstenca az do najblizsej
-                # udalosti automatu. `set_live` to nezachrani - ten priznak
-                # zhadzuje len pri prechode True -> False.
+                # A window rebuild (language change, theme rescue) builds the
+                # ENSO ANEW, and it starts with `_armed = False`, while
+                # `self._cue_armed` keeps its state. The bar would then report
+                # "Armed" above a mark without a ring until the next event of
+                # the state machine. `set_live` does not save this - it drops
+                # that flag only on a True -> False transition.
                 self.sidebar.enso.set_armed(self._cue_armed and self.listening)
             except Exception:
                 pass
-        # HUD trigger row ("Ukazat panel v hre") si zoznam funkcii
-        # neprekresluje sam - staci raz pri kazdej zmene stavu pocuvania,
-        # aby ikonky odrazali aktualne enabled/disabled sloty.
+        # The HUD trigger row ("Show the panel in game") does not redraw its
+        # feature list by itself - once on every change of the listening state
+        # is enough for the icons to reflect the current enabled/disabled
+        # slots.
         self._refresh_hud_trigger_row()
         self._refresh_nav_badges()
 
 
     def make_tray_image(self):
-        """Ikona v systemovej liste - rovnaka znacka ako ikona appky.
+        """The system tray icon - the same mark as the app icon.
 
-        Prstenec nesie stav (bezi / zastavene), znak 残 nesie identitu.
-        Povodne to bola len zelena alebo cervena bodka, ktora sa medzi
-        ostatnymi ikonami v liste nedala rozoznat.
+        The ring carries the state (running / stopped), the 残 glyph
+        carries the identity. Originally it was just a green or red dot
+        that could not be told apart from the other icons in the tray.
 
-        `make_icon` je bezny modul bez kodu na urovni modulu, takze sa da
-        importovat aj za behu; ak by kreslenie z akehokolvek dovodu zlyhalo
-        (chybajuce pismo so znakmi CJK), spadne to na povodnu bodku - appka
-        bez ikony v liste by sa nedala vyvolat spat z minimalizacie.
+        `make_icon` is an ordinary module without module-level code, so it
+        can be imported at runtime too; if drawing fails for any reason
+        (a missing font with CJK glyphs), it falls back to the original dot
+        - an app without a tray icon could not be brought back from being
+        minimised.
         """
         size = 64
         pal = self.pal
@@ -2859,19 +3034,21 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
     def setup_tray(self):
         menu = pystray.Menu(
             pystray.MenuItem(lambda _item: tr("tray.show"), self.show_window, default=True),
-            # Polozka hovori, co sa po kliku STANE (0.2.2, audit UX): staticke
-            # "Start / Stop" nepovedalo, ci appka prave sleduje. Text sa
-            # prepocita pri `update_menu` v `update_tray_icon`.
+            # The item says what WILL HAPPEN on a click (0.3, UX audit): a
+            # static "Start / Stop" did not say whether the app is watching
+            # right now. The text is recomputed on `update_menu` in
+            # `update_tray_icon`.
             pystray.MenuItem(
                 lambda _item: (tr("tray.stop") if getattr(self, "listening", False)
                                else tr("tray.start")),
                 lambda *_: self.ui_call(self.toggle_listening)),
-            # "TERAZ NIE" AJ BEZ SKRATKY (0.2.1). Ked Ctrl+Alt+Z drzi ina
-            # appka, `RegisterHotKey` zlyha - a hlasky sa potom dali stisit
-            # jedine zastavenim pocuvania, co zastavi aj meranie. Polozka
-            # robi presne to, co skratka: prepinac na `SNOOZE_HOTKEY_MINUTES`
-            # minut, fajka hovori, ci prave plati. Klik prichadza na vlakne
-            # listy, takze ide cez `ui_call` rovnako ako stlacenie skratky.
+            # "NOT NOW" EVEN WITHOUT THE SHORTCUT (0.2.1). When another app
+            # holds Ctrl+Alt+Z, `RegisterHotKey` fails - and then the cues
+            # could only be muted by stopping listening, which also stops the
+            # measurement. The item does exactly what the shortcut does: a
+            # toggle for `SNOOZE_HOTKEY_MINUTES` minutes, the tick says whether
+            # it is in effect right now. The click arrives on the tray thread,
+            # so it goes through `ui_call` just like a shortcut press.
             pystray.MenuItem(
                 lambda _item: tr("tray.snooze", minutes=SNOOZE_HOTKEY_MINUTES),
                 lambda *_: self.ui_call(self._toggle_snooze_from_hotkey),
@@ -2887,8 +3064,8 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
                 self.tray_icon.icon = self.make_tray_image()
             except Exception:
                 pass
-            # Pystray na Windows postavi texty menu len pri `update_menu` -
-            # bez toho by "Spustit / Zastavit sledovanie" ostalo po starom.
+            # On Windows pystray builds the menu texts only on `update_menu` -
+            # without it "Start watching / Stop watching" would stay as it was.
             try:
                 self.tray_icon.update_menu()
             except Exception:
@@ -2896,29 +3073,33 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         self._apply_window_icon()
 
     def _apply_window_icon(self):
-        """Ikona okna (taskbar / alt-tab) = to iste zlate enso vo farbe stavu
-        (zelena pocuvam / cervena nie) ako znacka v listi. Najlepsia snaha:
-        pri bezramovom okne sa nemusi vsade zobrazit, preto je cela v
-        try/except a bez nej appka bezi dalej. Referenciu na obrazok si drzime,
-        inak ju Tk zahodi a ikona zbelie.
+        """Window icon (taskbar / alt-tab) = the same gold enso in the state
+        colour (green listening / red not) as the tray mark. Best effort:
+        with a frameless window it may not show everywhere, so it is all
+        in try/except and the app keeps running without it. We keep the
+        reference to the image, otherwise Tk drops it and the icon turns
+        white.
 
-        CustomTkinter si 200 ms po vzniku okna nastavi VLASTNU ikonu priamo
-        na okno (`CTk._windows_set_titlebar_icon`), ak appka dovtedy nevolala
-        `iconbitmap()`. O `iconphoto()` nevie, takze v liste a v Alt-Tab
-        ostavalo logo CustomTkinter namiesto ensa. Dve cesty:
-          * bezny start - casovac CTk pribehne az v `mainloop()`, teda PO
-            tejto metode. Vlajku, ktorou si CTk pamata "appka ma vlastnu
-            ikonu", preto nastavime sami (len ked sa enso naozaj nastavilo;
-            inak radsej ikona CTk nez ziadna);
-          * prvy start - casovac pribehne uz pocas sprievodcu, PRED touto
-            metodou. `iconphoto(True, ...)` meni len predvolenu ikonu a tu
-            vlastna ikona okna prebije - preto enso dostane aj hlavne okno
-            priamo (`iconphoto(False, ...)`).
-        Ze CTk vlajku stale cita, strazi test v tests/test_ui_fixes.py."""
+        200 ms after the window is created, CustomTkinter sets its OWN
+        icon directly on the window (`CTk._windows_set_titlebar_icon`),
+        unless the app has called `iconbitmap()` by then. It does not know
+        about `iconphoto()`, so the taskbar and Alt-Tab kept showing the
+        CustomTkinter logo instead of the enso. Two paths:
+          * normal start - the CTk timer only fires in `mainloop()`, i.e.
+            AFTER this method. So we set the flag by which CTk remembers
+            "the app has its own icon" ourselves (only when the enso was
+            really set; otherwise better the CTk icon than none);
+          * first start - the timer fires already during the guide, BEFORE
+            this method. `iconphoto(True, ...)` only changes the default
+            icon, and that is overridden by the window's own icon - so the
+            main window also gets the enso directly
+            (`iconphoto(False, ...)`).
+        A test in tests/test_ui_fixes.py guards that CTk still reads the
+        flag."""
         try:
             photo = _ImageTk.PhotoImage(self.make_tray_image())
-            self.root.iconphoto(True, photo)     # predvolena pre okna appky
-            self.root.iconphoto(False, photo)    # vlastna ikona hlavneho okna
+            self.root.iconphoto(True, photo)     # default for the app's windows
+            self.root.iconphoto(False, photo)    # the main window's own icon
             self._window_icon_ref = photo
         except Exception:
             return
@@ -2943,17 +3124,18 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         if not TRAY_AVAILABLE:
             self.quit_app()
             return
-        # PRVY KRIZIK: povedat, ze appka nekonci. Doteraz × okno potichu
-        # schovalo do listy - port pre telefon ostal otvoreny a tep sa dalej
-        # meral a ukladal, hoci si hrac myslel, ze appku zavrel. Raz to
-        # povie a da na vyber; dalej × len schovava.
+        # FIRST ×: say that the app does not quit. Until now × silently hid the
+        # window into the tray - the port for the phone stayed open and heart
+        # rate kept being measured and saved, although the player thought they
+        # had closed the app. It says so once and gives a choice; after that ×
+        # only hides.
         #
-        # DVE TLACIDLA, NIE ANO/NIE (0.2.2, davka 4): systemove okno malo
-        # tlacidla v jazyku Windowsu a veta musela vysvetlovat "(Nie =
-        # ukoncit hned)". Teraz okno appky (`ui_kit.choose`) s "Nechat bezat
-        # v liste" (predvolene, Enter) a "Ukoncit Zanshin". Escape a × v
-        # dialogu = nic sa nedeje, okno ostava - a pyta sa znova pri dalsom
-        # ×, lebo hrac este nevybral.
+        # TWO BUTTONS, NOT YES/NO (0.3, batch 4): the system dialog had buttons
+        # in the Windows language and the sentence had to explain "(No = quit
+        # right away)". Now it is an app dialog (`ui_kit.choose`) with "Keep
+        # running in the tray" (default, Enter) and "Quit Zanshin". Escape and
+        # × in the dialog = nothing happens, the window stays - and it asks
+        # again on the next ×, because the player has not chosen yet.
         if not getattr(self, "tray_close_explained", True):
             volba = ui_kit.choose(
                 getattr(self, "root", None), getattr(self, "pal", None), APP_NAME,
@@ -2974,18 +3156,20 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         self.ui_call(self._quit)
 
     def _quit(self):
-        # UKONCENIE NESMIE BEZAT DVAKRAT VNORENE.
+        # QUITTING MUST NOT RUN TWICE, NESTED.
         #
         # `stop_listening` -> `_close_hr_session` -> `_ask_session_context`
-        # pri zatvarani CAKA na dotaznik (`wait_window`). To je vnorena
-        # slucka Tk a ta vybavi aj dalsie "Ukoncit" z listy. Druhy `_quit`
-        # potom prebehol cely az po `root.destroy()`, dotaznik zanikol s
-        # oknom a prvy `_quit` pokracoval v uz znicenom okne - `log` v
-        # `_close_hr_session` spadol na TclError (pad v app.log z buildu).
-        # Druhe "Ukoncit" teraz len zavrie dotaznik a ukoncenie dokonci prvy
-        # `_quit`, v poradi nizsie. VYPLNENE ODPOVEDE SA NESTRACAJU (0.2.2,
-        # rozhodnutie zadavatela): ked sa hrac dotkol aspon jednej odpovede,
-        # ulozia sa (ako "Ulozit"); ked nie, zavrie sa ako "Preskocit".
+        # WAITS for the questionnaire on closing (`wait_window`). That is a
+        # nested Tk loop, and it also handles another "Quit" from the tray. The
+        # second `_quit` then ran all the way to `root.destroy()`, the
+        # questionnaire went away with the window and the first `_quit`
+        # continued in an already destroyed window - `log` in
+        # `_close_hr_session` crashed with a TclError (a crash in app.log from
+        # a build). A second "Quit" now only closes the questionnaire and the
+        # first `_quit` finishes the quitting, in the order below. FILLED-IN
+        # ANSWERS ARE NOT LOST (0.3, the product owner's decision): when the
+        # player touched at least one answer, they are saved (as with "Save");
+        # when not, it closes as with "Skip".
         if getattr(self, "_quit_bezi", False):
             dotaznik = getattr(self, "_dotaznik_pri_zatvarani", None)
             if dotaznik is None:
@@ -2993,20 +3177,23 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
             self._dokonci_dotaznik(dotaznik)
             return
         self._quit_bezi = True
-        # Kym je toto True, `_ask_session_context` na dotaznik pocka.
+        # While this is True, `_ask_session_context` waits for the
+        # questionnaire.
         self._zatvara_sa = True
-        # Dotaznik z bezneho Stop, ktory este visi (0.2.2 davka 4b): to iste
-        # pravidlo ako pri druhom "Ukoncit" - `root.destroy()` nizsie by ho
-        # inak zahodil aj s odpovedami. PRED `stop_listening`, aby sa novy
-        # dotaznik zatvarania neotvoril nad starym.
+        # A questionnaire from a normal Stop that is still open (0.3 batch 4b):
+        # the same rule as with a second "Quit" - otherwise `root.destroy()`
+        # below would throw it away along with the answers. BEFORE
+        # `stop_listening`, so that the new closing questionnaire does not open
+        # on top of the old one.
         try:
             self._dokonci_otvorene_dotazniky()
         except Exception:
             app_log.exception("ukoncenie: otvorene dotazniky sa nepodarilo dokoncit")
 
-        # KAZDY KROK ZVLAST. Vynimka z jedneho kroku (napr. `stop_listening`)
-        # preskocila vsetko za nim: HUD, vizualy v hre, skratka, port pre
-        # hodinky a ikona v liste bezali dalej a `root.destroy()` neprisiel.
+        # EACH STEP SEPARATELY. An exception in one step (e.g.
+        # `stop_listening`) skipped everything after it: the HUD, the in-game
+        # visuals, the shortcut, the port for the watch and the tray icon kept
+        # running and `root.destroy()` never came.
         def krok(meno, fn):
             try:
                 fn()
@@ -3014,7 +3201,8 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
                 app_log.exception("ukoncenie: krok %s zlyhal - pokracujem dalsim", meno)
 
         try:
-            # Relacia sa uklada PRVA (`stop_listening` -> `_close_hr_session`).
+            # The session is saved FIRST (`stop_listening` ->
+            # `_close_hr_session`).
             krok("stop_listening", self.stop_listening)
             for attr in ("_pregen_job", "_snooze_job", "_activity_job",
                          "_hr_retry_job"):
@@ -3029,10 +3217,12 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
             krok("hud", lambda: self.hud.stop())
             krok("vizualy", lambda: self.overlay_manager.stop_all())
             krok("ovladac", lambda: self.gamepad.stop())
-            # Hotkey drzi vlastne vlakno s `GetMessageW` slucku - bez tohto by
-            # viselo az do konca procesu a kombinacia by ostala zabrata.
-            # Zamerne az TU, nie v `stop_listening` ani `on_close`: "teraz nie"
-            # ma fungovat aj ked appka nepocuva aj ked je minimalizovana v liste.
+            # The hotkey holds its own thread with a `GetMessageW` loop - without
+            # this it would hang until the end of the process and the key
+            # combination would stay taken.
+            # Deliberately only HERE, not in `stop_listening` or `on_close`: "not
+            # now" has to work even when the app is not listening and even when
+            # it is minimised to the tray.
             krok("hotkey", self.stop_snooze_hotkey)
             krok("senzor tepu", lambda: self.heart_rate_monitor.stop())
             if self.game_watcher is not None:
@@ -3047,35 +3237,40 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         finally:
             self._quit_bezi = False
 
-    # Registracia globalnej skratky "teraz nie" (zo sekcie rychly dock).
-    # Zvysok "teraz nie" (prepinac, odlozenie hlasok, bodka stavu) je v
-    # app_controls.ControlsMixin. Tieto dve metody ostali v app.py pri
-    # liste: `start_snooze_hotkey` cita TRAY_AVAILABLE, ktore sa pocita
-    # tu spolu s importom pystray/PIL (a testy ho menia na module app).
+    # Registration of the global "not now" shortcut (from the quick dock
+    # section). The rest of "not now" (the toggle, snoozing the cues, the
+    # status dot) is in app_controls.ControlsMixin. These two methods stayed
+    # in app.py next to the tray: `start_snooze_hotkey` reads TRAY_AVAILABLE,
+    # which is computed here together with the pystray/PIL import (and the
+    # tests change it on the app module).
     def start_snooze_hotkey(self, po_zmene=False):
-        """Zaregistruje globalny klaves pre "teraz nie" (zadanie §1.9).
+        """Registers the global key for "not now" (spec §1.9).
 
-        NIE JE to navrat hooku, ktory faza 3 zrusila - viz hlavicka
-        `hotkey.py`. Appka Windowsu ohlasi JEDINU kombinaciu a o ziadnom
-        inom klavese sa nedozvie.
+        This is NOT a return of the hook that phase 3 removed - see the
+        header of `hotkey.py`. The app announces a SINGLE combination to
+        Windows and learns nothing about any other key.
 
-        Ked je kombinacia obsadena inou appkou, registracia zlyha a appka
-        bezi dalej bez nej - `hotkey.GlobalHotkey` to zaloguje. Tlacidlo v
-        doku uz nie je; od 0.2.1 je "teraz nie" aj v ponuke ikony v liste
-        (`setup_tray`) a riadok v denniku (`log.hotkey_failed_tray`) hraca
-        posle tam. Bez listy (chyba pystray/PIL) zostava len zastavit
-        pocuvanie, co zastavi aj meranie - to hovori `log.hotkey_failed`.
+        When the combination is taken by another app, registration fails
+        and the app keeps running without it - `hotkey.GlobalHotkey` logs
+        it. The button in the dock is gone; since 0.2.1 "not now" is also
+        in the tray icon's menu (`setup_tray`) and the journal line
+        (`log.hotkey_failed_tray`) sends the player there. Without a tray
+        (pystray/PIL missing) the only option left is to stop listening,
+        which also stops the measurement - that is what
+        `log.hotkey_failed` says.
 
-        `po_zmene=True`: hrac prave vybral inu skratku v Nastaveniach
-        (`on_snooze_hotkey_pick`). Stara sa najprv odregistruje (prvy riadok
-        nizsie), vysledok novej ide do dennika rovnako ako pri starte a do
-        riadku nastavenia (`_hotkey_zlyhala`).
+        `po_zmene=True`: the player has just picked another shortcut in
+        Settings (`on_snooze_hotkey_pick`). The old one is unregistered
+        first (the first line below), the result of the new one goes to
+        the journal just like at start and to the settings row
+        (`_hotkey_zlyhala`).
         """
         self.stop_snooze_hotkey()
         self._hotkey_zlyhala = False
         self._hotkey_caka = False
-        # Kazda registracia ma svoje cislo: neskory vysledok starej skratky
-        # (hrac medzitym vybral inu) sa zahodi (`_po_registracii_skratky`).
+        # Every registration has its own number: a late result of an old
+        # shortcut (the player picked another one meanwhile) is dropped
+        # (`_po_registracii_skratky`).
         self._hotkey_gen = getattr(self, "_hotkey_gen", 0) + 1
         gen = self._hotkey_gen
         if not self.snooze_hotkey:
@@ -3083,20 +3278,22 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         try:
             self._hotkey = hotkey.GlobalHotkey(
                 self.snooze_hotkey, self._on_snooze_hotkey,
-                # NIE `log_threadsafe`: hotkey sa registruje na vlastnom
-                # vlakne uz pocas `__init__`, teda PRED `root.mainloop()`.
-                # `ui_call` vtedy este planovat nevie ("main thread is not
-                # in main loop") a sprava by sa ticho stratila - presne to
-                # sa aj dialo. `app_log` je vlaknovo bezpecny a do suboru
-                # zapise vzdy. Vysledok registracie zaloguje do okna az
-                # `start_snooze_hotkey` nizsie, z hlavneho vlakna.
+                # NOT `log_threadsafe`: the hotkey is registered on its own
+                # thread already during `__init__`, i.e. BEFORE
+                # `root.mainloop()`. At that point `ui_call` cannot schedule
+                # yet ("main thread is not in main loop") and the message would
+                # be silently lost - which is exactly what was happening.
+                # `app_log` is thread-safe and always writes to the file. The
+                # registration result is logged to the window only by
+                # `start_snooze_hotkey` below, from the main thread.
                 log=app_log.info)
-            # SKUTOCNY VYSLEDOK, NIE ODHAD PODLA CASU (0.2.2 davka 4b).
-            # `start()` caka najviac 2 s; ked je Windows pri starte pomaly,
-            # vrati False, hoci skratku nikto nedrzi - riadok v Nastaveniach
-            # aj dennik potom tvrdili "drzi ju iny program". Vlakno povie
-            # vysledok samo, ked ho ma; do Tk ho prenesie `ui_call`
-            # (`root.after(0)`, pred `mainloop()` cez `_ui_pending`).
+            # THE REAL RESULT, NOT A GUESS BY TIME (0.3 batch 4b).
+            # `start()` waits at most 2 s; when Windows is slow at startup,
+            # it returns False even though nobody holds the shortcut - the
+            # Settings row and the journal then claimed "another program
+            # holds it". The thread reports the result itself once it has
+            # it; `ui_call` carries it over to Tk (`root.after(0)`, before
+            # `mainloop()` via `_ui_pending`).
             self._hotkey.on_result = (
                 lambda ok, g=gen: self.ui_call(
                     lambda: self._po_registracii_skratky(g, ok)))
@@ -3107,24 +3304,27 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
             self._hotkey_zlyhala = True
             return False
         if getattr(self._hotkey, "caka", False):
-            # Este nie je hotovo - riadok neukaze "obsadene" a dennik nic,
-            # kym nepride vysledok z vlakna.
+            # Not done yet - the row does not show "taken" and the journal
+            # shows nothing until the result comes from the thread.
             self._hotkey_caka = True
             return False
-        # Vysledok mohol dobehnut az medzi `start()` a kontrolou `caka`:
-        # `start()` vtedy vratil este False, no vlakno uz skoncilo uspesne a
-        # jeho `on_result` sa (lebo `_hotkey_caka` je False) zahodi. Ked
-        # `caka` neplati, `registered` je uz konecny - vlakno ho nastavi
-        # PRED `_ready` (`GlobalHotkey._hotovo`).
+        # The result may have finished only between `start()` and the `caka`
+        # check: `start()` then still returned False, but the thread had
+        # already finished successfully and its `on_result` is dropped (because
+        # `_hotkey_caka` is False). When `caka` does not hold, `registered` is
+        # already final - the thread sets it BEFORE `_ready`
+        # (`GlobalHotkey._hotovo`).
         ok = bool(getattr(self._hotkey, "registered", ok))
         self._ohlas_vysledok_skratky(ok)
         return ok
 
     def _po_registracii_skratky(self, gen, ok):
-        """Vysledok registracie z vlakna skratky (`GlobalHotkey.on_result`),
-        uz v Tk vlakne. Plati len ked `start()` na neho nedockal (`caka`) a
-        patri poslednej registracii - inak ho uz povedal `start_snooze_hotkey`
-        alebo patri skratke, ktoru hrac medzitym vymenil."""
+        """The registration result from the shortcut thread
+        (`GlobalHotkey.on_result`), already on the Tk thread. It applies
+        only when `start()` did not wait for it (`caka`) and it belongs to
+        the latest registration - otherwise `start_snooze_hotkey` has
+        already reported it, or it belongs to a shortcut the player has
+        swapped in the meantime."""
         if gen != getattr(self, "_hotkey_gen", None) or not getattr(self, "_hotkey_caka", False):
             return
         self._hotkey_caka = False
@@ -3138,15 +3338,16 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
                     app_log.exception("hotkey: %s po registracii zlyhal", meno)
 
     def _ohlas_vysledok_skratky(self, ok):
-        """Stav pre riadok v Nastaveniach (`_hotkey_zlyhala`) a jeden riadok
-        do dennika - po skutocnom vysledku registracie."""
+        """State for the Settings row (`_hotkey_zlyhala`) and one line in the
+        journal - after the real result of the registration."""
         self._hotkey_zlyhala = not ok
         if ok:
             self.log(tr("log.hotkey_on",
                         combo=hotkey.format_combo(self.snooze_hotkey)))
         elif TRAY_AVAILABLE:
-            # Zlyhanie sa hlasi RAZ - `start_snooze_hotkey` sa vola raz pri
-            # starte - a veta ukaze na polozku v liste, nie na zastavenie.
+            # The failure is reported ONCE - `start_snooze_hotkey` is called
+            # once at start - and the sentence points to the tray item, not to
+            # stopping.
             self.log(tr("log.hotkey_failed_tray",
                         combo=hotkey.format_combo(self.snooze_hotkey)))
         else:

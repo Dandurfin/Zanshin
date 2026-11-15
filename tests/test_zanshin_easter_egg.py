@@ -1,19 +1,21 @@
 # -*- coding: utf-8 -*-
-"""Plny Zanshin (easter egg) od zaciatku do konca - po vsetkych zmenach 0.2.
+"""Full Zanshin (easter egg) from start to finish - after all the 0.2 changes.
 
-Relacie sa tu nevymyslaju ako hotove slovniky. Kazdy vecer prejde skutocnym
-`hr_stats.HeartStats` - kalibracia na zaciatku, obcas vypadok tepu, pasma,
-suhrn - s kritickym tepom a dlhodobou zakladnou z doterajsej historie, tak
-ako ich nastavuje `app._open_hr_session` (zakladna zo vsetkeho, kriticky tep
-z hry). Zatvorenie ide cestou `_close_hr_session`: `hr_stats.save_session`
-a hned skutocna `DandurfApp._maybe_graduate` na malej atrape appky so
-skutocnym `save_settings` / `load_settings` a skutocnym `ui_shell._EnsoHero`.
+Sessions here are not made up as ready-made dicts. Every evening goes through
+the real `hr_stats.HeartStats` - calibration at the start, an occasional
+heart-rate outage, zones, summary - with the critical heart rate and the
+long-term baseline from the history so far, the way `app._open_hr_session`
+sets them (baseline from everything, critical heart rate from play). Closing
+goes the `_close_hr_session` way: `hr_stats.save_session` and right after it
+the real `DandurfApp._maybe_graduate` on a small fake app with the real
+`save_settings` / `load_settings` and the real `ui_shell._EnsoHero`.
 
-Rozhodnutie (easter-egg-check): do serie sa rataju LEN HERNE relacie
-(`hr_stats.ZEN_SVET`), rovnako ako kriticky tep a prah zataze. Kruh sa
-uzavrie az po hernej relacii - nie v dotazniku po praci.
+Decision (easter-egg-check): ONLY GAME sessions count towards the series
+(`hr_stats.ZEN_SVET`), the same as the critical heart rate and the load
+threshold. The circle closes only after a game session - not in the
+questionnaire after work.
 
-Bez Tk: `_EnsoHero` nie je widget, len kresli PIL obrazok.
+No Tk: `_EnsoHero` is not a widget, it only draws a PIL image.
 """
 import json
 import os
@@ -37,7 +39,7 @@ T0 = 1_780_000_000.0
 
 @pytest.fixture
 def hodiny(monkeypatch):
-    """Hodiny pre `hr_stats`: relacia zacina a konci v case scenara, nie teraz."""
+    """Clock for `hr_stats`: sessions start and end in scenario time, not now."""
     teraz = [T0]
     monkeypatch.setattr(hr_stats, "time",
                         types.SimpleNamespace(time=lambda: teraz[0]))
@@ -46,15 +48,16 @@ def hodiny(monkeypatch):
 
 def _vecer(hodiny, historia, den, druh="calm", svet="play", hodina=20,
            minut=22, rest=72.0, vypadok_min=0.0):
-    """Jedna relacia cez skutocny `HeartStats` - vrati ulozitelny suhrn.
+    """One session through the real `HeartStats` - returns a saveable summary.
 
-    calm = tep pri pokoji, kazde piate kolo o 8 vyssie (napatejsi zapas);
-    tilt = striedavo +12 a +30 nad pokojom. Kazdy vecer zacina kalibraciou
-    na zvysenom tepe (sadol si od schodov) a sum hodiniek je nahodny.
+    calm = heart rate at rest, every fifth round 8 higher (a tenser match);
+    tilt = alternately +12 and +30 above rest. Every evening starts with
+    calibration at a raised heart rate (just sat down after the stairs) and
+    the watch noise is random.
     """
     rnd = random.Random(den * 100 + hodina)
     t0 = T0 + den * DEN + hodina * 3600.0
-    # Ako `_open_hr_session`: zakladna zo vsetkych relacii, kriticky z hry.
+    # Like `_open_hr_session`: baseline from all sessions, critical from play.
     dlhodoba = hr_stats.dlhodoba_zakladna(historia)
     herna = hr_stats.sessions_in_world(historia, "play")
     kriticky = int(hr_stats.dynamicky_kriticky(herna, baseline=dlhodoba))
@@ -69,7 +72,7 @@ def _vecer(hodiny, historia, den, druh="calm", svet="play", hodina=20,
     slepy = False
     while t < koniec:
         if vypadok_od and vypadok_od <= t < vypadok_od + vypadok_min * 60.0:
-            if not slepy:                      # appka: note_dropout, clear_live
+            if not slepy:                      # app: note_dropout, clear_live
                 st.note_dropout(od=st.last_beat_ts)
                 st.clear_live()
                 slepy = True
@@ -94,16 +97,17 @@ def _vecer(hodiny, historia, den, druh="calm", svet="play", hodina=20,
 
 @pytest.fixture
 def appka(tmp_path, monkeypatch, hodiny):
-    """Minimalna atrapa `DandurfApp` pre `_maybe_graduate`.
+    """Minimal `DandurfApp` fake for `_maybe_graduate`.
 
-    Nastavenia su z prveho startu (`load_settings` bez suboru) a uklada ich
-    skutocne `save_settings` do docasneho suboru; znacka je skutocne enso.
+    The settings are from the first start (`load_settings` without a file)
+    and the real `save_settings` saves them to a temporary file; the mark is
+    the real enso.
     """
     import app as app_mod
     import app_prefs
     import ui_shell
-    # `load_settings` / `save_settings` byvaju v mixine app_prefs
-    # (PrefsMixin) a citaju SETTINGS_PATH zo svojho modulu.
+    # `load_settings` / `save_settings` live in the app_prefs mixin
+    # (PrefsMixin) and read SETTINGS_PATH from their own module.
     monkeypatch.setattr(app_prefs, "SETTINGS_PATH",
                         str(tmp_path / "dandurf_settings.json"))
     povodny = i18n._lang["code"]
@@ -136,13 +140,13 @@ def appka(tmp_path, monkeypatch, hodiny):
             hr_sessions_path=str(tmp_path / "hr_sessions.json"))
 
     def spusti(d=None):
-        """Jeden "start appky" nad tymi istymi subormi."""
+        """One "app start" over the same files."""
         a = z_nastaveni(d if d is not None else D.load_settings(types.SimpleNamespace()))
         a.zmeny_ensa = []
         a.ulozenia = []
         a.enso = ui_shell._EnsoHero(theme.tokens(theme.ZEN), size=48,
                                     on_change=lambda: a.zmeny_ensa.append(1))
-        # Presne to, co robi `_build_dnes_page` pri stavbe okna.
+        # Exactly what `_build_dnes_page` does when building the window.
         if getattr(a, "zanshin_graduated", False):
             a.enso.graduate()
 
@@ -160,7 +164,7 @@ def appka(tmp_path, monkeypatch, hodiny):
 
 
 def _zatvor(a, summary):
-    """Koniec `_close_hr_session`: ulozit a, ked sa ulozilo, promocia."""
+    """The end of `_close_hr_session`: save and, once saved, graduation."""
     if hr_stats.save_session(a.hr_sessions_path, summary):
         a._maybe_graduate(summary)
         return True
@@ -168,8 +172,8 @@ def _zatvor(a, summary):
 
 
 def _prehraj(hodiny, a, plan):
-    """Plan = [(den, druh, svet, hodina, minut, vypadok_min)] - v tomto poradi
-    sa relacie otvaraju aj zatvaraju. Vrati vsetky zatvorene suhrny."""
+    """Plan = [(den, druh, svet, hodina, minut, vypadok_min)] - sessions open
+    and close in this order. Returns all the closed summaries."""
     zatvorene = []
     for den, druh, svet, hodina, minut, vypadok in plan:
         historia = hr_stats.load_sessions(a.hr_sessions_path)
@@ -181,11 +185,12 @@ def _prehraj(hodiny, a, plan):
 
 
 def test_realna_pokojna_historia_spusti_promociu_prave_raz(hodiny, appka):
-    """Dva tilty na zaciatku, potom pokojne vecery pri hre. Medzi nimi
-    pokojne pracovne popoludnia, jedno 6-minutove nahliadnutie a vecer so
-    4-minutovym vypadkom tepu. Promocia pride po PRVOM vecere, ked plati
-    vsetko naraz: 10 zaratanych hernych vecerov, 10 dni, 5 zo 7 pokojnych,
-    posledny pokojny. To je vecer 10. dna - nie skor, a uz nikdy znova."""
+    """Two tilts at the start, then calm evenings of play. In between, calm
+    work afternoons, one 6-minute peek and an evening with a 4-minute
+    heart-rate outage. The graduation comes after the FIRST evening when
+    everything holds at once: 10 counted game evenings, 10 days, 5 of 7
+    calm, the last one calm. That is the evening of day 10 - not earlier,
+    and never again."""
     a = appka()
     plan = []
     for den in range(14):
@@ -197,7 +202,7 @@ def test_realna_pokojna_historia_spusti_promociu_prave_raz(hodiny, appka):
                      4.0 if den == 7 else 0.0))
     zatvorene = _prehraj(hodiny, a, plan)
 
-    # Vstupy znamenaju, co promocia predpoklada.
+    # The inputs mean what the graduation assumes.
     herne = [s for s in zatvorene if s["world"] == "play"]
     assert [hr_stats.je_plne_zanshin(s) for s in herne if s["started"] < T0 + 2 * DEN] \
         == [False, False], "tilt nie je pokoj"
@@ -207,7 +212,7 @@ def test_realna_pokojna_historia_spusti_promociu_prave_raz(hodiny, appka):
     nahlad = next(s for s in herne if s["duration_s"] < 900)
     assert hr_stats.je_plne_zanshin(nahlad) is None, "nahliadnutie netresta"
 
-    # Prave raz - a prave po vecere 10. dna.
+    # Exactly once - and exactly after the evening of day 10.
     oznacene = [s for s in zatvorene if s.get("zen_graduation")]
     assert len(oznacene) == 1
     assert oznacene[0]["started"] == T0 + 10 * DEN + 20 * 3600
@@ -218,7 +223,7 @@ def test_realna_pokojna_historia_spusti_promociu_prave_raz(hodiny, appka):
     assert a.enso._moon is True and a.zmeny_ensa == [1], "mesiac raz"
     assert a.enso.render(48) is not None, "mesiac sa da nakreslit"
 
-    # Znacka zije v nastaveniach, nie v historii relacii.
+    # The mark lives in the settings, not in the session history.
     with open(appka.nastavenia, encoding="utf-8") as fh:
         ulozene = json.load(fh)
     assert ulozene["zanshin_graduated"] is True
@@ -226,8 +231,8 @@ def test_realna_pokojna_historia_spusti_promociu_prave_raz(hodiny, appka):
     assert not any(s.get("zen_graduation")
                    for s in hr_stats.load_sessions(a.hr_sessions_path))
 
-    # Restart: flag sa nacita, mesiac sa obnovi bez noveho "zmeny", dalsi
-    # pokojny vecer uz nic nespusti.
+    # Restart: the flag is loaded, the moon is restored without a new "change",
+    # the next calm evening triggers nothing.
     d = appka.nacitaj()
     assert d["zanshin_graduated"] is True
     assert d["zanshin_graduated_at"] == a.zanshin_graduated_at
@@ -239,10 +244,10 @@ def test_realna_pokojna_historia_spusti_promociu_prave_raz(hodiny, appka):
 
 
 def test_takmer_splnena_historia_nespusti_nic(hodiny, appka):
-    """Kazdych 7 vecerov pri hre su styri pokojne - o jeden menej, nez treba.
-    Posledny vecer je pokojny, relacii aj dni je dost. Kazde popoludnie je
-    pokojna praca: keby sa ratala, seria by sa naplnila - promocia ale
-    pocita len hru, tak neprisla ani raz."""
+    """In every 7 evenings of play four are calm - one fewer than needed. The
+    last evening is calm, there are enough sessions and days. Every
+    afternoon is calm work: if it counted, the series would fill up - but
+    the graduation counts only play, so it never came."""
     a = appka()
     vzor = ("tilt", "calm", "tilt", "calm", "tilt", "calm", "calm")
     plan = []
@@ -261,14 +266,15 @@ def test_takmer_splnena_historia_nespusti_nic(hodiny, appka):
     assert v["reason"] == "not_yet" and v["passed_in_window"] == 4
     assert v["eligible"] == 14, "pracovne relacie sa nerataju"
     assert hr_stats.zanshin_streak(historia)["current_pass"] is True
-    # Kontrola, ze je to naozaj "takmer": s pracou ako hrou by sa spustila.
+    # Check that it really is "almost": with work as play it would fire.
     ako_hra = [dict(s, world="play") for s in historia]
     assert hr_stats.zanshin_graduation(ako_hra)["fire"] is True
 
 
 def test_start_obnovi_zlaty_mesiac_z_flagu():
-    """Flag sa nacita v `__init__` pred stavbou okna a `_build_dnes_page`
-    hned po vytvoreni ensa zavola `graduate()` (aj po prestavbe okna)."""
+    """The flag is loaded in `__init__` before the window is built, and
+    `_build_dnes_page` calls `graduate()` right after creating the enso
+    (also after a window rebuild)."""
     init = zdroj_metody("__init__")
     assert (init.index('self.zanshin_graduated = bool(settings["zanshin_graduated"])')
             < init.index("self._build_ui()"))
@@ -280,7 +286,7 @@ def test_start_obnovi_zlaty_mesiac_z_flagu():
 
 
 def test_hook_po_praci_mlci():
-    """Po pracovnej relacii sa `_maybe_graduate` historie ani nedotkne."""
+    """After a work session `_maybe_graduate` does not touch the history."""
     telo = zdroj_metody("_maybe_graduate")
     i_svet = telo.index("hr_stats.session_world(summary) != hr_stats.ZEN_SVET")
     assert i_svet < telo.index("hr_stats.load_sessions(")
@@ -288,9 +294,10 @@ def test_hook_po_praci_mlci():
 
 @pytest.mark.parametrize("jazyk", ["sk", "en"])
 def test_sprava_nesluby_zdravie_ani_vykon(jazyk):
-    """Sprava hovori len o tom, co appka naozaj videla (tep blizko vlastneho
-    pokoja vacsinu poslednych vecerov pri hre). Ziadne "telo si uz samo
-    pamata", ziadne zdravie, vykon ani trvaly ucinok."""
+    """The message talks only about what the app really saw (heart rate close
+    to your own resting rate on most of the recent evenings of play). No
+    "the body now remembers on its own", no health, performance or lasting
+    effect."""
     telo = i18n.STRINGS["session.zanshin.body"][jazyk].lower()
     zakazane = {
         "sk": ("pamätá", "zdrav", "lieč", "lepš", "výkon", "natrvalo",

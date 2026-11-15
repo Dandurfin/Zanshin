@@ -1,18 +1,22 @@
 # -*- coding: utf-8 -*-
-"""Stranka Dnes po davke 4 auditu UX (0.2.2).
+"""The Today page after batch 4 of the UX audit (0.3).
 
-Strazi sa:
-  * hlavny vypinac je JEDNO tlacidlo s textom ("▶ Spustit sledovanie" /
-    "■ Zastavit sledovanie") - tie iste slova ako ponuka ikony v liste,
-    primary ked appka stoji, secondary ked sleduje, ovladatelne klavesnicou
-    (Enter, medzernik) a prepina presne to iste co doteraz,
-  * paleta Ctrl+K hovori o vypinaci to iste co lista,
-  * obsadeny port tepu ma na Dnes vlastny stav s radou (nie "Cakam na tep"),
-  * pred prvou relaciou s tepom sa karty a pasma len s pomlckami schovaju,
-  * kym sa appka uci hranicu tepu, na Dnes je ticha veta "n z 3".
+Guarded:
+  * the main switch is ONE button with text ("▶ Start watching" /
+    "■ Stop watching") - the same words as the tray icon menu,
+    primary when the app is stopped, secondary when it is watching,
+    keyboard-operable (Enter, Space) and it toggles exactly the same as
+    before,
+  * the Ctrl+K palette says the same about the switch as the tray,
+  * a busy heart-rate port has its own state with advice on Today (not
+    "Waiting for heart rate"),
+  * before the first session with heart rate, cards and zones with only
+    dashes are hidden,
+  * while the app is learning the heart-rate limit, Today shows a quiet
+    "n of 3" sentence.
 
-Len synteticke data. Tk sa pouziva len tam, kde ide o skutocny widget, a
-len na Windows s displejom.
+Only synthetic data. Tk is used only where a real widget is involved, and
+only on Windows with a display.
 """
 import os
 import re
@@ -64,12 +68,12 @@ def _tk_root():
 
 
 # --------------------------------------------------------------------------
-# Hlavny vypinac: texty
+# Main switch: texts
 # --------------------------------------------------------------------------
 
 def test_tlacidlo_hovori_tie_iste_slova_ako_lista():
-    """Jeden vypinac, jedno meno: tlacidlo v pase = polozka v ponuke listy,
-    len so znakom ▶ / ■. Vo vsetkych 11 jazykoch."""
+    """One switch, one name: the button in the bar = the item in the tray
+    menu, only with the ▶ / ■ sign. In all 11 languages."""
     for jazyk in JAZYKY:
         start = i18n.tr_lang(jazyk, "dock.start")
         stop = i18n.tr_lang(jazyk, "dock.stop")
@@ -87,8 +91,8 @@ def test_texty_pasu_su_na_jednom_mieste(sk):
     assert D._texty_pasu() == (i18n.tr("dock.start"), i18n.tr("dock.stop"),
                                i18n.tr("kamae.bar_hint"))
     src = zdroj_appky()
-    # Navod k malej ikone ("Klikni ▶ vlavo") a nadpis pasu su prec - kluce
-    # uz nie su ani v slovniku, ani v kode.
+    # The hint for the small icon ("Click ▶ on the left") and the bar heading
+    # are gone - the keys are no longer in the dictionary or in the code.
     assert not re.search(r'tr\("kamae\.bar_(title|sub)"', src)
     assert "kamae.bar_title" not in i18n.STRINGS
     assert "kamae.bar_sub" not in i18n.STRINGS
@@ -112,9 +116,10 @@ def test_prepis_pasu_nastavi_tlacidlo_a_bodku(sk):
 
 
 def test_vypinac_ide_jednou_cestou_s_listou():
-    """Tlacidlo, lista, paleta aj hra prepinaju cez start/stop_listening a
-    tie vzdy prejdu `_apply_listening_visuals` (tlacidlo) aj
-    `update_tray_icon` (ponuka listy) - preto sa nemozu rozist."""
+    """The button, the tray, the palette and the game all toggle via
+    start/stop_listening, and those always go through
+    `_apply_listening_visuals` (button) and `update_tray_icon` (tray
+    menu) - so they cannot drift apart."""
     vizual = zdroj_metody("_apply_listening_visuals")
     assert "self.kamae.set_live(self.listening)" in vizual
     for metoda in ("start_listening", "stop_listening"):
@@ -148,7 +153,7 @@ def test_paleta_hovori_co_sa_stane_ako_lista(sk):
 
 
 # --------------------------------------------------------------------------
-# Hlavny vypinac: widget (Tk)
+# Main switch: widget (Tk)
 # --------------------------------------------------------------------------
 
 def test_kamaebar_tlacidlo_primary_secondary_a_klavesnica(sk):
@@ -164,13 +169,13 @@ def test_kamaebar_tlacidlo_primary_secondary_a_klavesnica(sk):
         bar.pack(fill="x")
         root.update_idletasks()
         assert bar.button_label() == start
-        # ovladatelne klavesnicou: Tab sa na platno dostane, Enter aj
-        # medzernik prepnu to iste co klik
+        # keyboard-operable: Tab reaches the canvas, Enter and Space
+        # toggle the same as a click
         assert str(bar.canvas.cget("takefocus")) == "1"
         for klaves in ("<Return>", "<KP_Enter>", "<space>"):
             assert bar.canvas.bind(klaves), klaves
         assert bar._key() == "break" and prepnute == [1]
-        # kreslenie: zastavene = primary (vypln accent), sleduje = secondary
+        # drawing: stopped = primary (accent fill), watching = secondary
         bar._last_mierka = 1.0
         bar._build_items(520, 64, 1.0)
         bar._update_items(520, 64, 1.0, 0.0)
@@ -183,13 +188,13 @@ def test_kamaebar_tlacidlo_primary_secondary_a_klavesnica(sk):
         assert bar._btn_stav[0] == "secondary"
         assert bar.canvas.itemcget(bar._it["btn_text"], "text") == stop
         assert bar.canvas.itemcget(bar._it["btn_text"], "fill") == pal["text"]
-        # klik: len do tlacidla, nie kamkolvek do pasu
+        # click: only into the button, not anywhere in the bar
         x0, y0, x1, y1 = bar._btn_rect
         bar._clicked(types.SimpleNamespace(x=(x0 + x1) / 2, y=(y0 + y1) / 2))
         assert prepnute == [1, 1]
         bar._clicked(types.SimpleNamespace(x=x1 + 200, y=(y0 + y1) / 2))
         assert prepnute == [1, 1]
-        # sirka tlacidla je z dlhsieho textu - pri prepnuti neposkoci
+        # the button width comes from the longer text - no jump on toggle
         sirka_sleduje = x1 - x0
         bar.set_live(False)
         bar._build_items(520, 64, 1.0)
@@ -201,7 +206,7 @@ def test_kamaebar_tlacidlo_primary_secondary_a_klavesnica(sk):
 
 
 # --------------------------------------------------------------------------
-# Obsadeny port
+# Busy port
 # --------------------------------------------------------------------------
 
 def _atrapa_stavu(**kw):
@@ -219,9 +224,10 @@ def _atrapa_stavu(**kw):
 @pytest.mark.parametrize("stav, prijem", [("busy", True), ("busy_gave_up", False)])
 @pytest.mark.parametrize("pocuva", [True, False])
 def test_obsadeny_port_ma_vlastny_stav_s_radou(sk, stav, prijem, pocuva):
-    """Pocas pokusov ("busy") aj po vzdani ("busy_gave_up", prijem vypnuty
-    len v pamati) - a aj ked appka nesleduje: tep z telefonu nepride, nech
-    sa spusti alebo nie."""
+    """During the retries ("busy") and after giving up ("busy_gave_up",
+    receiving switched off only in memory) - and also when the app is not
+    watching: heart rate from the phone will not arrive, whether it starts
+    or not."""
     D, a = _atrapa_stavu(_hr_state=stav, hr_monitoring_enabled=prijem,
                          listening=pocuva, hr_port=4456)
     titul, veta = D._kamae_state_text(a)
@@ -251,19 +257,19 @@ def test_veta_o_porte_vo_vsetkych_jazykoch():
         titul = i18n.STRINGS["kamae.port_busy"][jazyk]
         veta = i18n.STRINGS["kamae.port_busy_sub"][jazyk]
         assert "{port}" in titul, jazyk
-        # v japoncine a cinstine bez medzier okolo sipky: Tk lame riadok na
-        # medzere a sipka by ostala sama na riadku
+        # in Japanese and Chinese without spaces around the arrow: Tk breaks
+        # the line at a space and the arrow would be left alone on a line
         sipka = "{page}→{card}" if jazyk in ("ja", "zh") else "{page} → {card}"
         assert sipka in veta and "OBS" in veta, jazyk
         assert "WebSocket" in veta, jazyk
 
 
 # --------------------------------------------------------------------------
-# Prazdny stav pred prvou relaciou s tepom
+# Empty state before the first session with heart rate
 # --------------------------------------------------------------------------
 
 class _W:
-    """Zapisovacia atrapa widgetu s pack-om."""
+    """A recording widget dummy with pack."""
 
     def __init__(self, zabaleny=True):
         self.m = "pack" if zabaleny else ""
@@ -301,7 +307,8 @@ def test_pred_prvou_relaciou_s_tepom_su_karty_a_pasma_schovane():
         assert getattr(a, meno).m == "", meno
     assert a.dnes_zone_empty.m == "pack"
     assert a.dnes_zone_panel.cfg == {"expand": False}
-    # prazdny stav v paneli "Tep a zataz" (veta + Sparovat hodinky) ostava
+    # the empty state in the "Heart rate and load" panel (sentence + Pair your
+    # watch) stays
     assert a.dnes_empty.m == "pack"
 
 
@@ -315,8 +322,8 @@ def test_prva_vzorka_tepu_vrati_plny_pohlad():
         assert getattr(a, meno).m == "pack", meno
     assert a.dnes_zone_empty.m == ""
     assert a.dnes_zone_panel.cfg == {"expand": True}
-    # poradie: cislo tepu pred prazdnym stavom / zivym blokom, hlavicka a
-    # mriezka kariet pred panelom pasiem
+    # order: the heart-rate number before the empty state / live block, the
+    # header and the card grid before the zone panel
     assert a.dnes_bpm_box.kw.get("before") is a.dnes_empty
     assert a.dnes_stats_head.kw.get("before") is a.dnes_zone_panel
     assert a.dashboard_grid.kw.get("before") is a.dnes_zone_panel
@@ -334,14 +341,14 @@ def test_prazdny_stav_sa_prestavuje_len_pri_zmene():
     T = _today()
     a = _atrapa_dnes()
     T._sync_dnes_prazdny_stav(a)
-    a.dnes_zone_empty.m = ""            # keby sa prestavoval pri kazdej vzorke,
-    T._sync_dnes_prazdny_stav(a)        # vratil by ju spat
+    a.dnes_zone_empty.m = ""            # if it were rebuilt on every sample,
+    T._sync_dnes_prazdny_stav(a)        # it would bring it back
     assert a.dnes_zone_empty.m == ""
 
 
 def test_atrapa_bez_cache_dostane_plny_pohlad():
-    """Testy volaju `_refresh_dnes_stats` na atrapach - tie bez historie
-    nesmu ostat v prazdnom stave."""
+    """Tests call `_refresh_dnes_stats` on dummies - those without history
+    must not stay in the empty state."""
     T = _today()
     assert T._dnes_ma_tep(types.SimpleNamespace()) is True
 
@@ -365,7 +372,7 @@ def test_rozpinanie_panela_pasiem_nenasobi_okraje_a_drzi_poradie():
             assert bool(int(panel.pack_info()["expand"])) is rozpinaj
             assert panel.pack_info()["pady"] == okraj
             assert rodic.pack_slaves() == [prvy, panel, posledny]
-            # CTk si pamata nove volanie (aj pre zmenu DPI) s nenasobenym okrajom
+            # CTk keeps the new call (DPI changes too) with an unscaled margin
             assert panel._last_geometry_manager_call["kwargs"]["pady"] == (12, 0)
     finally:
         root.destroy()
@@ -383,7 +390,7 @@ def test_dnes_volaju_prazdny_stav_a_nova_stranka_ho_nastavi_znova():
 
 
 # --------------------------------------------------------------------------
-# Faza ucenia
+# Learning phase
 # --------------------------------------------------------------------------
 
 def _relacia(start, dlzka=1800.0, **kw):
@@ -398,13 +405,13 @@ def test_relacie_na_ucenie_ratanie_ako_veta_pri_senzore():
     a = types.SimpleNamespace(ALGORITMUS_SVET="play")
     historia = [
         _relacia(1), _relacia(2),
-        _relacia(3, dlzka=120.0),               # kratka - neuci sa
-        _relacia(4, world="work"),              # Praca - neuci sa
-        _relacia(5, imported=True),             # cudzie telo
-        _relacia(6, setup=True),                # nastavovanie appky
+        _relacia(3, dlzka=120.0),               # short - not learned from
+        _relacia(4, world="work"),              # Work - not learned from
+        _relacia(5, imported=True),             # someone else's body
+        _relacia(6, setup=True),                # setting up the app
     ]
     assert T._relacie_na_ucenie(a, historia) == 2
-    # to iste pravidlo ako `_kriticky_popis` (veta pod senzorom)
+    # the same rule as `_kriticky_popis` (the sentence below the sensor)
     rucne = len([r for r in hr_stats.ciste_relacie(hr_stats.sessions_in_world(historia, "play"))
                  if hr_stats.je_dost_dlha(r)])
     assert rucne == 2
@@ -431,7 +438,7 @@ def test_veta_o_uceni_n_z_troch(sk):
     assert a._dnes_learning_text == i18n.tr("dnes.learning", n=1, celkom=3)
     assert a._dnes_learning_text.startswith("Ešte ťa spoznávam — 1 z 3")
     assert a.kresby == [False]
-    # ta ista historia (cache) -> nic sa neprepocitava ani neprekresluje
+    # the same history (cache) -> nothing is recomputed or redrawn
     T._refresh_dnes_learning(a)
     assert a.kresby == [False]
 
@@ -454,7 +461,7 @@ def test_veta_o_uceni_nie_je_v_praci_ani_pred_prvym_tepom(sk):
     b = _atrapa_ucenia([], session_count=0)
     T._refresh_dnes_learning(b)
     assert getattr(b, "_dnes_learning_text", "") == ""
-    # prvy tep uz prisiel, nic este ulozene nie je -> "0 z 3"
+    # the first heart rate has arrived, nothing is saved yet -> "0 of 3"
     c = _atrapa_ucenia([], session_count=5)
     T._refresh_dnes_learning(c)
     assert c._dnes_learning_text == i18n.tr("dnes.learning", n=0, celkom=3)

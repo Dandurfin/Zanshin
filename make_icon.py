@@ -1,27 +1,30 @@
 # -*- coding: utf-8 -*-
-"""Vyrobi Dandurf.ico - ZLATE ENSO (znacka appky) na tmavom zaoblenom podklade.
+"""Makes Dandurf.ico - a GOLDEN ENSO (the app's mark) on a dark rounded base.
 
-Preco enso a nie stary stvorec so znakom
-----------------------------------------
-Do 2.1 to bol znak 残 na INDIGOVOM stvorci (stara tema Aizome). Appka je uz
-ZLATA (Zen) a jej identita je ENSO - kruh stetcom + 残 - presne to, co pláva
-na hlavnej obrazovke. Aby ikona v listi, ikona na ploche a znacka v okne boli
-JEDNA vec, ikona teraz kresli to iste enso cez `hud_paint.render_enso` (jediny
-zdroj pravdy pre enso v celej appke).
+Why the enso and not the old square with the character
+------------------------------------------------------
+Up to 2.1 it was the character 残 on an INDIGO square (the old Aizome
+theme). The app is GOLDEN (Zen) now and its identity is the ENSO - a brush
+circle + 残 - exactly what floats on the main screen. So that the tray
+icon, the desktop icon and the mark in the window are ONE thing, the icon
+now draws the same enso via `hud_paint.render_enso` (the single source of
+truth for the enso in the whole app).
 
-Farba enso nesie STAV (v systemovej listi cez `tray_mark`):
-  * ZELENA (success) = appka pocuva, spustace su ziva
-  * CERVENA (danger) = nepocuva, nic sa nedeje
-Staticka .ico (ikona suboru/exe) je v akcente temy = ZLATA, neutralna znacka.
+The enso colour carries the STATE (in the system tray via `tray_mark`):
+  * GREEN (success) = the app is listening, the triggers are live
+  * RED (danger) = not listening, nothing is happening
+The static .ico (file/exe icon) is in the theme accent = GOLD, a neutral
+mark.
 
-Preco tmavy zaobleny podklad
-----------------------------
-Enso je TENKY tah - na svetlej listi by na priehladnom pozadi zaniklo. Tmavy
-zaobleny stvorec mu da citatelnost a zaroven odlisi ikonu od kruhovych ikon
-ostatnych appiek. Kazda velkost sa uklada zvlast (`append_images`), takze si
-Windows vezme spravnu kresbu pre dany kontext.
+Why a dark rounded base
+-----------------------
+The enso is a THIN stroke - on a light taskbar it would vanish on a
+transparent background. A dark rounded square gives it legibility and at
+the same time sets the icon apart from the round icons of other apps. Each
+size is stored separately (`append_images`), so Windows takes the right
+drawing for the given context.
 
-Spustenie:  python make_icon.py
+Running:  python make_icon.py
 """
 import sys
 
@@ -30,11 +33,11 @@ from PIL import Image, ImageDraw
 import hud_paint
 import theme
 
-OUT = "Dandurf.ico"          # nazov ponechany - odkazuje nan Dandurf.spec,
-                             # Dandurf.iss aj build_all.ps1
-SS = 4                       # supersampling podkladu
+OUT = "Dandurf.ico"          # name kept - referenced by Dandurf.spec,
+                             # Dandurf.iss and build_all.ps1
+SS = 4                       # base supersampling
 
-# Velkosti v .ico (kazda vlastna kresba pri downscale z SS).
+# Sizes in the .ico (each its own drawing when downscaling from SS).
 LAYOUT = [256, 128, 64, 48, 32, 16]
 
 
@@ -53,11 +56,11 @@ def _rgb(hex_or_none, fallback=(217, 184, 104)):
 
 
 def _backdrop(px):
-    """Tmavy zaobleny stvorec s jemnym zvislym prechodom + tenky zlaty ram."""
+    """Dark rounded square, soft vertical gradient + a thin gold border."""
     pal = _pal()
     s = px * SS
     bg = _rgb(pal.get("bg"), (13, 14, 19))
-    top = tuple(min(255, c + 12) for c in bg)      # hore o kus svetlejsie
+    top = tuple(min(255, c + 12) for c in bg)      # a bit lighter at the top
     col = Image.new("RGB", (1, s))
     for y in range(s):
         t = y / max(1, s - 1)
@@ -78,9 +81,10 @@ def _backdrop(px):
 
 
 def render(px, color=None):
-    """Ikona danej velkosti: tmavy podklad + enso (zlate, alebo `color`).
+    """Icon of the given size: dark base + enso (gold, or `color`).
 
-    `color` (#rrggbb) prebije akcent - pouziva `tray_mark` na farbu stavu.
+    `color` (#rrggbb) overrides the accent - `tray_mark` uses it for the
+    state colour.
     """
     back = _backdrop(px)
     try:
@@ -93,11 +97,11 @@ def render(px, color=None):
 
 
 def tray_mark(px=64, ring_color=None):
-    """Znacka do systemovej listy - enso vo farbe STAVU.
+    """Mark for the system tray - the enso in the colour of the STATE.
 
-    `ring_color` je RGB n-tica (zelena = pocuvam / cervena = nepocuvam), ako
-    ju posiela `app.make_tray_image`. Nazov aj podpis su zachovane kvoli
-    spatnej kompatibilite volajucich.
+    `ring_color` is an RGB tuple (green = listening / red = not listening),
+    as `app.make_tray_image` sends it. The name and the signature are kept
+    for backward compatibility of the callers.
     """
     color = "#%02x%02x%02x" % tuple(ring_color[:3]) if ring_color else None
     return render(px, color=color)
@@ -110,7 +114,7 @@ def main():
               append_images=[frames[px] for px in LAYOUT if px != 256])
     print(f"{OUT} done - {len(LAYOUT)} sizes (golden enso)")
 
-    # nahlad: velka verzia + realne velkosti vedla seba, aj stavove varianty
+    # preview: big version + real sizes side by side, the state variants too
     pal = _pal()
     prev = Image.new("RGBA", (620, 320), (13, 14, 19, 255))
     prev.alpha_composite(frames[256], (16, 24))
@@ -120,7 +124,7 @@ def main():
         ImageDraw.Draw(prev).text((x + px / 2, 40 + px + 8), f"{px}", anchor="mt",
                                   fill=(120, 130, 150))
         x += px + 20
-    # stav: pocuvam (zelena) / nepocuvam (cervena)
+    # state: listening (green) / not listening (red)
     prev.alpha_composite(tray_mark(64, _rgb(pal.get("success"), (127, 179, 154))), (300, 200))
     prev.alpha_composite(tray_mark(64, _rgb(pal.get("danger"), (192, 74, 62))), (380, 200))
     ImageDraw.Draw(prev).text((300, 270), "listening      not listening", fill=(150, 150, 160))

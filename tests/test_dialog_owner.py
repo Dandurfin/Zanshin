@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
-"""Dialog musi patrit hlavnemu oknu, inak ho hlavne okno prekryje (24. 9.:
-dotaznik po relacii zostal schovany za appkou, hrac ho nevedel vyplnit)."""
+"""A dialog must belong to the main window, otherwise the main window
+covers it (24. 9.: the post-session questionnaire stayed hidden behind the
+app, the player could not fill it in)."""
 import os
 import sys
 
@@ -23,7 +24,7 @@ def test_dialog_chrome_pripina_dialog_k_hlavnemu_oknu():
     chrome = src[src.index("class DialogChrome"):]
     chrome = chrome[:chrome.index("def _begin")]
     assert "pripni_k_vlastnikovi(top)" in chrome
-    assert chrome.count("pripni_k_vlastnikovi(top)") >= 2   # <Map> aj _take_focus
+    assert chrome.count("pripni_k_vlastnikovi(top)") >= 2   # <Map> and _take_focus
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="len Windows")
@@ -48,7 +49,7 @@ def test_bezramovy_dialog_dostane_vlastnika_a_prebije_topmost_hlavne_okno():
         u.GetWindow.restype = ctypes.c_void_p
         u.GetWindow.argtypes = [ctypes.c_void_p, ctypes.c_uint]
         h_dlg, h_root = ui_kit._window_hwnd(dlg), ui_kit._window_hwnd(root)
-        # bez opravy Tk vlastnika zahodi (to je ten bug)
+        # without the fix Tk drops the owner (that is the bug)
         assert not u.GetWindow(ctypes.c_void_p(h_dlg), 4)
         assert ui_kit.pripni_k_vlastnikovi(dlg) is True
         dlg.update()

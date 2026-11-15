@@ -1,15 +1,17 @@
 # -*- coding: utf-8 -*-
-"""Zdroje v appke, ZDROJE.md a SOUL.md (0.2, sources-soul).
+"""Sources in the app, ZDROJE.md and SOUL.md (0.2, sources-soul).
 
-Rozhodnutia autora, ktoré tieto testy strážia:
-  * v appke sú len TRI zdroje - presne tie, ktoré karty Sprievodcu citujú
-    „v zdrojoch nižšie“ - pod jeho textom „Ako to vzniklo“ (`origin.*`),
-    v Sprievodcovi aj v Histórii rovnako; každá citácia v kartách sa medzi
-    nimi dá nájsť (priezvisko + rok),
-  * celý zoznam je v ZDROJE.md - aj všetko, čo bolo v appke do 0.2,
-  * veta „asi každá desiata hláška zámerne mlčí“ sedí s tichým ramenom,
-  * SOUL.md ide von: v repozitári, odkaz na konci README a v inštalátore
-    vedľa licencie.
+The author's decisions these tests guard:
+  * there are only THREE sources in the app - exactly the ones the Guide
+    cards cite "in the sources below" - under his text "How it came about"
+    (`origin.*`), the same in the Guide and in History; every citation in
+    the cards can be found among them (surname + year),
+  * the full list is in ZDROJE.md - including everything that was in the
+    app up to 0.2,
+  * the sentence "about every tenth cue is silent on purpose" matches the
+    silent arm,
+  * SOUL.md goes out: in the repository, a link at the end of the README
+    and in the installer next to the licence.
 """
 import os
 import re
@@ -24,8 +26,8 @@ from _zdroj_appky import zdroj_appky, zdroj_metody  # noqa: E402
 
 ROOT = os.path.join(os.path.dirname(__file__), "..")
 
-# Čo appka ukazovala do 0.2 (guide_content.PHILOSOPHY_SOURCES pred
-# sources-soul). Z appky odišlo, z ZDROJE.md nesmie.
+# What the app showed up to 0.2 (guide_content.PHILOSOPHY_SOURCES before
+# sources-soul). It left the app, it must not leave ZDROJE.md.
 _BYVALE_URL = (
     "https://doi.org/10.3389/fnhum.2018.00353",
     "https://doi.org/10.3389/fpsyg.2014.00756",
@@ -44,8 +46,9 @@ _BYVALE_URL = (
     "https://doi.org/10.1016/j.jpsychores.2005.06.074",
 )
 
-# Ako karty Sprievodcu odkazujú na zdroj - v každom jazyku (jazyková fáza
-# 0.2). Japončina a čínština píšu zátvorky a čiarku v plnej šírke.
+# How the Guide cards refer to a source - in every language (languages
+# phase 0.2). Japanese and Chinese write brackets and the comma in full
+# width.
 _CITACIA = {"sk": "v zdrojoch nižšie", "en": "in the sources below",
             "ja": "下の出典を参照", "zh": "见下方参考来源",
             "ru": "в источниках ниже", "es": "en las fuentes de abajo",
@@ -55,13 +58,13 @@ _CITACIA = {"sk": "v zdrojoch nižšie", "en": "in the sources below",
 
 
 def _read(nazov):
-    # utf-8-sig: Dandurf.iss má BOM
+    # utf-8-sig: Dandurf.iss has a BOM
     with open(os.path.join(ROOT, nazov), encoding="utf-8-sig") as fh:
         return fh.read()
 
 
 def _autor_rok(popisok):
-    """„… (Lehrer & Gevirtz, 2014)“ -> ("Lehrer", "2014"); aj （…） v ja/zh."""
+    """„… (Lehrer & Gevirtz, 2014)“ -> ("Lehrer", "2014"); ja/zh: （…） too."""
     m = re.search(r"[(（](\w[\w-]*)[^()（）]*?(\d{4})[)）]\s*$", popisok)
     assert m, f"popisok zdroja nekončí (Autor …, rok): {popisok!r}"
     return m.group(1), m.group(2)
@@ -72,8 +75,9 @@ def test_v_appke_su_len_tri_zdroje():
     assert kluce == ["guide.philosophy.source12", "guide.philosophy.source11",
                      "guide.philosophy.source10"]
     assert len(guide_content.origin_sources()) == 3
-    # Ostatné popisky zmizli aj z i18n (aj s _tr7) - nikto ich zbytočne
-    # neprekladá a sedem jazykov už nemá popisok k inému odkazu.
+    # The other labels vanished from i18n too (with _tr7) - nobody translates
+    # them needlessly and seven languages no longer have a label for a
+    # different link.
     zvysne = sorted(k for k in i18n.STRINGS
                     if k.startswith("guide.philosophy.source")
                     and k != "guide.philosophy.sources_title")
@@ -89,7 +93,7 @@ def test_kazda_citacia_v_kartach_sa_da_najst_v_zdrojoch():
         citacie = [(kluc, zaznam[jazyk]) for kluc, zaznam in i18n.STRINGS.items()
                    if fraza in zaznam[jazyk]]
         if jazyk in _CITACIA:
-            assert len(citacie) >= 3, jazyk      # poistka proti prázdnemu testu
+            assert len(citacie) >= 3, jazyk      # safeguard against an empty test
         pouzite = set()
         for kluc, text in citacie:
             for m in re.finditer(r"[(（]([^()（）]*?)[,，、]\s*" + re.escape(fraza)
@@ -111,16 +115,17 @@ def test_sprievodca_ukazuje_text_autora_a_tie_iste_tri_zdroje():
                                           "text": i18n.tr("origin.text")}
     assert karta["sources_intro"] == i18n.tr("origin.examples")
     assert karta["sources_note"] == i18n.tr("origin.full_list")
-    # ostatné karty nič z toho nemajú
+    # the other cards have none of this
     for c in guide_content.guide_cards():
         if c["id"] != "philosophy":
             assert c["sources"] is None and c["sources_note"] is None, c["id"]
 
 
 def test_historia_ukazuje_to_iste():
-    """app.py sa v testoch importovať nedá - kontrola zdrojáku panela."""
+    """app.py cannot be imported in tests - a check of the panel's source."""
     src = zdroj_appky()
-    # panel je koniec `_build_historia_page` (za nim ide `_toggle_history_science`)
+    # the panel is the end of `_build_historia_page` (followed by
+    # `_toggle_history_science`)
     blok = zdroj_metody("_build_historia_page")
     blok = blok[blok.index("self.history_science_body = "):]
     for kluc in ("origin.text", "origin.examples", "origin.full_list"):
@@ -130,9 +135,11 @@ def test_historia_ukazuje_to_iste():
 
 
 def test_veta_o_kazdej_desiatej_sedi_s_tichym_ramenom():
-    """Text autora: „na začiatku asi každá štvrtá, neskôr každá desiata hláška
-    zámerne mlčí“ (autor schválil 24. 9.). Na začiatku je tiché rameno
-    štvrtina, po zábehu 10 %; ak sa jedno z nich zmení, veta klame."""
+    """The author's text: „na začiatku asi každá štvrtá, neskôr každá desiata
+    hláška zámerne mlčí“ (at first about every fourth, later every tenth
+    cue is silent on purpose; the author approved it 24. 9.). At first the
+    silent arm is a quarter, after the run-in 10 %; if one of them
+    changes, the sentence lies."""
     assert "na začiatku asi každá štvrtá, neskôr každá desiata pripomienka zámerne mlčí" in i18n.STRINGS["origin.text"]["sk"]
     assert "at first roughly one cue in four, later one in ten, stays silent" in i18n.STRINGS["origin.text"]["en"]
     assert trigger.silent_share_for(0) == 0.25
@@ -140,9 +147,10 @@ def test_veta_o_kazdej_desiatej_sedi_s_tichym_ramenom():
 
 
 def test_en_hranice_su_prahy_nie_limity_nastroja():
-    """„Hranice si appka počíta z tvojich vlastných relácií“ sú prahy záťaže
-    (EN inde „threshold“). „its limits“ by v karte s nadpisom „the tool’s
-    limits“ znelo ako „appka si ráta, čo nevie“."""
+    """„Hranice si appka počíta z tvojich vlastných relácií“ (the app computes
+    its limits from your own sessions) are load thresholds (EN elsewhere
+    "threshold"). "its limits" would, in a card headed "the tool’s
+    limits", sound like "the app counts what it does not know"."""
     en = i18n.STRINGS["origin.text"]["en"]
     assert "works out its thresholds from your own sessions" in en
     assert "its limits" not in en
@@ -167,7 +175,7 @@ def test_instalator_nesie_licenciu_aj_dusu():
     iss = _read("Dandurf.iss")
     files = iss[iss.index("\n[Files]"):]
     files = files[:files.index("\n[", 1)]
-    # LICENSE-DESIGN.md a ZDROJE.md od 24. 9. (rozhodnutie autora)
+    # LICENSE-DESIGN.md and ZDROJE.md since 24. 9. (the author's decision)
     for nazov in ("LICENSE", "SOUL.md", "LICENSE-DESIGN.md", "ZDROJE.md"):
         assert re.search(r'^Source: "' + re.escape(nazov) + r'"; DestDir: "\{app\}"',
                          files, re.M), nazov

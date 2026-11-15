@@ -1,21 +1,24 @@
-"""Sloty, profily hier a auto-profil - cast hlavnej appky (DandurfApp z app.py).
+"""Slots, game profiles and auto-profile - part of the main app
+(DandurfApp from app.py).
 
-ProfilesMixin je mixin DandurfApp: app.py ho dedi a cely stav (sloty
-aktivneho profilu, zoznam profilov a prepinac profilu, auto-profil a
-citanie beziacich procesov) zije na DandurfApp. Tu su len metody, ktore s
-nim pracuju cez `self` - mixin nema __init__ ani vlastne atributy.
+ProfilesMixin is a mixin of DandurfApp: app.py inherits it and all the state
+(the active profile's slots, the profile list and the profile switcher, the
+auto-profile and reading running processes) lives on DandurfApp. Here are
+only the methods that work with it through `self` - the mixin has no
+__init__ and no attributes of its own.
 
-Presunute z app.py bez zmeny:
-  * sloty - prestavba kariet slotov aktivneho profilu,
-  * profily hier - prepnutie, zalozenie a zmazanie profilu,
-  * Auto-Profile Engine (rozpoznanie beziacej hry) - prva cast sekcie:
-    najdena a skoncena hra, citanie mien procesov (`GameProcessWatcher`),
-    prepinac auto-profilu a veta stavu "Zastavene", ktora o nom hovori.
-    Zvysok tej sekcie (senzor tepu a meracia relacia) je v app_session.py.
+Moved from app.py unchanged:
+  * slots - rebuilding the slot cards of the active profile,
+  * game profiles - switching, creating and deleting a profile,
+  * Auto-Profile Engine (recognising a running game) - the first part of
+    the section: game found and game ended, reading process names
+    (`GameProcessWatcher`), the auto-profile switch and the "Stopped"
+    status sentence that talks about it. The rest of that section (heart
+    rate sensor and the measurement session) is in app_session.py.
 
-Pozor v testoch: `_start_game_watcher` cita `GameProcessWatcher` a
-`PSUTIL_AVAILABLE` z tohto modulu - falosny watcher treba podstrcit sem
-(`app_profiles.GameProcessWatcher`), nie na modul app.
+WARNING for tests: `_start_game_watcher` reads `GameProcessWatcher` and
+`PSUTIL_AVAILABLE` from this module - a fake watcher has to be injected here
+(`app_profiles.GameProcessWatcher`), not on the app module.
 """
 
 import ui_kit
@@ -27,13 +30,14 @@ from ui_dialogs import NewProfileDialog, SlotCard
 
 
 class ProfilesMixin:
-    """Sloty, profily hier a auto-profil (mixin DandurfApp)."""
+    """Slots, game profiles and auto-profile (DandurfApp mixin)."""
 
-    # ---------- sloty ----------
+    # ---------- slots ----------
 
     def rebuild_slots(self, data_list):
-        """Prestava sloty aktivneho profilu, zosuladi odznak v navigacii aj
-        listu hromadneho vyberu (po prestavbe uz nic nie je oznacene)."""
+        """Rebuilds the active profile's slots, syncs the badge in the
+        navigation and the bulk-selection bar (after the rebuild nothing is
+        selected anymore)."""
         for child in self.slots_container.winfo_children():
             child.destroy()
         self.slots = [SlotCard(self, i, data) for i, data in enumerate(data_list)]
@@ -43,7 +47,7 @@ class ProfilesMixin:
     def slot_dicts(self):
         return [s.to_dict() for s in self.slots]
 
-    # ---------- profily hier ----------
+    # ---------- game profiles ----------
 
     def _sync_active_profile_slots(self):
         profile = next((p for p in self.profiles if p["name"] == self.active_profile_name),
@@ -81,30 +85,32 @@ class ProfilesMixin:
         if not name:
             return
         if any(p["name"] == name for p in self.profiles):
-            # Okno appky, nie systemove (0.2.2, davka 4) - viz `ui_kit.notify`.
+            # App window, not a system one (0.3 batch 4) - see `ui_kit.notify`.
             ui_kit.notify(getattr(self, "root", None), getattr(self, "pal", None),
                           APP_NAME, tr("profile.duplicate_name"))
             return
         self._sync_active_profile_slots()
-        # Novy profil dostane VSETKY STYRI kategorie, rovnako ako profil
-        # zalozeny automaticky pre hru (`_handle_game_found`). Doteraz mal
-        # jeden slot a zvysne si hrac "pridal" tlacidlom - to je prec, takze
-        # by profil ostal navzdy len s Taziskom.
+        # A new profile gets ALL FOUR categories, same as a profile created
+        # automatically for a game (`_handle_game_found`). Until now it had one
+        # slot and the player "added" the rest with a button - that is gone, so
+        # the profile would stay with Grounding only, forever.
         new_slots = [normalize_slot(s) for s in default_slots()]
         self.profiles.append({"name": name, "slots": new_slots})
         self.active_profile_name = name
         self.rebuild_slots(new_slots)
         self.refresh_profile_switch()
-        # Slova noveho profilu su v jazyku appky: v jazyku z VOICE_HINTS
-        # (napr. japoncina, nemcina) dostane hrac s predvolenym hlasom hlas
-        # toho jazyka (anglicky by ich nevyslovil). Ulozi sa nizsie a priprava
-        # hlasok uz ide novym hlasom.
+        # The new profile's words are in the app's language: in a language from
+        # VOICE_HINTS (e.g. Japanese, German) a player with the default voice
+        # gets a voice of that language (an English one would not pronounce
+        # them). It is saved below and the cue preparation already uses the new
+        # voice.
         if self._hlas_k_hlaskam(new_slots):
             self.refresh_voice_box()
         self.save_settings()
-        # Novy profil = ine aktivne hlasky, rovnako ako prepnutie profilu
-        # (`switch_profile`): priprava hlasok predosleho profilu konci hned
-        # (uz nepatria k aktivnym) a zapnute hlasky noveho sa pripravia.
+        # New profile = different active cues, same as switching profiles
+        # (`switch_profile`): preparing the previous profile's cues stops
+        # right away (they no longer belong to the active ones) and the enabled
+        # cues of the new one get prepared.
         self.schedule_pregenerate(200)
         self.log(tr("log.profile_created", name=name))
 
@@ -114,8 +120,8 @@ class ProfilesMixin:
         if len(self.profiles) <= 1:
             ui_kit.notify(okno, pal, APP_NAME, tr("profile.cannot_delete_last"))
             return
-        # Potvrdenie v okne appky: tlacidlo nesie sloveso ("Odstranit
-        # profil") a je destruktivne, fokus aj Enter su na "Zrusit".
+        # Confirmation in the app's window: the button carries a verb ("Delete
+        # profile") and is destructive, focus and Enter are on "Cancel".
         if not ui_kit.confirm(okno, pal, APP_NAME,
                               tr("profile.confirm_delete", name=self.active_profile_name),
                               ok_label=tr("profile.delete_btn"),
@@ -130,7 +136,7 @@ class ProfilesMixin:
         self.schedule_pregenerate(200)
         self.log(tr("log.profile_deleted"))
 
-    # ---------- Auto-Profile Engine (rozpoznanie beziacej hry) ----------
+    # ---------- Auto-Profile Engine (recognising a running game) ----------
 
     def on_game_process_found(self, profile_name):
         self.ui_call(lambda: self._handle_game_found(profile_name))
@@ -146,8 +152,8 @@ class ProfilesMixin:
             new_slots = [normalize_slot(s) for s in default_slots()]
             self.profiles.append({"name": profile_name, "slots": new_slots})
             self.refresh_profile_switch()
-            # Ako `create_profile`: hlas k slovam noveho profilu. Ulozi ho a
-            # pripravu naplanuje `switch_profile` nizsie.
+            # Like `create_profile`: a voice for the new profile's words. It is
+            # saved, and the preparation scheduled, by `switch_profile` below.
             if self._hlas_k_hlaskam(new_slots):
                 self.refresh_voice_box()
             self.log(tr("log.auto_profile_created", name=profile_name))
@@ -161,9 +167,10 @@ class ProfilesMixin:
     def _handle_game_gone(self):
         if not self.auto_profile_enabled:
             return
-        # "Odpocuvanie pozastavene" sa pise LEN ked sa naozaj zastavilo.
-        # Doteraz sa zapisalo vzdy - aj ked pocuvanie spustil hrac sam a
-        # bezalo dalej (port aj meranie), takze dennik tvrdil opak.
+        # "Odpocuvanie pozastavene" (Listening paused) is written ONLY when it
+        # really stopped. Until now it was always written - even when the
+        # player started listening themselves and it kept running (port and
+        # measurement), so the journal claimed the opposite.
         if self.listening and self._auto_started_listening:
             self.stop_listening()
             self.log(tr("log.auto_profile_ended"))
@@ -171,14 +178,14 @@ class ProfilesMixin:
 
     @staticmethod
     def _zname_hry():
-        """Hry, ktore auto-profil pozna, do viet v appke. Z mapy
-        (`game_profiles.GAME_PROCESS_MAP`), aby veta nemohla slubovat start
-        pri hre, ktoru appka nepozna."""
+        """Games that the auto-profile knows, for sentences in the app. From the
+        map (`game_profiles.GAME_PROCESS_MAP`), so that the sentence cannot
+        promise a start for a game the app does not know."""
         return " / ".join(known_games())
 
     def _start_game_watcher(self):
-        """Spusti citanie mien procesov (auto-profil). Vlakno sa neda
-        spustit dvakrat, preto pri kazdom zapnuti nove."""
+        """Starts reading process names (auto-profile). A thread cannot be
+        started twice, hence a new one on every switch-on."""
         if not PSUTIL_AVAILABLE or getattr(self, "game_watcher", None) is not None:
             return
         self.game_watcher = GameProcessWatcher(self.on_game_process_found,
@@ -186,18 +193,19 @@ class ProfilesMixin:
         self.game_watcher.start()
 
     def _stop_game_watcher(self):
-        """Zastavi citanie procesov - vypnuty auto-profil necita nic."""
+        """Stops reading processes - a disabled auto-profile reads nothing."""
         watcher, self.game_watcher = getattr(self, "game_watcher", None), None
         if watcher is not None:
             watcher.stop()
 
     def _kamae_zastavene(self):
-        """Dvojica textov pre stav "Zastavene".
+        """Pair of texts for the "Stopped" state.
 
-        Appka sa vie spustit sama, ked najde beziacu hru - lenze len pri
-        zapnutom automatickom prepinani profilov (`_handle_game_found`), a
-        to sa da vypnut. Preto sa veta pyta na skutocny stav namiesto toho,
-        aby slubovala nieco, co pri vypnutom prepinani nepride.
+        The app can start by itself when it finds a running game - but only
+        with automatic profile switching on (`_handle_game_found`), and
+        that can be switched off. So the sentence asks about the real state
+        instead of promising something that will not come with switching
+        off.
         """
         kluc = ("kamae.stopped_sub_auto" if self.auto_profile_enabled
                 else "kamae.stopped_sub")
@@ -208,15 +216,17 @@ class ProfilesMixin:
         if self.auto_profile_enabled:
             self._start_game_watcher()
         else:
-            # Vypnute = mena procesov sa necitaju vobec. Pocuvanie, ktore
-            # spustila hra, bezi dalej - odteraz ho riadi hrac, nie detekcia.
+            # Off = process names are not read at all. Listening that a
+            # game started keeps running - from now on the player controls
+            # it, not the detection.
             self._stop_game_watcher()
             self._auto_started_listening = False
         self.save_settings()
-        # Veta o zastavenej appke (`_kamae_zastavene`, stred Dnes) hovori o
-        # tomto nastaveni, takze sa musi prepisat hned - inak by po vypnuti
-        # este stale slubovala start pri hre. Od 0.2.2 (davka 4) ju nesie
-        # stred stranky, nie pas - pas ma uz len tlacidlo.
+        # The sentence about the stopped app (`_kamae_zastavene`, centre of
+        # Today) talks about this setting, so it has to be rewritten right
+        # away - otherwise after switching off it would still promise a start
+        # with a game. Since 0.3 (batch 4) it is carried by the centre of the
+        # page, not the bar - the bar only has the button now.
         if not self.listening and getattr(self, "kamae", None) is not None:
             self._refresh_kamae_state_text()
         self.log(tr("log.auto_profile_on") if self.auto_profile_enabled

@@ -1,34 +1,34 @@
-"""Priehladne okno s per-pixel alfou - podklad pre vsetky in-game vizualy.
+"""Transparent window with per-pixel alpha - the base for all in-game visuals.
 
-Preco nie tk.Canvas
--------------------
-Tk vie priehladnost len cez `-transparentcolor`: jedna JEDINA farba sa
-vystrihne a vsetko ostatne ostane nepriehladne. Antialiasovana hrana (ktora
-je zmesou farby tvaru a farby pozadia) sa nevystrihne a okolo kazdeho tvaru
-ostane tmavy lem. Ziara sa takto neda urobit vobec.
+Why not tk.Canvas
+-----------------
+Tk can do transparency only via `-transparentcolor`: one SINGLE colour is
+cut out and everything else stays opaque. An antialiased edge (which is a
+mix of the shape's colour and the background colour) is not cut out, and a
+dark fringe stays around every shape. A glow cannot be done this way at all.
 
-`UpdateLayeredWindow` naopak berie 32-bit BGRA bitmapu s PREDNASOBENOU
-alfou a Windows ju slozi nad plochu pixel po pixeli. To je ten isty
-mechanizmus, aky pouzivaju systemove tooltipy a Windows Ink.
+`UpdateLayeredWindow`, on the other hand, takes a 32-bit BGRA bitmap with
+PREMULTIPLIED alpha and Windows composites it over the desktop pixel by
+pixel. That is the same mechanism system tooltips and Windows Ink use.
 
-Bezpecnost voci anti-cheatu
----------------------------
-Toto je bezne okno tejto appky. NEinjektujeme sa do procesu hry, nehookujeme
-Direct3D/Present, necitame pamat hry a ani nevieme, co je na obrazovke.
-Okno ma navyse:
+Anti-cheat safety
+-----------------
+This is an ordinary window of this app. We do NOT inject into the game
+process, do not hook Direct3D/Present, do not read game memory and do not
+even know what is on the screen. In addition the window has:
 
-  WS_EX_TRANSPARENT  - klik prejde nasquoz do hry (nikdy jej neukradne vstup)
-  WS_EX_NOACTIVATE   - okno sa nikdy nestane aktivnym (hra nestrati focus)
-  WS_EX_TOOLWINDOW   - nie je v Alt+Tab ani na paneli uloh
+  WS_EX_TRANSPARENT  - clicks pass straight to the game (never steal its input)
+  WS_EX_NOACTIVATE   - the window never becomes active (game never loses focus)
+  WS_EX_TOOLWINDOW   - not in Alt+Tab or on the taskbar
 
-Zamerne NEpouzivame `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)`.
-Skrylo by to overlay pred screenshotmi a OBS - co je presne to spravanie,
-podla ktoreho sa hladaju podvodne prekrytia. Nas overlay ma byt na
-kazdom zazname a screenshote vidno; to je jeho najlepsia obhajoba.
+We deliberately do NOT use `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)`.
+It would hide the overlay from screenshots and OBS - which is exactly the
+behaviour by which cheating overlays are searched for. Our overlay should
+be visible on every recording and screenshot; that is its best defence.
 
-Ak sa vrstveny rezim z akehokolvek dovodu nepodari (stary Windows, iny OS,
-ovladac), trieda ticho spadne na `-transparentcolor` + PhotoImage. Vizual
-vtedy stratí ziaru, ale appka bezi dalej.
+If the layered mode fails for any reason (old Windows, another OS, driver),
+the class silently falls back to `-transparentcolor` + PhotoImage. The
+visual then loses its glow, but the app keeps running.
 """
 
 import base64
@@ -61,7 +61,7 @@ ULW_ALPHA = 0x00000002
 AC_SRC_OVER = 0x00
 AC_SRC_ALPHA = 0x01
 
-TRANSPARENT_KEY = "#010203"   # pre fallback vetvu
+TRANSPARENT_KEY = "#010203"   # for the fallback branch
 
 
 if IS_WINDOWS:
@@ -113,11 +113,12 @@ if IS_WINDOWS:
 
 
 def to_premultiplied_bgra(image):
-    """RGBA PIL obrazok -> bajty BGRA s prednasobenou alfou.
+    """RGBA PIL image -> BGRA bytes with premultiplied alpha.
 
-    Prednasobenie je poziadavka AC_SRC_ALPHA: Windows uz alfou nenasobi,
-    ocakava, ze je zapocitana vo farbe. Bez toho by kazdy poloprieh}adny
-    pixel svietil prilis jasno a hrany by mali biely lem.
+    Premultiplying is an AC_SRC_ALPHA requirement: Windows no longer
+    multiplies by alpha, it expects it to be already included in the colour.
+    Without it every semi-transparent pixel would shine too bright and the
+    edges would have a white fringe.
     """
     if NUMPY_AVAILABLE:
         arr = np.asarray(image.convert("RGBA"), dtype=np.uint16)
@@ -129,7 +130,7 @@ def to_premultiplied_bgra(image):
         out[..., 2] = rgb[..., 0]      # R
         out[..., 3] = arr[..., 3]      # A
         return out.tobytes()
-    # numpy nie je povinny - pomalsia, ale funkcna zaloha
+    # numpy is not required - a slower but working fallback
     src = image.convert("RGBA")
     out = bytearray(src.width * src.height * 4)
     i = 0
@@ -143,12 +144,13 @@ def to_premultiplied_bgra(image):
 
 
 class LayeredSurface:
-    """Jedno priehladne, klikom-priechodne okno, do ktoreho sa posiela
-    hotovy RGBA obrazok.
+    """One transparent, click-through window that a finished RGBA image is
+    sent to.
 
-    Zivotny cyklus riadi Tk (Toplevel + `after()`), obsah kresli PIL a
-    skladanie robi Windows. Fade sa robi cez konstantnu alfu vrstveneho
-    okna - NEPREKRESLUJE sa pri nom obrazok, takze fade stoji nula.
+    Tk drives the life cycle (Toplevel + `after()`), PIL draws the content
+    and Windows does the compositing. Fade is done via the layered window's
+    constant alpha - the image is NOT REDRAWN for it, so a fade costs
+    nothing.
     """
 
     def __init__(self, root):
@@ -166,7 +168,7 @@ class LayeredSurface:
         self._image_ref = None
         self._alpha = 1.0
 
-    # ---------- zivotny cyklus ----------
+    # ---------- life cycle ----------
 
     def create(self, x, y, width, height):
         self.destroy()
@@ -196,15 +198,16 @@ class LayeredSurface:
             pass
 
     def set_click_through(self, click_through):
-        """Zapne/vypne prechod kliku (WS_EX_TRANSPARENT).
+        """Switches click-through (WS_EX_TRANSPARENT) on/off.
 
-        Overlay je pocas hry klik-through, aby nekradol vstup. Ale v rezime
-        "Test vizualu" ho hrac potrebuje chytit mysou a potiahnut - vtedy
-        klik-through docasne VYPNEME. Po skonceni testu sa zase zapne, aby
-        okno v hre neprekazalo.
+        During a game the overlay is click-through so that it does not steal
+        input. But in the "Test vizualu" (visual test) mode the player needs
+        to grab it with the mouse and drag it - then we temporarily SWITCH
+        click-through OFF. After the test ends it is switched on again, so
+        the window does not get in the way in game.
 
-        Robime to na urovni WS_EX_TRANSPARENT bitu; ostatne styly (LAYERED,
-        NOACTIVATE, TOOLWINDOW) ostavaju.
+        We do it at the level of the WS_EX_TRANSPARENT bit; the other styles
+        (LAYERED, NOACTIVATE, TOOLWINDOW) stay.
         """
         if not IS_WINDOWS or self.top is None:
             return
@@ -233,7 +236,7 @@ class LayeredSurface:
         self.top = None
         self.mode = "none"
 
-    # ---------- vykreslenie ----------
+    # ---------- drawing ----------
 
     def show(self):
         if self.top is None:
@@ -244,7 +247,7 @@ class LayeredSurface:
             pass
 
     def draw(self, image, alpha=None):
-        """Posle novy snimok. `image` musi mat presne rozmery okna."""
+        """Sends a new frame. `image` must have exactly the window's size."""
         if self.top is None or image is None:
             return
         if alpha is not None:
@@ -255,7 +258,7 @@ class LayeredSurface:
             self._draw_canvas(image)
 
     def set_alpha(self, alpha):
-        """Zmeni len priehladnost - bez prekreslovania obsahu."""
+        """Changes only the transparency - without redrawing the content."""
         self._alpha = max(0.0, min(1.0, float(alpha)))
         if self.top is None:
             return
@@ -267,7 +270,7 @@ class LayeredSurface:
             except Exception:
                 pass
 
-    # ---------- vrstvene okno ----------
+    # ---------- layered window ----------
 
     def _setup_layered(self):
         try:
@@ -286,7 +289,7 @@ class LayeredSurface:
             info = _BITMAPINFO()
             info.bmiHeader.biSize = ctypes.sizeof(_BITMAPINFOHEADER)
             info.bmiHeader.biWidth = self.width
-            info.bmiHeader.biHeight = -self.height   # zaporne = top-down riadky
+            info.bmiHeader.biHeight = -self.height   # negative = top-down rows
             info.bmiHeader.biPlanes = 1
             info.bmiHeader.biBitCount = 32
             info.bmiHeader.biCompression = 0         # BI_RGB
@@ -349,7 +352,7 @@ class LayeredSurface:
             pass
         self._hwnd = self._hdc = self._dib = self._old_bmp = self._bits = None
 
-    # ---------- zaloha: transparentcolor + PhotoImage ----------
+    # ---------- fallback: transparentcolor + PhotoImage ----------
 
     def _setup_canvas(self):
         try:

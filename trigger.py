@@ -1,70 +1,77 @@
-"""Kedy sa hláška natiahne a kedy vystrelí.
+"""When a cue arms and when it fires.
 
-PRECO TO NIE JE V app.py
-------------------------
-Ani jeden test v tests/ neimportuje `app.py` - ten tahá tkinter,
-customtkinter, pynput aj pygame (audio_engine pri importe robi
-pygame.mixer.init()). Logika, ktora by zila tam, by sa testovat nedala.
-Tento modul je cisto datovy: ziadny Tk, ziadne I/O, hodiny sa daju
-podstrcit. Rovnaka disciplina ako `measure.py` a `activity.py`.
+WHY THIS IS NOT IN app.py
+-------------------------
+Not a single test in tests/ imports `app.py` - it pulls in tkinter,
+customtkinter, pynput and pygame (audio_engine runs pygame.mixer.init() on
+import). Logic that lived there could not be tested. This module is purely
+data: no Tk, no I/O, the clock can be slipped in. The same discipline as
+`measure.py` and `activity.py`.
 
-AKO TO FUNGUJE
---------------
-    zataz nad prahom NAZBIERA `stress_hold_s` (default 45 s)   (nie spicka!)
-         v                (nie suvisle - kumulativne za klzavym oknom, viz
-         v                 `note_load`; realny boj sa vracia dole v cykloch)
-    NATIAHNUTE  -  appka este nic nespravi, len caka
+HOW IT WORKS
+------------
+    load over threshold GATHERS `stress_hold_s` (default 45 s)   (not a spike!)
+         v                (not continuous - cumulative in a sliding window, see
+         v                 `note_load`; real combat goes back down in cycles)
+    ARMED  -  the app does nothing yet, it only waits
          v
-    caka na pauzu v aktivite >= 2,5 s, najviac `max_wait_s`
+    waits for a pause in activity >= 2,5 s, at most `max_wait_s`
          v
-    pauza prisla a brana pusti   ->  hlaska (hlas + vizual)
-    pauza prisla, brana nepusti  ->  caka dalej, na dalsiu pauzu
-    `max_wait_s` bez hlasky      ->  tichy vizual bez hlasu - ale len ked
-                                     brana pusti; inak sa natiahnutie zrusi
+    pause came, gate lets through  ->  cue (voice + visual)
+    pause came, gate holds         ->  keeps waiting, for the next pause
+    `max_wait_s` without a cue     ->  silent visual without voice - but only
+                                       if the gate lets it through; otherwise
+                                       the arming is cancelled
 
-BRANA (0.2, stress-gate). Hlaska ide len vtedy, ked:
-  * pasmo tepu je zname a nie je kriticke (`zona` z `note_load`, teda
-    `HeartStats.known_zone` = `zone_of_bpm`; NIKDY pasma zataze `zone_for`),
-  * zataz uz nestupa (`_stupa`: posledna hodnota nie je o viac nez
-    `STUPA_O` vyssie nez spred `VRCHOL_OKNO_S`; malo dat = stupa),
-  * a appka smie (`can_fire`).
-Plati pre obe ramena aj pre tichy vizual po `max_wait_s`. Na vrchole a
-nad hranicou vysokeho tepu hlaska skor prekazi, nez pomoze (overene to v
-hrach nie je - je to opatrnost); appka radsej pocka, kym to zacne
-povolovat, a ked sa to nestane, mlci. Pokoj hlasku NERUSI - na to nie je
-bezpecnostny dovod a zrusenie by len ubralo hlasky tym, ktori ich uz maju
-malo.
+THE GATE (0.2, stress-gate). A cue goes only when:
+  * the heart-rate zone is known and not critical (`zona` from `note_load`,
+    i.e. `HeartStats.known_zone` = `zone_of_bpm`; NEVER the load zones
+    `zone_for`),
+  * the load is no longer rising (`_stupa`: the last value is not more than
+    `STUPA_O` higher than the one from before `VRCHOL_OKNO_S`; too little
+    data = rising),
+  * and the app is allowed to (`can_fire`).
+This applies to both arms and to the silent visual after `max_wait_s`. At the
+peak and above the high heart-rate limit a cue is more likely to get in the
+way than to help (this is not verified in games - it is caution); the app
+would rather wait until things start to ease, and if that does not happen,
+it stays silent. Calm does NOT cancel the cue - there is no safety reason
+for that and cancelling would only take cues away from those who already
+get few.
 
-V pracovnom svete (0.2, B3-worlds) je hlas vypnuty pre celu relaciu
-(`open_session(voice=False)`): vsetko ostatne bezi rovnako, len kazda
-hlaska ide tichym vizualom.
+In the work world (0.2, B3-worlds) the voice is off for the whole session
+(`open_session(voice=False)`): everything else runs the same, only every
+cue goes as a silent visual.
 
-Cisla vyssie su defaulty pre priemerneho hraca (`default_params`); casom ich
-nahradi prah spocitany z vlastnych dat (`hr_stats.dynamicky_prah_zataze`).
-Preco nie na spicku: skok po headshote nie je stres, dlhsia zataz ano.
-Preco odklad na pauzu: najvyssia potreba a najhorsi moment na prerusenie
-su ta ista sekunda.
+The numbers above are defaults for the average player (`default_params`);
+over time they get replaced by a threshold computed from one's own data
+(`hr_stats.dynamicky_prah_zataze`).
+Why not on a spike: a jump after a headshot is not stress, a longer load is.
+Why the postponement to a pause: the highest need and the worst moment to
+interrupt are the same second.
 
-DVE VECI, KTORE SA NESMU ZLUCIT
--------------------------------
-`arm` a `delivery` su ROZNE veci a musia ostat oddelene az do analyzy:
+TWO THINGS THAT MUST NOT BE MERGED
+----------------------------------
+`arm` and `delivery` are DIFFERENT things and must stay separate all the way
+to the analysis:
 
-  arm       "voice" / "silent"  - losuje sa pri NATIAHNUTI, este pred
-                                  tym, nez sa cokolvek stane. Toto je
-                                  tiche kontrolne rameno.
-  delivery  "pause" / "timeout" - ako sa to nakoniec doruzilo.
+  arm       "voice" / "silent"  - drawn by lot at ARMING, even before
+                                  anything happens. This is the silent
+                                  control arm.
+  delivery  "pause" / "timeout" - how it was delivered in the end.
 
-Ked pauza nepride, hlaska ide ticho - ale to NIE JE kontrolne rameno.
-Keby sa oboje zapisalo ako "silent", `measure.summarize()` by porovnaval
-dve uplne rozne veci: jedna skupina mala pauzu, druha nie, a rozdiel by
-meral prave to. Kontrolna skupina by prestala byt kontrolna.
+When the pause does not come, the cue goes silently - but that is NOT the
+control arm. If both were written as "silent", `measure.summarize()` would
+compare two completely different things: one group had a pause, the other
+did not, and the difference would measure exactly that. The control group
+would stop being a control.
 
-LOSOVANIE MA VLASTNY GENERATOR
+THE DRAW HAS ITS OWN GENERATOR
 ------------------------------
-`random.Random()` a nie modulovy `random`: `app.fire_slot` pouziva
-`random.uniform` na jitter a akykolvek `random.seed()` inde v appke by
-posunul aj rameno. Kontrolna skupina by prestala byt nahodna a nikto by
-si toho nevsimol.
+`random.Random()` and not the module `random`: `app.fire_slot` uses
+`random.uniform` for jitter and any `random.seed()` elsewhere in the app
+would shift the arm too. The control group would stop being random and
+nobody would notice.
 """
 
 import random
@@ -73,50 +80,51 @@ import time
 import measure
 
 # --------------------------------------------------------------------------
-# Stavy
+# States
 # --------------------------------------------------------------------------
 
-DORMANT = "dormant"      # relacia nebezi, tep vypadol, alebo bezi snooze
-IDLE = "idle"            # relacia bezi, zataz je pod prahom
-RISING = "rising"        # zataz drzi nad prahom, pocita sa suvislost
-ARMED = "armed"          # natiahnute, caka sa na pauzu
-COOLDOWN = "cooldown"    # prave sa dorucilo, drzi sa odstup
+DORMANT = "dormant"      # no session running, heart rate dropped out, or snooze running
+IDLE = "idle"            # session running, load is below the threshold
+RISING = "rising"        # load holds above the threshold, continuity is counted
+ARMED = "armed"          # armed, waiting for a pause
+COOLDOWN = "cooldown"    # just delivered, keeping the gap
 
-# Udalosti, ktore modul vracia volajucemu
+# Events the module returns to the caller
 E_ARMED = "armed"
 E_DELIVER = "deliver"
 E_ABORT = "abort"
 
-# Preco sa natiahnutie zrusilo - zapisuje sa, aby sa dalo ladit
+# Why the arming was cancelled - recorded so it can be debugged
 A_ZATAZ_KLESLA = "zataz_klesla"
 A_ODISIEL = "odisiel_od_pc"
 A_TEP_VYPADOL = "tep_vypadol"
 A_SNOOZE = "snooze"
 A_KONIEC_RELACIE = "koniec_relacie"
-# Po `max_wait_s` by brana tichy vizual pustila, ale appka nesmela
-# (`can_fire`: odstup, snooze, chodza, vypnuty vizual).
+# After `max_wait_s` the gate would let the silent visual through, but the
+# app was not allowed (`can_fire`: gap, snooze, walking, visual switched off).
 A_NEDALO_SA = "nedalo_sa"
-# Po `max_wait_s` nepustila brana ani tichy vizual (0.2, stress-gate):
-A_BEZ_PAUZY = "bez_pauzy"              # ... a pauza za cele cakanie neprisla
-A_NEVHODNA_CHVILA = "nevhodna_chvila"  # ... pauzy prisli, kazdu zastavila
+# After `max_wait_s` the gate did not let even the silent visual through
+# (0.2, stress-gate):
+A_BEZ_PAUZY = "bez_pauzy"              # ... and no pause came during the whole wait
+A_NEVHODNA_CHVILA = "nevhodna_chvila"  # ... pauses came, something stopped each one
 
-# Zrusenia, pri ktorych sa appka SAMA rozhodla mlcat. Pocitaju sa do
-# suhrnu relacie (`zadrzane`); snooze, odchod, vypadok ani koniec relacie
-# medzi ne nepatria - to nerozhodla appka.
+# Cancellations where the app ITSELF decided to stay silent. They count into
+# the session summary (`zadrzane`); snooze, leaving, a dropout or the end of
+# the session do not belong among them - the app did not decide those.
 ZADRZANE = (A_BEZ_PAUZY, A_NEVHODNA_CHVILA, A_NEDALO_SA)
 
-# Pasmo tepu z `hr_stats` (`zone_of_bpm`). Retazec, nie import: modul ostava
-# samostatny. None = pasmo nepozname (kalibracia, navrat tepu) -> brana
-# nepusti.
+# Heart-rate zone from `hr_stats` (`zone_of_bpm`). A string, not an import:
+# the module stays self-contained. None = we do not know the zone
+# (calibration, heart rate returning) -> the gate does not let it through.
 ZONA_KRITICKA = "critical"
 
-# "Nestupa": posledna zataz nie je o viac nez STUPA_O vyssie nez posledna
-# vzorka stara aspon VRCHOL_OKNO_S. Historia sa drzi HIST_S sekund.
+# "Not rising": the last load is not more than STUPA_O higher than the last
+# sample at least VRCHOL_OKNO_S old. History is kept for HIST_S seconds.
 VRCHOL_OKNO_S = 15.0
 STUPA_O = 1.0
 HIST_S = 40.0
 
-# Co zastavilo pauzu (pocita sa raz za pauzu, do udalosti ako `skipped`).
+# What stopped the pause (counted once per pause, into the event as `skipped`).
 P_NEZNAME = "nezname_pasmo"
 P_KRITICKE = "kriticke"
 P_STUPA = "stupa"
@@ -130,89 +138,98 @@ D_TIMEOUT = "timeout"
 
 
 def default_params():
-    """Vychodiskove cisla. Su z literatury, nie z tela hraca - zadanie s
-    nimi tak aj pocita a prve vecery sa budu ladit.
+    """Starting numbers. They are from the literature, not from the player's
+    body - the spec counts on that too and the first evenings will be tuned.
 
-    Kazda relacia si ich ulozi so sebou (zadanie §3.3): bez toho sa o
-    mesiac neda povedat, ci bol rozdiel v tom, co sa zmenilo, alebo v tom,
-    ako sa hrac vyspal.
+    Every session saves them with itself (spec §3.3): without that, a month
+    later you cannot tell whether a difference came from what changed or
+    from how well the player slept.
     """
     return {
-        # Zataz (hr_stats.stress, 0-100). Slovo pasma na HUD-e/Dnes s tym
-        # NESUVISI - to je tep voci pokoju (HeartStats.zone); "Vysoka" teda
-        # neznamena "nad prahom" ani "hlaska ide".
+        # Load (hr_stats.stress, 0-100). The zone word on the HUD/Today has
+        # NOTHING to do with it - that is heart rate against rest
+        # (HeartStats.zone); so "Vysoka" does not mean "above the threshold" or
+        # "a cue is coming".
         "stress_threshold": 55.0,
-        # Ako dlho musi drzat nad prahom, nez sa natiahne.
+        # How long it must hold above the threshold before it arms.
         #
-        # 90 -> 45 PO PRVOM SKUTOCNOM VECERI. The Finals, 36 minut, spicka
-        # zataze 87 pri prahu 55, 2:40 v hornych pasmach - a NULA hlasok.
-        # Prah teda problem nebol; nikdy sa nenaplnilo "suvisle".
-        # Povodnych 90 s bolo pisanych na "dve minuty na 120", co je iny typ
-        # hry. V kolovej strielacke ide telo hore-dole v cykloch po
-        # desiatkach sekund: umres, respawn, pokoj. 90 s bez vacsieho nez
-        # patsekundoveho prepadu tam nenastane prakticky nikdy.
+        # 90 -> 45 AFTER THE FIRST REAL EVENING. The Finals, 36 minutes, load
+        # peak 87 at threshold 55, 2:40 in the upper zones - and ZERO cues. So
+        # the threshold was not the problem; "continuous" was never filled.
+        # The original 90 s was written for "two minutes at 120", which is a
+        # different type of game. In a round-based shooter the body goes up
+        # and down in cycles of tens of seconds: you die, respawn, calm. 90 s
+        # without a dip longer than five seconds practically never happens
+        # there.
         "stress_hold_s": 45.0,
-        # Kratky prepad pod prah natiahnutie NERUSI - stress je vyhladeny
-        # exponencialnym priemerom a na hranici kmita. Dlhsi prepad ano.
+        # A short dip below the threshold does NOT cancel the arming - stress
+        # is smoothed by an exponential average and oscillates at the boundary.
+        # A longer dip does.
         #
-        # 5 -> 20 z toho isteho dovodu: 5 s prekleni kmitanie vyhladeneho
-        # priemeru, ale nie respawn. Dvadsat sekund preklenie aj ten, takze
-        # sa jeden bojovy usek nerozpadne na tri kratke.
+        # 5 -> 20 for the same reason: 5 s bridges the oscillation of the
+        # smoothed average, but not a respawn. Twenty seconds bridges that
+        # too, so one combat stretch does not fall apart into three short ones.
         "dip_grace_s": 20.0,
-        # Pauza v aktivite, ktora sa povazuje za zlomovy bod.
-        # POZN: 2,5 s je rozhodnutie zadavatela. Publikovany vyskum
-        # (Iqbal & Bailey, CHI 2008) hovori, ze najjemnejsie zlomove body
-        # dopadli horsie nez stredne a hrube. Preto je to parameter a
-        # preto sa zapisuje do kazdeho okna - z dat sa to da spatne overit.
+        # A pause in activity that counts as a breakpoint.
+        # NOTE: 2,5 s is the requester's decision. Published research
+        # (Iqbal & Bailey, CHI 2008) says that the finest breakpoints did
+        # worse than medium and coarse ones. That is why it is a parameter and
+        # why it is written into every window - it can be checked back from
+        # the data.
         "pause_s": 2.5,
-        # Najdlhsie, co sa caka na pauzu. 90 s je publikovany, hracmi
-        # akceptovany odklad notifikacie.
+        # The longest wait for a pause. 90 s is a published notification
+        # delay accepted by players.
         "max_wait_s": 90.0,
-        # Dlhsia pauza uz nie je mikropauza - hrac odisiel od PC.
+        # A longer pause is not a micropause any more - the player left the PC.
         "away_s": 120.0,
-        # Minimalny odstup medzi hlaskami. MUSI byt vacsi nez
-        # measure.REFRACTORY_AFTER_S (180), inak si dve hlasky navzajom
-        # zneplatnia meracie okna a mesiac merania je na nic.
+        # Minimum gap between cues. MUST be bigger than
+        # measure.REFRACTORY_AFTER_S (180), otherwise two cues invalidate each
+        # other's measurement windows and a month of measuring is worthless.
         "min_gap_s": 240.0,
-        # Strop hlasok za hodinu (zadanie §2). `min_gap_s` sam nestaci:
-        # 240 s odstup dovoli az 15 za hodinu. Odmerane simulaciou - pri
-        # vypatom vecere vychadzalo 6,9 za hodinu, cize nad zadanim.
+        # Cap on cues per hour (spec §2). `min_gap_s` alone is not enough:
+        # a 240 s gap allows up to 15 per hour. Measured by simulation - on a
+        # heated evening it came to 6,9 per hour, i.e. above the spec.
         #
-        # Odstup a strop su dve rozne veci: odstup chrani MERANIE (aby si
-        # dve hlasky nezneplatnili okna), strop chrani HRACA (aby appka
-        # nebola ukecana). Preto su to dva parametre a nie jeden.
+        # The gap and the cap are two different things: the gap protects the
+        # MEASUREMENT (so two cues do not invalidate the windows), the cap
+        # protects the PLAYER (so the app is not chatty). That is why they are
+        # two parameters and not one.
         "max_per_hour": 5.0,
-        # Smie sa vobec natiahnut? False = stupen "pauza" z rebrika
-        # (`rebrik.py`): automat sa sprava ako pri plnej hodine - nenatiahne
-        # sa, ale diagnostika (behy nad prahom, pauzy) sa zbiera dalej.
+        # May it arm at all? False = the "pauza" step of the ladder
+        # (`rebrik.py`): the automaton behaves as when the hour is full - it
+        # does not arm, but diagnostics (runs above the threshold, pauses)
+        # are still collected.
         "cues_enabled": True,
-        # Znacka brany (0.2, stress-gate). Kazde okno si parametre nesie
-        # (`app._save_measure_windows`), takze okna po zmene casovania sa
-        # nezlucia so starsimi (`measure.by_category`).
+        # Gate marker (0.2, stress-gate). Every window carries its parameters
+        # (`app._save_measure_windows`), so windows after a timing change do
+        # not merge with older ones (`measure.by_category`).
         "brana": "po_vrchole",
     }
 
 
 # --------------------------------------------------------------------------
-# Ako casto sa appka ozve - jeden ovladac namiesto styroch cisel
+# How often the app speaks up - one control instead of four numbers
 # --------------------------------------------------------------------------
 #
-# Prah, drzanie, odstup a strop sa NEDAJU nastavovat samostatne bez toho,
-# aby si protirecili: znizit prah bez skratenia drzania neurobi takmer nic
-# (telo sa cez prah prehupne, ale suvisly usek sa aj tak nenaplni), a
-# skratit odstup bez zvysenia stropu tiez nie (strop zatne skor). Preto sa
-# hybu vsetky styri naraz, jednou volbou.
+# Threshold, hold, gap and cap CANNOT be set separately without them
+# contradicting each other: lowering the threshold without shortening the
+# hold does almost nothing (the body swings over the threshold, but the
+# continuous stretch still does not fill up), and shortening the gap
+# without raising the cap does not either (the cap cuts in sooner). That is
+# why all four move at once, with one choice.
 #
-# Zvysok cisel (pause_s, max_wait_s, away_s, dip_grace_s) sa NEMENI: to su
-# vlastnosti okamihu dorucenia, nie toho, ako casto sa ozve.
+# The rest of the numbers (pause_s, max_wait_s, away_s, dip_grace_s) does
+# NOT change: those are properties of the moment of delivery, not of how
+# often it speaks up.
 
-# TVRDA POISTKA, nie nastavenie.
+# A HARD SAFETY NET, not a setting.
 #
-# Po hlaske bezi meracie okno `measure.REFRACTORY_AFTER_S` (180 s). Keby
-# odstup klesol pod nu, druha hlaska by pristala do okna prvej, obe okna by
-# sa zneplatnili - a z celeho vecera by neostalo nic na vyhodnotenie.
-# Rezerva 30 s kryje to, ze hlaska nepada v okamihu natiahnutia, ale az na
-# najblizsej pauze.
+# After a cue a measurement window runs for `measure.REFRACTORY_AFTER_S`
+# (180 s). If the gap fell below it, the second cue would land in the first
+# one's window, both windows would be invalidated - and nothing would be
+# left from the whole evening to evaluate.
+# The 30 s reserve covers the fact that a cue does not fire at the moment of
+# arming, but only at the next pause.
 MIN_GAP_FLOOR_S = measure.REFRACTORY_AFTER_S + 30.0   # 210 s
 
 CITLIVOST_MENEJ = "menej"
@@ -221,73 +238,78 @@ CITLIVOST_VIAC = "viac"
 CITLIVOSTI = (CITLIVOST_MENEJ, CITLIVOST_BEZNE, CITLIVOST_VIAC)
 
 _CITLIVOST = {
-    # Pre vecery, ked appka rusi viac, nez pomaha.
+    # For evenings when the app disturbs more than it helps.
     CITLIVOST_MENEJ: {"stress_threshold": 65.0, "stress_hold_s": 60.0,
                       "min_gap_s": 420.0, "max_per_hour": 3.0},
-    # Cisla zo zadania - to, co je vo `default_params()`.
+    # Numbers from the spec - what is in `default_params()`.
     CITLIVOST_BEZNE: {},
-    # Pre telo, ktore sa cez prah prehupne len kratko. Odstup ide na
-    # poistku, nie pod nu.
+    # For a body that swings over the threshold only briefly. The gap goes
+    # to the safety net, not below it.
     CITLIVOST_VIAC: {"stress_threshold": 48.0, "stress_hold_s": 30.0,
                      "min_gap_s": MIN_GAP_FLOOR_S, "max_per_hour": 8.0},
 }
 
 
 def params_for(citlivost):
-    """Kompletne parametre pre zvolenu citlivost.
+    """Complete parameters for the chosen sensitivity.
 
-    Vracia CELY slovnik, nie len rozdiel - volajuci ho vie rovno pouzit a
-    nemusi vediet, ktore kluce sa menia. Neznama hodnota padne na "bezne".
+    Returns the WHOLE dictionary, not just the difference - the caller can
+    use it right away and does not need to know which keys change. An
+    unknown value falls back to "bezne".
     """
     out = default_params()
     out.update(_CITLIVOST.get(citlivost, _CITLIVOST[CITLIVOST_BEZNE]))
-    # Poistka plati aj ked sa niekto v tabulke pomyli.
+    # The safety net holds even when someone makes a mistake in the table.
     out["min_gap_s"] = max(out["min_gap_s"], MIN_GAP_FLOOR_S)
     return out
 
 
-# Kumulativne okno je nasobok pozadovaneho drzania: pri `stress_hold_s` 45 s
-# sa pozera na poslednych 90 s. Zamerne to NIE JE dalsi parameter - bol by to
-# piaty knoflik na to iste a nikto by nevedel, ako ho nastavit voci ostatnym.
+# The cumulative window is a multiple of the required hold: with
+# `stress_hold_s` 45 s it looks at the last 90 s. It is deliberately NOT
+# another parameter - it would be a fifth knob for the same thing and nobody
+# would know how to set it against the others.
 OKNO_NASOBOK = 2.0
 
-# STROP NA KREDIT: najviac tolkoto sekund sa z JEDNEJ medzery medzi vzorkami
-# pripise do kumulativneho okna ako "meralo sa". Dlhsia medzera sa zapocita
-# len do tejto hranice - cas, ktory nikto nemeral, sa nerata ako drzanie.
+# A CAP ON CREDIT: at most this many seconds from ONE gap between samples
+# are credited to the cumulative window as "measured". A longer gap counts
+# only up to this limit - time that nobody measured does not count as
+# holding.
 #
-# Kadencia hodiniek NIE JE 1,5 s, ako tu stalo predtym. Namerane: ~0,9 s aj
-# ~2,9 s na vzorku podla toho, co hodinky posielaju (od 20. 9. sa tep v OBS
-# strieda s krokmi - zdroje Tep/Steps/steps), a pri ~2,9 s je jeden strateny
-# paket medzera ~5,6 s. Chvost medzier tesne nad 5 s je teda BEZNY, nie
-# vypadok - o vypadku rozhoduje az `DIERA_S`.
+# The watch cadence is NOT 1,5 s, as it said here before. Measured: ~0,9 s
+# and ~2,9 s per sample depending on what the watch sends (since 20. 9. the
+# heart rate in OBS alternates with steps - sources Tep/Steps/steps), and at
+# ~2,9 s one lost packet is a gap of ~5,6 s. A tail of gaps just above 5 s is
+# therefore NORMAL, not a dropout - only `DIERA_S` decides a dropout.
 MAX_KROK_S = 5.0
 
-# OD AKEJ MEDZERY JE TO VYPADOK, nie len ridsia kadencia hodiniek.
+# FROM WHAT GAP IT IS A DROPOUT, not just a sparser watch cadence.
 #
-# Rovnake cislo ako `heart_rate.HeartRateMonitor.STALE_AFTER_S` (test to
-# strazi): kratsiu medzeru appka za vypadok nepovazuje - HUD ukazuje posledny
-# tep a "Odpojene" nehlasi - tak ju nesmie za vypadok povazovat ani spustac.
+# The same number as `heart_rate.HeartRateMonitor.STALE_AFTER_S` (a test
+# guards it): the app does not consider a shorter gap a dropout - the HUD
+# shows the last heart rate and does not report "Disconnected" - so the
+# trigger must not consider it a dropout either.
 #
-# Predtym tuto ulohu robil `MAX_KROK_S` (5 s) a kazda dlhsia medzera zmazala
-# cely nazbierany cas. Vecery od 20. 9. (kadencia ~2,9 s): 199 usekov nad
-# prahom, 194 z nich zrusenych "vypadkom", za vyse 4 hodiny JEDNA hlaska - a
-# po vecere veta "Tep 119x vypadol", hoci skutocnych vypadkov (12 s a viac)
-# mohlo byt v tom vecere najviac 5.
+# Before, `MAX_KROK_S` (5 s) did this job and every longer gap erased the
+# whole accumulated time. Evenings since 20. 9. (cadence ~2,9 s): 199
+# stretches above the threshold, 194 of them cancelled by a "dropout", ONE
+# cue in over 4 hours - and after the evening the sentence "Tep 119x
+# vypadol" (heart rate dropped out 119x), although there could have been at
+# most 5 real dropouts (12 s and more) that evening.
 DIERA_S = 12.0
 
-# Okno, v ktorom sa strop pocita. Nie je to parameter: "za hodinu" je
-# jednotka zo zadania, meni sa `max_per_hour`.
+# The window in which the cap is counted. Not a parameter: "per hour" is
+# the unit from the spec, `max_per_hour` is what changes.
 HOUR_S = 3600.0
 
 
 def _nove_preskocene():
-    """Pocty pauz, ktore brana zastavila, podla prekazky (od natiahnutia)."""
+    """Counts of pauses the gate stopped, by obstacle (since arming)."""
     return {P_NEZNAME: 0, P_KRITICKE: 0, P_STUPA: 0, P_NESMIE: 0}
 
 
 class CueTrigger:
-    """Stavovy automat jednej relacie. Bez Tk, bez I/O, s podstrcitelnymi
-    hodinami - takze sa da cely prejst v testoch bez cakania."""
+    """State machine of one session. No Tk, no I/O, with a clock that can be
+    slipped in - so it can be run through entirely in tests without waiting."""
 
     def __init__(self, params=None, rng=None, clock=time.time):
         self.params = dict(default_params())
@@ -296,81 +318,89 @@ class CueTrigger:
         self._rng = rng if rng is not None else random.Random()
         self._clock = clock
         self.silent_share = 0.0
-        # Smie hlaska vobec zazniet? False v PRACOVNOM svete (B3-worlds):
-        # tam ide kazda hlaska len obrazom. Plati pre celu relaciu - svet sa
-        # urcuje pri jej otvoreni (`open_session`), nie priebezne.
+        # May the cue be heard at all? False in the WORK world (B3-worlds):
+        # there every cue goes only as a picture. Applies to the whole
+        # session - the world is decided when it opens (`open_session`), not
+        # on the fly.
         self.voice = True
         self._delivered_at = []
         self.reset()
 
-    # ---------- zivotny cyklus ----------
+    # ---------- life cycle ----------
 
     def reset(self):
         self.state = DORMANT
-        self._above_since = None     # odkedy zataz drzi nad prahom
-        self._below_since = None     # odkedy je pod nim (kvoli tolerancii)
-        # Sucet skoncenych tolerovanych prepadov v tomto useku. Do drzania sa
-        # NERATAJU - viz `_nad_v_behu`. Nuluje sa vsade s `_above_since`.
+        self._above_since = None     # since when the load holds above the threshold
+        self._below_since = None     # since when it is below it (for the tolerance)
+        # Sum of finished tolerated dips in this stretch. They do NOT count
+        # towards the hold - see `_nad_v_behu`. Reset everywhere along with
+        # `_above_since`.
         self._prepady_s = 0.0
         self._armed_at = None
-        self._arm = None             # vylosovane rameno, uz pri natiahnuti
+        self._arm = None             # the drawn arm, already at arming
         self._cooldown_until = 0.0
         self._last_load = None
-        # Preco je automat pozastaveny. Viz `suspend` / `resume`.
+        # Why the automaton is suspended. See `suspend` / `resume`.
         self._suspended_by = None
         self.armed_count = 0
         self.delivered_count = 0
         self._delivered_at = []
-        # PRECO SA TOTO POCITA
-        # Prvy skutocny vecer (The Finals, 36 min) skoncil s NULOU hlasok,
-        # hoci spicka zataze bola 87 pri prahu 55. Prah teda problem nebol -
-        # zlyhala podmienka "SUVISLE stress_hold_s". Zo suhrnu relacie sa to
-        # ale nedalo rozlisit od uplne inej priciny (vypadky tepu, ktore
-        # pocitadlo suvislosti vynuluju).
+        # WHY THIS IS COUNTED
+        # The first real evening (The Finals, 36 min) ended with ZERO cues,
+        # although the load peak was 87 at threshold 55. So the threshold was
+        # not the problem - the "CONTINUOUS stress_hold_s" condition failed.
+        # But from the session summary this could not be told apart from a
+        # completely different cause (heart-rate dropouts, which reset the
+        # continuity counter).
         #
-        # Tieto styri cisla to rozlisia bez toho, aby sa ukladala cela
-        # krivka: ked je najdlhsi beh 40 s, je pravidlo prisne; ked je 10 s
-        # a behov su desiatky, su to vypadky.
-        # [(cas, dlzka)] usekov nad prahom v kumulativnom okne
+        # These four numbers tell them apart without storing the whole curve:
+        # when the longest run is 40 s, the rule is strict; when it is 10 s
+        # and there are dozens of runs, they are dropouts.
+        # [(time, length)] of stretches above the threshold in the cumulative
+        # window
         self._nad_okno = []
         self._posledny_load_ts = None
         self._posledny_nad_koniec = None
-        # Najdlhsi usek nad prahom - LEN cas naozaj nad prahom, tolerovane
-        # prepady sa nerataju (0.2.1, `_nad_v_behu`). Veta po relacii ho
-        # porovnava so `stress_hold_s`, takze musi merat to iste co spustac.
+        # The longest stretch above the threshold - ONLY time really above the
+        # threshold, tolerated dips do not count (0.2.1, `_nad_v_behu`). The
+        # sentence after the session compares it with `stress_hold_s`, so it
+        # must measure the same thing as the trigger.
         self.najdlhsi_nad_s = 0.0
-        self.behov_nad = 0           # kolkokrat sa taky usek zacal
-        self.zrusenych_prepadom = 0  # ... a skoncil poklesom pod prah
-        # ... alebo vypadkom tepu: medzera >= DIERA_S, alebo
-        # suspend(A_TEP_VYPADOL). Snooze sem NEPATRI.
+        self.behov_nad = 0           # how many times such a stretch started
+        self.zrusenych_prepadom = 0  # ... and ended by dropping below the threshold
+        # ... or by a heart-rate dropout: a gap >= DIERA_S, or
+        # suspend(A_TEP_VYPADOL). Snooze does NOT belong here.
         self.zrusenych_vypadkom = 0
-        # BRANA (viz hlavicka modulu).
-        self._zona = None            # pasmo tepu z poslednej vzorky
-        self._load_hist = []         # [(cas, zataz)] za HIST_S
-        self._vrchol = None          # najvyssia zataz od natiahnutia
+        # THE GATE (see the module header).
+        self._zona = None            # heart-rate zone from the last sample
+        self._load_hist = []         # [(time, load)] over HIST_S
+        self._vrchol = None          # the highest load since arming
         self._preskocene = _nove_preskocene()
         self._preskocena_pauza = None
-        # KOLKO PAUZ APPKA ZA RELACIU VOBEC VIDELA (prechody do pauzy
-        # >= `pause_s`). Nula za dlhy vecer znamena, ze hlas nemal kedy
-        # zaznet - a casto, ze nieco hlasi vstup bez prestavky (gyro v
-        # ovladaci). Bez toho cisla by sa to nedalo odlisit od pokoja.
+        # HOW MANY PAUSES THE APP SAW AT ALL IN THE SESSION (transitions into a
+        # pause >= `pause_s`). Zero over a long evening means the voice never
+        # had a chance to be heard - and often that something reports input
+        # nonstop (the gyro in a controller). Without this number it could not
+        # be told apart from calm.
         self.pause_episodes = 0
         self._v_pauze = False
-        # Kolko natiahnuti appka sama zrusila, podla dovodu (`ZADRZANE`).
+        # How many armings the app cancelled itself, by reason (`ZADRZANE`).
         self.zadrzane = {r: 0 for r in ZADRZANE}
 
     def open_session(self, now=None, silent_share=0.10, voice=True):
-        """Nova relacia. Hodinovy strop sa NEVYNULUJE.
+        """New session. The hourly cap is NOT reset.
 
-        "Pat za hodinu" je o hracovi, nie o relacii. Keby sa strop cistil s
-        kazdou relaciou, stacilo by vypnut a zapnut senzor a appka by mohla
-        hovorit dalej - a hrac by to urobil prave vtedy, ked ho stve.
+        "Five per hour" is about the player, not the session. If the cap
+        were cleared with every session, switching the sensor off and on
+        would be enough for the app to keep talking - and the player would
+        do that exactly when it annoys them.
 
-        `voice=False` = pracovny svet: automat bezi rovnako (natiahnutie,
-        pauza, rameno sa losuje dalej), len `hlas` pri doruceni je vzdy
-        False - hlaska ide len obrazom. Rameno sa NEPREPISUJE: vylosovane
-        je pred dorucenim a zlucit ho so sposobom dorucenia sa nesmie (viz
-        hlavicka modulu); okno si nesie svet, takze sa to da oddelit.
+        `voice=False` = the work world: the automaton runs the same (arming,
+        pause, the arm is still drawn), only `hlas` at delivery is always
+        False - the cue goes only as a picture. The arm is NOT OVERWRITTEN:
+        it is drawn before delivery and must not be merged with the way of
+        delivery (see the module header); the window carries the world, so
+        the two can be separated.
         """
         historia = list(self._delivered_at)
         self.reset()
@@ -382,8 +412,8 @@ class CueTrigger:
         return None
 
     def close_session(self, now=None):
-        """Relacia konci. Ak sa cakalo na pauzu, je to informacia - podla
-        toho, ako casto sa to stava, sa da ladit `max_wait_s`."""
+        """Session ends. If it was waiting for a pause, that is information -
+        by how often that happens, `max_wait_s` can be tuned."""
         now = self._clock() if now is None else now
         udalost = None
         if self.state == ARMED:
@@ -392,46 +422,51 @@ class CueTrigger:
         return udalost
 
     def suspend(self, reason, now=None):
-        """Snooze alebo vypadok tepu. Natiahnutie sa zrusi - nedrzi sa.
+        """Snooze or heart-rate dropout. The arming is cancelled, not kept.
 
-        DOVOD SA PAMATA. Bez neho nevie `resume` rozlisit, ci ho zdvihnut
-        smie: vypadok tepu ma zdvihnut prva dalsia vzorka, ale snooze ani
-        zastavene pocuvanie nie.
+        THE REASON IS REMEMBERED. Without it `resume` cannot tell whether it
+        may lift it: a heart-rate dropout should be lifted by the very next
+        sample, but snooze or stopped listening should not.
         """
         now = self._clock() if now is None else now
         udalost = self._abort(reason, now) if self.state == ARMED else None
         if self._above_since is not None:
-            # Rozbehnuty usek nad prahom konci uspanim, nie poklesom. Je to
-            # ina pricina a musi sa dat odlisit - viz `reset`.
+            # A running stretch above the threshold ends by suspension, not
+            # by a drop. That is a different cause and must be
+            # distinguishable - see `reset`.
             self.najdlhsi_nad_s = max(self.najdlhsi_nad_s,
                                       self._nad_v_behu())
-            # Za vypadok sa rata LEN vypadok tepu. "Teraz nie" (snooze) je
-            # rozhodnutie hraca, nie chyba hodiniek - inak by mu appka po
-            # vecere napisala "Tep 3x vypadol, daj hodinky blizsie", hoci
-            # ju len trikrat umlcal.
+            # ONLY a heart-rate dropout counts as a dropout. "Not now"
+            # (snooze) is the player's decision, not a watch fault -
+            # otherwise after the evening the app would write "Tep 3x
+            # vypadol, daj hodinky blizsie" (heart rate dropped out 3x, move
+            # the watch closer), although they only silenced it three times.
             if reason == A_TEP_VYPADOL:
                 self.zrusenych_vypadkom += 1
         self._above_since = None
         self._below_since = None
         self._prepady_s = 0.0
-        # NAZBIERANÝ ČAS NAD PRAHOM SA MUSÍ ZAHODIŤ AJ TU.
+        # THE TIME COLLECTED ABOVE THE THRESHOLD MUST BE THROWN AWAY HERE TOO.
         #
-        # `note_load` má poistku proti diere v dátach, ale tá sa spustí len
-        # keď `_above_since is not None` - a to `suspend` práve vynulovalo.
-        # Bez tohto by po výpadku dlhšom než `DIERA_S`, ale kratšom než okno
-        # `OKNO_NASOBOK*drzanie`, stará nazbieraná záťaž prežila a prvá vzorka
-        # po návrate by natiahla hlášku na čase, ktorý nikto nemeral (B4).
-        # `_posledny_load_ts=None` zároveň zaručí, že prvý krok po návrate je
-        # 0 (žiadny fiktívny prírastok).
+        # `note_load` has a safety net against a hole in the data, but it only
+        # runs when `_above_since is not None` - and `suspend` has just reset
+        # that. Without this, after a dropout longer than `DIERA_S` but shorter
+        # than the `OKNO_NASOBOK*drzanie` window, the old collected load would
+        # survive and the first sample after the return would arm a cue on time
+        # nobody measured (B4).
+        # `_posledny_load_ts=None` also guarantees that the first step after
+        # the return is 0 (no fictitious increment).
         self._nad_okno = []
         self._posledny_load_ts = None
-        # Ani "stupa/nestupa" sa neporovnava cez dieru - po navrate sa
-        # historia zataze zbiera odznova.
+        # Not even "rising/not rising" is compared across the hole - after the
+        # return the load history is collected from scratch.
         self._load_hist = []
-        # SLABSI DOVOD NEPREPISE SILNEJSI. Vypadok tepu pocas "teraz nie"
-        # (od 24. 9. relaciu nezatvara, meria sa dalej) by inak prepisal
-        # dovod na `A_TEP_VYPADOL` - a prva vzorka po navrate by cez
-        # `resume()` bez `force` snooze ticho zrusila (REVIZIA_2_NALEZY).
+        # A WEAKER REASON DOES NOT OVERWRITE A STRONGER ONE. A heart-rate
+        # dropout during "not now" (since 24. 9. it does not close the
+        # session, measuring goes on) would otherwise overwrite the reason
+        # with `A_TEP_VYPADOL` - and the first sample after the return would
+        # silently cancel the snooze via `resume()` without `force`
+        # (REVIZIA_2_NALEZY).
         if not (reason == A_TEP_VYPADOL
                 and self._suspended_by not in (None, A_TEP_VYPADOL)):
             self._suspended_by = reason
@@ -439,23 +474,26 @@ class CueTrigger:
         return udalost
 
     def resume(self, now=None, force=False):
-        """Zdvihne pozastavenie. 90 s sa pocita ODZNOVA - polovicne
-        natiahnuty stav neexistuje.
+        """Lifts the suspension. The 90 s count FROM SCRATCH - a half-armed
+        state does not exist.
 
-        `force=False` znamena "prisla vzorka tepu" a zdvihne LEN vypadok
-        tepu. Vola sa z `_apply_hr_bpm`, teda KAZDU SEKUNDU, a preto nesmie
-        zdvihnut nic ine: "teraz nie" by zrusil prvy uder srdca o sekundu
-        neskor. Odmerane - pri 30-minutovom snooze sa takto natiahlo 10x a
-        do kazdeho meracieho okna relacie sa zapisal nafuknuty `natiahnuti`.
+        `force=False` means "a heart-rate sample came" and lifts ONLY a
+        heart-rate dropout. It is called from `_apply_hr_bpm`, i.e. EVERY
+        SECOND, and that is why it must not lift anything else: "not now"
+        would be cancelled by the first heartbeat a second later. Measured -
+        with a 30-minute snooze it armed 10x this way and an inflated
+        `natiahnuti` was written into every measurement window of the
+        session.
 
-        `force=True` je vedome zdvihnutie: koniec snooze, zrusenie snooze,
-        spustenie pocuvania.
+        `force=True` is a deliberate lift: end of snooze, cancelling snooze,
+        starting listening.
 
-        ODSTUP MEDZI HLASKAMI SA NESTRACA. Predtym isiel stav rovno na IDLE
-        a `_cooldown_until` uz nikto necital, lebo sa cita len v stave
-        COOLDOWN - jeden vypadok tepu tak zmazal styri minuty odstupu. A ten
-        odstup MUSI byt vacsi nez `measure.REFRACTORY_AFTER_S`, inak si dve
-        hlasky navzajom zneplatnia meracie okna.
+        THE GAP BETWEEN CUES IS NOT LOST. Before, the state went straight to
+        IDLE and nobody read `_cooldown_until` any more, because it is read
+        only in the COOLDOWN state - so one heart-rate dropout erased four
+        minutes of gap. And that gap MUST be bigger than
+        `measure.REFRACTORY_AFTER_S`, otherwise two cues invalidate each
+        other's measurement windows.
         """
         if self.state != DORMANT:
             return None
@@ -469,29 +507,31 @@ class CueTrigger:
         self._prepady_s = 0.0
         return None
 
-    # ---------- vstupy ----------
+    # ---------- inputs ----------
 
     def note_load(self, stress, now=None, calibrating=False, zona=None):
-        """Jedna vzorka zataze. Vola sa z `_apply_hr_bpm` (Tk vlakno).
+        """One load sample. Called from `_apply_hr_bpm` (Tk thread).
 
-        Vracia udalost E_ARMED, ked sa prave natiahlo, inak None.
+        Returns the E_ARMED event when it has just armed, otherwise None.
 
-        `calibrating=True` (`HeartStats.is_calibrating`) znamena, ze relacia
-        este nema vlastnu zakladnu a zataz je len odhad. Vtedy sa NIC
-        nenazbiera: bez toho by sa pri citlivosti "viac" (30 s drzania) dalo
-        natiahnut este pocas kalibracie, a pri beznej by cas nazbierany v nej
-        skratil cakanie hned po nej. Radsej prvu minutu ticho, nez hlaska
-        postavena na cisle, ktoremu appka sama neveri.
+        `calibrating=True` (`HeartStats.is_calibrating`) means the session
+        does not have its own baseline yet and the load is only an estimate.
+        Then NOTHING is collected: without this, with the "viac" sensitivity
+        (30 s hold) it could arm even during calibration, and with the normal
+        one the time collected during it would shorten the wait right after
+        it. Better a quiet first minute than a cue built on a number the app
+        itself does not trust.
 
-        `zona` je pasmo TEPU (`HeartStats.known_zone`), nie pasmo zataze.
-        None = nepozname - a vtedy brana hlasku nepusti. Default je None
-        zamerne: volajuci, ktory pasmo zabudne poslat, dostane ticho, nie
-        hlas nad hranicou vysokeho tepu.
+        `zona` is the HEART-RATE zone (`HeartStats.known_zone`), not the load
+        zone. None = unknown - and then the gate does not let the cue through.
+        The default is None on purpose: a caller who forgets to pass the zone
+        gets silence, not a voice above the high heart-rate limit.
         """
         now = self._clock() if now is None else now
         self._last_load = stress
-        # BRANA sa krmi pri KAZDEJ vzorke - aj v stave ARMED, lebo prave
-        # vtedy sa podla nej rozhoduje (preto pred navratom nizsie).
+        # THE GATE is fed on EVERY sample - even in the ARMED state, because
+        # that is exactly when decisions are made by it (hence before the
+        # return below).
         self._zona = zona
         self._load_hist.append((now, stress))
         while self._load_hist and self._load_hist[0][0] < now - HIST_S:
@@ -502,9 +542,9 @@ class CueTrigger:
         if self.state in (DORMANT, ARMED):
             return None
         if calibrating:
-            # Ako diera v datach: nazbierany cas prec a prvy krok po
-            # kalibracii je nula (`_posledny_load_ts=None`), nie fiktivny
-            # prirastok za celu kalibraciu.
+            # Like a hole in the data: the collected time is gone and the first
+            # step after calibration is zero (`_posledny_load_ts=None`), not a
+            # fictitious increment for the whole calibration.
             self._above_since = None
             self._below_since = None
             self._prepady_s = 0.0
@@ -524,50 +564,54 @@ class CueTrigger:
         prah = self.params["stress_threshold"]
         drzanie = self.params["stress_hold_s"]
 
-        # KUMULATIVNE OKNO namiesto "suvisle nad prahom".
+        # A CUMULATIVE WINDOW instead of "continuously above the threshold".
         #
-        # Povodne pravidlo vyzadovalo jeden neprerusovany usek. V realnej hre
-        # sa telo vracia dole v cykloch po desiatkach sekund (umres, respawn,
-        # pokoj), takze suvisly usek dlzky 45 s prakticky nenastane. Merany
-        # vecer to ukazal doslova: 88 minut, 13 behov nad prahom, VSETKY
-        # zrusene prepadom, najdlhsi 44,1 s pri pozadovanych 45,0 - chybala
-        # jedna sekunda a appka nepovedala za cely vecer nic.
+        # The original rule required one uninterrupted stretch. In a real game
+        # the body goes back down in cycles of tens of seconds (you die,
+        # respawn, calm), so a continuous 45 s stretch practically never
+        # happens. A measured evening showed it literally: 88 minutes, 13 runs
+        # above the threshold, ALL cancelled by a dip, the longest 44,1 s with
+        # 45,0 required - one second was missing and the app said nothing the
+        # whole evening.
         #
-        # Teraz sa pocita, kolko casu bolo nad prahom za poslednych
-        # `OKNO_NASOBOK * drzanie` sekund. Prepad beh nemaze, len sa
-        # nepripocita - to je presne ten rozdiel medzi "telo je pod zatazou"
-        # a "telo drzi jednu dlhu krivku".
+        # Now it counts how much time was above the threshold in the last
+        # `OKNO_NASOBOK * drzanie` seconds. A dip does not erase the run, it
+        # is just not added - that is exactly the difference between "the body
+        # is under load" and "the body holds one long curve".
         krok = 0.0
         diera = False
         if self._posledny_load_ts is not None:
             surovy = max(0.0, now - self._posledny_load_ts)
-            # Dve rozne hranice, dve rozne otazky (viz `DIERA_S`): vypadok
-            # je medzera `DIERA_S` a viac, kredit z jednej medzery je
-            # najviac `MAX_KROK_S`.
+            # Two different limits, two different questions (see `DIERA_S`): a
+            # dropout is a gap of `DIERA_S` or more, the credit from one gap is
+            # at most `MAX_KROK_S`.
             diera = surovy >= DIERA_S
             krok = min(surovy, MAX_KROK_S)
         self._posledny_load_ts = now
 
-        # DIERA V DATACH NIE JE DRZANIE NAD PRAHOM.
+        # A HOLE IN THE DATA IS NOT HOLDING ABOVE THE THRESHOLD.
         #
-        # Appka na vypadok tepu reaguje aj sama (`_suspend_cue_trigger`
-        # s A_TEP_VYPADOL po `heart_rate.STALE_AFTER_S`), ale spoliehat sa
-        # na to nestaci: medzi poslednou vzorkou a vyhlasenim vypadku je
-        # okno, v ktorom sa nemeria nic - a bez tejto poistky by sa cely ten
-        # cas pripisal ako suvisly usek nad prahom. Dvadsatminutovy vypadok
-        # spojenia by po navrate natiahol hlasku okamzite, na zaklade casu,
-        # ktory nikto nezmeral.
+        # The app also reacts to a heart-rate dropout itself
+        # (`_suspend_cue_trigger` with A_TEP_VYPADOL after
+        # `heart_rate.STALE_AFTER_S`), but relying on that is not enough:
+        # between the last sample and declaring the dropout there is a window
+        # in which nothing is measured - and without this safety net all that
+        # time would be credited as a continuous stretch above the threshold.
+        # A twenty-minute connection dropout would arm a cue right after the
+        # return, based on time nobody measured.
         #
-        # RIDSIA KADENCIA ALE DIERA NIE JE. Medzera kratsia nez `DIERA_S`
-        # usek nerusi a okno nemaze; do okna z nej ide najviac `MAX_KROK_S`.
-        # POCTIVO: to plati len pre okno (`nazbierane`). Suvisla cesta nizsie
-        # (`_nad_v_behu`) meria nastenne hodiny, takze ticho kratsie nez
-        # `DIERA_S` po vzorke NAD prahom v nej zaratane JE - rovnako, ako ho
-        # appka inde povazuje za "pripojene" a HUD vtedy ukazuje posledny
-        # tep. Cas POD prahom (tolerovany prepad) sa v nej ale nerata.
+        # A SPARSER CADENCE, HOWEVER, IS NOT A HOLE. A gap shorter than
+        # `DIERA_S` does not cancel the stretch or erase the window; at most
+        # `MAX_KROK_S` of it goes into the window.
+        # HONESTLY: that applies only to the window (`nazbierane`). The
+        # continuous path below (`_nad_v_behu`) measures wall-clock time, so
+        # silence shorter than `DIERA_S` after a sample ABOVE the threshold IS
+        # counted in it - just as the app elsewhere considers it "connected"
+        # and the HUD then shows the last heart rate. Time BELOW the threshold
+        # (a tolerated dip), however, is not counted in it.
         if diera and self._above_since is not None:
-            # K poslednej vzorke nad prahom, nie po `now` - dieru nikto
-            # nemeral (`_nad_v_behu`).
+            # Up to the last sample above the threshold, not to `now` - nobody
+            # measured the hole (`_nad_v_behu`).
             self.najdlhsi_nad_s = max(self.najdlhsi_nad_s,
                                       self._nad_v_behu())
             self.zrusenych_vypadkom += 1
@@ -588,8 +632,9 @@ class CueTrigger:
 
         if stress >= prah:
             if self._below_since is not None:
-                # Tolerovany prepad sa skoncil. Usek zije dalej, ale cas pod
-                # prahom sa do drzania nepripise (`_nad_v_behu`).
+                # The tolerated dip has ended. The stretch lives on, but the
+                # time below the threshold is not added to the hold
+                # (`_nad_v_behu`).
                 self._prepady_s += now - self._below_since
             self._below_since = None
             if self._above_since is None:
@@ -599,19 +644,20 @@ class CueTrigger:
             else:
                 self.najdlhsi_nad_s = max(self.najdlhsi_nad_s,
                                           self._nad_v_behu())
-            # `_nad_v_behu()` je tu cas k `now` - tato vzorka je posledna
-            # nad prahom (`_posledny_nad_koniec = now` vyssie).
+            # `_nad_v_behu()` here is the time up to `now` - this sample is the
+            # last one above the threshold (`_posledny_nad_koniec = now`
+            # above).
             if (self._above_since is not None
                     and (self._nad_v_behu() >= drzanie
                          or nazbierane >= drzanie)):
                 if (self._hodina_plna(now)
                         or not self.params.get("cues_enabled", True)):
-                    # Strop je vycerpany (alebo rebrik hlasky vypol) -
-                    # NENATIAHNE sa vobec. Natiahnut a
-                    # potom nedorucit by znamenalo, ze prstenec na ense
-                    # svieti a nic nepride; radsej nech mlci uplne.
-                    # Pocita sa odznova, takze sa to skusi o dalsich 90 s,
-                    # nie pri kazdej vzorke.
+                    # The cap is used up (or the cue ladder switched it off) -
+                    # it does NOT ARM at all. Arming and then not delivering
+                    # would mean the ring on the enso lights up and nothing
+                    # comes; better that it stays completely silent.
+                    # It counts from scratch, so it is tried again in
+                    # another 90 s, not on every sample.
                     self._above_since = now
                     self._prepady_s = 0.0
                     self._nad_okno = []
@@ -619,7 +665,7 @@ class CueTrigger:
                 return self._arm_now(now)
             return None
 
-        # pod prahom - kratky prepad toleruj, dlhsi zrus
+        # below the threshold - tolerate a short dip, cancel on a longer one
         if self._above_since is None:
             return None
         if self._below_since is None:
@@ -635,24 +681,28 @@ class CueTrigger:
         return None
 
     def tick(self, pause_s, now=None, can_fire=True):
-        """Vola sa 4x za sekundu z `_tick_activity` (Tk vlakno).
+        """Called 4x per second from `_tick_activity` (Tk thread).
 
-        `pause_s` je z `activity.ActivityTracker.pause_s()` a smie byt
-        None - to znamena "system idle nehlasi, nevieme". Vtedy sa NECAKA
-        na pauzu donekonecna, ale ani sa nepredstiera, ze nejaka je:
-        necha sa dobehnut `max_wait_s` a potom plati to iste ako bez pauzy
-        (tichy vizual, ak brana pusti). Hlas bez pauzy nezaznie nikdy.
+        `pause_s` comes from `activity.ActivityTracker.pause_s()` and may be
+        None - that means "the system does not report idle, we do not know".
+        Then it does NOT wait for a pause forever, but does not pretend there
+        is one either: `max_wait_s` is let run out and then the same applies
+        as without a pause (a silent visual, if the gate lets it through). A
+        voice without a pause is never heard.
 
-        `can_fire` rozhoduje appka - cooldowny, snooze, dostupnost vizualu.
-        Ked je False, natiahnutie sa NESPALI: caka sa dalej.
+        `can_fire` is decided by the app - cooldowns, snooze, visual
+        availability. When it is False, the arming is NOT USED UP: waiting
+        goes on.
 
-        BRANA (viz hlavicka modulu) plati na pauze aj po `max_wait_s`, pre
-        obe ramena rovnako - inak by tiche rameno prestalo byt kontrolne.
+        THE GATE (see the module header) applies at a pause and after
+        `max_wait_s`, the same for both arms - otherwise the silent arm would
+        stop being a control.
         """
         now = self._clock() if now is None else now
 
-        # Pauzy sa pocitaju v KAZDOM stave (aj mimo natiahnutia): otazka je,
-        # ci ich appka za vecer vobec vidi, nie ci na ne prave caka.
+        # Pauses are counted in EVERY state (even outside arming): the question
+        # is whether the app sees them at all over the evening, not whether it
+        # is waiting for one right now.
         pauza = pause_s is not None and pause_s >= self.params["pause_s"]
         if pauza and not self._v_pauze:
             self.pause_episodes += 1
@@ -669,15 +719,16 @@ class CueTrigger:
 
         cakane = now - self._armed_at
 
-        # Hrac odisiel od PC - to nie je mikropauza, na ktoru sa caka.
+        # The player left the PC - not a micropause that is being waited for.
         if pause_s is not None and pause_s > self.params["away_s"]:
             return self._abort(A_ODISIEL, now)
 
         prekazka = self._prekazka(now)
 
         if cakane >= self.params["max_wait_s"]:
-            # Tichy obrazok bez pauzy - ale nie na vrchole ani nad hranicou
-            # vysokeho tepu. Radsej nic nez obrazok uprostred najhorsieho.
+            # A silent picture without a pause - but not at the peak or above
+            # the high heart-rate limit. Better nothing than a picture in the
+            # middle of the worst.
             if prekazka is None:
                 if can_fire:
                     return self._fire(D_TIMEOUT, now, cakane)
@@ -692,40 +743,44 @@ class CueTrigger:
             prekazka = P_NESMIE
         if prekazka is None:
             return self._fire(D_PAUSE, now, cakane)
-        # Pauza prisla, ale chvila nie je vhodna - caka sa na dalsiu. Rata
-        # sa raz za pauzu, nie 4x za sekundu.
+        # A pause came, but the moment is not suitable - waiting for the next
+        # one. Counted once per pause, not 4x per second.
         if self._preskocena_pauza != self.pause_episodes:
             self._preskocene[prekazka] += 1
             self._preskocena_pauza = self.pause_episodes
         return None
 
-    # ---------- vnutro ----------
+    # ---------- internals ----------
 
     def _nad_v_behu(self):
-        """Kolko sekund rozbehnuteho useku bolo naozaj NAD prahom - k
-        poslednej vzorke nad nim.
+        """How many seconds of the running stretch were really ABOVE the
+        threshold - up to the last sample above it.
 
-        TOLEROVANY PREPAD NIE JE DRZANIE (0.2.1). `dip_grace_s` len drzi usek
-        nazive, aby ho respawn nerozbil na tri kratke. Suvisla cesta sa ale
-        predtym pocitala ako `now - _above_since`, teda nastennymi hodinami
-        VRATANE prepadov: vzorec "1 s nad prahom, 19 s pod nim" natiahol
-        hlasku po minute, hoci nad prahom boli styri vzorky. README slubuje
-        hlasku, ked zataz nad hranicou "stravi dost casu" - a appka ma radsej
-        mlcat, nez sa ozvat naplano.
+        A TOLERATED DIP IS NOT HOLDING (0.2.1). `dip_grace_s` only keeps
+        the stretch alive so that a respawn does not break it into three
+        short ones. But the continuous path used to be computed as
+        `now - _above_since`, i.e. by wall-clock time INCLUDING dips: the
+        pattern "1 s above the threshold, 19 s below it" armed a cue after a
+        minute, although only four samples were above the threshold. The
+        README promises a cue when the load above the limit "spends enough
+        time" - and the app should rather stay silent than speak up for
+        nothing.
 
-        Prepad trva od prvej vzorky pod prahom po prvu nad nim (`_prepady_s`).
-        Kratke ticho PO VZORKE NAD prahom sa rata ako nad, ked usek pokracuje
-        dalsou vzorkou nad prahom - viz POCTIVO v `note_load`.
+        A dip lasts from the first sample below the threshold to the first
+        one above it (`_prepady_s`). A short silence AFTER A SAMPLE ABOVE
+        the threshold counts as above when the stretch continues with
+        another sample above the threshold - see HONESTLY in `note_load`.
 
-        PRECO K POSLEDNEJ VZORKE NAD PRAHOM, a nie k `now`. Presne toto
-        cislo vidi podmienka natiahnutia a z neho ide `najdlhsi_nad_s` do
-        vety "najdlhsie X s, treba Y s". Keby sa pri konci useku pripocital
-        aj cas po poslednej vzorke nad prahom - rozbehnuty prepad, alebo 12 s
-        bez dat pred `suspend(A_TEP_VYPADOL)` - veta by o useku, ktory sa
-        nenatiahol, tvrdila "najdlhsie 46 s, treba 45 s".
+        WHY UP TO THE LAST SAMPLE ABOVE THE THRESHOLD, and not up to `now`.
+        Exactly this number is seen by the arming condition, and from it
+        `najdlhsi_nad_s` goes into the sentence "longest X s, Y s needed". If
+        at the end of the stretch the time after the last sample above the
+        threshold were added too - a running dip, or 12 s without data
+        before `suspend(A_TEP_VYPADOL)` - the sentence would claim "longest
+        46 s, 45 s needed" about a stretch that did not arm.
 
-        `is None`, nie pravdivost: cas 0.0 je platny cas (hodiny sa daju
-        podstrcit), nie "chyba".
+        `is None`, not truthiness: time 0.0 is a valid time (the clock can be
+        slipped in), not an "error".
         """
         if self._above_since is None or self._posledny_nad_koniec is None:
             return 0.0
@@ -733,11 +788,11 @@ class CueTrigger:
                    - self._prepady_s)
 
     def _prekazka(self, now):
-        """Co z tela brani hlaske PRAVE TERAZ, alebo None.
+        """What in the body prevents a cue RIGHT NOW, or None.
 
-        Poradie je poradie dolezitosti: nezname pasmo, kriticke pasmo,
-        stupajuca zataz. `can_fire` sem nepatri - to nie je telo, ale
-        appka (a do dovodu zrusenia ide zvlast)."""
+        The order is the order of importance: unknown zone, critical zone,
+        rising load. `can_fire` does not belong here - that is not the body
+        but the app (and it goes into the cancellation reason separately)."""
         if self._zona is None:
             return P_NEZNAME
         if self._zona == ZONA_KRITICKA:
@@ -747,10 +802,10 @@ class CueTrigger:
         return None
 
     def _stupa(self, now):
-        """Stupa zataz este? Posledna hodnota vs. posledna vzorka stara
-        aspon `VRCHOL_OKNO_S`. Ked sa to povedat neda (menej nez dve
-        vzorky, alebo ziadna taka stara), berie sa to ako "stupa" - chyba
-        smerom k tichu, nie k hlasu na vrchole."""
+        """Is the load still rising? Last value vs. the last sample at least
+        `VRCHOL_OKNO_S` old. When it cannot be told (fewer than two samples,
+        or none that old), it is taken as "rising" - erring towards silence,
+        not towards a voice at the peak."""
         h = self._load_hist
         if len(h) < 2:
             return True
@@ -765,11 +820,12 @@ class CueTrigger:
         return h[-1][1] - ref > STUPA_O
 
     def _hodina_plna(self, now):
-        """Padlo uz v poslednej hodine `max_per_hour` hlasok?
+        """Have `max_per_hour` cues already fired in the last hour?
 
-        Klzave okno, nie pevna hodina od zapnutia: pri pevnej by sa na
-        prelome mohlo ozvat 5x tesne pred a 5x tesne po sebe, cize 10 hlasok
-        v kratkom useku, a strop by formalne platil.
+        A sliding window, not a fixed hour from switching on: with a fixed
+        one it could speak up 5x right before and 5x right after the turn of
+        the hour, i.e. 10 cues in a short stretch, and the cap would formally
+        hold.
         """
         strop = self.params.get("max_per_hour")
         try:
@@ -777,25 +833,24 @@ class CueTrigger:
         except (TypeError, ValueError):
             return False
         if strop <= 0:
-            return False            # 0 alebo zaporne = bez stropu
+            return False            # 0 or negative = no cap
         self._delivered_at = [t for t in self._delivered_at
                               if now - t < HOUR_S]
         return len(self._delivered_at) >= strop
 
     def _arm_now(self, now):
-        """Natiahnutie. Rameno sa losuje TU - este pred tym, nez sa
-        cokolvek stane, aby sa dalo zalogovat aj ked sa hlaska nakoniec
-        vobec nedoruci."""
+        """Arming. The arm is drawn HERE - before anything happens, so that it
+        can be logged even when the cue in the end is not delivered at all."""
         self.state = ARMED
         self._armed_at = now
         self._above_since = None
         self._below_since = None
         self._prepady_s = 0.0
-        # Nazbierany cas sa spotreboval na TOTO natiahnutie. Bez vycistenia
-        # by hned po cooldowne stacila jedna vzorka nad prahom a okno by
-        # bolo plne uz od minula.
+        # The collected time was used up on THIS arming. Without clearing,
+        # right after the cooldown a single sample above the threshold would
+        # be enough and the window would already be full from last time.
         self._nad_okno = []
-        # Brana: vrchol sa sleduje od tejto chvile, preskocene pauzy odznova.
+        # Gate: peak tracked from this moment on, skipped pauses from scratch.
         self._vrchol = self._last_load
         self._preskocene = _nove_preskocene()
         self._preskocena_pauza = None
@@ -806,13 +861,13 @@ class CueTrigger:
                 "load": self._last_load}
 
     def _fire(self, delivery, now, waited):
-        """Doruci sa. `arm` je vylosovane rameno, `delivery` je sposob -
-        su to dve rozne veci (viz hlavicka modulu).
+        """Delivers. `arm` is the drawn arm, `delivery` is the way - they are
+        two different things (see the module header).
 
-        Zvuk zaznie len ked su splnene OBE: rameno je hlasne a pauza
-        naozaj prisla. Vizual sa ukaze vzdy, v oboch ramenach - inak by
-        sa ramena nedali porovnat. V pracovnom svete (`voice=False`) zvuk
-        nezaznie nikdy.
+        The sound plays only when BOTH hold: the arm is voiced and the pause
+        really came. The visual is always shown, in both arms - otherwise the
+        arms could not be compared. In the work world (`voice=False`) the
+        sound never plays.
         """
         self.state = COOLDOWN
         self._cooldown_until = now + self.params["min_gap_s"]
@@ -842,19 +897,20 @@ class CueTrigger:
                 "waited_s": round(cakane, 1), **self._brana_zaznam()}
 
     def _brana_zaznam(self):
-        """Co brana videla - do udalosti (hr_events), aby sa dalo spatne
-        overit, ze hlas nezaznel na vrchole ani nad hranicou."""
+        """What the gate saw - into the event (hr_events), so it can be checked
+        afterwards that the voice did not sound at the peak or above the
+        limit."""
         return {"zone_at": self._zona, "load_peak": self._vrchol,
                 "skipped": dict(self._preskocene)}
 
-    # ---------- pre UI a pre zapis ----------
+    # ---------- for the UI and for recording ----------
 
     @property
     def is_armed(self):
         return self.state == ARMED
 
     def snapshot(self):
-        """Stav pre UI - stranka Dnes ukazuje 'natiahnute' ako prstenec."""
+        """State for the UI - the Today page shows 'armed' as a ring."""
         return {"state": self.state, "armed": self.state == ARMED,
                 "armed_count": self.armed_count,
                 "delivered_count": self.delivered_count}
@@ -862,10 +918,10 @@ class CueTrigger:
 
 def silent_share_for(session_count, calibration_sessions=15,
                      during=0.25, after=0.10):
-    """Podiel tichych hlasok. 25 % pocas kalibracie, potom 10 % navzdy.
+    """Share of silent cues. 25 % during calibration, then 10 % forever.
 
-    Nikdy nie nula: je to jediny pevny bod, ked sa vyber hlasok zacne
-    hybat. Bez kontrolneho ramena vyjde "funguje" vzdy, aj keby appka
-    mlcala - tep sa vracia dole aj sam.
+    Never zero: it is the only fixed point once the choice of cues starts
+    to move. Without a control arm the result is always "it works", even if
+    the app stayed silent - heart rate comes back down on its own too.
     """
     return during if session_count < calibration_sessions else after

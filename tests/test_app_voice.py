@@ -1,16 +1,18 @@
 # -*- coding: utf-8 -*-
-"""Appka o sebe hovorí v ženskom rode (0.2, final integration).
+"""The app speaks of itself in the feminine (0.2, final integration).
 
-„Ozvala som sa“, „sama sa neozvem“, „radšej som mlčala“ - tak znie appka v
-slovenčine. Pri záverečnej kontrole vetvy 0.2 sa našlo „tú hranicu som si
-spočítal“ (`cue_rate.computed`, text zmenený v B3-worlds) - mužský rod v
-ústach appky. Tento test chytí ďalší taký prípad v ktoromkoľvek SK texte.
+„Ozvala som sa“, „sama sa neozvem“, „radšej som mlčala“ - that is how the
+app sounds in Slovak. In the final check of the 0.2 branch, „tú hranicu som
+si spočítal“ (`cue_rate.computed`, text changed in B3-worlds) was found -
+the masculine in the app's mouth. This test catches any other such case in
+any SK text.
 
-Mužský rod je v poriadku tam, kde NEHOVORÍ appka: text autora („Ako to
-vzniklo“, „O appke“), hráč o sebe v dotazníku po relácii („jedol som“,
-„Hral som“) a tep („tep klesá aj sám“). Staršie texty spred 0.2 s mužským
-rodom appky („Ukončil som test vizuálu“, „Odstup som zdvihol“, „{app}
-pripravený“) sú vo fáze jazykov opravené; zoznam známeho dlhu je prázdny.
+The masculine is fine where the app is NOT the one speaking: the author's
+text („Ako to vzniklo“, „O appke“), the player about themselves in the
+post-session questionnaire („jedol som“, „Hral som“) and heart rate („tep
+klesá aj sám“). Older texts from before 0.2 with a masculine app („Ukončil
+som test vizuálu“, „Odstup som zdvihol“, „{app} pripravený“) were fixed in
+the languages phase; the list of known debt is empty.
 """
 import os
 import re
@@ -20,24 +22,25 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import i18n  # noqa: E402
 
-# „<sloveso>l som“ / „som (sa|si) <sloveso>l“ - minulý čas v mužskom rode.
+# „<verb>l som“ / „som (sa|si) <verb>l“ - past tense in the masculine.
 _MUZSKY_MINULY = re.compile(
     r"\b(\w+l)\s+som\b|\bsom\s+(?:sa\s+|si\s+)?(\w+l)\b", re.IGNORECASE)
 _SAM = re.compile(r"\bsám\b", re.IGNORECASE)
-# Slová na -l, ktoré nie sú sloveso („som naschvál mlčala“).
+# Words ending in -l that are not a verb („som naschvál mlčala“).
 _NIE_SLOVESO = {"naschvál"}
 
-# Nehovorí appka.
+# Not the app speaking.
 _NIE_APPKA = {
-    "origin.text",        # autor: „Postavil som ho pomocou AI“
-    "about.body",         # autor: príbeh vzniku
-    "history.effect_hint",  # „tep klesá aj sám“ - o tepe
+    "origin.text",        # author: „Postavil som ho pomocou AI“
+    "about.body",         # author: the origin story
+    "history.effect_hint",  # „tep klesá aj sám“ - about heart rate
 }
-_NIE_APPKA_PREFIX = ("session.context.",)   # hráč o sebe v dotazníku
+_NIE_APPKA_PREFIX = ("session.context.",)   # the player about themselves in the questionnaire
 
-# Staršie texty s mužským rodom appky - ZNÁMY DLH na neskôr, nie výnimka
-# pre nové texty. Keď sa opravia, vyhoď ich odtiaľto. Vo fáze jazykov 0.2
-# splatený celý („Ukončila som test vizuálu“, „Odstup som zdvihla“).
+# Older texts with a masculine app - KNOWN DEBT for later, not an exception
+# for new texts. When they are fixed, remove them from here. Paid off in
+# full in the 0.2 languages phase („Ukončila som test vizuálu“, „Odstup
+# som zdvihla“).
 _ZNAMY_DLH = set()
 
 
@@ -70,21 +73,22 @@ def test_hranicu_si_appka_spocitala():
 
 
 def test_znamy_dlh_je_stale_aktualny():
-    """Keď sa starý text opraví, nech zmizne aj zo zoznamu dlhu - inak by
-    zoznam potichu kryl nový mužský rod pod starým kľúčom."""
+    """When an old text is fixed, it should disappear from the debt list too
+    - otherwise the list would quietly cover a new masculine form under an
+    old key."""
     for kluc in _ZNAMY_DLH:
         assert _muzsky_rod(i18n.STRINGS[kluc]["sk"]), kluc
 
 
 def test_zenske_tvary_appky_ostali():
-    """Pár viet, v ktorých appka hovorí o sebe - nech ostanú v ženskom rode."""
+    """A few lines where the app talks about itself - they stay feminine."""
     for kluc, tvar in (("session.end.none_withheld", "som mlčala"),
                        ("session.end.cues_visual", "Ozvala som sa"),
                        ("dnes.nonstop_input", "som nezachytila"),
                        ("history.rebrik.why.missed", "som sa mala ozvať"),
                        ("kamae.lost_sub", "sama sa neozvem"),
                        ("session.zanshin.body", "som ti bola plťou"),
-                       # opravené vo fáze jazykov 0.2 (predtým mužský rod)
+                       # fixed in the 0.2 languages phase (masculine before)
                        ("log.overlay_test_ukonceny", "Skryla som"),
                        ("dev.min_gap_clamped", "som zdvihla"),
                        ("log.vizualy_napravene", "Zapla som"),
@@ -94,9 +98,9 @@ def test_zenske_tvary_appky_ostali():
 
 
 def test_appka_nie_je_pripraveny():
-    """Prídavné meno v mužskom rode test vyššie nechytí (nie je to sloveso
-    na -l) - „{app} pripravený“ bol v logu od začiatku. Appka je
-    pripravená, nie pripravený."""
+    """The test above does not catch an adjective in the masculine (it is not
+    a verb ending in -l) - „{app} pripravený“ was in the log from the
+    start. The app is pripravená, not pripravený."""
     zle = {kluc: zaznam["sk"] for kluc, zaznam in i18n.STRINGS.items()
            if kluc not in _NIE_APPKA
            and not kluc.startswith(_NIE_APPKA_PREFIX)

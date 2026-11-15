@@ -1,8 +1,9 @@
-"""Testy pre to, z coho sa kreslia grafy: tvar relacie, pasma, kalendarna
-mriezka, serie dni a "bezne rozpatie".
+"""Tests for what the charts are drawn from: the session shape, zones, the
+calendar grid, day streaks and the "usual range".
 
-Vsetko bez Tk. Kde sa da overit len kreslenie (ui_kit), test cita ZDROJ -
-rovnaky pristup ako test_theme_recolor.py, lebo GUI tu nebezi.
+All without Tk. Where only the drawing can be checked (ui_kit), the test
+reads the SOURCE - the same approach as test_theme_recolor.py, because no
+GUI runs here.
 """
 import os
 import sys
@@ -37,7 +38,7 @@ def _session(started, **kwargs):
 # --------------------------------------------------------------------------
 
 def test_downsample_prerieduje_cely_usek_nie_len_koniec():
-    """Orezanim by z dvojhodinovej relacie ostala poslednych 10 minut."""
+    """Truncating would keep only the last 10 min of a two-hour session."""
     out = hr_stats.downsample(list(range(1000)), 10)
     assert len(out) == 10
     assert out[0] == 0
@@ -56,8 +57,8 @@ def test_trace_je_cela_relacia_a_series_je_zive_okno():
         stats.add(bpm, ts=1000.0 + i)
     trace = stats.trace()
     assert len(trace) == hr_stats.CURVE_POINTS
-    # `series` drzi len HISTORY_SECONDS, `trace` cely vecer - to su dve
-    # rozne otazky a nesmu vratit to iste
+    # `series` holds only HISTORY_SECONDS, `trace` the whole evening - those
+    # are two different questions and must not return the same thing
     assert trace[0] != stats.series(hr_stats.CURVE_POINTS)[0]
 
 
@@ -74,14 +75,14 @@ def test_summary_uklada_krivku_relacie():
 
 
 def test_historia_uchova_dost_relacii_na_rocny_pohlad():
-    """Stranka Historia ponuka obdobie 'Rok'. Pri 60 relaciach by rocny
-    graf ukazoval dva mesiace a tvaril sa ako rok."""
+    """The History page offers the period 'Year'. With 60 sessions the
+    yearly chart would show two months and pretend to be a year."""
     assert hr_stats.PERIOD_YEAR in hr_stats.PERIODS
     assert hr_stats.MAX_SESSIONS >= 365
 
 
 # --------------------------------------------------------------------------
-# pasma
+# zones
 # --------------------------------------------------------------------------
 
 def test_zone_of_bpm_hranice():
@@ -92,7 +93,7 @@ def test_zone_of_bpm_hranice():
 
 
 def test_time_in_zones_pocita_tou_istou_funkciou_ako_graf():
-    """Pas pasiem v grafe a sucet sekund pod nim musia hovorit to iste."""
+    """The zone bar in the chart and the sum of seconds under it must agree."""
     values = [62] * 60 + [75] * 60 + [90] * 60 + [120] * 60
     zones = hr_stats.time_in_zones(_samples(values), critical_bpm=110, baseline=60)
     for bpm, zone in ((62, hr_stats.ZONE_CALM), (75, hr_stats.ZONE_RAISED),
@@ -102,9 +103,9 @@ def test_time_in_zones_pocita_tou_istou_funkciou_ako_graf():
 
 
 def test_kazde_pasmo_ma_v_oboch_temach_inu_farbu():
-    """Regresia: pasma kreslili success -> accent -> warn -> danger, lenze
-    `accent` a `warn` su v Sumi dve takmer rovnake zlate. Styri pasma sa
-    tak na jednom pruhu nedali rozlisit."""
+    """Regression: the zones were drawn success -> accent -> warn -> danger,
+    but `accent` and `warn` in Sumi are two almost identical golds. So the
+    four zones could not be told apart on one strip."""
     for kluc in (theme_mod.ZEN, theme_mod.MODERN):
         pal = theme_mod.tokens(kluc)
         farby = [theme_mod.zone_color(pal, z).lower()
@@ -113,22 +114,22 @@ def test_kazde_pasmo_ma_v_oboch_temach_inu_farbu():
 
 
 def test_hud_v_hre_farbi_pasma_rovnako_ako_okno():
-    """Regresia: HUD mal vlastnu dvojicu success/accent, takze po tom, co
-    kazda tema dostala vlastny rad, svietil v hre zelenou aj tam, kde okno
-    appky uz kreslilo modru."""
+    """Regression: the HUD had its own success/accent pair, so after every
+    theme got its own sequence, it glowed green in game even where the app
+    window already drew blue."""
     import hud_paint
     for kluc in (theme_mod.ZEN, theme_mod.MODERN):
         pal = theme_mod.tokens(kluc)
         style = hud_paint.Style(pal)
         for zona in ("calm", "raised", "high", "critical"):
-            # `Style` drzi farby ako RGB trojice, tema ako #rrggbb
+            # `Style` holds colours as RGB triples, the theme as #rrggbb
             assert (hud_paint.zone_color(style, zona)
                     == hud_paint._hex(theme_mod.zone_color(pal, zona))), \
                 f"tema {kluc}, pasmo {zona}"
 
 
 def test_hud_style_bez_palety_nepadne():
-    """Style() bez palety (testy, zaloha) musi mat pasma tiez."""
+    """Style() without a palette (tests, fallback) must have zones too."""
     import hud_paint
     style = hud_paint.Style()
     for zona in ("calm", "raised", "high", "critical"):
@@ -143,7 +144,7 @@ def test_zone_tokens_pokryvaju_vsetky_pasma():
 
 
 # --------------------------------------------------------------------------
-# bezne rozpatie, seria metrik
+# usual range, metric series
 # --------------------------------------------------------------------------
 
 def test_usual_range_je_kvartilovy_pas():
@@ -173,7 +174,7 @@ def test_metric_series_vracia_poslednych_n_chronologicky():
 
 
 # --------------------------------------------------------------------------
-# mriezka dni a serie
+# day grid and streaks
 # --------------------------------------------------------------------------
 
 def _ts(days_ago, now):
@@ -181,7 +182,7 @@ def _ts(days_ago, now):
 
 
 def test_day_activity_ma_aj_prazdne_dni():
-    """Diery su to, co sa z mriezky cita - nesmu z nej vypadnut."""
+    """The gaps are what the grid is read for - they must not drop out."""
     now = time.time()
     cells = hr_stats.day_activity([_session(_ts(2, now), duration_s=600.0)],
                                   days=10, now=now)
@@ -207,20 +208,22 @@ def test_day_activity_ignoruje_relacie_mimo_okna():
 
 
 def test_seria_dni_uz_v_appke_nie_je():
-    """Poistka proti tichemu navratu.
+    """A safeguard against a quiet comeback.
 
-    `streaks()` vypadla zamerne - je to jedina vec v appke, ktora sa da
-    pretrhnut, a appka ma upokojovat. Keby ju niekto (vratane buduceho
-    ja) vratil, nech to padne tu a nie az v hlave hraca, ktory si vsimne,
-    ze mu appka pocita, kolko vecerov po sebe hral.
+    `streaks()` was dropped deliberately - it is the only thing in the app
+    that can be broken, and the app is meant to calm. If anyone (including
+    my future self) brought it back, let it fail here and not only in the
+    head of a player who notices that the app counts how many evenings in a
+    row they played.
     """
     assert not hasattr(hr_stats, "streaks")
 
 
 def test_pocet_dni_s_relaciou_sa_da_spocitat_z_mriezky():
-    """Nahrada za seriu: kolko dni v okne malo aspon jednu relaciu.
+    """Replacement for the streak: how many days in the window had at least
+    one session.
 
-    Diera medzi dnami na to nema vplyv - o to prave ide.
+    A gap between days has no effect on it - that is the whole point.
     """
     now = time.time()
     sessions = [_session(_ts(d, now)) for d in (10, 9, 8, 6, 5)]
@@ -229,13 +232,14 @@ def test_pocet_dni_s_relaciou_sa_da_spocitat_z_mriezky():
 
 
 # --------------------------------------------------------------------------
-# kreslenie - co sa bez Tk da overit len zo zdroja
+# drawing - what, without Tk, can only be checked from the source
 # --------------------------------------------------------------------------
 
 def test_sparkline_nezahadzuje_nulu():
-    """Regresia: filter bol `if v`, takze z grafu vypadla aj nula. Pri tepe
-    je to jedno (0 BPM neexistuje), ale Historia sem posiela aj 'cas nad
-    hranicou' - a tam je nula platna hodnota, nie chybajuci bod."""
+    """Regression: the filter was `if v`, so zero also dropped out of the
+    chart. For heart rate it does not matter (0 BPM does not exist), but
+    History also sends 'time over the limit' here - and there zero is a
+    valid value, not a missing point."""
     src = _read("ui_kit.py")
     start = src.index("class Sparkline(")
     telo = src[start:src.index("class SegmentBar(", start)]
@@ -244,8 +248,9 @@ def test_sparkline_nezahadzuje_nulu():
 
 
 def test_graf_historie_kresli_popisky_osi():
-    """`aggregate_by_period` popisok bucketu pocita - graf ho musi pouzit,
-    inak ciara visi v prazdne bez toho, kedy a kolko."""
+    """`aggregate_by_period` computes the bucket label - the chart must use
+    it, otherwise the line hangs in empty space without saying when and how
+    much."""
     assert "label" in hr_stats.aggregate_by_period(
         [_session(time.time())], hr_stats.PERIOD_DAY)[0]
     telo = zdroj_metody("_refresh_history_trend")
@@ -254,7 +259,7 @@ def test_graf_historie_kresli_popisky_osi():
 
 
 def test_pasma_beru_farbu_z_jedneho_miesta():
-    """Kto farbi pasma sam, skor ci neskor sa rozide s legendou."""
+    """Whoever colours zones alone drifts from the legend sooner or later."""
     ui = _read("ui_kit.py")
     for trieda in ("class ZoneBar(", "class SessionTrace("):
         start = ui.index(trieda)
@@ -263,8 +268,8 @@ def test_pasma_beru_farbu_z_jedneho_miesta():
 
 
 def test_note_trigger_zapise_sposob_dorucenia():
-    """`_fire_somatic_cue` posiela `delivery` z udalosti automatu; bez toho
-    by sa do merania nedostal (našla revízia)."""
+    """`_fire_somatic_cue` passes `delivery` from the state machine's event;
+    without that it would not get into the measurement (found by a review)."""
     import hr_stats as hs
     st = hs.HeartStats(critical_bpm=110)
     st.session_start = 1000.0

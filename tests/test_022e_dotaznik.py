@@ -1,13 +1,15 @@
 # -*- coding: utf-8 -*-
-"""Dotaznik po hre (0.2.2, davka 4 auditu UX).
+"""The post-game questionnaire (0.3, batch 4 of the UX audit).
 
-  * "Za tebou je ... hrania." je nadpis tela v ui(16, 'bold'), nie drobna
-    veta v listke okna; od hodiny citatelna dlzka ("2 h 03 min", nie "2:03"),
-  * ked appka v relacii zbadala hru na celu obrazovku (exkluzivny
-    fullscreen - obrazky nad nou Windows nevykresli), suhrn nesie
-    `fullscreen` a hlavicka dotaznika povie jednu kratku vetu.
+  * "You played for ...." is the body heading in ui(16, 'bold'), not a
+    small sentence in the window's title bar; from an hour on a readable
+    length ("2 h 03 min", not "2:03"),
+  * when the app spotted a full-screen game during the session (exclusive
+    fullscreen - Windows does not draw pictures over it), the summary
+    carries `fullscreen` and the questionnaire header says one short
+    sentence.
 
-Synteticke data, bez okna.
+Synthetic data, no window.
 """
 import ast
 import os
@@ -42,16 +44,18 @@ def _dialog_init():
 
 
 # --------------------------------------------------------------------------
-# Nadpis
+# Heading
 # --------------------------------------------------------------------------
 
 def test_cas_hrania_je_nadpis_tela():
     init = _dialog_init()
     assert "self.heading_label = ctk.CTkLabel(body, text=titulok, " \
            "font=ui_kit.ui(16, 'bold')" in init
-    # nadpis je prvy v tele, pred vetou o hlaskach aj pred krivkou
+    # the heading is first in the body, before the sentence about cues and
+    # before the curve
     assert init.index("self.heading_label") < init.index("podnadpis =")
-    # v listke len meno appky - ta ista veta dvakrat pod sebou by tam bola navyse
+    # only the app name in the title bar - the same sentence twice, one under the
+    # other, would be redundant
     assert "ui_kit.DialogChrome(self.top, pal, APP_NAME, on_close=self.close)" in init
 
 
@@ -71,7 +75,7 @@ def test_prazdny_dovod_ticha_nenecha_medzeru():
 
 
 # --------------------------------------------------------------------------
-# Exkluzivny fullscreen
+# Exclusive fullscreen
 # --------------------------------------------------------------------------
 
 def test_kedy_dotaznik_povie_vetu_o_fullscreene():
@@ -112,11 +116,11 @@ def test_relacia_si_zapamata_fullscreen(monkeypatch):
     app_mod.DandurfApp._warn_exclusive_fullscreen_once(a)
     assert a._session_fullscreen is True and a._fullscreen_warned is True
     assert len(dennik) == 1
-    # obe uz vedia - dalsie sekundy sa okno nekontroluje
+    # both already know - the window is not checked for the next seconds
     app_mod.DandurfApp._warn_exclusive_fullscreen_once(a)
     assert len(volania) == 1
-    # nova relacia (`_open_hr_session` nuluje priznak): zisti sa znova,
-    # ale do dennika uz nie - ten je raz za beh appky
+    # a new session (`_open_hr_session` resets the flag): detected again,
+    # but no longer written to the journal - that is once per app run
     a._session_fullscreen = False
     app_mod.DandurfApp._warn_exclusive_fullscreen_once(a)
     assert a._session_fullscreen is True and len(dennik) == 1
@@ -152,7 +156,7 @@ def test_suhrn_nesie_fullscreen_len_ked_bol():
 
 
 def test_import_historie_priznak_prenesie():
-    """Nove pole prejde kontrolou neznameho pola (`data_io._je_obycajne`)."""
+    """New field passes the unknown-field check (`data_io._je_obycajne`)."""
     zaklad = {"started": 1_700_000_000.0, "duration_s": 1800.0}
     assert data_io.clean_session(dict(zaklad, fullscreen=True))["fullscreen"] is True
 
@@ -161,8 +165,8 @@ def test_veta_vo_vsetkych_jazykoch():
     zaznam = i18n.STRINGS["session.end.fullscreen_note"]
     assert set(zaznam) == set(i18n.LANGUAGES)
     for jazyk, text in zaznam.items():
-        assert "Borderless" in text, jazyk          # tak sa to vola v hrach
-        assert len(text) < 200, jazyk               # jedna kratka veta
+        assert "Borderless" in text, jazyk          # that is what games call it
+        assert len(text) < 200, jazyk               # one short sentence
         if jazyk not in ("sk", "en"):
             assert text != zaznam["en"], jazyk
     sk = zaznam["sk"]

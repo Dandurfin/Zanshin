@@ -1,21 +1,22 @@
-"""Spolocne nastavenie celeho behu testov (0.2.2 davka 4b).
+"""Shared setup for the whole test run (0.3 batch 4b).
 
-PRECO: pri behu zo zdrojakov je priecinok s datami koren repa
-(`paths.data_dir`), takze `logging_setup` zapisoval z testov do toho isteho
-logs/app.log ako ziva appka hraca - kazdy beh testov mu tam pridal stovky
-riadkov ("svet prepnuty na work", vymyslene chyby...). A test, ktory by
-zabudol presmerovat ulozenie nastaveni alebo historie, by pisal rovno vedla
-jeho skutocnych dat.
+WHY: when running from source the data folder is the repo root
+(`paths.data_dir`), so `logging_setup` wrote from the tests into the same
+logs/app.log as the player's live app - every test run added hundreds of
+lines there ("svet prepnuty na work" (world switched to work), made-up
+errors...). And a test that forgot to redirect saving the settings or the
+history would write right next to the player's real data.
 
-Pytest nacita tento subor PRED kazdym testovym modulom, takze cesty sa tu
-presmeruju do docasneho priecinka skor, nez si ich ktorykolvek modul appky
-skopiruje (`from paths import DATA_DIR`) a skor, nez `logging_setup` prvy raz
-zalozi subor s logom. Appka sa nemeni: `paths.data_dir()` vracia to iste ako
-predtym, testy len prepisu hodnoty v moduloch. `SOUNDS_DIR` ostava - pri
-behu zo zdrojakov su to pribalene zvuky v assets/ (v gite), nie data hraca.
+Pytest loads this file BEFORE every test module, so the paths are
+redirected here to a temporary folder before any app module copies them
+(`from paths import DATA_DIR`) and before `logging_setup` first creates the
+log file. The app does not change: `paths.data_dir()` returns the same as
+before, the tests only overwrite the values in the modules. `SOUNDS_DIR`
+stays - when running from source those are the bundled sounds in assets/
+(in git), not player data.
 
-Testy, ktore si cesty presmeruju samy (monkeypatch na `tmp_path`), funguju
-rovnako ako doteraz - ich presmerovanie len prekryje toto.
+Tests that redirect the paths themselves (monkeypatch to `tmp_path`) work
+the same as before - their redirect simply overrides this one.
 """
 import atexit
 import logging
@@ -28,7 +29,7 @@ KOREN = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if KOREN not in sys.path:
     sys.path.insert(0, KOREN)
 
-# Jeden docasny priecinok pre cely beh (aj pre logy). Nie pod korenom repa.
+# One temporary folder for the whole run (logs too). Not under the repo root.
 TESTOVACIE_DATA = tempfile.mkdtemp(prefix="zanshin-testy-")
 
 import paths  # noqa: E402
@@ -45,8 +46,9 @@ logging_setup.APP_LOG_PATH = os.path.join(logging_setup.LOG_DIR, "app.log")
 logging_setup.CRASH_LOG_PATH = os.path.join(logging_setup.LOG_DIR, "crash.log")
 
 if logging_setup._configured:
-    # Logger uz niekto zalozil (nemalo by sa stat - conftest ide prvy). Jeho
-    # subor moze byt v repe, preto sa handler zavrie a zalozi znova tu.
+    # Someone has already set up the logger (should not happen - conftest goes
+    # first). Its file may be in the repo, so the handler is closed and set up
+    # again here.
     _zanshin = logging.getLogger("zanshin")
     for _h in list(_zanshin.handlers):
         _zanshin.removeHandler(_h)
@@ -55,8 +57,9 @@ if logging_setup._configured:
 
 
 def _uprac():
-    """Po behu zavrie subor logu (Windows by ho inak nedal zmazat) a zmaze
-    docasny priecinok. Chyba upratovania nesmie zhodit vysledok testov."""
+    """After the run closes the log file (Windows would not let it be deleted
+    otherwise) and deletes the temporary folder. A cleanup error must not
+    spoil the test result."""
     for _h in list(logging.getLogger("zanshin").handlers):
         try:
             _h.close()

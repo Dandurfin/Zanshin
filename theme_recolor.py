@@ -1,64 +1,67 @@
 # -*- coding: utf-8 -*-
-"""Prefarbenie uz postaveneho okna pri zmene temy - BEZ prestavby.
+"""Recolouring an already built window on a theme change - WITHOUT a rebuild.
 
-PRECO TO EXISTUJE
------------------
-Prepnutie temy volalo `DandurfApp._build_ui()`, ktore znicilo a odznova
-postavilo cele okno. Odmerane: 1374 widgetov, 101 878 volani Tk, **2,97 s**
-blokovania (rovnako v oboch smeroch) - a hrac tie tri sekundy pozeral, ako
-sa okno sklada po castiach (29 roznych medzistavov). Ziadne jedno pomale
-miesto tam nie je, je to holy objem: kazdy CustomTkinter widget sa kresli
-na vlastne platno zaoblenymi tvarmi.
-
-Namiesto toho tu prejdeme uz existujuci strom widgetov a prepiseme im
-farby. Ziadne `destroy()`, ziadne stavanie - len `configure()`.
-
-AKO SA MAPUJE
--------------
-Nepotrebujeme vediet, z ktoreho tokenu ktora farba pochadza: staci mapa
-"stara hodnota -> nova hodnota" postavena z dvoch paliet. Widget, ktory ma
-`fg_color` rovny `zen['surface']`, dostane `modern['surface']`.
-
-Farby, ktore v starej palete NIE SU (napr. vlastna farba vizualu, ktoru si
-hrac vybral color pickerom, alebo predvolene farby CustomTkinteru), sa
-zamerne nedotykame - nie su temou riadene.
-
-NEJEDNOZNACNOST
+WHY THIS EXISTS
 ---------------
-Niektore tokeny maju v ramci temy rovnaku hodnotu. Vacsina je neskodna
-(`surface` == `card` a mapuju sa na to iste), ale napr. v Sumi maju
-`accent` aj `keycap_text` hodnotu #d9b868, kym v Modern sa rozchadzaju.
-Pre take pripady je `_PREFERENCIA`: vyhrava semanticky dominantny token a
-widgety, ktorym by to nesedelo, sa doriesia vlastnym `set_pal()`
-(viz `IMAGE_HOOKS` a `ui_kit.Keycap`).
+Switching the theme called `DandurfApp._build_ui()`, which destroyed and
+rebuilt the whole window from scratch. Measured: 1374 widgets, 101 878 Tk
+calls, **2.97 s** of blocking (the same in both directions) - and the
+player watched for those three seconds as the window was assembled piece
+by piece (29 different intermediate states). There is no single slow
+spot in it, it is sheer volume: every CustomTkinter widget draws itself
+onto its own canvas with rounded shapes.
 
-OBRAZKY
--------
-Co je nakreslene ako obrazok (enso, kontrolka tepu, nahlad HUD), sa
-prefarbit neda - treba prekreslit. Kazdy taky prvok ma vlastny
-`set_pal()`, ktory zavola `DandurfApp._recolor_ui` po prejdeni stromu.
-Rovnako to plati pre prvky, ktore si drzia VLASTNU kopiu palety
-(Sidebar, _NavRow, TitleBar) - tie by inak vratili stare
-farby pri prvom hover/kliku.
+Instead, here we walk the already existing widget tree and rewrite their
+colours. No `destroy()`, no building - just `configure()`.
+
+HOW THE MAPPING WORKS
+---------------------
+We do not need to know which token a colour came from: a map "old value
+-> new value" built from the two palettes is enough. A widget whose
+`fg_color` equals `zen['surface']` gets `modern['surface']`.
+
+Colours that are NOT in the old palette (e.g. a visual's own colour the
+player picked with the colour picker, or CustomTkinter's default colours)
+are deliberately left alone - they are not driven by the theme.
+
+AMBIGUITY
+---------
+Some tokens have the same value within a theme. Most are harmless
+(`surface` == `card` and map to the same thing), but e.g. in Sumi both
+`accent` and `keycap_text` have the value #d9b868, while in Modern they
+differ. For such cases there is `_PREFERENCIA`: the semantically dominant
+token wins, and widgets for which that would not fit are sorted out by
+their own `set_pal()` (see `IMAGE_HOOKS` and `ui_kit.Keycap`).
+
+IMAGES
+------
+What is drawn as an image (the enso, the heart-rate indicator, the HUD
+preview) cannot be recoloured - it has to be redrawn. Each such element
+has its own `set_pal()`, which `DandurfApp._recolor_ui` calls after
+walking the tree. The same holds for elements that keep their OWN copy of
+the palette (Sidebar, _NavRow, TitleBar) - otherwise they would bring
+back the old colours on the first hover/click.
 """
 
-# Ktory token vyhrava, ked ma viac tokenov rovnaku hodnotu. Vsetko
-# neuvedene ma nizsiu prioritu nez uvedene, v poradi ako su tu.
+# Which token wins when several tokens have the same value. Everything
+# not listed has a lower priority than the listed ones, in the order they
+# are here.
 _PREFERENCIA = (
     "bg", "surface", "surface_alt", "text", "text_dim", "text_faint",
     "border", "line_soft", "accent", "accent_hover", "accent2",
     "accent2_hover", "danger", "success", "warn",
 )
 
-# Volby, ktore nesu farbu. `bg`/`background` a `fg`/`foreground` su v Tk
-# aliasy toho isteho - staci nastavit jednu, druhu preto v zozname nemame.
+# Options that carry a colour. `bg`/`background` and `fg`/`foreground`
+# are aliases of the same thing in Tk - setting one is enough, so the
+# other is not in the list.
 COLOR_OPTIONS = (
-    # `bg_color` je odvodena farba pozadia, ktoru si CustomTkinter zisti z
-    # rodica a ULOZI. Ked sa rodicovi zmeni `fg_color`, tato kopia ostane
-    # stara a presvita v zaoblenych rohoch widgetu. Odhalil to az test
-    # "prefarbenie == prestavba" na vnutornom platne segmentoveho
-    # prepinaca tem - okom by si toho clovek vsimol nanajvys svetlejsi
-    # lem okolo rohov.
+    # `bg_color` is a derived background colour that CustomTkinter finds
+    # out from the parent and STORES. When the parent's `fg_color` changes,
+    # this copy stays old and shows through in the widget's rounded corners.
+    # Only the "recolouring == rebuild" test revealed it, on the inner
+    # canvas of the segmented theme switch - by eye you would notice at
+    # most a lighter rim around the corners.
     "bg_color",
     "fg_color", "text_color", "hover_color", "border_color",
     "button_color", "button_hover_color", "progress_color",
@@ -73,10 +76,10 @@ COLOR_OPTIONS = (
 
 
 def build_color_map(old_pal, new_pal):
-    """Mapa 'stara hodnota (lowercase) -> nova hodnota'.
+    """Map 'old value (lowercase) -> new value'.
 
-    Berie do uvahy `_PREFERENCIA`, ked ma viac tokenov rovnaku staru
-    hodnotu ale rozne nove.
+    Takes `_PREFERENCIA` into account when several tokens have the same
+    old value but different new ones.
     """
     poradie = {meno: i for i, meno in enumerate(_PREFERENCIA)}
     kandidati = {}
@@ -94,7 +97,7 @@ def build_color_map(old_pal, new_pal):
 
 
 def _preloz(hodnota, mapa):
-    """Vrati novu hodnotu, alebo None ked sa nema menit."""
+    """Returns the new value, or None when it should not change."""
     if isinstance(hodnota, (list, tuple)):
         nove = [_preloz(h, mapa) for h in hodnota]
         if all(n is None for n in nove):
@@ -104,18 +107,18 @@ def _preloz(hodnota, mapa):
         return None
     s = hodnota.lower()
     if not s.startswith("#"):
-        return None          # "transparent" a nazvy farieb nechavame tak
+        return None          # we leave "transparent" and colour names alone
     return mapa.get(s)
 
 
 def recolor_widget(widget, mapa):
-    """Prefarbi JEDEN widget. Vrati pocet zmenenych volieb.
+    """Recolours ONE widget. Returns the number of changed options.
 
-    Vsetky zmeny idu JEDNYM volanim `configure()`. Je to podstatne:
-    kazdy `configure()` na CustomTkinter widgete spusti cele prekreslenie
-    na platno, takze volanie po jednej farbe znamenalo az 4 prekreslenia
-    toho isteho tlacidla. Zlucenim sa prefarbenie zrychlilo takmer o
-    polovicu.
+    All changes go in ONE `configure()` call. That matters: every
+    `configure()` on a CustomTkinter widget triggers a full redraw onto
+    the canvas, so calling it once per colour meant up to 4 redraws of
+    the same button. Merging them sped the recolouring up by almost
+    half.
     """
     zmeny = {}
     for opt in COLOR_OPTIONS:
@@ -134,8 +137,8 @@ def recolor_widget(widget, mapa):
         return len(zmeny)
     except Exception:
         pass
-    # Davka nepresla (napr. jedna volba sa uz nastavit neda) - skusime
-    # po jednej, nech sa kvoli jednej zlej nestrati zvysok.
+    # The batch did not go through (e.g. one option can no longer be set) -
+    # we try one by one, so the rest is not lost because of one bad one.
     zmen = 0
     for opt, nova in zmeny.items():
         try:
@@ -147,11 +150,11 @@ def recolor_widget(widget, mapa):
 
 
 def recolor_tree(widget, mapa, skip=()):
-    """Prejde strom a prefarbi vsetko. Vrati (widgetov, zmenenych volieb).
+    """Walks the tree and recolours it all. Returns (widgets, changed options).
 
-    `skip` su triedy, ktore sa maju preskocit aj s potomkami - typicky
-    samostatne Toplevel okna (HUD, in-game vizualy), ktore maju vlastnu
-    cestu na zmenu temy.
+    `skip` are classes to be skipped together with their descendants -
+    typically separate Toplevel windows (HUD, in-game visuals) that have
+    their own path for a theme change.
     """
     widgetov = 0
     zmien = 0
@@ -170,14 +173,15 @@ def recolor_tree(widget, mapa, skip=()):
 
 
 def find_theme_colored(widget, old_pal, new_pal=None, skip=()):
-    """Najde widgety, ktore este drzia farbu zo STAREJ palety.
+    """Finds widgets that still hold a colour from the OLD palette.
 
-    Pouzite po prefarbeni ako poistka: co sa najde, je zabudnuty widget.
-    Vracia zoznam (cesta_widgetu, volba, hodnota).
+    Used after recolouring as a safeguard: whatever is found is a
+    forgotten widget. Returns a list of (widget_path, option, value).
 
-    `new_pal` je dolezite zadat: tokeny, ktore maju v oboch temach TU ISTU
-    hodnotu (`warn`, `washi`, `font_family`), sa spravne nemenia - bez
-    tohto by sa hlasili ako zabudnute, hoci su v poriadku.
+    `new_pal` is important to pass: tokens that have THE SAME value in
+    both themes (`warn`, `washi`, `font_family`) correctly do not change -
+    without it they would be reported as forgotten, although they are
+    fine.
     """
     nemenne = set()
     if new_pal:

@@ -1,18 +1,19 @@
 # -*- coding: utf-8 -*-
-"""Zvoleny jazyk musi prezit restart appky - vsetkych jedenast, nie tri.
+"""The chosen language must survive an app restart - all eleven, not three.
 
-Pozadie chyby: `DandurfApp.load_settings()` porovnavala ulozeny jazyk voci
-rucne prepisanej trojici `(LANG_SK, LANG_EN, LANG_JA)` z cias, ked appka
-vedela tri jazyky. Prepinac v Nastaveniach ich medzitym ponukal devat a
-volbu korektne ulozil, ale tento filter ju pri dalsom starte zahodil a
-spadol na slovencinu. A kedze `__init__` hned po starte vola
-`save_settings()`, zdegradovana hodnota sa zapisala SPAT do
-dandurf_settings.json - volba hraca bola nenavratne prec.
+Background of the bug: `DandurfApp.load_settings()` compared the saved
+language against a hand-written triple `(LANG_SK, LANG_EN, LANG_JA)` from
+the days when the app knew three languages. The switch in Settings
+offered nine of them in the meantime and saved the choice correctly, but
+this filter threw it away on the next start and fell back to Slovak. And
+since `__init__` calls `save_settings()` right after start, the degraded
+value was written BACK to dandurf_settings.json - the player's choice was
+gone for good.
 
-Overene naostro pred opravou: zh, ru, es, de, fr, pt sa stratili vsetky.
+Verified for real before the fix: zh, ru, es, de, fr, pt were all lost.
 
-Testy su staticke (citaju zdrojak), aby bezali aj bez Tk - realny beh
-appky pre vsetky jazyky je v manualnom harnesse.
+The tests are static (they read the source), so they run even without Tk
+- a real run of the app for all languages is in the manual harness.
 """
 import os
 import re
@@ -25,7 +26,7 @@ from _zdroj_appky import zdroj_appky, zdroj_metody  # noqa: E402
 
 
 def test_i18n_pozna_jedenast_jazykov():
-    """Poistka pre zvysok suboru: ak jazyk pribudne/ubudne, uprav aj testy."""
+    """Guard for the rest: if a language is added/removed, fix the tests."""
     assert len(i18n.LANGUAGES) == 11, (
         f"i18n.LANGUAGES ma {len(i18n.LANGUAGES)} jazykov, cakalo sa 11")
     for code in ("sk", "en", "ja", "zh", "ru", "es", "de", "fr", "pt", "cs", "bg"):
@@ -33,7 +34,7 @@ def test_i18n_pozna_jedenast_jazykov():
 
 
 def test_kazdy_ponukany_jazyk_ma_preklady():
-    """Prepinac nesmie ponukat jazyk, pre ktory appka nema retazce."""
+    """The switch must not offer a language the app has no strings for."""
     src = zdroj_appky()
     block = src[src.index("LANG_NATIVE_LABELS = {"):]
     block = block[:block.index("}")]
@@ -44,17 +45,18 @@ def test_kazdy_ponukany_jazyk_ma_preklady():
 
 
 def test_load_settings_neobmedzuje_jazyk_na_rucny_zoznam():
-    """Jadro regresie: filter musi ist voci LANGUAGES, nie voci trojici.
+    """The core of the regression: the filter must go against LANGUAGES, not
+    against the triple.
 
-    Rucne vypisany zoznam konstant je presne to, co sa raz uz rozislo s
-    realitou a ticho zahadzovalo volbu hraca.
+    A hand-written list of constants is exactly what once already drifted
+    apart from reality and silently threw away the player's choice.
     """
     blok = zdroj_metody("load_settings")[:2000]
 
     assert 'loaded.get("lang") in LANGUAGES' in blok, (
         "load_settings musi porovnavat ulozeny jazyk voci i18n.LANGUAGES")
 
-    # ziadny rucne vypisany zoznam jazykovych konstant v tej istej podmienke
+    # no hand-written list of language constants in the same condition
     rucny = re.search(r'loaded\.get\("lang"\)\s+in\s+\(\s*LANG_', blok)
     assert rucny is None, (
         "load_settings znova porovnava jazyk voci rucne vypisanej n-tici "
@@ -62,6 +64,6 @@ def test_load_settings_neobmedzuje_jazyk_na_rucny_zoznam():
 
 
 def test_ulozeny_jazyk_sa_zapisuje_spat():
-    """save_settings musi ukladat self.lang (inak by sa volba nedrzala)."""
+    """save_settings must save self.lang (or the choice would not stick)."""
     blok = zdroj_metody("save_settings")[:2000]
     assert '"lang": self.lang' in blok

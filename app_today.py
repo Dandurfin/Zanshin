@@ -1,35 +1,37 @@
-"""Stranka Dnes - cast hlavnej appky (DandurfApp z app.py).
+"""Today page - part of the main app (DandurfApp from app.py).
 
-TodayMixin je mixin DandurfApp: app.py ho dedi a cely stav (stred stranky
-Dnes a enso, spustac hlasky a jeho zaznam, senzor tepu a statistiky
-relacie, karty "Moje statistiky" a ich poradie) zije na DandurfApp. Tu su
-len metody, ktore s nim pracuju cez `self` - mixin nema __init__ ani
-vlastne atributy.
+TodayMixin is a mixin of DandurfApp: app.py inherits it and the whole state
+(the centre of the Today page and the enso, the cue trigger and its record,
+the heart-rate sensor and session statistics, the "My stats" cards and
+their order) lives on DandurfApp. Here are only the methods that work with
+it through `self` - the mixin has no __init__ and no attributes of its own.
 
-Presunute z app.py bez zmeny:
-  * zive dojo (hero prazdneho stavu) - animacia stredu Dnes (enso a dojo
-    za nim), veta pod znackou, zivy blok tepu, zataze, stopy relacie a
-    pasiem; sekcia nesie aj dorucenie automatickej hlasky
-    (`_tick_cue_trigger`, `_cue_can_fire`, `_on_cue_event`,
-    `_dalsi_cue_slot`, `_fire_somatic_cue`), prstenec "natiahnute" na
-    ense a odznaky v bocnom menu, ktore v nej boli uz v app.py,
-  * volitelne statistiky na Dnes ("Moje statistiky") - katalog a hodnoty
-    kariet, mriezka, vyber kariet a presun karty potiahnutim,
-  * stred stranky Dnes na platne - kreslenie dojo, ensa a textu na
-    `dnes_canvas`, klik na enso a na kredit. V app.py stal bez vlastnej
-    znacky v sekcii "styl hlasky (onboarding krok 5, Nastavenia -> Zvuk)"
-    (jej prva cast je v app_cues.py), preto tu ma novu znacku.
+Moved from app.py unchanged:
+  * live dojo (empty-state hero) - animation of the Today centre (the enso
+    and the dojo behind it), the sentence under the mark, the live
+    heart-rate block, load, session traces and bands; the section also
+    carries the delivery of the automatic cue (`_tick_cue_trigger`,
+    `_cue_can_fire`, `_on_cue_event`, `_dalsi_cue_slot`,
+    `_fire_somatic_cue`), the "armed" ring on the enso and the badges in
+    the side menu, which were already in it in app.py,
+  * optional stats on Today ("My stats") - the catalogue and values of the
+    cards, the grid, card selection and moving a card by dragging,
+  * the centre of the Today page on the canvas - drawing the dojo, the enso
+    and the text on `dnes_canvas`, click on the enso and on the credit. In
+    app.py it sat without its own marker in the section "cue style
+    (onboarding step 5, Settings -> Sound)" (its first part is in
+    app_cues.py), which is why it has a new marker here.
 
-Konstanty `HERO_PERIOD_S`, `DASHBOARD_DRAG_PX` a `BACKDROP_DEBOUNCE_MS`
-ostali v triede DandurfApp medzi ostatnymi konstantami triedy -
-`_dashboard_drag` a `_naplanuj_backdrop` citaju svoju cez `self`
-(`HERO_PERIOD_S` dnes necita nic).
+The constants `HERO_PERIOD_S`, `DASHBOARD_DRAG_PX` and `BACKDROP_DEBOUNCE_MS`
+stayed in the DandurfApp class among the other class constants -
+`_dashboard_drag` and `_naplanuj_backdrop` read theirs through `self`
+(`HERO_PERIOD_S` is read by nothing today).
 
-Pozor v testoch: `_tick_cue_trigger`, `_refresh_session_trace`,
-`_history_cached` a `_dashboard_stat_value` citaju `time` z tohto modulu a
-`_fire_somatic_cue` `threading` - falosne hodiny aj synchronne vlakno treba
-podstrcit aj tu (`app_today.time`, `app_today.threading`), nie len na
-module app.
+Careful in tests: `_tick_cue_trigger`, `_refresh_session_trace`,
+`_history_cached` and `_dashboard_stat_value` read `time` from this module
+and `_fire_somatic_cue` reads `threading` - the fake clock and the
+synchronous thread must be slipped in here too (`app_today.time`,
+`app_today.threading`), not only on the app module.
 """
 
 import math
@@ -55,15 +57,16 @@ from app_spolocne import _ImageTk, app_log, obnov_texty_stranky, stranka_vhre
 
 
 def _text_bez_tepu(app):
-    """Text vpravo v hlavicke "Tep a zataz", kym tep nechodi (0.2.2).
+    """Text right in the "Heart rate and load" header while no HR comes (0.3).
 
-    Predtym tam bolo vzdy "cakam na hodinky" - aj pri vypnutom prijme, pri
-    obsadenom porte a ked sa telefon vobec nepripojil, teda vtedy, ked
-    hodinky prist NEMOHLI. "Cakam" ostava len pre pripajanie a pre telefon,
-    ktory je pripojeny, ale tep este neposlal.
+    Before, it always said "waiting for watch" there - even with reception
+    switched off, with the port busy and when the phone never connected at
+    all, i.e. exactly when the watch COULD NOT come. "Waiting" now stays
+    only for connecting and for a phone that is connected but has not sent
+    heart rate yet.
 
-    Funkcia modulu, nie metoda: `_refresh_dnes_stats` bezi v testoch aj na
-    atrapach (SimpleNamespace), ktore by novu metodu nemali.
+    A module function, not a method: `_refresh_dnes_stats` also runs in
+    tests on dummies (SimpleNamespace) that would not have a new method.
     """
     stav = getattr(app, "_hr_state", None)
     if stav in ("busy", "busy_gave_up"):
@@ -76,25 +79,28 @@ def _text_bez_tepu(app):
 
 
 class TodayMixin:
-    """Stred a karty stranky Dnes, dorucenie hlasky (mixin DandurfApp)."""
+    """Today page centre and cards, cue delivery (DandurfApp mixin)."""
 
-    # ---------- živé dojo (hero prázdneho stavu) ----------
+    # ---------- live dojo (empty-state hero) ----------
 
     def _dnes_anim_active(self):
-        """Kresli sa este nieco POHYBLIVE? Uz len ked enso zije alebo je mesiac
-        (pocuvanie / promocia). ZASTAVENY stav STOJI - dojo sa uz NEDYCHA, lebo
-        prekreslovanie (skoro) identickeho obsahu 8x/s okno preblikavalo. Pas to
-        cita rovnako: "inak stoji"."""
+        """Is anything MOVING still being drawn? Now only when the enso is alive
+        or it is the moon (listening / graduation). The STOPPED state STANDS
+        STILL - the dojo no longer BREATHES, because redrawing (almost)
+        identical content 8x/s made the window flicker. The bar reads it
+        the same way: "otherwise it rests"."""
         enso = getattr(self, "enso", None)
         return bool(enso is not None and (enso._live or enso._moon))
 
     def _ensure_dnes_tick(self):
-        """Rozbehne animacny tik stredu, ak nebezi a enso sa hybe. Jedine
-        miesto (spolu s koncom `_tick_dnes`), kde `_dnes_tick_job` vznika.
+        """Starts the centre's animation tick if it is not running and the enso
+        moves. The only place (together with the end of `_tick_dnes`) where
+        `_dnes_tick_job` is created.
 
-        Planuje cez `after` a job nastavi HNED - nie priamym volanim
-        `_tick_dnes` (to by cez prekreslenie a spatne `_ensure_dnes_tick`
-        zarekurzovalo, kym `_tick_dnes` job na zaciatku drzi vynulovany)."""
+        Schedules via `after` and sets the job RIGHT AWAY - not by calling
+        `_tick_dnes` directly (that would recurse through the redraw and
+        back into `_ensure_dnes_tick`, while `_tick_dnes` holds the job
+        cleared at its start)."""
         if getattr(self, "_dnes_tick_job", None) is not None:
             return
         if not self._dnes_anim_active():
@@ -105,15 +111,17 @@ class TodayMixin:
             self._dnes_tick_job = None
 
     def _on_enso_change(self):
-        """`_EnsoHero._emit()` sem hlasi zmenu stavu (set_live/armed/graduate/
-        set_pal). Prekresli stred a rozbehne tik, ak enso zacalo zit."""
+        """`_EnsoHero._emit()` reports a state change here (set_live/armed/
+        graduate/set_pal). Redraws the centre and starts the tick if the
+        enso came to life."""
         self._refresh_dnes_backdrop(force=False)
         self._ensure_dnes_tick()
 
     def _tick_dnes(self):
-        """Jeden krok animacie stredu - uz len pre enso (pocuva / mesiac). Dojo
-        je staticke, takze sa nehybe; prekreslime canvas a enso vymeni snimku v
-        mieste (`itemconfigure`, bez blikania)."""
+        """One step of the centre animation - now only for the enso (listening /
+        moon). The dojo is static, so it does not move; we redraw the canvas
+        and the enso swaps its frame in place (`itemconfigure`, no
+        flicker)."""
         self._dnes_tick_job = None
         if not self._dnes_anim_active():
             return
@@ -130,22 +138,26 @@ class TodayMixin:
             self._dnes_tick_job = None
 
     def _start_dnes_hero(self):
-        """Zapne JASNE dojo za ensom (zastaveny stav). Dojo je STATICKE - uz sa
-        NEDYCHA (to blikanie preblo). Enso aj text stoja; stred sa prekresli raz
-        a potom sa nehybe nic - presne ako to hlasi pas: "inak stoji"."""
+        """Turns on the BRIGHT dojo behind the enso (stopped state). The dojo is
+        STATIC - it no longer BREATHES (that made it flicker). The enso and
+        the text stand still; the centre is redrawn once and then nothing
+        moves - exactly as the bar says: "otherwise it rests"."""
         self._dnes_hero_on = True
-        # Staticke, ale s prijemnou ziarou (nie na minime) - fixna faza dychu.
+        # Static, but with a pleasant glow (not at the minimum) - a fixed
+        # breath phase.
         self._dnes_breath_phase = 0.25
         self._refresh_dnes_backdrop(force=True)
         self._ensure_dnes_tick()
 
     def _sync_dnes_hero(self):
-        """Jas fotky za ensom podla toho, ci appka SLEDUJE (0.2.2, audit UX).
+        """Photo brightness behind the enso per WATCHING state (0.3, UX audit).
 
-        Do 0.2.2 sa jas riadil pripojenim hodiniek: ten isty stav "Nesledujem
-        nic" mal raz stmavenu, raz jasnu fotku podla toho, ci chodil tep - a
-        hero pritom tvrdil, ze appka stoji. Teraz: zastavena = jasne dojo,
-        sleduje = tlmene (dycha uz len pas). Prekresli sa len pri zmene."""
+        Before 0.3 the brightness was driven by the watch connection: the
+        same "Not watching anything" state had a dimmed photo one time and
+        a bright one another time, depending on whether heart rate was
+        coming - while the hero claimed the app was stopped. Now: stopped =
+        bright dojo, watching = dimmed (only the bar breathes now). Redrawn
+        only on change."""
         jasne = not bool(getattr(self, "listening", False))
         if jasne == bool(getattr(self, "_dnes_hero_on", False)):
             return
@@ -155,16 +167,18 @@ class TodayMixin:
             self._stop_dnes_hero()
 
     def _stop_dnes_hero(self):
-        """Prepne dojo na tlmenu fotku (pocuvanie). Enso môže žiť ďalej (počúva /
-        mesiac) - animacny tik sa sam zastavi, ked sa nehybe uz nic."""
+        """Switches the dojo to the dimmed photo (listening). The enso may live
+        on (listening / moon) - the animation tick stops by itself when
+        nothing moves any more."""
         self._dnes_hero_on = False
         self._refresh_dnes_backdrop(force=True)
         self._ensure_dnes_tick()
 
     def _refresh_dnes_state_text(self):
-        """Nadpis a veta pod znackou. Ten isty text ako v dychajucom pase -
-        `_kamae_state_text` je jediny zdroj, aby sa nemohli rozist. Text sa
-        ulozi a stred sa prekresli (kresli ho `_paint_dnes_canvas`)."""
+        """Heading and the sentence under the mark. The same text as in the
+        breathing bar - `_kamae_state_text` is the single source, so they
+        cannot drift apart. The text is stored and the centre is redrawn
+        (`_paint_dnes_canvas` draws it)."""
         if not hasattr(self, "dnes_canvas"):
             return
         try:
@@ -176,21 +190,23 @@ class TodayMixin:
             app_log.exception("stav na Dnes: prepis textu zlyhal")
 
     def _hodinky_vypadli(self):
-        """Sleduje, prijem tepu je zapnuty, ale tep z hodiniek vypadol.
+        """Watching, HR reception on, but the watch's heart rate dropped out.
 
-        Vypadok rozpoznava appka uz davno (`app_session._zaznamenaj_vypadok`:
-        tep chodil a 12 s ticha, `heart_rate.STALE_AFTER_S`) a drzi ho v
-        `_hr_lost`, kym nepride platna vzorka (`_tep_je_spat`). Tu sa nic
-        nove nemeria - len sa to povie aj mimo stranky Dnes."""
+        The app has recognised a dropout for a long time
+        (`app_session._zaznamenaj_vypadok`: heart rate was coming and 12 s
+        of silence, `heart_rate.STALE_AFTER_S`) and holds it in `_hr_lost`
+        until a valid sample arrives (`_tep_je_spat`). Nothing new is
+        measured here - it is just said outside the Today page too."""
         return bool(getattr(self, "listening", False)
                     and getattr(self, "hr_monitoring_enabled", False)
                     and getattr(self, "_hr_lost", False))
 
     def _refresh_state_dot(self):
-        """Bodka stavu v bocnom paneli: "sleduje, ale tep vypadol" (0.2.2
-        davka 4). Vola sa z `_refresh_kamae_state_text`, cize pri kazdej
-        zmene stavu tepu aj sledovania. Sledovanie samo (plna / duta bodka)
-        nastavuje `_apply_listening_visuals` cez `set_live`."""
+        """Status dot in the side panel: "watching, but heart rate dropped out"
+        (0.3 batch 4). Called from `_refresh_kamae_state_text`, i.e. on
+        every change of heart-rate state and of watching. Watching itself
+        (filled / hollow dot) is set by `_apply_listening_visuals` via
+        `set_live`."""
         sidebar = getattr(self, "sidebar", None)
         bodka = getattr(sidebar, "state_dot", None) if sidebar is not None else None
         if bodka is None or not hasattr(bodka, "set_lost"):
@@ -201,26 +217,28 @@ class TodayMixin:
             app_log.exception("bodka stavu: vypadok tepu sa nepodarilo ukazat")
 
     def _nazov_vhre(self, dlhy=False):
-        """Meno stranky "V hre" podla sveta (0.2.2 davka 4, audit UX).
+        """Name of the "In-game" page by world (0.3 batch 4, UX audit).
 
-        Vo svete Praca sa nic "v hre" nedeje - stranka nesie hodinky a
-        obrazky na obrazovke, preto sa tam vola "Obrazovka". `dlhy=True` je
-        cely nazov (paleta Ctrl+K): "Hodinky a v hre" / "Hodinky a
-        obrazovka"."""
+        In the "Work" world nothing happens "in game" - the page carries the
+        watch and the pictures on the screen, so there it is called
+        "Screen". `dlhy=True` is the full name (command palette Ctrl+K):
+        "Watch and in-game" / "Watch and screen"."""
         praca = getattr(self, "world", hr_stats.WORLD_DEFAULT) == "work"
         if dlhy:
             return tr("nav.vhre_work") if praca else tr("nav.vhre")
         return tr("nav.vhre_work_short") if praca else tr("nav.vhre_short")
 
     def _sync_world_nazvy(self):
-        """Po prepnuti sveta prepise meno stranky "V hre" v bocnom paneli.
-        Svet sa prepina prefarbenim okna, nie prestavbou (`set_world`), takze
-        popisok postaveny pri `_build_ui` by inak ostal z druheho sveta. Na
-        vete o obsadenom porte (meno stranky) sa prepise aj stav na Dnes.
+        """After a world switch, rewrites the name of the "In-game" page in the
+        side panel. The world is switched by recolouring the window, not by
+        rebuilding (`set_world`), so the label built at `_build_ui` would
+        otherwise stay from the other world. For the busy-port sentence
+        (page name) the state on Today is rewritten too.
 
-        To iste plati pre texty s `{page}`, ktore sa stavaju raz (0.2.2
-        davka 4b): vysvetlivky v Historii (`obnov_texty_stranky`) a ⓘ kariet
-        na Dnes (karty sa postavia znova - su styri)."""
+        The same holds for texts with `{page}` that are built once (0.3
+        batch 4b): the explanations in History (`obnov_texty_stranky`) and
+        the ⓘ of the cards on Today (the cards are rebuilt - there are
+        four)."""
         sidebar = getattr(self, "sidebar", None)
         if sidebar is not None and hasattr(sidebar, "set_label"):
             try:
@@ -237,18 +255,19 @@ class TodayMixin:
         self._refresh_kamae_state_text()
 
     def _resume_cue_trigger(self):
-        """Vedome zdvihne pozastavenie spustaca.
+        """Deliberately lifts the trigger's pause.
 
-        `resume(force=True)`, lebo bezny `resume()` z `_apply_hr_bpm` zdvihne
-        UZ LEN vypadok tepu - snooze ani zastavene pocuvanie zdvihnut nesmie.
-        Volat treba VZDY, aj ked sa `start_listening` nezavola: pri snooze
-        spustenom v nepocuvajucom stave by inak spustac ostal pozastaveny
-        navzdy.
+        `resume(force=True)`, because the ordinary `resume()` from
+        `_apply_hr_bpm` NOW lifts ONLY a heart-rate dropout - it must not
+        lift snooze or stopped listening. It must ALWAYS be called, even
+        when `start_listening` is not called: with snooze started in a
+        non-listening state the trigger would otherwise stay paused forever.
 
-        KYM PLATI "TERAZ NIE", NEZDVIHNE NIC. Od 24. 9. snooze pocuvanie
-        nezastavuje, takze `start_listening` (hrac dal stop a start pocas
-        stisenia) by ho inak ticho zrusil. Koniec a zrusenie snooze nulu
-        `_snooze_job` PRED volanim.
+        WHILE "NOT NOW" IS IN EFFECT, IT LIFTS NOTHING. Since 24. 9. snooze
+        does not stop listening, so `start_listening` (the player pressed
+        stop and start during the quiet time) would otherwise silently
+        cancel it. The end and cancellation of snooze clear `_snooze_job`
+        BEFORE the call.
         """
         if getattr(self, "_snooze_job", None) is not None:
             return
@@ -258,13 +277,15 @@ class TodayMixin:
             app_log.exception("spustac hlasky: resume zlyhal")
 
     def _set_enso_armed(self, armed):
-        """Prenesie "natiahnute" do znacky v bocnom paneli.
+        """Carries "armed" over into the mark in the side panel.
 
-        Vnutorny prstenec, nie tretia farba - farba ensa ma podla `theme.py`
-        v celom rozhrani jedinu ulohu a tou je povedat, ci appka pocuva.
+        An inner ring, not a third colour - according to `theme.py` the
+        colour of the enso has a single job in the whole interface, and that
+        is to say whether the app is listening.
 
-        Cez `getattr` a `try`, lebo sem sa da dostat aj skor, nez je sidebar
-        postaveny (spustac tika z `_tick_activity`, ten bezi od startu).
+        Via `getattr` and `try`, because this can be reached even before the
+        sidebar is built (the trigger ticks from `_tick_activity`, which
+        runs from start).
         """
         armed = bool(armed)
         self._cue_armed = armed
@@ -274,33 +295,34 @@ class TodayMixin:
                 sidebar.enso.set_armed(armed)
             except Exception:
                 pass
-        # Znacka a pas nesu ten isty stav - musia sa menit na jednom mieste,
-        # inak sa raz rozidu a nikto si toho nevsimne.
+        # The mark and the bar carry the same state - they must change in
+        # one place, otherwise one day they drift apart and nobody notices.
         self._refresh_kamae_state_text()
 
     def _cue_can_fire(self, now):
-        """Smie sa prave teraz hlaska dorucit?
+        """May a cue be delivered right now?
 
-        Natiahnutie sa tym NEZRUSI - ked sa nesmie, caka sa dalej. Zrusi sa
-        az ked uplynie `max_wait_s`.
+        This does NOT cancel the arming - if it may not, it keeps waiting.
+        It is cancelled only when `max_wait_s` passes.
         """
         if not self.listening:
-            # Enso je jediny nositel stavu. Kym svieti `danger`, appka
-            # nesmie povedat nic - inak by ta farba klamala.
+            # The enso is the only carrier of state. While `danger` is lit,
+            # the app must not say anything - otherwise that colour would lie.
             return False
         if getattr(self, "_snooze_job", None) is not None:
-            return False            # "teraz nie" plati aj na telo, nie len na klavesy
+            return False            # "not now" covers the body too, not just keys
         if not self._hr_overlay_available():
             self._warn_hr_overlay_disabled_once()
             return False
-        # Bezi uz NIEKTORY vizual? Pytat sa len na slot 3 nestacilo: od
-        # zavedenia striedania kategorii moze bezat hociktory zo styroch a
-        # dva prekryte piktogramy naraz su presne ten vizualny sum, ktoremu
-        # sa appka vyhyba.
+        # Is ANY visual already running? Asking only about slot 3 was not
+        # enough: since rotation of categories was introduced, any of the
+        # four can be running, and two overlapping pictograms at once are
+        # exactly the visual noise the app avoids.
         if any(self.overlay_manager.is_active(i) for i in range(4)):
             return False
-        # Kym chodia kroky, appka mlci. `None` znamena, ze hodinky kroky
-        # neposielaju - vtedy sa nema na co odvolavat a nebrani nicomu.
+        # While steps are coming, the app stays silent. `None` means the watch
+        # does not send steps - then there is nothing to go by and it blocks
+        # nothing.
         kroky = self.hr_stats.steps_per_min()
         if kroky is not None and kroky >= self.KROKY_PRAH_ZA_MIN:
             return False
@@ -309,15 +331,17 @@ class TodayMixin:
         return True
 
     def _tick_cue_trigger(self):
-        """4x za sekundu. Jediny volajuci je `_tick_activity`, cize Tk vlakno -
-        a to je nutne: dotyka sa `hr_stats` aj `overlay_manager`."""
+        """4x per second. The only caller is `_tick_activity`, i.e. the Tk
+        thread - and that is necessary: it touches `hr_stats` and
+        `overlay_manager`."""
         if not self._hr_session_open:
             return
         now = time.time()
-        # Viditelnost HUD-u za tento tik. dt < 5 s je poistka proti uspaniu PC
-        # (po prebudeni by jeden "tik" pridal hodiny) - kratke medzery su beh.
-        # Aktivny cas rastie vzdy, viditelny len ked je HUD zapnuty - podiel
-        # sa potom rata z rovnakej zakladne (viz `_close_hr_session`).
+        # HUD visibility for this tick. dt < 5 s is a safety net against PC
+        # sleep (after waking, one "tick" would add hours) - short gaps are
+        # normal running. Active time always grows, visible time only when the
+        # HUD is on - the share is then counted from the same base (see
+        # `_close_hr_session`).
         if self._hud_tick_t is not None:
             dt = now - self._hud_tick_t
             if 0.0 < dt < 5.0:
@@ -333,30 +357,33 @@ class TodayMixin:
             self._on_cue_event(udalost)
 
     def _hud_is_visible(self):
-        """Ci hrac prave vidi svoj tep - t.j. HUD panel je zapnuty. Berie sa
-        ulozeny stav (`hud_config['enabled']`), takze prepnutie ho hned zmeni;
-        docasny 'test_hud' sa nepocita (nie je to hranie)."""
+        """Whether the player is seeing their heart rate right now - i.e. the HUD
+        panel is on. The saved state is used (`hud_config['enabled']`), so
+        toggling changes it at once; a temporary 'test_hud' does not count
+        (that is not playing)."""
         try:
             return bool(self.hud_config.get("enabled"))
         except Exception:
             return False
 
     def _on_cue_event(self, ev):
-        """Jedna udalost z automatu. Vsetko sa zapise - aj zrusene
-        natiahnutia, lebo podla ich pomeru sa ladia prahy.
+        """One event from the state machine. Everything is recorded - even
+        cancelled armings, because their ratio is used to tune the
+        thresholds.
 
-        Je to zaroven jediné miesto, kde sa prstenec na ense zapina. Zhasina
-        sa na troch dalsich (dorucenie, zrusenie, `_suspend_cue_trigger`) -
-        automat ma stavov viac nez UI, ale von z ARMED vedie kazda cesta cez
-        niektoru z nich.
+        It is also the only place where the ring on the enso is switched on.
+        It is switched off in three others (delivery, cancellation,
+        `_suspend_cue_trigger`) - the state machine has more states than the
+        UI, but every way out of ARMED leads through one of them.
         """
         zaznam = dict(ev)
         self._cue_log.append(zaznam)
         if ev["typ"] == trigger.E_DELIVER:
             self._set_enso_armed(False)
-            # Ci sa hlaska NAOZAJ dorucila (nie vypnute vsetky sloty, nie
-            # zlyhany vizual). Bez toho dotaznik ratal aj nedorucene a hlasil
-            # "Ozvala som sa 3x", ked appka mlcala (bug B19).
+            # Whether the cue was REALLY delivered (not all slots off, not a
+            # failed visual). Without this the questionnaire counted
+            # undelivered ones too and reported "I spoke up 3x" while the app
+            # was silent (bug B19).
             zaznam["delivered"] = bool(self._fire_somatic_cue(ev))
         elif ev["typ"] == trigger.E_ARMED:
             self._set_enso_armed(True)
@@ -366,15 +393,17 @@ class TodayMixin:
             app_log.info("natiahnutie zrusene: %s", ev.get("reason"))
 
     def _dalsi_cue_slot(self):
-        """Ktora kategoria zaznie teraz. Striedaju sa kolo-dokola.
+        """Which category sounds now. They rotate round-robin.
 
-        Berie do uvahy len sloty, ktore su ZAPNUTE a maju zapnuty aj
-        in-game vizual. Ked taky nie je ani jeden, vracia None a hlaska sa
-        NEDORUCI - vypnutie je rozhodnutie hraca a appka ho obchadzat nesmie.
+        Only takes into account slots that are ON and also have the in-game
+        visual on. When there is not a single one, it returns None and the
+        cue is NOT DELIVERED - switching off is the player's decision and
+        the app must not get around it.
 
-        Poradie sa pamata v ramci behu appky, nie medzi spusteniami: po
-        restarte sa zacina od prvej zapnutej kategorie. Pri strope pat
-        hlasok za hodinu je to rozdiel, ktory sa v datach stratí.
+        The order is remembered within one app run, not between starts:
+        after a restart it begins from the first enabled category. With a
+        cap of five cues per hour that is a difference that gets lost in the
+        data.
         """
         zapnute = []
         for slot in getattr(self, "slots", ()):
@@ -384,13 +413,13 @@ class TodayMixin:
                 continue
             if not getattr(slot, "enabled_value", True):
                 continue
-            # A MUSI mat aj zapnuty in-game vizual.
+            # AND it MUST also have the in-game visual on.
             #
-            # `_fire_somatic_cue` kresli `overlay_manager.trigger(index)` v
-            # OBOCH ramenach - to je jedina vec, ktoru dostane tiche rameno.
-            # Slot s vypnutym vizualom by v tichom rameni nedorucil nic a
-            # okno by sa zapisalo ako platne meranie hlasky, ktora sa nikdy
-            # nestala. Preto sa taky slot preskakuje.
+            # `_fire_somatic_cue` draws `overlay_manager.trigger(index)` in
+            # BOTH arms - that is the only thing the silent arm gets. A slot
+            # with the visual off would deliver nothing in the silent arm and
+            # the window would be recorded as a valid measurement of a cue
+            # that never happened. That is why such a slot is skipped.
             try:
                 if not self.overlay_configs[index]["enabled"]:
                     continue
@@ -399,70 +428,77 @@ class TodayMixin:
             zapnute.append(index)
         dalsi = measure.next_slot(zapnute, getattr(self, "_posledny_cue_slot", None))
         if dalsi is None:
-            # Ziadna kategoria nie je pouzitelna. `CUE_SLOT_INDEX` (3) bola
-            # zaloha natvrdo, lenze prave ten slot moze mat vypnuty vizual -
-            # a potom by sa hlaska "dorucila" bez toho, aby sa cokolvek
-            # nakreslilo. Berieme prvy slot, ktory naozaj ma co ukazat.
-            # ZIADNA ZALOHA. Do 19. 9. sa tu vracal `CUE_SLOT_INDEX` (3),
-            # teda dychovy kruh - "radsej nech appka povie nieco nez nic".
-            # Lenze vypnutie hlasky je rozhodnutie hraca a appka ho obchadzat
-            # nesmie: kto vypol vsetky styri, chcel ticho a dostal dychanie.
+            # No category is usable. `CUE_SLOT_INDEX` (3) was a hard-coded
+            # fallback, but exactly that slot may have its visual off - and
+            # then the cue would be "delivered" without anything being
+            # drawn. We take the first slot that really has something to show.
+            # NO FALLBACK. Until 19. 9. this returned `CUE_SLOT_INDEX` (3),
+            # i.e. the breathing circle - "better for the app to say something
+            # than nothing". But switching a cue off is the player's decision
+            # and the app must not get around it: whoever turned off all four
+            # wanted silence and got breathing.
             return None
         self._posledny_cue_slot = dalsi
         return dalsi
 
     def _fire_somatic_cue(self, ev):
-        """Doruci hlasku. VIZUAL IDE V OBOCH RAMENACH, zvuk len v hlasnom.
+        """Delivers a cue. VISUAL IN BOTH ARMS, sound only in the audible one.
 
-        Keby sa tichemu ramenu nezobrazil ani vizual, ramena by sa nedali
-        porovnat - meral by sa rozdiel medzi "nieco sa stalo" a "nestalo sa
-        nic", nie medzi hlaskou a tichom.
+        If the silent arm did not show even the visual, the arms could not
+        be compared - it would measure the difference between "something
+        happened" and "nothing happened", not between a cue and silence.
 
-        Do logu appky ide ROVNAKY riadok v oboch ramenach. Hrac aj tak pocuje,
-        ci nieco zaznelo, takze zaslepit sa to neda - ale log nema byt dalsim
-        miestom, kde sa ramena rozchadzaju.
+        The SAME line goes to the app log in both arms. The player hears
+        anyway whether something sounded, so it cannot be blinded - but the
+        log should not be one more place where the arms differ.
         """
         index = self._dalsi_cue_slot()
         if index is None:
-            # Vsetky hlasky vypnute (alebo ziadna nema vizual). Doteraz sa v
-            # tomto stave dorucila zaloha - dychovy kruh - takze vypnutie
-            # vsetkych styroch prepinacov appku NEUMLCALO. Hrac vypol vsetko,
-            # co sa vypnut dalo, a appka sa ozvala dalej.
+            # All cues off (or none has a visual). Until now, a fallback - the
+            # breathing circle - was delivered in this state, so switching off
+            # all four toggles did NOT SILENCE the app. The player switched off
+            # everything that could be switched off, and the app kept speaking
+            # up.
             self.log(tr("log.cue_skipped_all_off"))
             return False
         self.last_global_trigger_time = ev["ts"]
-        # VIZUAL JE SPOLOCNY PODNET OBOCH RAMIEN. Ked sa nevykresli, tiche
-        # rameno nedostane NIC a meranie by porovnavalo hlasku proti nicomu.
-        # `note_trigger(delivered=...)` to prenesie do okna, ktore `measure`
-        # v takom pripade zneplatni (bug B17).
+        # THE VISUAL IS THE COMMON STIMULUS OF BOTH ARMS. When it is not drawn,
+        # the silent arm gets NOTHING and the measurement would compare a cue
+        # against nothing. `note_trigger(delivered=...)` carries this into the
+        # window, which `measure` then invalidates (bug B17).
         vykreslene = bool(self.overlay_manager.trigger(index))
         if not vykreslene:
             self.log(tr("log.cue_visual_failed"))
 
-        # Podla atributu, nie podla poradia v zozname: `handle_trigger` tiez
-        # hlada cez `slot.index`, takze poradie v `self.slots` nemusi sediet.
+        # By attribute, not by position in the list: `handle_trigger` also
+        # looks up via `slot.index`, so the order in `self.slots` may not
+        # match.
         slot = next((s for s in self.slots if s.index == index), None)
         label = (slot.text_value if slot is not None else "") or ""
-        # `hlas` je v pracovnom svete vzdy False (B3-worlds) - rozhoduje
-        # automat (`CueTrigger.open_session(voice=...)`), nie tato vetva,
-        # aby aj zaznam udalosti hovoril pravdu o tom, co zaznelo.
+        # `hlas` is always False in the work world (B3-worlds) - the state
+        # machine decides (`CueTrigger.open_session(voice=...)`), not this
+        # branch, so that the event record also tells the truth about what
+        # sounded.
         #
-        # REBRIK (0.2): zvuk LEN na stupni hlasu. Pod nim ide hlaska len
-        # obrazom v oboch ramenach - automat to uz vie (`voice` pri
-        # otvoreni), tu je to druha poistka. Styl "zvuk" = stupen hlasu so
-        # stlmenymi slovami: slot zahra svoj zvuk, TTS ani nahravka nie.
+        # LADDER (0.2): sound ONLY on the voice rung. Below it, the cue goes
+        # only as a picture in both arms - the state machine already knows
+        # this (`voice` at open), this is a second safety net. Style "zvuk"
+        # (sound) = the voice rung with muted words: the slot plays its
+        # sound, no TTS and no recording.
         stupen = getattr(self, "_cue_rung", rebrik.HLAS)
         bez_slov = (getattr(self, "_cue_style_rel", rebrik.STYL_HLAS)
                     == rebrik.STYL_ZVUK)
         zaznie = False
         if ev.get("hlas") and slot is not None and stupen == rebrik.HLAS:
             zaznie = self._slot_zaznie(slot, bez_slov)
-            # `_emit` prehrava a blokuje - v Tk vlakne by zamrazilo okno.
+            # `_emit` plays and blocks - in the Tk thread it would freeze the
+            # window.
             threading.Thread(target=self._emit, args=(slot,),
                              kwargs={"bez_slov": bez_slov}, daemon=True).start()
 
-        # Zaznam o doruceni ide do okna (`measure.build_window`): stupen,
-        # ci naozaj nieco zaznelo, zataz a jej vrchol, pasmo tepu.
+        # The delivery record goes into the window (`measure.build_window`):
+        # the rung, whether something really sounded, load and its peak, the
+        # heart-rate band.
         self.hr_stats.note_trigger(
             ts=ev["ts"], auto=True,
             category=measure.category_for_slot(index),
@@ -471,12 +507,13 @@ class TodayMixin:
             rung=stupen, audible=zaznie, load_at=ev.get("load"),
             load_peak=ev.get("load_peak"), zone_at=ev.get("zone_at"))
         self.log(tr("log.cue_delivered", label=label))
-        # Pocitadlo v hlavicke dennika (`session.summary`, "Ťažisko 2× | ...").
-        # Doteraz ho zvysoval len `_deliver` pri source=="trigger" - lenze
-        # tadial automaticka hlaska nikdy nechodi, takze riadok ukazoval 0×
-        # pri vsetkych styroch, kym karta na Dnes hlasila tri hlasky.
-        # Rata sa len hlaska, ktora sa naozaj ukazala, a nie tiche kontrolne
-        # rameno (to je meranie, nie hlaska pre hraca).
+        # Counter in the journal header (`session.summary`,
+        # "Grounding 2× | ..."). Until now only `_deliver` increased it at
+        # source=="trigger" - but the automatic cue never goes that way, so
+        # the line showed 0× for all four while the card on Today reported
+        # three cues.
+        # Only a cue that was really shown counts, not the silent control arm
+        # (that is a measurement, not a cue for the player).
         if vykreslene and ev.get("arm") != trigger.ARM_SILENT:
             pocty = getattr(self, "session_counts", None)
             if isinstance(pocty, dict):
@@ -489,18 +526,20 @@ class TodayMixin:
         return vykreslene
 
     def _refresh_nav_badges(self):
-        """Pocet spustacov na karte Spustace, bodka pri "V hre" (teraz
-        samostatna polozka sidebaru, nie karta), ked senzor tepu bezi."""
+        """Number of triggers on the Cues tab, a dot by "In-game" (now a
+        separate sidebar item, not a tab) when the heart-rate sensor
+        runs."""
         sidebar = getattr(self, "sidebar", None)
         if sidebar is None or not hasattr(sidebar, "set_badge"):
             return
         try:
-            # POCET HLASOK pri karte "Spustace" uz NIE JE.
+            # The CUE COUNT by the "Cues" tab is GONE.
             #
-            # Cislo malo zmysel, kym si hrac sloty priradoval ku klavesom a
-            # potreboval vidiet, kolko ich je aktivnych. Dnes su styri, appka
-            # si ich strieda sama a hrac ich nepridava - tak to bola len
-            # cifra, ktora nic nehlasila a tahala oko k nesprávnej veci.
+            # The number made sense while the player assigned slots to keys and
+            # needed to see how many were active. Today there are four, the app
+            # rotates them itself and the player does not add any - so it was
+            # just a figure that reported nothing and drew the eye to the wrong
+            # thing.
             nav = getattr(self, "settings_nav", None)
             if nav is not None:
                 nav.set_badge("spustace", "")
@@ -509,54 +548,57 @@ class TodayMixin:
             pass
 
     def _refresh_dnes_stats(self):
-        """Prepise tep, zataz a suhrn relacie na stranke Dnes.
+        """Rewrites heart rate, load and the session summary on the Today page.
 
-        Vola sa pri kazdej vzorke tepu a raz za sekundu z `_tick_session`,
-        aby bezal aj cas relacie. Ked stranka este nie je postavena (deje sa
-        pri prepnuti temy/jazyka), ticho sa nerobi nic.
+        Called on every heart-rate sample and once per second from
+        `_tick_session`, so that the session time runs too. When the page
+        is not built yet (happens while switching theme/language), it
+        silently does nothing.
 
-        PRECO SA TU CHYBA POCITA
-        Cele telo je v jednom `except`, a to zamerne: bezi to 1-4x za
-        sekundu a vynimka z prekreslenia nesmie zhodit ani meranie, ani
-        relaciu. Lenze `pass` znamenal, ze rozbita stranka sa neprejavila
-        NICIM. gui_screenshots hlasi "0 chyb v Tk", lebo to chyta len
-        vynimky, ktore z Tk callbacku UNIKNU - a tato neunikne. Appka teda
-        mohla mat uplne zamrznutu stranku Dnes a cely test prejst nazeleno.
+        WHY ERRORS ARE COUNTED HERE
+        The whole body is in one `except`, and deliberately: it runs 1-4x
+        per second and an exception from the redraw must not bring down
+        either the measurement or the session. But `pass` meant a broken
+        page showed up in NO WAY. gui_screenshots reports "0 chyb v Tk",
+        because it only catches exceptions that ESCAPE from a Tk callback -
+        and this one does not escape. So the app could have a completely
+        frozen Today page and the whole test pass green.
 
-        Prvy vyskyt sa preto zaloguje cely a dalsie sa uz len pocitaju
-        (`app_log.exception` pri kazdom volani by log zaplavil). Na
-        `_dnes_refresh_fails` sa pyta gui_screenshots.
+        That is why the first occurrence is logged in full and later ones
+        are only counted (`app_log.exception` on every call would flood the
+        log). gui_screenshots asks for `_dnes_refresh_fails`.
         """
         if getattr(self, "dnes_bpm", None) is None:
             return
         stats = self.hr_stats
         connected = self._hr_state == "connected" and stats.last_bpm is not None
-        # VYPADOK NIE JE "ESTE SOM TA NEPOCULA". Pocas vypadku ostava zivy
-        # blok aj stopa relacie (ziadne "Sparuj hodinky" uprostred vecera),
-        # ale cislo je "--" a pasmo "—" - to riesi `connected` nizsie, takze
-        # ziadny falosny pokoj.
+        # A DROPOUT IS NOT "I HAVEN'T HEARD YOU YET". During a dropout the live
+        # block and the session trace stay (no "Pair your watch" in the middle
+        # of the evening), but the number is "--" and the band "—" -
+        # `connected` below handles that, so there is no false calm.
         lost = bool(getattr(self, "_hr_lost", False)) and not connected
         ukaz = connected or lost
         pal = self.pal
         try:
-            # Cislo je vyhladene (`display_bpm`), `connected` vyssie ostava
-            # na surovom `last_bpm` - o stave spojenia to rozhoduje ako doteraz.
+            # The number is smoothed (`display_bpm`), `connected` above stays
+            # on the raw `last_bpm` - it decides the connection state as before.
             self.dnes_bpm.configure(
                 text=str(stats.display_bpm) if connected else "--",
                 text_color=pal["text"] if connected else pal["text_faint"])
             self.dnes_spark.set_series(stats.series(120) if connected else [],
                                        threshold=self.hr_critical_bpm,
                                        baseline=stats.baseline)
-            # Kym sa relacia kalibruje, pruh ostane prazdny a namiesto pasma
-            # je tiche "kalibrujem…" - rovnako ako HUD v hre. Hned po navrate
-            # tepu (`is_settling`) to iste, len namiesto slova "…": zataz sa
-            # rozbieha od nuly a inak by par sekund tvrdila "Pokoj".
+            # While the session is calibrating, the bar stays empty and instead
+            # of the band there is a quiet "calibrating…" - just like the
+            # in-game HUD. Right after heart rate returns (`is_settling`) the
+            # same, only with "…" instead of the word: load ramps up from zero
+            # and would otherwise claim "Calm" for a few seconds.
             kalibruje = connected and stats.is_calibrating
             usadza = connected and not kalibruje and stats.is_settling
             tlmene = kalibruje or usadza
-            # Slovo aj farba plnych dielikov su `stats.zone` (tep voci
-            # pokoju) - to iste ako na HUD-e a na kontrolke tepu. Dlzka
-            # pruhu je zataz.
+            # The word and the colour of the filled segments are `stats.zone`
+            # (heart rate against resting) - the same as on the HUD and on the
+            # heart-rate indicator. The length of the bar is load.
             zone = stats.zone if connected and not tlmene else None
             self.dnes_load.set_value(stats.stress if connected and not tlmene else 0,
                                      zone=zone)
@@ -588,18 +630,22 @@ class TodayMixin:
                 elif not ukaz and not empty.winfo_ismapped():
                     live.pack_forget()
                     empty.pack(fill="x", pady=(6, 0))
-                # OBSADENY PORT (0.2.2 davka 4b): problem povie pas aj hlavicka
-                # panela ("port je obsadeny") - veta "Ked sparujes hodinky..."
-                # by bola druha, ina sprava, a hodinky su pritom v poriadku.
-                # Tlacidlo ostava (navod ukaze aj stav prijmu).
+                # BUSY PORT (0.3 batch 4b): the bar and the panel
+                # header both state the problem ("port is busy") -
+                # the sentence "Once you pair your watch..." would
+                # be a second, different message, while the watch
+                # is fine.
+                # The button stays (the how-to also shows the
+                # reception status).
                 ukaz_vetu = getattr(empty, "ukaz_vetu", None)
                 if callable(ukaz_vetu):
                     ukaz_vetu(getattr(self, "_hr_state", None)
                               not in ("busy", "busy_gave_up"))
-                # cez triedu: testy volaju tuto metodu na atrape appky
+                # via the class: tests call this method on a dummy app
                 TodayMixin._sync_dnes_hero(self)
-            # Pred prvou relaciou s tepom: karty a pasma len s pomlckami sa
-            # schovaju (0.2.2 davka 4) - viz `_sync_dnes_prazdny_stav`.
+            # Before the first session with heart rate: cards and bands with
+            # only dashes are hidden (0.3 batch 4) - see
+            # `_sync_dnes_prazdny_stav`.
             TodayMixin._sync_dnes_prazdny_stav(self)
         except Exception:
             self._dnes_refresh_fails = getattr(self, "_dnes_refresh_fails", 0) + 1
@@ -610,14 +656,16 @@ class TodayMixin:
         self._refresh_last_cue()
 
     def _dnes_ma_tep(self):
-        """Prisla uz niekedy relacia s tepom? (0.2.2 davka 4)
+        """Has a session with heart rate ever come in? (0.3 batch 4)
 
-        Ano, ked chodi tep v tejto relacii (`session_count`), alebo ked je v
-        historii aspon jedna ulozena relacia - kazda ulozena ma tep
-        (`hr_stats.je_ulozitelna`: aspon 10 vzoriek a minuta). Z oboch
-        svetov: ide o to, ci hodinky uz niekedy poslali tep, nie co sa deje
-        v Praci. Historia ide z cache (`_history_cached`), lebo toto bezi
-        pri kazdej vzorke. Atrapy bez cache (testy) dostanu plny pohlad."""
+        Yes when heart rate is coming in this session (`session_count`), or
+        when there is at least one saved session in history - every saved
+        one has heart rate (`hr_stats.je_ulozitelna`: at least 10 samples
+        and a minute). From both worlds: the point is whether the watch has
+        ever sent heart rate, not what is happening in the "Work" world.
+        History comes from the cache (`_history_cached`), because this runs
+        on every sample. Dummies without a cache (tests) get the full
+        view."""
         stats = getattr(self, "hr_stats", None)
         if getattr(stats, "session_count", 0):
             return True
@@ -630,19 +678,23 @@ class TodayMixin:
             return True
 
     def _sync_dnes_prazdny_stav(self):
-        """Prazdny stav Dnes pred prvou relaciou s tepom (0.2.2 davka 4).
+        """Empty Today state before the first HR session (0.3 batch 4).
 
-        Audit UX: bez dat ukazovala stranka velke "--", styri karty s
-        pomlckami a "0:00 nad hranicou" a styri riadky "0 %" - vyzeralo to
-        ako meranie, nie ako "zatial nic", a jedina vyzva, ktora mala zmysel
-        (sparovat hodinky), bola az pod okrajom okna. Kym ziadna relacia s
-        tepom nie je (`_dnes_ma_tep`):
-          * v paneli "Tep a zataz" je len veta a "Sparovat hodinky"
-            (`dnes_empty`) - cislo tepu s vetou (`dnes_bpm_box`) sa schova,
-          * hlavicka a mriezka kariet "Moje statistiky" sa schovaju,
-          * panel pasiem ma namiesto pruhu a styroch riadkov jednu vetu
-            (`dnes_zone_empty`) a nerozpina sa na celu vysku stlpca.
-        Prva vzorka tepu vrati plny pohlad. Prestavuje sa len pri zmene."""
+        UX audit: without data the page showed a big "--", four cards with
+        dashes and "0:00 over the limit" and four "0 %" rows - it looked
+        like a measurement, not like "nothing yet", and the only call to
+        action that made sense (pairing the watch) was below the edge of
+        the window. While there is no session with heart rate
+        (`_dnes_ma_tep`):
+          * the "Heart rate and load" panel has only a sentence and "Pair
+            your watch" (`dnes_empty`) - the heart-rate number with its
+            sentence (`dnes_bpm_box`) is hidden,
+          * the header and the grid of the "My stats" cards are hidden,
+          * the bands panel has one sentence instead of the bar and four
+            rows (`dnes_zone_empty`) and does not stretch to the full
+            column height.
+        The first heart-rate sample brings back the full view. Rebuilt only
+        on change."""
         ma_tep = TodayMixin._dnes_ma_tep(self)
         if ma_tep == getattr(self, "_dnes_ma_tep_stav", None):
             return
@@ -664,7 +716,8 @@ class TodayMixin:
 
         if ma_tep:
             if not zabaleny(bpm_box):
-                # cislo tepu je v paneli prve - pred zivy blok / prazdny stav
+                # the heart-rate number is first in the panel - before the
+                # live block / empty state
                 pred = next((w for w in (getattr(self, "dnes_live", None),
                                          getattr(self, "dnes_empty", None))
                              if w is not None and zabaleny(w)), None)
@@ -691,12 +744,14 @@ class TodayMixin:
 
     @staticmethod
     def _rozpinaj(widget, rozpinaj):
-        """Zmeni len `expand` zabaleneho widgetu a necha mu miesto v poradi.
+        """Changes only a packed widget's `expand`, keeping its place in order.
 
-        CTk widget sa prebali tym, s cim ho zabalili (`_last_geometry_manager
-        _call`, okraje NEnasobene mierkou) - CTk si to pamata a pri zmene DPI
-        to nanovo aplikuje, takze holy `pack_configure` by sa po presune okna
-        na iny monitor vratil. Ostatne (atrapy v testoch) cez `pack_configure`."""
+        A CTk widget is repacked with what it was packed with
+        (`_last_geometry_manager_call`, margins NOT multiplied by the scale)
+        - CTk remembers it and reapplies it on a DPI change, so a bare
+        `pack_configure` would be reverted after moving the window to
+        another monitor. Everything else (dummies in tests) via
+        `pack_configure`."""
         posledne = getattr(widget, "_last_geometry_manager_call", None)
         if isinstance(posledne, dict) and isinstance(posledne.get("kwargs"), dict):
             kw = dict(posledne["kwargs"])
@@ -705,13 +760,15 @@ class TodayMixin:
         else:
             widget.pack_configure(expand=bool(rozpinaj))
 
-    # Kolko relacii appka potrebuje, kym si spocita vlastnu hranicu tepu
-    # (`hr_stats.dynamicky_kriticky`): to iste pravidlo ako veta pri senzore
-    # (`_kriticky_popis`) - ciste HERNE relacie dlhe aspon 5 minut.
+    # How many sessions the app needs before it works out its own HR limit
+    # (`hr_stats.dynamicky_kriticky`): the same rule as the sentence by the
+    # sensor (`_kriticky_popis`) - pure PLAY sessions at least 5 minutes
+    # long.
     def _relacie_na_ucenie(self, historia):
-        """Kolko z `historia` sa ráta do ucenia hranice - najviac
-        `KRITICKY_MIN_RELACII` (viac netreba vediet, a od najnovsej sa da
-        skoncit skor: ostrieleny hrac nepreveruje 400 kriviek)."""
+        """How many of `historia` count towards learning the limit - at most
+        `KRITICKY_MIN_RELACII` (no more needs to be known, and it can stop
+        earlier from the newest: a seasoned player does not re-check 400
+        curves)."""
         svet = getattr(self, "ALGORITMUS_SVET", hr_stats.WORLD_DEFAULT)
         treba = hr_stats.KRITICKY_MIN_RELACII
         n = 0
@@ -723,14 +780,15 @@ class TodayMixin:
         return n
 
     def _refresh_dnes_learning(self):
-        """Ticha veta pod stavom na Dnes, kym si appka uci hranicu (0.2.2
-        davka 4): "Este ta spoznavam — 1 z 3 hernych relacii".
+        """Quiet sentence under the state on Today while the app learns the limit
+        (0.3 batch 4): "Still getting to know you — 1 of 3 play sessions".
 
-        Len vo svete Hra (Praca sa hranicu neuci a veta by v nej pytala
-        herne relacie navzdy) a az ked uz nejaky tep prisiel - pred prvou
-        relaciou ma Dnes vlastny prazdny stav. Po tretej relacii zmizne.
-        Pocita sa len pri novej historii z cache (raz za ~20 s alebo po
-        ulozeni relacie), nie pri kazdej vzorke."""
+        Only in the "Play" world (Work does not learn the limit and the
+        sentence there would ask for play sessions forever) and only once
+        some heart rate has arrived - before the first session Today has its
+        own empty state. It disappears after the third session. Computed
+        only on new history from the cache (once per ~20 s or after a
+        session is saved), not on every sample."""
         try:
             text = ""
             svet = getattr(self, "ALGORITMUS_SVET", hr_stats.WORLD_DEFAULT)
@@ -756,12 +814,13 @@ class TodayMixin:
             app_log.exception("Dnes: veta o uceni sa nepodarilo obnovit")
 
     def _refresh_session_trace(self, connected):
-        """Stopa relacie na Dnes.
+        """Session trace on Today.
 
-        Kresli sa z `HeartStats.trace()`, cize z CELEJ relacie preriedenej
-        na 120 bodov - nie z posledneho okna. Bez senzora ostava prazdna,
-        ale panel nezmizne: prazdny obrys je informacia ("este som nic
-        nezmeral"), zatial co chybajuci panel je diera v stranke.
+        Drawn from `HeartStats.trace()`, i.e. from the WHOLE session thinned
+        out to 120 points - not from the last window. Without a sensor it
+        stays empty, but the panel does not disappear: an empty outline is
+        information ("I have not measured anything yet"), while a missing
+        panel is a hole in the page.
         """
         trace = getattr(self, "dnes_trace", None)
         if trace is None or not trace.winfo_exists():
@@ -769,9 +828,10 @@ class TodayMixin:
         stats = self.hr_stats
         elapsed = max(0.0, time.time() - stats.session_start)
         if connected and stats.session_count >= 2:
-            # Bez popisku: Dnes je stranka, na ktoru sa hrac pozera POCAS
-            # hrania a kazda veta navyse ho z hry vytrhne. Co pruh znamena,
-            # vysvetluje dotaznik po relacii a detail v Historii.
+            # No label: Today is the page the player looks at WHILE playing,
+            # and every extra sentence pulls them out of the game. What the bar
+            # means is explained by the questionnaire after the session and the
+            # detail in History.
             trace.set_trace(stats.trace(), baseline=stats.session_baseline,
                             threshold=self.hr_critical_bpm, duration_s=elapsed,
                             triggers=stats.trigger_offsets,
@@ -784,7 +844,7 @@ class TodayMixin:
         self.dnes_trace_meta.configure(text=meta)
 
     def _refresh_zone_panel(self):
-        """Rozdelenie casu relacie do pasiem (pruh + styri riadky)."""
+        """Split of the session's time into bands (bar + four rows)."""
         bar = getattr(self, "dnes_zone_bar", None)
         if bar is None or not bar.winfo_exists():
             return
@@ -796,24 +856,26 @@ class TodayMixin:
             podiel = (100.0 * sekundy / celkom) if celkom > 0 else 0.0
             label.configure(text=f"{podiel:.0f} %")
 
-    # ---------- volitelne statistiky na Dnes ("Moje štatistiky") ----------
+    # ---------- optional stats on Today ("My stats") ----------
 
     def _dashboard_stat_catalog(self):
-        """(id, nazov, TOKEN farby) pre vsetky volitelne statistiky, v poradi
-        vo vybere. V mriezke je poradie hracovo (self.dashboard_stats) -
-        meni sa potiahnutim karty na inu.
+        """(id, name, colour TOKEN) for all optional stats, in the order of the
+        picker. In the grid the order is the player's (self.dashboard_stats)
+        - it changes by dragging a card onto another.
 
-        Token, nie hodnota: kartu aj bodku vo vybere treba po zmene temy
-        prefarbit, a token si novu farbu najde sam."""
-        # FARBA ZNACI STAV, NIE METRIKU (0.2.2, audit UX) - to iste pravidlo
-        # ako `HISTORY_METRICS`: cislo je `text`, farbu pasma ma len hodnota,
-        # ktora pasmom je (pokoj, cas nad hranicou), `blue` len zotavenie.
-        # "Najvyssi tep" v `zone_critical` vyzeral ako poplach pri beznom
-        # hernom maxime.
+        A token, not a value: the card and the dot in the picker have to be
+        recoloured after a theme change, and a token finds its new colour
+        by itself."""
+        # COLOUR MARKS STATE, NOT THE METRIC (0.3, UX audit) - the same rule
+        # as `HISTORY_METRICS`: a number is `text`, only a value that is a band
+        # gets a band colour (calm, time over the limit), `blue` only recovery.
+        # "Highest heart rate" in `zone_critical` looked like an alarm at an
+        # ordinary in-game maximum.
         return [
-            # tep patri do radu pasiem, nie do success/warn/danger - inak by
-            # karta "pokojová základňa" svietila inou zelenou, nez akou je
-            # pokoj v pruhu vedla nej (viz theme.ZONE_TOKENS)
+            # heart rate belongs to the row of bands, not to
+            # success/warn/danger - otherwise the "Resting baseline" card
+            # would glow a different green than the calm in the bar next to
+            # it (see theme.ZONE_TOKENS)
             ("baseline", tr("metric.baseline.title"), "zone_calm"),
             ("hrr", tr("metric.hrr.title"), "blue"),
             ("over", tr("metric.over.title"), "zone_high"),
@@ -822,30 +884,31 @@ class TodayMixin:
             ("max", tr("metric.max.title"), "text"),
             ("peak", tr("metric.peak.title"), "text"),
             ("week", tr("metric.week.title"), "text"),
-            # 0.2: ta ista farba ako ciara tej istej metriky v Historii
-            # (HISTORY_METRICS) - karta a graf su jedna vec
+            # 0.2: the same colour as the line of the same metric in History
+            # (HISTORY_METRICS) - the card and the chart are one thing
             ("session_len", tr("metric.session_len.title"), "text"),
             ("last_cue", tr("metric.last_cue.title"), "text"),
             ("calm_time", tr("metric.calm_time.title"), "zone_calm"),
             ("signal", tr("metric.signal.title"), "text"),
-            # neutralna farba: ani jedno z dvoch cisel nie je "to spravne"
+            # neutral colour: neither of the two numbers is "the right one"
             ("felt_vs_measured", tr("metric.felt_vs_measured.title"), "text"),
         ]
 
-    # POZN: tu boli `_STAT_HISTORY` (ktore pole ulozeneho suhrnu zodpoveda
-    # ktorej karte) a `_STAT_LOWER_IS_BETTER` (kde je "menej" dobra sprava).
-    # Oboje existovalo VYLUCNE pre mikrograf a vetu o odchylke na karte;
-    # s nimi odisli aj `_dashboard_stat_live` a `ui_kit.MicroChart`.
-    # Dovod je nizsie pri `_dashboard_stat_value`.
+    # NOTE: here used to be `_STAT_HISTORY` (which field of the saved summary
+    # matches which card) and `_STAT_LOWER_IS_BETTER` (where "less" is good
+    # news). Both existed EXCLUSIVELY for the micro-chart and the deviation
+    # sentence on the card; along with them `_dashboard_stat_live` and
+    # `ui_kit.MicroChart` went too. The reason is below at
+    # `_dashboard_stat_value`.
 
     def _history_cached(self, max_age=20.0):
-        """Historia relacii z disku, najviac raz za `max_age` sekund.
+        """Session history from disk, at most once per `max_age` seconds.
 
-        Karty sa prekresluju pri KAZDEJ vzorke tepu (a raz za sekundu aj
-        bez nej). Karta "Relácie tento týždeň" pritom citala JSON zakazdym
-        - niekolko otvoreni suboru za sekundu za nic. Cache sa zahodi po
-        ulozeni relacie (`_close_hr_session`), cize novy zaznam sa objavi
-        hned, nie o 20 sekund.
+        The cards are redrawn on EVERY heart-rate sample (and once per
+        second even without one). The "Sessions this week" card read the
+        JSON every time - several file opens per second for nothing. The
+        cache is dropped after a session is saved (`_close_hr_session`), so
+        a new record shows up right away, not 20 seconds later.
         """
         now = time.time()
         stamp, data = getattr(self, "_history_cache", (0.0, None))
@@ -854,29 +917,31 @@ class TodayMixin:
             self._history_cache = (now, data)
         return data
 
-    # POZN: tu boli `_dashboard_stat_live(stat_id)` (aktualna hodnota karty
-    # ako CISLO, na porovnanie s historiou) a `_dashboard_stat_trend(stat_id)`
-    # (seria poslednych relacii, odchylka dneska od ich priemeru a farba
-    # podla toho, ci je to zlepsenie). Kreslilo sa to na karte ako mikrograf
-    # plus veta pod cislom.
+    # NOTE: here used to be `_dashboard_stat_live(stat_id)` (the card's current
+    # value as a NUMBER, for comparing with history) and
+    # `_dashboard_stat_trend(stat_id)` (a series of the last sessions, today's
+    # deviation from their average and a colour by whether it is an
+    # improvement). It was drawn on the card as a micro-chart plus a sentence
+    # under the number.
     #
-    # Odislo spolu s prestavbou karty (viz `ui_kit.StatCard`): karta ma byt
-    # JEDEN pokojny udaj, a mikrograf s vetou z nej robili tri. Myslienka
-    # sama bola spravna - "62 BPM" nehovori nic, kym clovek nevie, co je
-    # uneho bezne - a zije dalej v Historii, kde je na trend cely graf.
+    # It went along with the card rework (see `ui_kit.StatCard`): a card
+    # should be ONE calm figure, and the micro-chart with the sentence made it
+    # three. The idea itself was right - "62 BPM" says nothing until you know
+    # what is normal for you - and it lives on in History, where there is a
+    # whole chart for the trend.
     #
-    # Odstranene s tym aj: `_STAT_HISTORY`, `_STAT_LOWER_IS_BETTER`,
-    # `ui_kit.MicroChart` a jazykove kluce `dashboard.delta_*`.
+    # Removed along with it too: `_STAT_HISTORY`, `_STAT_LOWER_IS_BETTER`,
+    # `ui_kit.MicroChart` and the language keys `dashboard.delta_*`.
 
     def _dashboard_stat_value(self, stat_id):
-        """(hodnota, popisok) pre jednu kartu - zo ziveho self.hr_stats,
-        "week" a "felt_vs_measured" z ulozenej historie relacii
-        (hr_sessions.json, cez `_history_cached`)."""
+        """(value, label) for one card - from the live self.hr_stats, "week"
+        and "felt_vs_measured" from the saved session history
+        (hr_sessions.json, via `_history_cached`)."""
         stats = self.hr_stats
-        # BEZ TEPU "—", NIE NULA (0.2.2, audit UX). Karta odvodena z tepu,
-        # ktory este neprisiel, ukazovala "0:00 nad hranicou" a ASCII "-" -
-        # vyzeralo to ako meranie, nie ako "zatial nic". Pocet pripomienok
-        # ostava cislo: nula pripomienok je skutocna hodnota.
+        # WITHOUT HEART RATE "—", NOT ZERO (0.3, UX audit). A card derived from
+        # heart rate that has not arrived yet showed "0:00 over the limit" and
+        # an ASCII "-" - it looked like a measurement, not like "nothing yet".
+        # The cue count stays a number: zero cues is a real value.
         bez_tepu = not getattr(stats, "session_count", 0)
         if stat_id == "baseline":
             base = stats.session_baseline
@@ -887,7 +952,8 @@ class TodayMixin:
         if stat_id == "over":
             if bez_tepu:
                 return ("—", tr("dashboard.unit.over"))
-            # od hodiny "1 h 15 min", nie "75:12" (`ui_kit.cas_text`, 0.2.2 4b)
+            # from an hour on "1 h 15 min", not "75:12"
+            # (`ui_kit.cas_text`, 0.3 4b)
             return (ui_kit.cas_text(int(stats.time_over)), tr("dashboard.unit.over"))
         if stat_id == "breath":
             return (str(stats.auto_triggers), tr("dashboard.unit.breath"))
@@ -904,8 +970,9 @@ class TodayMixin:
         if stat_id == "week":
             try:
                 since = hr_stats.period_start_ts(hr_stats.PERIOD_WEEK)
-                # Len aktualny svet (B3-worlds). Filtruje sa ulozeny zoznam,
-                # takze prepnutie sveta sa prejavi hned, bez citania disku.
+                # Only the current world (B3-worlds). The saved list is
+                # filtered, so a world switch shows at once, without
+                # reading the disk.
                 count, duration = hr_stats.count_sessions_since(
                     hr_stats.sessions_in_world(self._history_cached(), self.world),
                     since)
@@ -915,10 +982,10 @@ class TodayMixin:
             minutes = rem // 60
             sub = f"{hours}h {minutes}m" if hours else f"{minutes}m"
             return (str(count), sub)
-        # --- 0.2 (widgets-history). Co sa nevie, je "—", nie nula. ---
-        # Dlzka, posledna hlaska a signal sa pytaju len OTVORENEJ relacie:
-        # po jej zatvoreni by hodiny bezali dalej od zaciatku uz skoncenej
-        # relacie a pokrytie by ticho klesalo k nule.
+        # --- 0.2 (widgets-history). What is not known is "—", not zero. ---
+        # Length, last cue and signal ask only an OPEN session: after it is
+        # closed the clock would keep running from the start of an already
+        # finished session and coverage would silently drop towards zero.
         otvorena = getattr(self, "_hr_session_open", False)
         if stat_id == "session_len":
             unit = tr("dashboard.unit.session_len")
@@ -932,7 +999,8 @@ class TodayMixin:
                 return ("—", unit)
             return (tr("dashboard.fmt.min", n=int(max(0.0, time.time() - ts) // 60)), unit)
         if stat_id == "calm_time":
-            # Ako "nad hranicou": suhrn relacie, ostava aj po jej zatvoreni.
+            # Like "over the limit": a session summary, it stays even after
+            # the session is closed.
             calm = stats.calm_seconds()
             return ("—" if calm is None else tr("dashboard.fmt.min", n=int(calm // 60)),
                     tr("dashboard.unit.calm_time"))
@@ -947,7 +1015,7 @@ class TodayMixin:
             return (text, unit)
         if stat_id == "felt_vs_measured":
             try:
-                # Posledna relacia AKTUALNEHO sveta (B3-worlds).
+                # The last session of the CURRENT world (B3-worlds).
                 par = hr_stats.citene_a_merane(hr_stats.posledna_relacia(
                     hr_stats.sessions_in_world(self._history_cached(), self.world)))
             except Exception:
@@ -963,9 +1031,9 @@ class TodayMixin:
         for child in grid.winfo_children():
             child.destroy()
         self.dashboard_cards = {}
-        self._dashboard_drag_state = None     # stare karty su prec
+        self._dashboard_drag_state = None     # the old cards are gone
         catalog = {s[0]: s for s in self._dashboard_stat_catalog()}
-        # Posledna karta nema ✕ - jedna ostava vzdy (toggle_dashboard_stat).
+        # The last card has no ✕ - one always stays (toggle_dashboard_stat).
         removable = len(self.dashboard_stats) > 1
         for i, stat_id in enumerate(self.dashboard_stats):
             meta = catalog.get(stat_id)
@@ -974,12 +1042,13 @@ class TodayMixin:
             _id, _title, color_token = meta
             value, _sub = self._dashboard_stat_value(stat_id)
             row, col = divmod(i, 2)
-            # `metric.*.tag`, nie `title`: karta ukazuje velke cislo a pod
-            # nim JEDNO SLOVO. `title` je cela veta a v nemcine, francuzstine
-            # a rustine rozsiruje cely pravy stlpec na ukor stredu.
+            # `metric.*.tag`, not `title`: the card shows a big number and
+            # ONE WORD under it. `title` is a whole sentence and in German,
+            # French and Russian it widens the whole right column at the
+            # expense of the centre.
             card = ui_kit.StatCard(
                 grid, pal, color_token, tr(f"metric.{stat_id}.tag"), value,
-                # meno stranky "V hre" podla sveta (`metric.over.more`)
+                # name of the "In-game" page by world (`metric.over.more`)
                 tr(f"metric.{stat_id}.more", page=stranka_vhre(self)),
                 on_remove=((lambda k=stat_id: self._toggle_dashboard_stat(k))
                            if removable else None),
@@ -991,9 +1060,10 @@ class TodayMixin:
         self._refresh_dashboard_stats()
 
     def _refresh_dashboard_stats(self):
-        # POZN: bol tu aj `card.set_trend(...)` z `_dashboard_stat_trend` -
-        # mikrograf poslednych relacii a veta o odchylke. Karta je teraz
-        # jeden udaj, nie tri; trend patri do Historie, kde je na to graf.
+        # NOTE: here was also `card.set_trend(...)` from
+        # `_dashboard_stat_trend` - a micro-chart of the last sessions and a
+        # sentence about the deviation. The card is one figure now, not
+        # three; the trend belongs in History, where there is a chart for it.
         for stat_id, card in getattr(self, "dashboard_cards", {}).items():
             value, _sub = self._dashboard_stat_value(stat_id)
             card.set_value(value)
@@ -1017,10 +1087,11 @@ class TodayMixin:
         top.configure(bg=pal["border"])
         self._dashboard_picker = top
 
-        # Vysku berie ramec z obsahu. Kedysi tu bolo `pack_propagate(False)`
-        # bez vysky, takze ramec ostal na predvolenych 200 px CTkFrame: vidno
-        # boli 3 riadky, stvrty napoly a zvysok sa vybrat vobec nedal. Sirku
-        # (230) drzi nulovo vysoka rozpera.
+        # The frame takes its height from its content. There used to be
+        # `pack_propagate(False)` here without a height, so the frame stayed at
+        # CTkFrame's default 200 px: 3 rows were visible, the fourth half, and
+        # the rest could not be picked at all. The width (230) is held by a
+        # zero-height spacer.
         frame = ctk.CTkFrame(top, fg_color=pal["surface"], corner_radius=ui_kit.RADIUS_PANEL,
                              border_width=1, border_color=pal["border"], width=230)
         frame.pack(padx=1, pady=1)
@@ -1030,15 +1101,16 @@ class TodayMixin:
         self._dashboard_picker_rows = ctk.CTkFrame(frame, fg_color="transparent")
         self._dashboard_picker_rows.pack(fill="both", expand=True, padx=6, pady=(0, 4))
         self._render_dashboard_picker_rows()
-        # jeden tichy riadok: strop 4 kariet a ze sa daju presuvat
+        # one quiet line: the 4-card cap and that they can be moved
         ctk.CTkLabel(frame, text=tr("dashboard.picker_hint"), font=ui_kit.ui(10),
                      text_color=pal["text_faint"], anchor="w", justify="left",
                      wraplength=200).pack(fill="x", padx=12, pady=(0, 10))
 
-        # pravy okraj popupu = pravy okraj tlacidla (rovnake ako makety
-        # `position:absolute; top:100%; right:0`) - az PO postaveni obsahu,
-        # inak by sirka este nebola znama. Ked sa pod tlacidlo nezmesti
-        # (nizka obrazovka, okno dole), vysunie sa nad neho.
+        # right edge of the popup = right edge of the button (same as the
+        # mockup's `position:absolute; top:100%; right:0`) - only AFTER the
+        # content is built, otherwise the width would not be known yet. When
+        # it does not fit below the button (low screen, window at the bottom),
+        # it pops up above it.
         top.update_idletasks()
         w, h = top.winfo_reqwidth(), top.winfo_reqheight()
         x = btn.winfo_rootx() + btn.winfo_width() - w
@@ -1073,11 +1145,11 @@ class TodayMixin:
         pal = self.pal
         for stat_id, title, color_token in self._dashboard_stat_catalog():
             on = stat_id in self.dashboard_stats
-            # Riadok, na ktorom klik nic neurobi, nema ruku na kurzore:
-            #  - nezvolena metrika, ked su 4 karty plne -> aj bledy text
-            #    (uvolni sa, ked jednu kartu odoberies)
-            #  - posledna zvolena metrika (jedna karta ostava vzdy) -> vyzera
-            #    ako zvolena, len nereaguje
+            # A row where a click does nothing has no hand cursor:
+            #  - an unselected metric when the 4 cards are full -> also faded
+            #    text (freed up once you remove a card)
+            #  - the last selected metric (one card always stays) -> looks
+            #    selected, it just does not react
             clickable = dashboard_stat_clickable(self.dashboard_stats, stat_id)
             if on:
                 text_color = pal["text"]
@@ -1089,10 +1161,11 @@ class TodayMixin:
                                corner_radius=6)
             row.pack(fill="x", pady=1)
             inner = ctk.CTkFrame(row, fg_color="transparent")
-            # Nizsie riadky (popisok 20 px namiesto predvolenych 28 CTkLabel,
-            # okraj 4 namiesto 6): od 0.2 je v katalogu 13 metrik a vyber musi
-            # ostat na obrazovke cely. Odmerane pri 150 %: riadok 60 -> 42 px,
-            # cely vyber s 13 riadkami 719 px (predtym s 8 riadkami 643).
+            # Lower rows (label 20 px instead of CTkLabel's default 28, margin
+            # 4 instead of 6): since 0.2 the catalogue has 13 metrics and the
+            # picker must stay on screen in full. Measured at 150 %: row 60 ->
+            # 42 px, the whole picker with 13 rows 719 px (before, with 8 rows,
+            # 643).
             inner.pack(fill="x", padx=8, pady=4)
             ctk.CTkFrame(inner, width=8, height=8, corner_radius=4,
                         fg_color=pal[color_token] if (on or clickable) else pal["text_faint"]
@@ -1112,9 +1185,9 @@ class TodayMixin:
                 w.bind("<Button-1>", lambda _e, k=stat_id: self._toggle_dashboard_stat(k))
 
     def _toggle_dashboard_stat(self, stat_id):
-        """Klik na riadok vo vybere alebo ✕ na karte. Strop kariet aj
-        "posledna ostava" rata `toggle_dashboard_stat`; ked sa nic nezmeni,
-        nic sa neuklada ani neprestavuje."""
+        """Click on a row in the picker or ✕ on a card. Both the card cap and
+        "the last one stays" are handled by `toggle_dashboard_stat`; when
+        nothing changes, nothing is saved or rebuilt."""
         new = toggle_dashboard_stat(self.dashboard_stats, stat_id)
         if new == self.dashboard_stats:
             return
@@ -1123,22 +1196,22 @@ class TodayMixin:
         self._rebuild_dashboard_stats_grid()
         self._render_dashboard_picker_rows()
 
-    # ---- presun karty potiahnutim (vymena miest) ----
+    # ---- moving a card by dragging (swapping places) ----
     #
-    # Chytis kartu (cislo, popisok, okraj - nie ⓘ/✕), potiahnes aspon
-    # DASHBOARD_DRAG_PX a pustis ju na inu kartu: vymenia si miesto. Pri
-    # mriezke 2x2 je vymena presne predvidatelna - zvyraznena karta je
-    # presne tam, kam tvoja dopadne. Ziadne "duchove" okno, animacia ani
-    # posuvanie ostatnych kariet.
+    # You grab a card (number, label, edge - not ⓘ/✕), drag it at least
+    # DASHBOARD_DRAG_PX and drop it on another card: they swap places. With
+    # a 2x2 grid the swap is exactly predictable - the highlighted card is
+    # exactly where yours will land. No "ghost" window, animation or
+    # shifting of the other cards.
     #
-    # ROZHODUJE PUSTENIE, nie pohyb: vzdialenost stlacenie->pustenie a
-    # karta pod bodom pustenia. Pohyb len kresli zvyraznenie a kurzor.
-    # Pri skutocnej mysi totiz niekedy do Tk nepride ani jeden B1-Motion
-    # (rychly svih, touchpad) - drop, ktory by na nom zavisel, by sa ticho
-    # stratil.
+    # THE RELEASE DECIDES, not the movement: the press->release distance and
+    # the card under the release point. Movement only draws the highlight
+    # and the cursor. With a real mouse, sometimes not a single B1-Motion
+    # reaches Tk (a quick flick, touchpad) - a drop that depended on it
+    # would be silently lost.
 
     def _dashboard_card_at(self, x_root, y_root):
-        """stat_id karty pod bodom obrazovky, alebo None (medzera, mimo)."""
+        """stat_id of the card under a screen point, or None (gap, outside)."""
         for stat_id, card in getattr(self, "dashboard_cards", {}).items():
             try:
                 x0, y0 = card.winfo_rootx(), card.winfo_rooty()
@@ -1150,8 +1223,8 @@ class TodayMixin:
         return None
 
     def _dashboard_drag_reset(self):
-        """Zhodi zvyraznenie aj kurzor. Vola sa pri KAZDOM stlaceni: ked sa
-        pustenie stratilo (alt-tab uprostred tahu), nic neostane visiet."""
+        """Drops the highlight and the cursor. Called on EVERY press: when the
+        release got lost (alt-tab mid-drag), nothing is left hanging."""
         st, self._dashboard_drag_state = getattr(self, "_dashboard_drag_state", None), None
         for card in getattr(self, "dashboard_cards", {}).values():
             try:
@@ -1202,42 +1275,45 @@ class TodayMixin:
             return
         self._dashboard_drag_reset()
         if not moved:
-            return                              # obycajny klik
+            return                              # an ordinary click
         target = self._dashboard_card_at(event.x_root, event.y_root)
         new = swap_dashboard_stats(self.dashboard_stats, stat_id, target)
         if new == self.dashboard_stats:
-            return                              # medzera, mimo, sama na seba
+            return                              # gap, outside, onto itself
         self.dashboard_stats = new
         self.save_settings()
-        # after_idle: prestavba znici aj widget, ktory prave vybavuje event
+        # after_idle: the rebuild also destroys the widget handling the event
         self.root.after_idle(self._rebuild_dashboard_stats_grid)
 
-    # POZN: tu bolo `_refresh_kamae_metrics()` - dlzka relacie, pocet
-    # pripomienok a tep, kreslene vpravo v dychajucom pase. Odstranene:
-    # dlzka aj pocet su o kusok vedla v pravom paneli tejto istej stranky,
-    # takze pas ich len opakoval, a pas ma niest stav, nie skore.
-    # `self._listen_started` sa pouziva dalej (dlzka relacie v paneli).
+    # NOTE: here used to be `_refresh_kamae_metrics()` - session length, cue
+    # count and heart rate, drawn on the right in the breathing bar. Removed:
+    # length and count are a little way off in the right panel of this same
+    # page, so the bar only repeated them, and the bar should carry state,
+    # not a score.
+    # `self._listen_started` is still used (session length in the panel).
 
-    # ---------- stred stranky Dnes na platne (dojo, enso, text) ----------
+    # ---------- Today page centre on the canvas (dojo, enso, text) ----------
 
     def _build_dnes_backdrop(self, parent, pal):
-        """Zavesi prekreslenie stredu na zmenu velkosti.
+        """Hooks the redraw of the centre onto a size change.
 
-        Uz nestavia widget - dojo, enso aj text kresli `_paint_dnes_canvas` na
-        `self.dnes_canvas` (postaveny v `_build_dnes_page`). Tu sa len ulozi
-        farba zavoja a zavesi `<Configure>`. Fotka je v `background.py`; ked nie
-        je, `background.hero/load` vrati None a ostane pozadie temy.
+        No longer builds a widget - the dojo, enso and text are drawn by
+        `_paint_dnes_canvas` on `self.dnes_canvas` (built in
+        `_build_dnes_page`). Here only the veil colour is stored and
+        `<Configure>` is hooked. The photo is in `background.py`; when
+        there is none, `background.hero/load` returns None and the theme
+        background stays.
         """
         self._backdrop_size = (0, 0)
         self._dnes_dojo_tk = None
         parent.bind("<Configure>", self._naplanuj_backdrop, add="+")
 
     def _naplanuj_backdrop(self, _event=None):
-        """Prepocita pozadie az ked sa rozmer na chvilu ustali.
+        """Recomputes the background only once the size settles for a moment.
 
-        Nie je to kozmetika: pri plynulom tahani okna medzi obrazovkami by
-        sa inak fotka preskalovala pri kazdom medzikroku, a z tych sa
-        pouzije jediny - ten posledny.
+        This is not cosmetics: when smoothly dragging the window between
+        screens the photo would otherwise be rescaled at every intermediate
+        step, and of those only one is used - the last one.
         """
         job = getattr(self, "_backdrop_job", None)
         if job is not None:
@@ -1249,18 +1325,20 @@ class TodayMixin:
             self._backdrop_job = self.root.after(
                 self.BACKDROP_DEBOUNCE_MS, self._refresh_dnes_backdrop)
         except Exception:
-            # Okno sa zatvara - prekreslovat uz nie je co.
+            # The window is closing - there is nothing left to redraw.
             self._backdrop_job = None
 
     def _refresh_dnes_backdrop(self, _event=None, force=False):
-        """Prekresli stred stranky Dnes (dojo + enso + text) na `dnes_canvas`.
+        """Redraws the Today centre (dojo + enso + text) on `dnes_canvas`.
 
-        Dva rezimy dojo: v ZASTAVENOM stave DOJO HERO, ktore dycha (lampiony,
-        mesiac, odlesk stupaju a klesaju v tempe nadychu, viz `_tick_dnes`).
-        Ked appka pocuva, tlmena fotka. Drahy LANCZOS sa robi len ked sa zmeni
-        rozmer/dych/tema (kluc `_backdrop_size`); enso a text sa prekreslia
-        vzdy (su lacne). Volaju sem: `<Configure>` (debounced), animacny tik,
-        zmena stavu, `_EnsoHero._emit()` (set_live/armed/graduate/set_pal)."""
+        Two dojo modes: in the STOPPED state the DOJO HERO, which breathes
+        (lanterns, moon and reflection rise and fall at the pace of the
+        breath, see `_tick_dnes`). When the app is listening, a dimmed
+        photo. The expensive LANCZOS is done only when size/breath/theme
+        changes (key `_backdrop_size`); the enso and text are always
+        redrawn (they are cheap). Called from: `<Configure>` (debounced),
+        the animation tick, a state change, `_EnsoHero._emit()`
+        (set_live/armed/graduate/set_pal)."""
         canvas = getattr(self, "dnes_canvas", None)
         stred = getattr(self, "dnes_stred", None)
         if canvas is None or stred is None:
@@ -1271,7 +1349,7 @@ class TodayMixin:
             return
         if w < 40 or h < 40:
             return
-        # --- 1) DOJO obrazok (drahy LANCZOS) - cachovany podla rozmeru/dychu/temy ---
+        # --- 1) DOJO image (expensive LANCZOS) - cached by size/breath/theme ---
         hero_on = bool(getattr(self, "_dnes_hero_on", False))
         faza = getattr(self, "_dnes_breath_phase", 0.0)
         breath = round(((1.0 - math.cos(2.0 * math.pi * faza)) / 2.0) * 8) / 8.0
@@ -1280,20 +1358,22 @@ class TodayMixin:
         if force or _ImageTk is None or kluc != getattr(self, "_backdrop_size", None):
             self._backdrop_size = kluc
             self._dnes_dojo_tk = self._build_dojo_photo(w, h, hero_on, breath, scrim)
-        # --- 2) prekresli canvas: dojo + enso + text (lacne) ---
-        # POZOR: tu sa NESMIE volat `_ensure_dnes_tick()`. Prekreslenie bezi aj
-        # zvnutra `_tick_dnes`, a ked `_tick_dnes` na zaciatku vynuluje job,
-        # `_ensure_dnes_tick` by ho videl ako "nebezi" a rozbehol dalsi retazec
-        # (alebo priamo zarekurzoval). Tik rozbieha len zmena stavu (nizsie).
+        # --- 2) redraw the canvas: dojo + enso + text (cheap) ---
+        # WARNING: `_ensure_dnes_tick()` MUST NOT be called here. The redraw
+        # also runs from inside `_tick_dnes`, and when `_tick_dnes` clears the
+        # job at its start, `_ensure_dnes_tick` would see it as "not running"
+        # and start another chain (or recurse directly). Only a state change
+        # starts the tick (below).
         try:
             self._paint_dnes_canvas(canvas, w, h, getattr(self, "_dnes_dojo_tk", None))
         except Exception:
             app_log.exception("Dnes canvas: prekreslenie zlyhalo")
 
     def _build_dojo_photo(self, w, h, hero_on, breath, scrim):
-        """PIL -> ImageTk dojo pre Canvas. Canvas pouziva FYZICKE pixely 1:1
-        (na rozdiel od `CTkImage`, ktory si logicke sam nasobi), takze stavame
-        rovno na (w, h) z `winfo_*` a kreslime bez prepoctu mierky."""
+        """PIL -> ImageTk dojo for the Canvas. The Canvas uses PHYSICAL
+        pixels 1:1 (unlike `CTkImage`, which multiplies logical ones by
+        itself), so we build directly at (w, h) from `winfo_*` and draw
+        without rescaling."""
         if _ImageTk is None:
             return None
         try:
@@ -1319,18 +1399,20 @@ class TodayMixin:
             return None
 
     def _cvfont(self, size, weight="normal", underline=False):
-        """Tk font pre kreslenie na Canvas vo FYZICKYCH pixeloch.
+        """Tk font for drawing on the Canvas in PHYSICAL pixels.
 
-        `create_text` nie je CTk widget, takze si mierku DPI musime dorobit
-        sami: logicka velkost * mierka = fyzicke px (zaporny size = px, ktore
-        `tk scaling` uz nenasobi). Fonty cachujeme - stavat ich 8x/s netreba."""
+        `create_text` is not a CTk widget, so we have to add the DPI scale
+        ourselves: logical size * scale = physical px (a negative size =
+        px, which `tk scaling` no longer multiplies). We cache the fonts -
+        building them 8x/s is not needed."""
         mierka = getattr(self, "_dnes_mierka", 1.0)
         kluc = (size, weight, underline, round(mierka, 2))
         f = self._dnes_fonts.get(kluc)
         if f is None:
-            # Pismo z `ui_kit.fonts()`, nie natvrdo "Segoe UI": v japoncine a
-            # cinstine ma appka vlastne pismo s CJK znakmi (inak Tk kazdy znak
-            # dohladal v inom nahradnom pisme a riadok sa rozsypal).
+            # Font from `ui_kit.fonts()`, not hard-coded "Segoe UI": in
+            # Japanese and Chinese the app has its own font with CJK glyphs
+            # (otherwise Tk looked up every character in another fallback font
+            # and the line fell apart).
             f = tkfont.Font(family=ui_kit.fonts()["ui"],
                             size=-max(1, int(round(size * mierka))),
                             weight=weight, underline=underline)
@@ -1338,18 +1420,20 @@ class TodayMixin:
         return f
 
     def _paint_dnes_canvas(self, canvas, w, h, dojo):
-        """Zlozi dojo + enso + text na jednu plochu - bez boxu a BEZ BLIKANIA.
+        """Composes dojo + enso + text onto one surface - no box and NO FLICKER.
 
-        Proti blikaniu su dva kluce:
-          (1) ak sa vizualne NIC nezmenilo, prekreslenie sa cele PRESKOCI -
-              inak sa zastaveny stav prekresloval 8x/s (kazdy tik novy
-              `PhotoImage`, aj ked je snimka rovnaka) a okno blikalo;
-          (2) obrazkove polozky (dojo, enso) su TRVALE - meni sa im len obsah
-              cez `itemconfigure`, nikdy sa nemazu (`delete`), takze ani
-              animacia ensa neblikne. Textovy blok sa prestavia len pri zmene
-              textu/rozmeru/temy (`_layout_dnes_items`).
-        `render()` vracia cachovanu snimku (rovnaky objekt = rovnaka snimka),
-        takze na porovnanie staci `id()`."""
+        There are two keys against flicker:
+          (1) if NOTHING changed visually, the redraw is SKIPPED entirely -
+              otherwise the stopped state was redrawn 8x/s (every tick a
+              new `PhotoImage`, even when the frame is the same) and the
+              window flickered;
+          (2) image items (dojo, enso) are PERMANENT - only their content
+              changes via `itemconfigure`, they are never deleted
+              (`delete`), so not even the enso animation flickers. The
+              text block is rebuilt only when text/size/theme changes
+              (`_layout_dnes_items`).
+        `render()` returns a cached frame (same object = same frame), so
+        `id()` is enough for the comparison."""
         pal = self.pal
         try:
             mierka = (ctk.ScalingTracker.get_widget_scaling(self.dnes_stred)
@@ -1368,16 +1452,17 @@ class TodayMixin:
         titul = getattr(self, "_dnes_titul", "") or ""
         veta = getattr(self, "_dnes_veta", "") or ""
         last = getattr(self, "_dnes_lastcue_text", "") or ""
-        # Tichy riadok "ziadna pauza vo vstupe" ide pod neho, rovnako tlmeny.
+        # The quiet "no pause in the input" line goes under it, just as dimmed.
         nonstop = getattr(self, "_dnes_nonstop_text", "") or ""
         if nonstop:
             last = f"{last}\n{nonstop}" if last else nonstop
-        # A uplne dole "este ta spoznavam" (`_refresh_dnes_learning`).
+        # And at the very bottom "still getting to know you"
+        # (`_refresh_dnes_learning`).
         ucenie = getattr(self, "_dnes_learning_text", "") or ""
         if ucenie:
             last = f"{last}\n{ucenie}" if last else ucenie
 
-        # (1) PRESKOC identicke prekreslenie.
+        # (1) SKIP an identical redraw.
         frame_sig = (w, h, round(mierka, 2), id(dojo), id(pil),
                      titul, veta, last, pal["bg"])
         if frame_sig == getattr(self, "_dnes_frame_sig", None):
@@ -1389,7 +1474,8 @@ class TodayMixin:
         except Exception:
             pass
 
-        # (2) textovy blok + polohy prestavame len pri zmene textu/rozmeru/temy.
+        # (2) we rebuild the text block + positions only when the
+        # text/size/theme changes.
         text_sig = (w, h, round(mierka, 2), titul, veta, last, enso_px,
                     pal["text"], pal["text_dim"], pal["text_faint"])
         if (getattr(self, "_dnes_items", None) is None
@@ -1399,7 +1485,8 @@ class TodayMixin:
             self._dnes_text_sig = text_sig
 
         items = self._dnes_items or {}
-        # dojo (trvala polozka vzadu) - vymen obrazok LEN ked sa naozaj zmenil.
+        # dojo (permanent item at the back) - swap the image ONLY when it
+        # really changed.
         di = items.get("dojo")
         if di is not None:
             if dojo is not None:
@@ -1417,10 +1504,10 @@ class TodayMixin:
                 except Exception:
                     pass
                 self._dnes_cur_dojo = None
-        # enso (trvala polozka) - novy PhotoImage a vymena LEN ked sa snimka
-        # naozaj zmenila (`render()` vracia cachovany objekt; rovnake id =
-        # rovnaka snimka). Bez tejto strazy sa enso prehadzovalo pri KAZDOM
-        # prekresleni (aj ked stalo) a okno blikalo.
+        # enso (permanent item) - a new PhotoImage and a swap ONLY when the
+        # frame really changed (`render()` returns a cached object; same id =
+        # same frame). Without this guard the enso was swapped on EVERY redraw
+        # (even when it stood still) and the window flickered.
         ei = items.get("enso")
         if (ei is not None and pil is not None and _ImageTk is not None
                 and pil is not getattr(self, "_dnes_cur_pil", None)):
@@ -1434,33 +1521,34 @@ class TodayMixin:
 
     def _layout_dnes_items(self, canvas, w, h, mierka, enso_px, titul, veta,
                            last, pal):
-        """(Pre)stavia trvale obrazkove polozky (dojo, enso) + textovy blok a
-        vycentruje cely blok zvisle. Vola sa LEN pri zmene textu/rozmeru/temy,
-        nie kazdy tik - preto si moze dovolit merat a posuvat. Enso ma tag
-        "block" (centruje sa s textom), ale NIE "dtext" (prestavba textu ho
-        nesmie zmazat, je to trvala polozka menena cez `itemconfigure`)."""
+        """(Re)builds the permanent image items (dojo, enso) + the text block
+        and centres the whole block vertically. Called ONLY when
+        text/size/theme changes, not every tick - which is why it can afford
+        to measure and move. The enso has the tag "block" (it is centred
+        with the text), but NOT "dtext" (rebuilding the text must not delete
+        it, it is a permanent item changed via `itemconfigure`)."""
         self._dnes_hit = {}
-        # Polozky sa mohli prave vytvorit - vynuluj "co je na canvase", nech
-        # `_paint` znova aplikuje dojo aj enso obrazok.
+        # The items may have just been created - reset "what is on the canvas",
+        # so that `_paint` applies both the dojo and the enso image again.
         self._dnes_cur_dojo = None
         self._dnes_cur_pil = None
         items = getattr(self, "_dnes_items", None)
         if items is None:
             items = self._dnes_items = {}
-        # dojo - trvala polozka celkom vzadu
+        # dojo - permanent item at the very back
         if items.get("dojo") is None:
             items["dojo"] = canvas.create_image(w // 2, h // 2, anchor="center")
         try:
             canvas.tag_lower(items["dojo"])
         except Exception:
             pass
-        # enso - trvala polozka
+        # enso - permanent item
         if items.get("enso") is None:
             items["enso"] = canvas.create_image(w // 2, 0, anchor="n",
                                                 tags=("block", "enso"))
         canvas.coords(items["enso"], w // 2, 0)
 
-        canvas.delete("dtext")          # len textovy blok; obrazky ostavaju
+        canvas.delete("dtext")          # only the text block; the images stay
         cx = w // 2
         gap = max(4, int(10 * mierka))
         wrap = min(int(360 * mierka), max(140, w - int(48 * mierka)))
@@ -1471,47 +1559,52 @@ class TodayMixin:
         if veta:
             y = self._canvas_text(canvas, cx, y, veta, self._cvfont(12),
                                   pal["text_dim"], wrap=wrap, shadow=True) + int(gap * 1.4)
-        # POZN: tu bol riadok "© 2026 Dandurfin · GPLv3" (meno klikatelne na
-        # Twitch). Odisiel z hero (0.2.2, audit UX): licencia aj verzia su v
-        # titulkovej liste na kazdej stranke a autor s odkazmi v O appke
-        # (ⓘ) - v strede stavu bol treti, najmenej potrebny riadok.
+        # NOTE: here was the line "© 2026 Dandurfin · GPLv3" (name clickable to
+        # Twitch). It left the hero (0.3, UX audit): the licence and version
+        # are in the title bar on every page and the author with links in
+        # About (ⓘ) - in the centre of the state it was a third, least needed
+        # line.
         if last:
             y = self._canvas_text(canvas, cx, y, last, self._cvfont(10),
                                   pal["text_faint"], wrap=wrap) + gap
 
-        # Blok = enso (hore, vyska enso_px) + text pod nim (spodok `y`).
-        # POZOR: bbox("block") NEZAHRNA enso, lebo jeho obrazok sa nastavuje az
-        # v `_paint_dnes_canvas` (tu je polozka este bez obrazka -> bbox ~ bod).
-        # Preto centrujeme podla ZNAMEJ vysky bloku [0, y], nie podla bbox -
-        # inak enso "vypadlo" z merania a cely blok sedel privysoko.
+        # Block = enso (top, height enso_px) + text under it (bottom `y`).
+        # WARNING: bbox("block") does NOT INCLUDE the enso, because its image is
+        # set only in `_paint_dnes_canvas` (here the item has no image yet ->
+        # bbox ~ a point). That is why we centre by the KNOWN height of the
+        # block [0, y], not by bbox - otherwise the enso "fell out" of the
+        # measurement and the whole block sat too high.
         dy = int(h / 2 - y / 2)
         if dy:
             canvas.move("block", 0, dy)
-        # Klikacia zona ensa - tiez zo znamej geometrie (bbox("enso") je None,
-        # kym polozka nema obrazok), inak by enso bolo NEKLIKATELNE.
+        # Click zone of the enso - also from the known geometry (bbox("enso")
+        # is None while the item has no image), otherwise the enso would be
+        # UNCLICKABLE.
         ex0 = w // 2 - enso_px // 2
         ey0 = dy
         self._dnes_hit["enso"] = (ex0, ey0, ex0 + enso_px, ey0 + enso_px)
-        self._record_dnes_hits(canvas)   # kredit cez bbox (ma text); enso ostane
+        self._record_dnes_hits(canvas)   # credit via bbox (has text); enso stays
         TodayMixin._podlozka_textu(self, canvas, mierka, pal, items)
 
-    # Podlozka pod textom stavu (0.2.2 davka 4b): krytie v strede (0-255) a
-    # o kolko logickych px presahuje text.
+    # Backing under the status text (0.3 batch 4b): opacity in the centre
+    # (0-255) and how many logical px it extends beyond the text.
     PODLOZKA_ALFA = 170
     PODLOZKA_OKRAJ = (20, 10)
     PODLOZKA_ROZMAZ = 14
 
     def _podlozka_textu(self, canvas, mierka, pal, items):
-        """Makka tmava podlozka pod textom stavu - len ked je za nim fotka.
+        """Soft dark backing behind the status text - only if a photo is there.
 
-        Kratke stavy ("Zastavene") lezali vo stmavenom strede fotky
-        (`background._scrim_maska`), dlha veta o obsadenom porte ale siahla
-        az k ziare lampionov a odlesku na podlahe - svetly text na svetlom
-        pozadi (de/ja su este dlhsie). Podlozka ide za textovym blokom, nech
-        je akokolvek dlhy: farba `bg`, okraje rozmazane, ziadny box s hranou
-        (ten isty princip ako zavoj za ensom). Je to obrazok s alfou medzi
-        dojom a textom; prestavia sa s textom (tag "dtext"). Nikdy nevyhodi
-        vynimku - bez podlozky ostane text s tienikom ako doteraz."""
+        Short states ("Stopped") sat in the darkened centre of the photo
+        (`background._scrim_maska`), but the long sentence about the busy
+        port reached all the way to the glow of the lanterns and the
+        reflection on the floor - light text on a light background (de/ja
+        are even longer). The backing goes behind the text block, however
+        long it is: colour `bg`, blurred edges, no box with an edge (the
+        same principle as the veil behind the enso). It is an image with
+        alpha between the dojo and the text; it is rebuilt with the text
+        (tag "dtext"). Never raises an exception - without the backing the
+        text stays with its shadow as before."""
         try:
             if getattr(self, "_dnes_dojo_tk", None) is None or _ImageTk is None:
                 return
@@ -1537,7 +1630,7 @@ class TodayMixin:
             polozka = canvas.create_image((box[0] + box[2]) // 2, (box[1] + box[3]) // 2,
                                           image=tkimg, anchor="center",
                                           tags=("dtext", "podlozka"))
-            # nad dojo, pod ensom aj textom
+            # above the dojo, below the enso and the text
             canvas.tag_lower(polozka)
             if items.get("dojo") is not None:
                 canvas.tag_raise(polozka, items["dojo"])
@@ -1545,11 +1638,12 @@ class TodayMixin:
             app_log.debug("Dnes: podlozka pod textom sa nenakreslila", exc_info=True)
 
     def _canvas_text(self, canvas, cx, y_top, text, font, fill, wrap=0, shadow=False):
-        """Vycentrovany (viacriadkovy) text od `y_top` nadol; vrati spodok.
-        `shadow` prida tmavy tienik +1px pre citatelnost bez boxu.
+        """Centred (multi-line) text from `y_top` downward; returns the bottom.
+        `shadow` adds a dark +1px shadow for legibility without a box.
 
-        Japoncinu a cinstinu zlomi vopred `ui_kit.zalom_kinsoku` (0.2.2
-        davka 4b) - Tk by riadok zacal 「。」 alebo 「）」."""
+        Japanese and Chinese are broken in advance by
+        `ui_kit.zalom_kinsoku` (0.3 batch 4b) - Tk would start a line with
+        「。」 or 「）」."""
         kw = dict(anchor="n", justify="center", font=font)
         if wrap:
             kw["width"] = wrap
@@ -1565,7 +1659,7 @@ class TodayMixin:
         return bb[3] if bb else y_top
 
     def _record_dnes_hits(self, canvas):
-        """Zapamata bboxy klikacich zon (enso) PO vycentrovani."""
+        """Remembers the bboxes of the click zones (enso) AFTER centring."""
         for tag in ("enso",):
             try:
                 bb = canvas.bbox(tag)
@@ -1595,7 +1689,7 @@ class TodayMixin:
     def _dnes_canvas_click(self, event):
         hit = getattr(self, "_dnes_hit", {})
         if self._in_bbox(event.x, event.y, hit.get("enso")):
-            # Klik na znacku = spinac pocuvania (rovnako, ako mal widget).
+            # Click on the mark = listening switch (just as the widget had it).
             try:
                 self.toggle_listening()
             except Exception:

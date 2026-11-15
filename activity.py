@@ -1,100 +1,109 @@
-"""Ci hrac prave nieco robi - bez klavesoveho hooku.
+"""Whether the player is doing something right now - without a keyboard hook.
 
-PRECO NIE PYNPUT
-----------------
-Appka doteraz pocuvala klavesnicu globalnym hookom (`pynput`,
-`WH_KEYBOARD_LL`), lebo klavesy boli spustacom hlasok. To je jedina cast
-appky, ktora navonok vyzera ako keylogger - a na platforme, kde ludia
-beziu Vanguard, EAC a BattlEye, je to zbytocne drahe.
+WHY NOT PYNPUT
+--------------
+Until now the app listened to the keyboard with a global hook (`pynput`,
+`WH_KEYBOARD_LL`), because keys were the trigger for cues. That is the only
+part of the app that looks like a keylogger from the outside - and on a
+platform where people run Vanguard, EAC and BattlEye, that is needlessly
+costly.
 
-`GetLastInputInfo` je Win32 funkcia, ktora vracia JEDINE cislo: kolko
-milisekund uplynulo od posledneho vstupu. Neprezradi, ktora klavesa to
-bola, ani ci to klavesa vobec bola. Ziadny hook sa neinstaluje, takze
-appke nemoze pritiect ani jeden znak z toho, co hrac pise.
+`GetLastInputInfo` is a Win32 function that returns ONE number only: how
+many milliseconds have passed since the last input. It does not reveal which
+key it was, or whether it was a key at all. No hook is installed, so not a
+single character of what the player types can reach the app.
 
-Z toho jedneho cisla sa da odvodit vsetko, co novy rezim potrebuje:
-  * ci je hrac prave aktivny,
-  * kedy nastala pauza (zlomovy bod na dorucenie hlasky),
-  * hrube tempo aktivity ako tretí kanal k tepu.
+From that one number you can derive everything the new mode needs:
+  * whether the player is active right now,
+  * when a pause happened (the break point for delivering a cue),
+  * a rough pace of activity as a third channel next to heart rate.
 
-GAMEPAD - ODMERANE, VIDI HO
----------------------------
-Povodne tu stalo, ze GetLastInputInfo gamepad nesleduje (klasicky argument:
-preto nabieha setric obrazovky, ked sa hra na ovladaci). Na tomto Windowse
-11 to NEPLATI. Odmerane 14. 9. 2026, tri behy, viz MERANIE_GAMEPAD.md:
+GAMEPAD - MEASURED, IT SEES IT
+------------------------------
+It used to say here that GetLastInputInfo does not track the gamepad (the
+classic argument: that is why the screensaver kicks in while playing on a
+controller). On this Windows 11 that does NOT HOLD. Measured 14. 9. 2026,
+three runs, see MERANIE_GAMEPAD.md:
 
-  DualSense cez HID, G7 Pro cez XInput, Steam zapnuty aj vypnuty:
-  idle pri pohybe ovladaca medianovo 15-16 ms, kym v kludovych usekoch
-  vyskocilo na 50-65 sekund. Kurzor sa nepohol ani raz z 348 vzoriek,
-  takze to nerobi ani Steam Input, ani gyroskop mapovany na mys.
+  DualSense over HID, G7 Pro over XInput, Steam on and off:
+  idle while moving the controller had a median of 15-16 ms, while in
+  resting stretches it jumped to 50-65 seconds. The cursor did not move once
+  in 348 samples, so it is neither Steam Input nor a gyroscope mapped to the
+  mouse.
 
-Zasuvka `extra_idle_fn` napriek tomu ostava a NIE JE mrtva: je to jeden
-pocitac. Keby sa na inom stroji ukazalo, ze tam gamepad videny nie je,
-hrac by bol pre appku trvale necinny - a to je tiche zlyhanie, ktore sa
-neprejavi ako chyba, len ako appka, ktora mlci alebo sa ozyva v najhorsej
-chvili. Vysledne idle je MINIMUM zo vsetkych zdrojov, cize "od posledneho
-vstupu ODKIALKOLVEK".
+The `extra_idle_fn` slot nevertheless stays and is NOT dead: this is one
+computer. If on another machine the gamepad turned out not to be seen, the
+player would be permanently idle for the app - and that is a silent failure
+that does not show up as an error, only as an app that stays silent or
+speaks up at the worst moment. The resulting idle is the MINIMUM of all
+sources, i.e. "since the last input from ANYWHERE".
 
-Modul nema Tk ani I/O. `idle_ms()` sa da v testoch nahradit, takze cela
-logika sa da overit bez displeja a bez toho, aby test cakal v realnom case.
+The module has no Tk and no I/O. `idle_ms()` can be replaced in tests, so
+the whole logic can be checked without a display and without the test
+waiting in real time.
 """
 
 import time
 
-# Ako casto sa pyta Windowsu. 4x za sekundu staci na to, aby sa pauza
-# dlha 2,5 s dala rozpoznat s presnostou na stvrtinu sekundy, a je to
-# dost lacne na to, aby to mohlo bezat cele hranie.
+# How often it asks Windows. 4x per second is enough to recognise a pause
+# of 2.5 s with a precision of a quarter of a second, and it is cheap enough
+# to run for the whole time you play.
 POLL_S = 0.25
 
-# Do zaznamu pre meracie okna staci 1x za sekundu - rovnaka hustota ako
-# tep z hodiniek. 4 Hz by za styri hodiny narastlo na ~58k dvojic.
+# For the record for the measurement windows, 1x per second is enough - the
+# same density as heart rate from the watch. 4 Hz would grow to ~58k pairs
+# over four hours.
 LOG_EVERY_S = 1.0
 
-# Pod tolko ms od posledneho vstupu = hrac prave nieco robi.
+# Under this many ms since the last input = the player is doing something
+# right now.
 ACTIVE_IDLE_MS = 1000
 
-# Strop zaznamu. Pri 1 Hz je to ~16 hodin, cize dlhsie nez akakolvek
-# relacia - ale zabrani tomu, aby appka nechana bezat cez vikend zrala
-# pamat donekonecna. Pri zapnuti senzora sa zaznam aj tak vynuluje.
+# Cap on the record. At 1 Hz that is ~16 hours, i.e. longer than any
+# session - but it stops an app left running over the weekend from eating
+# memory forever. When the sensor is switched on, the record is reset anyway.
 MAX_SAMPLES = 60000
 
 # --------------------------------------------------------------------------
-# Z COHO HRAC PRAVE HRA
+# WHAT THE PLAYER IS PLAYING WITH RIGHT NOW
 # --------------------------------------------------------------------------
-# Appka o vstupe vie dve veci naraz: `GetLastInputInfo` (vidi VSETKO vratane
-# ovladaca, viz MERANIE_GAMEPAD.md) a hlasenia z `gamepad.py` (vidi LEN
-# ovladac). Z prieniku sa da odvodit trieda zariadenia:
+# The app knows two things about input at once: `GetLastInputInfo` (sees
+# EVERYTHING including the controller, see MERANIE_GAMEPAD.md) and reports
+# from `gamepad.py` (sees ONLY the controller). From their intersection the
+# device class can be derived:
 #
-#   ovladac hlasi cerstvy vstup            -> ovladac
-#   ovladac mlci, ale system hlasi vstup   -> klavesnica/mys
-#   gamepad listener vobec nebezi          -> NEVIEME (nie "klavesnica"!)
+#   controller reports fresh input              -> controller
+#   controller silent, but system reports input -> keyboard/mouse
+#   gamepad listener not running at all         -> UNKNOWN (not "keyboard"!)
 #
-# Posledny riadok je dolezity: keby sa "neviem" hlasilo ako klavesnica, na
-# stroji s vypnutym listenerom by appka hracovi s ovladacom tvrdila nieco
-# nepravdive - a bolo by to napisane na obrazovke, cize by tomu veril.
+# The last row matters: if "don't know" were reported as keyboard, then on a
+# machine with the listener switched off the app would tell a player with a
+# controller something untrue - and it would be written on the screen, so
+# they would believe it.
 #
-# Zisti sa TRIEDA ZARIADENIA, nic viac. Ktore tlacidlo to bolo sa appka
-# nedozvie ani tu (`note_external_input` meno nepreberá), ani z
-# `GetLastInputInfo`, ktory vracia jedine pocet milisekund.
+# Only the DEVICE CLASS is determined, nothing more. Which button it was the
+# app does not learn here (`note_external_input` takes no name), nor from
+# `GetLastInputInfo`, which returns only a number of milliseconds.
 SRC_PAD = "pad"
 SRC_KB = "kb"
 
-# Ako dlho sa zdroj pamata, ked hrac prestane hrat. Bez toho by piktogram
-# pri kazdej prestavke zhasol a pri kazdom stlaceni sa rozsvietil - a to je
-# presne ten "putujuci pohyb", ktory sa v periferii vsimne najhorsie.
+# How long the source is remembered after the player stops playing. Without
+# it the pictogram would go dark at every break and light up at every press -
+# and that is exactly the "wandering movement" that peripheral vision
+# notices the most.
 SOURCE_MEMORY_S = 300.0
 
 
 # --------------------------------------------------------------------------
-# Win32 - jedina vec, ktora sa pyta operacneho systemu
+# Win32 - the only thing that asks the operating system
 # --------------------------------------------------------------------------
 
 def _make_idle_reader():
-    """Vrati funkciu idle_ms(), alebo None ked to na tomto systeme nejde.
+    """Return an idle_ms() function, or None when this system cannot do it.
 
-    Oddelene od zvysku kvoli testom aj kvoli tomu, ze modul sa musi dat
-    importovat aj tam, kde ziadny user32 nie je (CI, ine OS) - inak by
-    padol import celej appky.
+    Separate from the rest for the tests and because the module must be
+    importable even where there is no user32 (CI, other OS) - otherwise the
+    import of the whole app would fail.
     """
     try:
         import ctypes
@@ -116,11 +125,11 @@ def _make_idle_reader():
         def idle_ms():
             if not user32.GetLastInputInfo(ctypes.byref(info)):
                 return None
-            # GetTickCount je 32-bitovy a pretoci sa po ~49 dnoch;
-            # maskovanie do 32 bitov drzi rozdiel spravny aj cez pretocenie.
+            # GetTickCount is 32-bit and wraps around after ~49 days;
+            # masking to 32 bits keeps the difference correct across the wrap.
             return (kernel32.GetTickCount() - info.dwTime) & 0xFFFFFFFF
 
-        idle_ms()          # over, ze to naozaj ide, nie az pocas hrania
+        idle_ms()          # verify it really works now, not only mid-game
         return idle_ms
     except Exception:
         return None
@@ -131,82 +140,85 @@ AVAILABLE = _SYSTEM_IDLE is not None
 
 
 def idle_ms():
-    """Ms od posledneho vstupu, alebo None ked to system nevie povedat."""
+    """Ms since the last input, or None when the system cannot tell."""
     return _SYSTEM_IDLE() if _SYSTEM_IDLE else None
 
 
 # --------------------------------------------------------------------------
-# Sledovanie aktivity pocas relacie
+# Watching activity during the session
 # --------------------------------------------------------------------------
 
 class ActivityTracker:
-    """Drzi, ci je hrac aktivny, ako dlho trva pauza a zaznam pre okna.
+    """Tracks whether the player is active, pause length and the window record.
 
-    Vola sa VYHRADNE z GUI vlakna (z `_tick_activity`), rovnako ako
-    `HeartStats` - preto tu nie je ziadny zamok.
+    Called EXCLUSIVELY from the GUI thread (from `_tick_activity`), just like
+    `HeartStats` - that is why there is no lock here.
     """
 
     def __init__(self, idle_fn=None, extra_idle_fn=None, clock=time.time):
         self._idle_fn = idle_fn if idle_fn is not None else idle_ms
         self._extra_idle_fn = extra_idle_fn
         self._clock = clock
-        # Bezi gamepad listener? Kym nebezi, trieda zariadenia sa urcit
-        # NEDA - viz hlavicka modulu. Zapina to appka pri `gamepad.start()`.
+        # Is the gamepad listener running? Until it runs, the device class
+        # CANNOT be determined - see the module header. The app switches this
+        # on at `gamepad.start()`.
         self._gamepad_watched = False
         self.reset_session()
 
     def set_gamepad_watched(self, watched):
-        """Appka hlasi, ci gamepad listener naozaj bezi.
+        """The app reports whether the gamepad listener is really running.
 
-        Bez toho by sa "ziadne hlasenie z ovladaca" nedalo odlisit od
-        "ovladac nikto nesleduje" a appka by hracovi s ovladacom napisala,
-        ze hra na klavesnici.
+        Without this, "no reports from the controller" could not be told
+        apart from "nobody is watching the controller" and the app would
+        tell a player with a controller that they are playing on the
+        keyboard.
         """
         self._gamepad_watched = bool(watched)
         if not self._gamepad_watched:
             self._source = None
             self._source_at = None
 
-    # ---------- relacia ----------
+    # ---------- session ----------
 
     def reset_session(self):
-        self.samples = []           # [(timestamp, idle_ms)] ~1x za sekundu
+        self.samples = []           # [(timestamp, idle_ms)] ~1x per second
         self.last_idle = None
         self.active_since = None
         self.pause_since = None
         self._last_log_ts = None
-        self._external_at = None    # kedy naposledy hlasil vstup iny zdroj
-        # Trieda zariadenia, nie konkretny vstup. Viz hlavicka modulu.
+        self._external_at = None    # when another source last reported input
+        # Device class, not a specific input. See the module header.
         self._source = None
         self._source_at = None
 
     def note_external_input(self, now=None):
-        """Iny zdroj hlasi vstup PRAVE TERAZ (napr. tlacidlo na ovladaci).
+        """Another source reports input RIGHT NOW (e.g. a controller button).
 
-        Nezapisuje sa CO to bolo - len ze sa nieco stalo. `gamepad.py` sem
-        posiela aktivitu ovladaca (tlacidla, d-pad, pacicky a spuste za
-        mrtvou zonou, drzane kazdych 0,2 s) od fazy 3, kedy prestal byt
-        spustacom hlasok a stal sa druhym zdrojom informacie o aktivite.
+        WHAT it was is not recorded - only that something happened.
+        `gamepad.py` sends controller activity here (buttons, d-pad, sticks
+        and triggers beyond the dead zone, held ones every 0.2 s) since
+        phase 3, when it stopped being a cue trigger and became a second
+        source of information about activity.
         """
         now = self._clock() if now is None else now
         self._external_at = now
 
     def set_extra_source(self, fn):
-        """Pripoji druhy zdroj aktivity (napr. gamepad).
+        """Attach a second activity source (e.g. the gamepad).
 
-        `fn()` vracia ms od posledneho vstupu z toho zdroja, alebo None.
-        Vysledne idle je minimum zo vsetkych zdrojov.
+        `fn()` returns ms since the last input from that source, or None.
+        The resulting idle is the minimum of all sources.
         """
         self._extra_idle_fn = fn
 
-    # ---------- zber ----------
+    # ---------- collection ----------
 
     def poll(self, now=None):
-        """Jedno odmeranie. Vracia aktualne idle v ms (alebo None).
+        """One measurement. Returns the current idle in ms (or None).
 
-        Zaznam do `samples` sa robi len raz za `LOG_EVERY_S`, hoci sa
-        pyta 4x castejsie - castejsie vzorkovanie treba na rozpoznanie
-        pauzy, nie do suboru.
+        A record into `samples` is made only once per `LOG_EVERY_S`, even
+        though it asks 4x more often - the more frequent sampling is needed
+        to recognise a pause, not for the file.
         """
         now = self._clock() if now is None else now
         idle = self._idle_fn()
@@ -218,8 +230,8 @@ class ActivityTracker:
             if extra is not None:
                 idle = extra if idle is None else min(idle, extra)
 
-        # Vstup ohlaseny inym zdrojom (gamepad) sa zapocita ako "prave
-        # teraz nieco bolo" - berie sa to najcerstvejsie z oboch.
+        # Input reported by another source (gamepad) counts as "something
+        # happened just now" - the freshest of the two is taken.
         if self._external_at is not None:
             vonkajsie = max(0.0, (now - self._external_at) * 1000.0)
             idle = vonkajsie if idle is None else min(idle, vonkajsie)
@@ -229,12 +241,12 @@ class ActivityTracker:
 
         if idle is not None:
             if idle < ACTIVE_IDLE_MS:
-                # hrac prave nieco robi
+                # the player is doing something right now
                 if self.active_since is None:
                     self.active_since = now
                 self.pause_since = None
             else:
-                # pauza zacala v momente posledneho vstupu, nie teraz
+                # the pause started at the moment of the last input, not now
                 if self.pause_since is None:
                     self.pause_since = now - idle / 1000.0
                 self.active_since = None
@@ -246,25 +258,26 @@ class ActivityTracker:
                 del self.samples[:len(self.samples) - MAX_SAMPLES]
         return idle
 
-    # ---------- z coho hrac hra ----------
+    # ---------- what the player is playing with ----------
 
     def _urci_zdroj(self, now, idle):
-        """Trieda zariadenia z prieniku dvoch zdrojov. Viz hlavicka modulu."""
+        """Device class from intersecting both sources. See module header."""
         if not self._gamepad_watched:
             return
         if idle is None or idle >= ACTIVE_IDLE_MS:
-            return                  # prave sa nic nedeje, zdroj sa nemeni
+            return                  # nothing happening now, source unchanged
         cerstvy_pad = (self._external_at is not None
                        and (now - self._external_at) * 1000.0 < ACTIVE_IDLE_MS)
         self._source = SRC_PAD if cerstvy_pad else SRC_KB
         self._source_at = now
 
     def source(self, now=None):
-        """SRC_PAD / SRC_KB, alebo None ked sa to povedat neda.
+        """SRC_PAD / SRC_KB, or None when it cannot be told.
 
-        None znamena NEVIEME, nie "ziadny vstup": gamepad listener nemusi
-        bezat, alebo hrac este nic nestlacil. Volajuci ma vtedy mlcat, nie
-        hadat - je to udaj, ktory ide na obrazovku a hrac mu bude verit.
+        None means WE DON'T KNOW, not "no input": the gamepad listener may
+        not be running, or the player has not pressed anything yet. The
+        caller should then stay silent, not guess - it is information that
+        goes on the screen and the player will believe it.
         """
         if self._source is None or self._source_at is None:
             return None
@@ -273,24 +286,26 @@ class ActivityTracker:
             return None
         return self._source
 
-    # ---------- odvodene ----------
+    # ---------- derived ----------
 
     @property
     def is_active(self):
         return self.last_idle is not None and self.last_idle < ACTIVE_IDLE_MS
 
     def pause_s(self, now=None):
-        """Ako dlho uz trva sucasna pauza.
+        """How long the current pause has been going on.
 
-        0.0 = hrac prave nieco robi.
-        None = NEVIEME - system idle nehlasi (iny OS, zlyhane user32).
+        0.0 = the player is doing something right now.
+        None = WE DON'T KNOW - the system does not report idle (other OS,
+        failed user32).
 
-        Rozdiel medzi nulou a None je podstatny. Faza 2 odklada hlasku na
-        pauzu; keby sa "neviem" tvarilo ako "ziadna pauza", tak by na
-        stroji bez idle nikdy nenastala a VSETKY hlasky by spadli do vetvy
-        "pauza neprisla" - cize by sa doruceli ticho a tiche kontrolne
-        rameno by sa zmiesalo s nimi. Meranie by vyslo bez jedinej hlasnej
-        hlasky a nikto by nevedel preco.
+        The difference between zero and None matters. Phase 2 postpones a
+        cue to a pause; if "don't know" pretended to be "no pause", then on
+        a machine without idle a pause would never come and ALL cues would
+        fall into the "pause did not come" branch - i.e. they would be
+        delivered silently and the silent control arm would get mixed in
+        with them. The measurement would come out without a single audible
+        cue and nobody would know why.
         """
         if self.last_idle is None:
             return None
@@ -300,10 +315,10 @@ class ActivityTracker:
         return max(0.0, now - self.pause_since)
 
     def active_share(self, t0, t1):
-        """Podiel casu <t0,t1>, v ktorom bol hrac aktivny (0.0-1.0).
+        """Share of the time <t0,t1> in which the player was active (0.0-1.0).
 
-        To iste, co `measure.active_share` - tu ako pohodlie nad vlastnym
-        zaznamom, aby volajuci nemusel siahat na `samples`.
+        The same as `measure.active_share` - here as a convenience over its
+        own record, so the caller does not have to reach into `samples`.
         """
         inside = [idle for ts, idle in self.samples if t0 <= ts <= t1]
         if not inside:
@@ -313,31 +328,35 @@ class ActivityTracker:
 
 
 # --------------------------------------------------------------------------
-# Vstup bez jedinej pauzy
+# Input without a single pause
 # --------------------------------------------------------------------------
-# Odmerane u zadavatela: G7 Pro so zapnutym gyroskopom ("Motion Always On")
-# nuloval `GetLastInputInfo` kazdych ~16 ms, takze appka nevidela ziadnu
-# pauzu, kym gyro nevypol - a hlaska, ktora na pauzu caka, nemala kedy prist.
-# Clovek pri hre kratku pauzu (menu, respawn, nacitanie) za 20 minut urobi;
-# kto ju nevidi, ma v PC skor nieco, co hlasi vstup samo. Naisto to appka
-# nevie, preto len tichy riadok na Dnes, raz za relaciu.
+# Measured on the requester's setup: a G7 Pro with the gyroscope on ("Motion
+# Always On") reset `GetLastInputInfo` every ~16 ms, so the app saw no pause
+# until the gyro was switched off - and a cue waiting for a pause never got
+# a chance to come.
+# A person playing makes a short pause (menu, respawn, loading) within 20
+# minutes; if none is seen, the PC more likely has something that reports
+# input by itself. The app does not know for sure, so it is only a quiet
+# line on Today, once per session.
 NONSTOP_INPUT_S = 20 * 60.0
-# Najdlhsi krok, ktory sa zarata - uspaty PC alebo zaseknute okno nesmu
-# jednym tikom "pridat" minuty bez pauzy.
+# The longest step that is counted - a sleeping PC or a frozen window must
+# not "add" minutes without a pause in a single tick.
 _NONSTOP_MAX_STEP_S = 5.0
 
 
 class NonstopInputWatch:
-    """Ci appka uz dlho nevidela ani kratku pauzu vo vstupe.
+    """Whether the app has not seen even a short pause in the input for long.
 
-    `update()` sa vola s kazdym `poll` (4x za sekundu) s aktualnym `pause_s`
-    a s tym, ci sledovanie ma zmysel - appka pocuva a tep chodi, cize hrac ma
-    hodinky na ruke a je pri PC (lepsi znak appka nema). Cas bez pauzy sa
-    rata len vtedy; kratky vypadok tepu ho nevynuluje, len nerastie. Vynuluje
-    ho az pauza. Vracia, ci sa ma riadok ukazat.
+    `update()` is called with every `poll` (4x per second) with the current
+    `pause_s` and with whether watching makes sense - the app is listening
+    and heart rate is coming in, i.e. the player has the watch on their
+    wrist and is at the PC (the app has no better sign). Time without a
+    pause is counted only then; a short heart-rate dropout does not reset
+    it, it just does not grow. Only a pause resets it. Returns whether the
+    line should be shown.
 
-    Raz za relaciu: ked riadok zmizne (pauza prisla), v tejto relacii sa uz
-    neukaze. Novu relaciu zacina `reset()`.
+    Once per session: when the line disappears (a pause came), it will not
+    be shown again in this session. A new session is started by `reset()`.
     """
 
     def __init__(self, after_s=NONSTOP_INPUT_S):
@@ -347,13 +366,13 @@ class NonstopInputWatch:
     def reset(self):
         self._bez_pauzy_s = 0.0
         self._last = None
-        self.shown = False      # v tejto relacii sa uz ukazal
-        self.active = False     # prave sa ukazuje
+        self.shown = False      # already shown in this session
+        self.active = False     # showing right now
 
     def update(self, now, pause_s, watching, pause_needed_s=2.5):
         last, self._last = self._last, now
         if pause_s is not None and pause_s >= pause_needed_s:
-            # Pauza prisla - vstup teda nechodi bez prestania.
+            # A pause came - so input is not arriving nonstop.
             self._bez_pauzy_s = 0.0
             self.active = False
             return False

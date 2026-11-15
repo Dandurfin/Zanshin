@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
-"""Fotka na pozadí — mechanizmus, nie vzhľad.
+"""Background photo — the mechanism, not the look.
 
-Zmysel týchto testov je jediný: aby sa fotka dala vymeniť za inú bez toho,
-aby sa čokoľvek rozbilo, a aby jej neprítomnosť nikdy nezhodila okno.
+The point of these tests is only one: that the photo can be swapped for
+another without anything breaking, and that its absence never brings the
+window down.
 """
 import os
 import sys
@@ -27,13 +28,13 @@ def cista_cache():
 
 
 # --------------------------------------------------------------------------
-# Jedno miesto na zmenu
+# One place to change
 # --------------------------------------------------------------------------
 
 def test_nazov_suboru_je_len_na_jednom_mieste():
-    """Kto mení fotku, mení `IMAGE_NAME` a nič iné. Keby sa názov objavil
-    aj inde, raz sa zmení len na jednom mieste a appka bude hľadať súbor,
-    ktorý tam nie je."""
+    """Whoever changes the photo changes `IMAGE_NAME` and nothing else. If the
+    name appeared elsewhere too, one day it would get changed in one place
+    only and the app would look for a file that is not there."""
     koren = os.path.join(os.path.dirname(__file__), "..")
     najdene = []
     for meno in sorted(os.listdir(koren)):
@@ -46,42 +47,43 @@ def test_nazov_suboru_je_len_na_jednom_mieste():
 
 
 def test_ked_fotka_nie_je_appka_kresli_dalej(monkeypatch, tmp_path):
-    """Fotka je ozdoba, nie súčasť funkcie. Chýbajúci súbor nesmie zhodiť
-    okno — `load` len vráti None a volajúci nekreslí nič."""
+    """The photo is decoration, not part of the function. A missing file must
+    not bring the window down — `load` just returns None and the caller
+    draws nothing."""
     monkeypatch.setattr(background.paths, "images_dir", lambda: str(tmp_path))
     spravy = []
     assert background.image_path() is None
     assert background.available() is False
     assert background.load(800, 600, 0.1, log=spravy.append) is None
     assert len(spravy) == 1, "má sa to zalogovať raz"
-    # druhé volanie už log nezaplavuje
+    # the second call no longer floods the log
     assert background.load(800, 600, 0.1, log=spravy.append) is None
     assert len(spravy) == 1
 
 
 def test_stary_pas_uz_nie_je_zaloha(monkeypatch, tmp_path):
-    """Starý pás `dojo_band.jpg` z verzie 2.0 je v _archiv (0.2) - za behu sa
-    nikdy nenačítal. Keby na disku ostal, appka ho nehľadá a bez fotky
-    kreslí ďalej."""
+    """The old band `dojo_band.jpg` from version 2.0 is in _archiv (0.2) - it
+    was never loaded at runtime. If it stayed on disk, the app does not
+    look for it and draws on without a photo."""
     from PIL import Image
     monkeypatch.setattr(background.paths, "images_dir", lambda: str(tmp_path))
     assert not hasattr(background, "FALLBACK_NAME")
     Image.new("RGB", (1100, 190), "#203040").save(tmp_path / "dojo_band.jpg")
     assert background.image_path() is None
     assert background.load(800, 600, 0.1) is None
-    # a keď je nová fotka na mieste, nájde sa
+    # and when the new photo is in place, it is found
     Image.new("RGB", (1024, 574), "#203040").save(
         tmp_path / (background.IMAGE_NAME + ".jpg"))
     assert os.path.basename(background.image_path()) == background.IMAGE_NAME + ".jpg"
 
 
 # --------------------------------------------------------------------------
-# Jemnosť
+# Subtlety
 # --------------------------------------------------------------------------
 
 def test_jemnost_ma_strop():
-    """Nad stropom prestáva byť čitateľný malý text v paneloch — a tých je
-    deväť jazykov vrátane japončiny."""
+    """Above the cap, small text in the panels stops being readable — and
+    there are nine languages of it, including Japanese."""
     assert background.clamp_opacity(0.9) == background.MAX_OPACITY
     assert background.clamp_opacity(-1) == 0.0
     assert background.clamp_opacity(0.1) == pytest.approx(0.1)
@@ -100,13 +102,14 @@ def test_nulova_jemnost_znamena_nekreslit(monkeypatch, tmp_path):
 
 
 def test_predvolena_jemnost_je_nizka():
-    """Celý návrh stojí na tom, že prstenec „natiahnuté" zachytíš kútikom
-    oka. Výrazná fotka za všetkým je najúčinnejší spôsob, ako to zabiť."""
+    """The whole design rests on catching the „natiahnuté" (Armed) ring out of
+    the corner of your eye. A striking photo behind everything is the most
+    effective way to kill that."""
     assert background.DEFAULT_OPACITY <= 0.15
 
 
 # --------------------------------------------------------------------------
-# Samotné kreslenie
+# The drawing itself
 # --------------------------------------------------------------------------
 
 def _priprav(monkeypatch, tmp_path, size=(1024, 574)):
@@ -123,30 +126,31 @@ def test_vrati_presne_ziadany_rozmer(monkeypatch, tmp_path):
 
 
 def test_stlmenie_ide_do_alfy_nie_do_jasu(monkeypatch, tmp_path):
-    """Cez alfu sa fotka zlúči s pozadím témy, takže v Sumi ostane teplá a
-    v Aizome chladná. Stmavenie jasu by ju v oboch spravilo len sivou."""
+    """Through alpha the photo blends with the theme background, so in Sumi it
+    stays warm and in Aizome cool. Darkening the brightness would just make
+    it grey in both."""
     _priprav(monkeypatch, tmp_path)
     img = background.load(200, 150, 0.2)
     r, g, b, a = img.split()
     assert max(a.getextrema()) <= int(255 * 0.2) + 1, "alfa sa nestlmila"
-    # farba samotná ostala
+    # the colour itself stayed
     assert g.getextrema()[1] > 80
 
 
 def test_orez_zachova_pomer_a_nerozťahuje(monkeypatch, tmp_path):
-    """Fotka je 16:9, plocha je užšia. Roztiahnuť ju na výšku by z nej
-    spravilo kašu, tak sa orezáva stredom."""
+    """The photo is 16:9, the area is narrower. Stretching it to the height
+    would turn it into mush, so it is cropped from the centre."""
     _priprav(monkeypatch, tmp_path, size=(1600, 900))
     from PIL import Image
     zdroj = Image.open(tmp_path / (background.IMAGE_NAME + ".jpg"))
     orez = background._orez_na_pomer(zdroj, 800, 800)
-    assert orez.size == (900, 900), orez.size          # orezané po stranách
+    assert orez.size == (900, 900), orez.size          # cropped at the sides
     orez2 = background._orez_na_pomer(zdroj, 1600, 400)
-    assert orez2.size == (1600, 400), orez2.size       # orezané hore/dole
+    assert orez2.size == (1600, 400), orez2.size       # cropped top/bottom
 
 
 def test_cache_nerastie_donekonecna(monkeypatch, tmp_path):
-    """Prekresľuje sa pri každej zmene veľkosti a témy."""
+    """It is redrawn on every change of size and theme."""
     _priprav(monkeypatch, tmp_path)
     for i in range(14):
         assert background.load(300 + i, 200, 0.2) is not None
@@ -171,9 +175,10 @@ def test_poskodena_fotka_nezhodi_appku(monkeypatch, tmp_path):
 
 @pytest.mark.parametrize("pripona", [".jpg", ".png", ".webp"])
 def test_pripona_nerozhoduje(monkeypatch, tmp_path, pripona):
-    """Stiahnutá fotka nemá vždy príponu, ktorú čakáš. Prvá, ktorú sme sem
-    dali, prišla ako `.webp` a appka ju proste nenašla — bez chyby, bez
-    hlášky, len staré pozadie. Hľadať presne jeden názov je pasca.
+    """A downloaded photo does not always have the extension you expect. The
+    first one we put here came as `.webp` and the app simply did not find
+    it — no error, no message, just the old background. Looking for exactly
+    one name is a trap.
     """
     from PIL import Image
     monkeypatch.setattr(background.paths, "images_dir", lambda: str(tmp_path))

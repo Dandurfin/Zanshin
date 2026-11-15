@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
-"""Portugalcina v appke je brazilska (0.2, faza jazykov).
+"""Portuguese in the app is Brazilian (0.2, language phase).
 
-Prepinac ju vola „Português (Brasil)“ a hlasy su pt-BR, no do 0.2 sa v nej
-miesali dve varianty: na konci relacie „Jogaste {time}.“ (europska, „tu“)
-vedla „Você trabalhou por {time}.“ (brazilska, „você“), v navode na
-parovanie „telemóvel“ v krokoch 1 a 3 a „celular“ v kroku 2. Starsie texty
-su prepisane do brazilskej portugalciny; tento test drzi slova a tvary,
-ktore v Brazilii nikto nepovie.
+The switch calls it „Português (Brasil)“ and the voices are pt-BR, but
+until 0.2 two variants were mixed in it: at the end of a session „Jogaste
+{time}.“ (European, „tu“) next to „Você trabalhou por {time}.“
+(Brazilian, „você“), and in the pairing guide „telemóvel“ in steps 1 and
+3 and „celular“ in step 2. The older texts have been rewritten into
+Brazilian Portuguese; this test keeps out the words and forms that nobody
+in Brazil would say.
 """
 import os
 import re
@@ -16,8 +17,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import i18n  # noqa: E402
 
-# Kazdy vzor je jednoznacne europsky (brazilsky ekvivalent v komentari).
-# Porovnava sa bez ohladu na velkost pismen.
+# Each pattern is unambiguously European (Brazilian equivalent in the
+# comment). Compared ignoring letter case.
 EUROPSKE = (
     r"\btelemóve(l|is)\b",            # celular
     r"\bficheiros?\b",                # arquivo
@@ -28,10 +29,10 @@ EUROPSKE = (
     r"\b(teu|tua|teus|tuas)\b",       # seu / sua
     r"\btu\b",                        # você
     r"\b(estás|podes|queres|tens|vês|jogaste|sentiste|quiseres)\b",
-    r"\best(á|ou|ão|ava) a \w+r\b",   # está ouvindo, nie „está a ouvir“
+    r"\best(á|ou|ão|ava) a \w+r\b",   # está ouvindo, not „está a ouvir“
 )
-# „a app“ (brazilsky „o app“) - s ohladom na velkost pismen: velke A je
-# obchod („na App Store“), nie appka.
+# „a app“ (Brazilian „o app“) - case-sensitive: a capital A is the
+# store („na App Store“), not the app.
 EUROPSKA_APP = r"\b(a|à|da|na|pela) app\b"
 
 

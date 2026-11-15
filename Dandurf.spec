@@ -1,26 +1,28 @@
 # -*- mode: python ; coding: utf-8 -*-
 #
-# Onedir build (priecinok dist\Zanshin\ s .exe + kniznicami) -
-# ZAMERNE nie --onefile. Onefile pri kazdom spusteni rozbaluje seba sameho
-# do %TEMP%\_MEIxxxxxx, co Windows Smart App Control / Defender vyhodnocuje
-# ako podozrive "self-extracting" spravanie (typicka signatura dropperov).
-# Onedir nic nerozbaluje za behu - .exe len nacita kniznice z vlastneho
-# priecinka. Inno Setup (Dandurf.iss) potom cely tento priecinok skladá
-# do jedneho instalacneho balicka, takze pouzivatel stale dostane jeden
-# setup.exe na spustenie.
+# Onedir build (folder dist\Zanshin\ with the .exe + libraries) -
+# DELIBERATELY not --onefile. Onefile unpacks itself on every start into
+# %TEMP%\_MEIxxxxxx, which Windows Smart App Control / Defender rates as
+# suspicious "self-extracting" behaviour (a typical dropper signature).
+# Onedir unpacks nothing at runtime - the .exe just loads libraries from its
+# own folder. Inno Setup (Dandurf.iss) then packs this whole folder into one
+# installer package, so the user still gets a single setup.exe to run.
 #
-# uac_admin=False (viz EXE nizsie): appka NEZIADA administratorske prava.
-# POZN: povodne tu bolo `uac_admin=True` s odovodnenim, ze Smart App Control
-# povazuje globalne klavesove hooky bez elevacie za podozrive. To uz NEPLATI
-# a zamerne sa to nevracia:
-#   - klavesovy hook (WH_KEYBOARD_LL) z neverejnych verzii admin prava
-#     nepotreboval ani vtedy - overene nazivo (gui_harness_auto.py); pred
-#     prvou verejnou alfou bol zruseny, globalne hooky appka dnes nema,
-#   - instalator uz nejde do C:\Program Files, ale do %LOCALAPPDATA%\Programs
-#     (PrivilegesRequired=lowest v Dandurf.iss), takze UAC netreba ani tam,
-#   - elevovany proces + overlay nad hrou je presne profil, ktory anti-cheaty
-#     (Vanguard, EAC, VAC) hodnotia najprisnejsie.
-# Viz SAFETY.md. Nikdy to nevracaj na admin.
+# uac_admin=False (see EXE below): the app does NOT ask for administrator
+# rights.
+# NOTE: originally this was `uac_admin=True`, justified by Smart App Control
+# treating global keyboard hooks without elevation as suspicious. That NO
+# LONGER APPLIES and it is deliberately not coming back:
+#   - the keyboard hook (WH_KEYBOARD_LL) from non-public versions did not
+#     need admin rights even then - verified live (gui_harness_auto.py); it
+#     was removed before the first public alpha, the app has no global hooks
+#     today,
+#   - the installer no longer goes to C:\Program Files but to
+#     %LOCALAPPDATA%\Programs (PrivilegesRequired=lowest in Dandurf.iss), so
+#     no UAC is needed there either,
+#   - an elevated process + an overlay over the game is exactly the profile
+#     that anti-cheats (Vanguard, EAC, VAC) judge most strictly.
+# See SAFETY.md. Never switch this back to admin.
 import importlib.util
 import os
 from PyInstaller.utils.hooks import collect_all, collect_submodules, copy_metadata
@@ -34,28 +36,31 @@ pygame_datas, pygame_binaries, pygame_hidden = collect_all('pygame')
 psutil_datas, psutil_binaries, psutil_hidden = collect_all('psutil')
 
 # --------------------------------------------------------------------------
-# Poistka pre edge-tts stiahnuty appkou (tlacidlo "Aktualizovat hlas")
+# Safety net for edge-tts downloaded by the app (button "Update voice")
 # --------------------------------------------------------------------------
-# hlas_kniznica.py vie za behu nacitat novsi edge-tts z PyPI - stiahne LEN
-# jeho vlastny kod (edge_tts/*.py), nic ine. Ten kod sa ale importuje cez
-# Python zabaleny v tomto .exe a ten ma len moduly, ktore PyInstaller pri
-# builde videl. Novsi edge-tts moze siahnut po module, ktory dnesny
-# nepouziva (alebo po inom podmodule aiohttp) - import by zlyhal a appka by
-# aktualizaciu odmietla ako "incompatible" (treba novy Zanshin). Preto build
-# bali o kus viac, nez dnesny edge-tts naozaj taha:
+# hlas_kniznica.py can load a newer edge-tts from PyPI at runtime - it
+# downloads ONLY its own code (edge_tts/*.py), nothing else. But that code is
+# imported through the Python bundled in this .exe, and that one only has
+# the modules PyInstaller saw at build time. A newer edge-tts may reach for a
+# module today's one does not use (or for another aiohttp submodule) - the
+# import would fail and the app would reject the update as "incompatible"
+# (a new Zanshin is needed). That is why the build packs a bit more than
+# today's edge-tts really pulls in:
 #
-# 1. Zavislosti edge-tts cele (vsetky podmoduly, data, kniznice aj metadata):
-#    aiohttp a co ziada on (aiohappyeyeballs, aiosignal, attrs = moduly attr
-#    a attrs, frozenlist, multidict, propcache, yarl a jeho idna), tabulate
-#    a typing_extensions; certifi je cely uz vyssie. Metadata (dist-info)
-#    treba aj preto, lebo appka podla nich overi verzie, ktore novy edge-tts
-#    ziada (Requires-Dist) - bez nich by verziu len odhadovala.
-#    Bez .py zdrojakov ako dat (include_py_files=False) - bytecode v PYZ
-#    staci. Bez __main__ (to su prikazy `python -m ...`, appka ich nespusta)
-#    a z aiohttp bez testovacich modulov: pytest_plugin by do buildu
-#    dotiahol cely pytest, worker gunicorn a test_utils unittest.
-#    Balik, ktory tu nie je (starsi aiohttp napr. nemal propcache), sa
-#    preskoci - build kvoli nemu nespadne.
+# 1. The edge-tts dependencies in full (all submodules, data, libraries and
+#    metadata): aiohttp and what it requires (aiohappyeyeballs, aiosignal,
+#    attrs = modules attr and attrs, frozenlist, multidict, propcache, yarl
+#    and its idna), tabulate and typing_extensions; certifi is already
+#    included in full above. The metadata (dist-info) is also needed because
+#    the app uses it to check the versions a new edge-tts requires
+#    (Requires-Dist) - without it, it would only guess the version.
+#    Without the .py sources as data (include_py_files=False) - the bytecode
+#    in the PYZ is enough. Without __main__ (those are `python -m ...`
+#    commands, the app does not run them) and, from aiohttp, without the
+#    test modules: pytest_plugin would pull all of pytest into the build,
+#    worker gunicorn, and test_utils unittest.
+#    A package that is not here (an older aiohttp, e.g., had no propcache)
+#    is skipped - the build does not fail because of it.
 _EDGE_ZAVISLOSTI = ('aiohttp', 'aiohappyeyeballs', 'aiosignal', 'attr', 'attrs',
                     'frozenlist', 'multidict', 'propcache', 'yarl', 'idna',
                     'tabulate')
@@ -82,56 +87,58 @@ for _balik in _EDGE_ZAVISLOSTI:
         dep_datas += _d
         dep_binaries += _b
         dep_hidden += _h
-# typing_extensions je jeden modul, nie balik - collect_all by len varoval
+# typing_extensions is one module, not a package - collect_all would just warn
 if _je_tu('typing_extensions'):
     dep_hidden.append('typing_extensions')
     dep_datas += copy_metadata('typing_extensions')
 
-# 2. Rozumny zoznam standardnej kniznice, po ktorej edge-tts siaha alebo by
-#    mohol: dnesny 7.3.1 pouziva argparse, asyncio, concurrent.futures,
+# 2. A sensible list of the standard library that edge-tts uses or might
+#    use: today's 7.3.1 uses argparse, asyncio, concurrent.futures,
 #    contextlib, dataclasses, datetime, email.utils, functools, io, json,
-#    logging, queue, re, secrets, shutil, ssl, struct, time, typing, uuid a
-#    xml.sax.saxutils - zoznam ich ma vsetky a k nim pribuzne (dalsi kus
-#    toho isteho balika, ina hashovacia funkcia, ...).
-#    Cele baliky, tiez bez __main__ (asyncio.__main__ by dotiahol cely
-#    REPL).
+#    logging, queue, re, secrets, shutil, ssl, struct, time, typing, uuid and
+#    xml.sax.saxutils - the list has all of them plus related ones (another
+#    part of the same package, another hash function, ...).
+#    Whole packages, again without __main__ (asyncio.__main__ would pull in
+#    the whole REPL).
 _STDLIB_BALIKY = ('asyncio', 'concurrent', 'email', 'html', 'http', 'json',
                   'logging', 'urllib', 'xml')
 _STDLIB_MODULY = (
-    # siet a sifrovanie (WebSocket, token Sec-MS-GEC, hlavicky)
+    # network and encryption (WebSocket, Sec-MS-GEC token, headers)
     'ssl', 'socket', 'selectors', 'ipaddress', 'hashlib', 'hmac', 'secrets',
     'uuid', 'base64', 'binascii', 'struct', 'zlib', 'random',
-    # cas (hodiny pre token, hlavicka Date)
+    # time (clock for the token, Date header)
     'datetime', 'time', 'calendar',
-    # text a SSML
+    # text and SSML
     're', 'string', 'textwrap', 'unicodedata', 'codecs',
-    # jazyk a typy
+    # language and types
     'abc', 'collections', 'contextlib', 'contextvars', 'copy', 'dataclasses',
     'enum', 'functools', 'inspect', 'itertools', 'math', 'numbers',
     'operator', 'types', 'typing', 'warnings', 'weakref',
-    # subory, procesy a prikazovy riadok edge-tts
+    # files, processes and the edge-tts command line
     'argparse', 'io', 'mimetypes', 'pathlib', 'platform', 'queue', 'shlex',
     'shutil', 'signal', 'subprocess', 'tempfile', 'threading', 'traceback',
     'zipfile',
-    # nacitanie balika a zistenie verzii
+    # loading the package and finding out versions
     'importlib.abc', 'importlib.machinery', 'importlib.metadata',
     'importlib.resources', 'importlib.util',
 )
 stdlib_hidden = list(_STDLIB_MODULY)
 for _balik in _STDLIB_BALIKY:
     stdlib_hidden += collect_submodules(_balik, filter=_bez_main)
-# Velkost: nemerana (cely Analysis trva minuty). Odhad je do 2 MB navyse k
-# dist\Zanshin\ - zdrojaky vsetkeho v bodoch 1 a 2 maju spolu ~5 MB, velku
-# cast z toho (asyncio, email, http.client, json, logging, ssl, klient
-# aiohttp, yarl, multidict) build balil uz doteraz a bytecode v PYZ je
-# komprimovany. Nove su hlavne xml, http.server, server cast aiohttp a
-# email.mime. Build trva o par sekund dlhsie (zoznam podmodulov).
+# Size: not measured (the full Analysis takes minutes). The estimate is up to
+# 2 MB extra on top of dist\Zanshin\ - the sources of everything in points 1
+# and 2 total ~5 MB, a large part of that (asyncio, email, http.client, json,
+# logging, ssl, the aiohttp client, yarl, multidict) the build already packed
+# before, and the bytecode in the PYZ is compressed. New are mainly xml,
+# http.server, the server part of aiohttp and email.mime. The build takes a
+# few seconds longer (the submodule list).
 
 extra_datas = []
 if os.path.isdir('assets'):
     extra_datas.append(('assets', 'assets'))
-# POZN: tu sa pribaloval vyvojovy subor s App ID pre Steam. Zanshin nema
-# ziadnu integraciu so Steamom (0.2), takze build nic take nebali.
+# NOTE: a development file with the App ID for Steam used to be bundled here.
+# Zanshin has no Steam integration at all (0.2), so the build bundles nothing
+# of the kind.
 
 a = Analysis(
     ['main.py'],
@@ -154,13 +161,14 @@ a = Analysis(
         'numpy',
         'pygame',
         'psutil',
-        # cestina a bulharcina (0.2) - i18n.py ich vklada importom na konci
-        # suboru; PyInstaller ho najde aj sam, toto je poistka, aby build
-        # nikdy neostal bez nich (bez modulu by import i18n pri starte spadol
-        # na ImportError - appka by sa vobec nespustila).
+        # Czech and Bulgarian (0.2) - i18n.py pulls them in with an import at
+        # the end of the file; PyInstaller finds it on its own too, this is a
+        # safety net so the build is never left without them (without the
+        # module, the i18n import at start would fail with ImportError - the
+        # app would not start at all).
         'i18n_cs_bg',
     ] + comtypes_hidden + edge_hidden + certifi_hidden + ctk_hidden + numpy_hidden + pygame_hidden + psutil_hidden
-      # poistka pre stiahnuty edge-tts - viz vyssie
+      # safety net for the downloaded edge-tts - see above
       + dep_hidden + stdlib_hidden,
     hookspath=[],
     hooksconfig={},
@@ -178,17 +186,17 @@ exe = EXE(
     exclude_binaries=True,
     name='Zanshin',
     icon='Dandurf.ico',
-    # Metadata .exe (nazov, autor, popis, verzia) - bez tohto sa zabaleny
-    # .exe hlasi s prazdnou zalozkou "Podrobnosti". Viz version_info.txt.
+    # .exe metadata (name, author, description, version) - without this the
+    # bundled .exe shows an empty "Details" tab. See version_info.txt.
     version='version_info.txt',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    # UPX VYPNUTY: komprimovany .exe sa pri spusteni sam rozbaluje v
-    # pamati, co je signatura baleneho malveru - Defender/SmartScreen
-    # na to reaguju heuristikou, ktora sa meni s kazdou aktualizaciou
-    # definicii (preto build, ktory najprv isiel, zacne zrazu padat do
-    # karanteny bez jedinej zmeny v kode). Uspora miesta za to nestoji.
+    # UPX OFF: a compressed .exe unpacks itself in memory at start, which is
+    # the signature of packed malware - Defender/SmartScreen react to it with
+    # a heuristic that changes with every definitions update (so a build that
+    # worked at first suddenly starts landing in quarantine without a single
+    # code change). The space saving is not worth it.
     upx=False,
     console=False,
     disable_windowed_traceback=False,
@@ -196,13 +204,13 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    # ADMIN VYPNUTY (bolo True). Elevovany proces + overlay nad hrou je
-    # presne profil, ktory anti-cheaty (Vanguard, EAC, VAC) hodnotia
-    # najprisnejsie (viz SAFETY.md).
-    # Globalne hooky appka nema - klavesovy hook z neverejnych verzii bol
-    # zruseny pred prvou verejnou alfou. Instalator (Dandurf.iss) preto
-    # instaluje do profilu pouzivatela bez UAC - to zaroven odstranuje
-    # "Error 707" pri instalacii.
+    # ADMIN OFF (was True). An elevated process + an overlay over the game is
+    # exactly the profile that anti-cheats (Vanguard, EAC, VAC) judge most
+    # strictly (see SAFETY.md).
+    # The app has no global hooks - the keyboard hook from non-public versions
+    # was removed before the first public alpha. That is why the installer
+    # (Dandurf.iss) installs into the user profile without UAC - which also
+    # removes "Error 707" during installation.
     uac_admin=False,
 )
 
@@ -211,7 +219,7 @@ coll = COLLECT(
     a.binaries,
     a.datas,
     strip=False,
-    # UPX VYPNUTY aj tu - dovod je pri `upx=False` v EXE vyssie.
+    # UPX OFF here too - the reason is at `upx=False` in the EXE above.
     upx=False,
     name='Zanshin',
 )

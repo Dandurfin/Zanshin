@@ -1,41 +1,48 @@
-"""Stiahnutelna kniznica prirodzeneho hlasu (edge-tts) - "Aktualizovat hlas".
+"""Downloadable natural-voice library (edge-tts) - "Update voice".
 
-PRECO: Microsoft v novembri 2026 odmietol edge-tts 7.2.8 (HTTP 403). Oprava
-v edge-tts 7.3.0/7.3.1 bola ZMENA KODU (novy algoritmus tokenu Sec-MS-GEC),
-takze vydany Zanshin s pribalenou starou verziou sa neda opravit datami -
-treba novsi kod edge-tts. Rozhodnutie autora (15. 11. 2026): hrac si ho moze
-stiahnut sam jednym klikom, kym nevyjde novy Zanshin.
+WHY: in November 2026 Microsoft refused edge-tts 7.2.8 (HTTP 403). The fix
+in edge-tts 7.3.0/7.3.1 was a CODE CHANGE (a new Sec-MS-GEC token
+algorithm), so a released Zanshin with the old version bundled cannot be
+fixed with data - newer edge-tts code is needed. The author's decision
+(15. 11. 2026): the player can download it themselves with one click until
+a new Zanshin comes out.
 
-Pravidla (PRIVACY.md, SAFETY.md):
-  * len na klik, nikdy samo a nikdy pocas sledovania (`abort` volajuceho
-    sa pyta pred kazdym krokom, ktory ide na siet),
-  * len kod kniznice edge-tts z PyPI - z toho isteho zdroja, z ktoreho ju
-    berie build (build_all.ps1),
-  * stiahnuty subor sa overi: HTTPS s certifikatmi z certifi, presny
-    hostitel (aj po presmerovani), strop velkosti, sha256 z PyPI, obsah zipu
-    (len edge_tts/*.py + METADATA v pamati). Pri instalacii sa NIC nespusta,
-  * zavislosti z METADATA musia byt v tomto procese (v builde = pribalene)
-    v pozadovanej verzii - inak "treba novsi Zanshin",
-  * nova verzia sa vyskusa jednym pevnym slovom (`TEST_TEXT`, nikdy text
-    hraca) a ostane, len ked funguje; inak ostava doterajsia a hrac dostane
-    odkaz na oficialne vydania (`RELEASES_URL`).
+Rules (PRIVACY.md, SAFETY.md):
+  * only on a click, never by itself and never while watching (the caller's
+    `abort` is asked before every step that goes to the network),
+  * only the code of the edge-tts library from PyPI - from the same source
+    the build takes it from (build_all.ps1),
+  * the downloaded file is verified: HTTPS with certificates from certifi,
+    exact host (also after a redirect), size cap, sha256 from PyPI, the zip
+    content (only edge_tts/*.py + METADATA, in memory). NOTHING is run
+    during installation,
+  * the dependencies from METADATA must be in this process (in the build =
+    bundled) in the required version - otherwise "a newer Zanshin is
+    needed",
+  * the new version is tried with one fixed word (`TEST_TEXT`, never the
+    player's text) and stays only if it works; otherwise the current one
+    stays and the player gets a link to the official releases
+    (`RELEASES_URL`).
 
-Ulozisko `paths.voice_lib_dir()` (v builde %APPDATA%\\Zanshin\\voice_lib):
-  manifest.json                - aktivna stiahnuta verzia a sha256 jej suborov
-  edge_tts-<verzia>/edge_tts/  - kod kniznice (len .py a py.typed)
-  tmp/                         - rozbalovanie a skusobne slovo, po pokuse prec
+Storage `paths.voice_lib_dir()` (in the build %APPDATA%\\Zanshin\\voice_lib):
+  manifest.json                - the active downloaded version and the
+                                 sha256 of its files
+  edge_tts-<verzia>/edge_tts/  - the library code (only .py and py.typed)
+  tmp/                         - unpacking and the test word, removed
+                                 after the attempt
 
-Nacitanie: `_Hladac` (MetaPathFinder na zaciatku sys.meta_path) servuje
-balik z priecinka pod jednym menom - pri starte appky pod skutocnym
-"edge_tts" (ma prednost pred importerom PyInstalleru aj pred site-packages),
-za behu pod sukromnym aliasom, lebo "edge_tts" v pamati uz je pribaleny.
-Kazdy subor sa pred spustenim overi voci sha256 z manifestu a bytecode
-(__pycache__) sa necita ani nezapisuje. Ze sa balik sprava pod aliasom
-rovnako ako pod skutocnym menom, strazi `skontroluj_kod` (ziadny absolutny
-import "edge_tts" vo vnutri balika - 7.3.1 ma len relativne).
+Loading: `_Hladac` (a MetaPathFinder at the start of sys.meta_path) serves
+the package from the folder under one name - at app start under the real
+"edge_tts" (it takes priority over the PyInstaller importer and over
+site-packages), at runtime under a private alias, because an "edge_tts" is
+already in memory, the bundled one. Every file is verified against the
+sha256 from the manifest before it runs, and bytecode (__pycache__) is
+neither read nor written. That the package behaves the same under the
+alias as under the real name is guarded by `skontroluj_kod` (no absolute
+import of "edge_tts" inside the package - 7.3.1 has only relative ones).
 
-Vsetky funkcie, co idu na siet, blokuju - volaj ich LEN z pomocneho vlakna.
-Ziadna z nich nesiaha na Tk.
+All functions that go to the network block - call them ONLY from a helper
+thread. None of them touches Tk.
 """
 
 import ast
@@ -74,79 +81,83 @@ from paths import nahrad_subor, voice_lib_dir
 _log = get_logger("hlas_kniznica")
 
 # --------------------------------------------------------------------------
-# Konstanty
+# Constants
 # --------------------------------------------------------------------------
 
 PYPI_JSON_URL = "https://pypi.org/pypi/edge-tts/json"
-# Oficialne vydania Zanshinu - kam poslat hraca, ked sa hlas opravit neda.
+# Official Zanshin releases - where to send the player when the voice
+# cannot be fixed.
 RELEASES_URL = "https://github.com/Dandurfin/Zanshin/releases/latest"
 _PYPI_HOSTITELIA = frozenset({"pypi.org"})
 _SUBORY_HOSTITELIA = frozenset({"files.pythonhosted.org"})
-# Holy nazov appky - ziadna verzia ani nic o hracovi (PRIVACY.md).
+# Bare app name - no version and nothing about the player (PRIVACY.md).
 USER_AGENT = "Zanshin"
 HTTP_TIMEOUT_S = 15.0
 MAX_PRESMEROVANI = 3
-JSON_STROP_B = 4 * 1024 * 1024      # cely zoznam vydani edge-tts ma ~0,2 MB
-WHEEL_STROP_B = 2 * 1024 * 1024     # wheel 7.3.1 ma ~39 kB (38 908 B)
+JSON_STROP_B = 4 * 1024 * 1024      # the whole edge-tts release list is ~0.2 MB
+WHEEL_STROP_B = 2 * 1024 * 1024     # the 7.3.1 wheel is ~39 kB (38 908 B)
 ZIP_MAX_POLOZIEK = 400
-ZIP_SUBOR_STROP_B = 1024 * 1024     # najvacsi subor 7.3.1 (communicate.py) ~24 kB
+ZIP_SUBOR_STROP_B = 1024 * 1024     # biggest file of 7.3.1 (communicate.py) ~24 kB
 ZIP_SPOLU_STROP_B = 8 * 1024 * 1024
 METADATA_STROP_B = 512 * 1024
 
-# Skusobne slovo: pevny neutralny text, NIKDY text hlasky hraca.
+# Test word: a fixed neutral text, NEVER the text of the player's cue.
 TEST_TEXT = "Zanshin"
 TEST_HLAS = "en-GB-SoniaNeural"
 TEST_TIMEOUT_S = 20.0
-# Kolko najviac caka vymena modulu na zamok cache (jedna hlaska, ktora prave
-# leti). Potom sa vymeni aj tak - priradenie modulu je atomicke a hlaska,
-# ktora leti, si drzi svoj stary modul (audio_engine.nastav_edge_tts).
+# The longest the module swap waits for the cache lock (one cue that is
+# flying right now). After that it swaps anyway - assigning the module is
+# atomic and a cue in flight keeps its old module
+# (audio_engine.nastav_edge_tts).
 ZAMOK_CAKANIE_S = 30.0
 
 MANIFEST_MENO = "manifest.json"
 TMP_MENO = "tmp"
 _FORMAT_MANIFESTU = 1
 
-# Stavy vysledku `aktualizuj` (strojovo citatelne, texty ma GUI v i18n).
-STAV_AKTUALNY = "up_to_date"            # najnovsia uz bezi a skusobne slovo preslo
-STAV_AKTUALIZOVANY = "updated"          # nova verzia aktivna od tejto chvile
-STAV_STALE_ODMIETNUTY = "refused_still"  # Microsoft odmieta aj najnovsiu
-STAV_OFFLINE = "offline"                # PyPI alebo Microsoft nedostupny
-STAV_NEKOMPATIBILNY = "incompatible"    # zavislosti / API / Python - treba novsi Zanshin
-STAV_OVERENIE_ZLYHALO = "verify_failed"  # hostitel, sha256, velkost, obsah zipu
-STAV_ZRUSENY = "cancelled"              # medzitym sa zaplo sledovanie (`abort`)
-STAV_ZANEPRAZDNENY = "busy"             # ina aktualizacia prave bezi
-STAV_CHYBA = "error"                    # cokolvek ine (disk, necakana odpoved)
+# States of the `aktualizuj` result (machine-readable; the GUI has the
+# texts in i18n).
+STAV_AKTUALNY = "up_to_date"            # the newest already runs and the test word passed
+STAV_AKTUALIZOVANY = "updated"          # new version active from this moment
+STAV_STALE_ODMIETNUTY = "refused_still"  # Microsoft refuses even the newest
+STAV_OFFLINE = "offline"                # PyPI or Microsoft unreachable
+STAV_NEKOMPATIBILNY = "incompatible"    # dependencies / API / Python - a newer Zanshin is needed
+STAV_OVERENIE_ZLYHALO = "verify_failed"  # host, sha256, size, zip content
+STAV_ZRUSENY = "cancelled"              # watching was switched on meanwhile (`abort`)
+STAV_ZANEPRAZDNENY = "busy"             # another update is running right now
+STAV_CHYBA = "error"                    # anything else (disk, unexpected answer)
 
 _KANDIDAT = "candidate"
 
-# `\Z`, nie `$`: `$` pusti aj koncovy '\n' ("9.0.0\n" by platila za finalnu
-# verziu a riadok app.log by sa rozdelil na dva).
+# `\Z`, not `$`: `$` also lets through a trailing '\n' ("9.0.0\n" would pass
+# for a final version and the app.log line would split in two).
 _FINALNA_VERZIA = re.compile(r"^\d{1,9}(?:\.\d{1,9}){0,7}\Z")
 _PRIECINOK_VERZIE = re.compile(r"^edge_tts-\d{1,9}(?:\.\d{1,9}){0,7}\Z")
 _SHA256 = re.compile(r"^[0-9a-f]{64}\Z")
 _MENO_MODULU = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}\Z")
-# Chyby z kodu stiahnutej kniznice (import, Communicate(...), skusobne
-# slovo). Aj SystemExit - `sys.exit()` v kniznici by inak zhodil start appky
-# (pri kazdom starte, manifest by sa neoznacil) alebo vlakno aktualizacie
-# (GUI by cakalo navzdy). KeyboardInterrupt sa nechyta.
+# Errors from the code of the downloaded library (import, Communicate(...),
+# test word). SystemExit too - `sys.exit()` in the library would otherwise
+# crash the app start (on every start, the manifest would not get marked) or
+# the update thread (the GUI would wait forever). KeyboardInterrupt is not
+# caught.
 _CHYBY_KNIZNICE = (Exception, SystemExit)
 _REZERVOVANE_WIN = frozenset(
     ["CON", "PRN", "AUX", "NUL"] + ["COM%d" % i for i in range(1, 10)]
     + ["LPT%d" % i for i in range(1, 10)])
-# Pripony, ktore by sa pri instalacii alebo importe spustali samy (.pth),
-# alebo su skompilovany kod - wheel edge-tts nic take nema.
+# Extensions that would run by themselves during installation or import
+# (.pth), or that are compiled code - the edge-tts wheel has nothing like it.
 _SPUSTITELNE_PRIPONY = (".pth", ".pyd", ".so", ".dll", ".dylib", ".exe",
                         ".pyc", ".pyo", ".bat", ".cmd", ".ps1", ".sh")
 
-# Zavislosti edge-tts, ktore smu byt naimportovane len kvoli `__version__`
-# (v builde chyba ich dist-info - PyInstaller bali metadata len pre
-# edge_tts a certifi). Su to pribalene kniznice, nie stiahnuty kod.
+# edge-tts dependencies that may be imported only for `__version__` (in the
+# build their dist-info is missing - PyInstaller bundles metadata only for
+# edge_tts and certifi). They are bundled libraries, not downloaded code.
 _ZNAME_ZAVISLOSTI = frozenset({"aiohttp", "certifi", "tabulate", "typing_extensions"})
 
-KNIZNICA_DIR = None     # testy presmeruju; None = paths.voice_lib_dir()
+KNIZNICA_DIR = None     # tests redirect it; None = paths.voice_lib_dir()
 
-_beh = threading.Lock()          # jedna aktualizacia naraz
-_nacitane = {}                   # verzia -> (modul, hladac) nacitane v tomto behu
+_beh = threading.Lock()          # one update at a time
+_nacitane = {}                   # version -> (module, finder) loaded in this run
 
 
 def kniznica_dir():
@@ -158,18 +169,20 @@ def _tmp_dir():
 
 
 # --------------------------------------------------------------------------
-# Vysledok
+# Result
 # --------------------------------------------------------------------------
 
 @dataclass
 class Vysledok:
-    """Vysledok jedneho pokusu `aktualizuj`.
+    """Result of one `aktualizuj` attempt.
 
-    stav      - `STAV_*` (strojovo citatelny),
-    aktivna   - verzia edge-tts, ktora bezala pred pokusom (None = ziadna),
-    nova      - verzia aktivovana tymto pokusom (len pri STAV_AKTUALIZOVANY),
-    najnovsia - najnovsia finalna verzia na PyPI, ak sa ju podarilo zistit,
-    dovod     - kratky technicky dovod do app.log (bez ciest a textov hraca).
+    stav      - `STAV_*` (machine-readable),
+    aktivna   - the edge-tts version that ran before the attempt (None = none),
+    nova      - the version activated by this attempt (only with
+                STAV_AKTUALIZOVANY),
+    najnovsia - the newest final version on PyPI, if it could be found out,
+    dovod     - a short technical reason for app.log (no paths and no player
+                texts).
     """
     stav: str
     aktivna: str = None
@@ -183,7 +196,7 @@ class Vysledok:
 
 
 class _Zlyhanie(Exception):
-    """Pokus skoncil so stavom `stav`; `dovod` ide do app.log."""
+    """The attempt ended with the state `stav`; `dovod` goes to app.log."""
 
     def __init__(self, stav, dovod):
         super().__init__(dovod)
@@ -192,8 +205,9 @@ class _Zlyhanie(Exception):
 
 
 def _meno_chyby(exc):
-    """Meno triedy chyby (a jej priciny pri URLError) - nikdy text chyby,
-    v nom byva cela cesta a v %APPDATA% je meno uctu (PRIVACY.md)."""
+    """Name of the error class (and of its cause for URLError) - never the
+    error text, it often holds the full path and in %APPDATA% there is the
+    account name (PRIVACY.md)."""
     meno = type(exc).__name__
     dovod = getattr(exc, "reason", None)
     if isinstance(exc, urllib.error.URLError) and isinstance(dovod, BaseException):
@@ -207,14 +221,15 @@ def _kratke(text, n=60):
 
 
 class PokazenySubor(ImportError):
-    """Subor stiahnutej kniznice nesedi s manifestom. Sprava nesie LEN meno
-    suboru, nikdy cestu - ide do app.log aj do manifestu."""
+    """A file of the downloaded library does not match the manifest. The
+    message carries ONLY the file name, never the path - it goes to app.log
+    and into the manifest."""
 
 
 def _dovod_chyby(exc):
-    """Kratky dovod zlyhania nacitania bez ciest. Text ImportError od Pythonu
-    ("cannot import name X from Y (C:\\...)") cestu nesie, preto sa z neho
-    berie len meno modulu a trieda chyby."""
+    """Short reason for a loading failure, without paths. The ImportError text
+    from Python ("cannot import name X from Y (C:\\...)") carries the path,
+    so only the module name and the error class are taken from it."""
     if isinstance(exc, _Zlyhanie):
         return exc.dovod
     if isinstance(exc, PokazenySubor):
@@ -228,12 +243,13 @@ def _dovod_chyby(exc):
 
 
 # --------------------------------------------------------------------------
-# Verzie a specifikatory (maly porovnavac, bez kniznice `packaging`)
+# Versions and specifiers (a small comparer, without the `packaging` library)
 # --------------------------------------------------------------------------
 #
-# `packaging` v builde nie je a stahovat ho nebudeme. Staci podmnozina
-# PEP 440: release z cisel, a/b/rc, post, dev, lokalna cast sa ignoruje.
-# Epocha ("1!2.0") a ina exotika = neznamy tvar -> poziadavka NESPLNENA.
+# `packaging` is not in the build and we will not download it. A subset of
+# PEP 440 is enough: a numeric release, a/b/rc, post, dev; the local part is
+# ignored. An epoch ("1!2.0") and other exotica = unknown form -> requirement
+# NOT MET.
 
 _VERZIA = re.compile(
     r"^\s*v?(?P<rel>\d+(?:\.\d+)*)"
@@ -247,7 +263,7 @@ _DLZKA_RELEASE = 8
 
 
 def _rozober_verziu(text):
-    """'7.3.1rc1' -> (release, kluc na porovnanie), neznamy tvar -> None."""
+    """'7.3.1rc1' -> (release, comparison key), unknown form -> None."""
     if not isinstance(text, str):
         return None
     m = _VERZIA.match(text)
@@ -260,9 +276,9 @@ def _rozober_verziu(text):
     if m.group("pre"):
         pre = (_PRE_PORADIE[m.group("pre").lower()], int(m.group("pren") or 0))
     elif m.group("dev") and not ma_post:
-        pre = (-1, 0)           # 1.0.dev1 je pred 1.0a1
+        pre = (-1, 0)           # 1.0.dev1 comes before 1.0a1
     else:
-        pre = (3, 0)            # finalna
+        pre = (3, 0)            # final
     post = int(m.group("post1") or m.group("postn") or 0) if ma_post else -1
     dev = int(m.group("devn") or 0) if m.group("dev") else math.inf
     kluc = (rel + (0,) * (_DLZKA_RELEASE - len(rel)), pre, post, dev)
@@ -270,15 +286,15 @@ def _rozober_verziu(text):
 
 
 def verzia_finalna(text):
-    """'7.3.1' -> (7, 3, 1). Len cisla a bodky - a/b/rc/dev/post -> None."""
+    """'7.3.1' -> (7, 3, 1). Only digits and dots - a/b/rc/dev/post -> None."""
     if not isinstance(text, str) or not _FINALNA_VERZIA.match(text):
         return None
     return tuple(int(c) for c in text.split("."))
 
 
 def je_novsia(a, b):
-    """Je verzia `a` novsia nez `b`? Nezistena `b` (None) = ano, neznamy
-    tvar `a` = nie."""
+    """Is version `a` newer than `b`? An unknown `b` (None) = yes, an unknown
+    form of `a` = no."""
     ra = _rozober_verziu(a)
     if ra is None:
         return False
@@ -296,11 +312,12 @@ _KLAUZULA = re.compile(r"^\s*(~=|==|!=|<=|>=|<|>)\s*(\S+)\s*$")
 
 
 def splna_poziadavku(verzia, specifikator):
-    """Splna `verzia` (text) `specifikator` ('>=3.8.0,<4.0.0')?
+    """Does `verzia` (text) meet `specifikator` ('>=3.8.0,<4.0.0')?
 
-    Prazdny specifikator = bez obmedzenia. Operatory >=, >, <=, <, ==, !=,
-    ~= a ==X.* / !=X.*, spojene ciarkou. Neznamy tvar (===, URL, epocha,
-    nezmysel) -> False: radsej odmietnut nez pustit nieco, co nesedi."""
+    An empty specifier = no restriction. Operators >=, >, <=, <, ==, !=,
+    ~= and ==X.* / !=X.*, joined by commas. An unknown form (===, URL,
+    epoch, nonsense) -> False: better to refuse than to let through
+    something that does not fit."""
     if specifikator is None:
         return True
     if not isinstance(specifikator, str):
@@ -353,7 +370,7 @@ def _normalizuj_meno(meno):
 
 
 # --------------------------------------------------------------------------
-# Znacky prostredia v Requires-Dist (PEP 508, podmnozina)
+# Environment markers in Requires-Dist (PEP 508, a subset)
 # --------------------------------------------------------------------------
 
 class _NeznamaZnacka(Exception):
@@ -491,8 +508,8 @@ class _ZnackaParser:
 
 
 def plati_znacka(znacka):
-    """Plati znacka prostredia ('python_version < "3.11"') v tomto procese?
-    Neznamy tvar -> True: poziadavka sa radsej skontroluje."""
+    """Does the environment marker ('python_version < "3.11"') hold in this
+    process? Unknown form -> True: the requirement gets checked, to be safe."""
     try:
         return bool(_ZnackaParser(_tokeny_znacky(znacka), _prostredie()).cely())
     except (_NeznamaZnacka, IndexError, ValueError, TypeError):
@@ -500,7 +517,7 @@ def plati_znacka(znacka):
 
 
 # --------------------------------------------------------------------------
-# Zavislosti z METADATA
+# Dependencies from METADATA
 # --------------------------------------------------------------------------
 
 _POZIADAVKA = re.compile(
@@ -510,7 +527,7 @@ _POZIADAVKA = re.compile(
 
 def rozober_poziadavku(riadok):
     """'aiohttp<4.0.0,>=3.8.0' -> ('aiohttp', '<4.0.0,>=3.8.0', '').
-    Vracia (meno, specifikator, znacka); znacka je text za ';'."""
+    Returns (meno, specifikator, znacka); znacka is the text after ';'."""
     if not isinstance(riadok, str):
         raise ValueError("poziadavka nie je text")
     cast, _, znacka = riadok.partition(";")
@@ -519,13 +536,14 @@ def rozober_poziadavku(riadok):
         raise ValueError("necitatelna poziadavka")
     spec = m.group("spec")
     if spec.startswith("(") and spec.endswith(")"):
-        spec = spec[1:-1].strip()      # stary tvar "foo (>=1.0)"
+        spec = spec[1:-1].strip()      # old form "foo (>=1.0)"
     return m.group("meno"), spec, znacka.strip()
 
 
 def _najdi_modul(dist):
-    """Importovatelne meno balika `dist` v tomto procese, alebo None.
-    Nic sa pritom nespusta (`find_spec` top-level mena len hlada)."""
+    """Importable name of the package `dist` in this process, or None.
+    Nothing is run in the process (`find_spec` only looks up top-level
+    names)."""
     norm = re.sub(r"[-_.]+", "_", dist).lower()
     kandidati = []
     try:
@@ -550,11 +568,12 @@ def _najdi_modul(dist):
 
 
 def _verzia_balika(dist, modul):
-    """Verzia nainstalovaneho (v builde pribaleneho) balika, alebo None.
+    """Version of the installed (in the build: bundled) package, or None.
 
-    Najprv dist-info (`importlib.metadata`). V builde ho ma len edge_tts a
-    certifi (collect_all), preto nahradne `__version__` - z modulu, ktory uz
-    je v pamati, alebo zo zavislosti edge-tts (`_ZNAME_ZAVISLOSTI`)."""
+    First the dist-info (`importlib.metadata`). In the build only edge_tts
+    and certifi have it (collect_all), so as a fallback `__version__` - from
+    a module that is already in memory, or from the edge-tts dependencies
+    (`_ZNAME_ZAVISLOSTI`)."""
     try:
         verzia = metadata.version(dist)
         if verzia:
@@ -572,15 +591,17 @@ def _verzia_balika(dist, modul):
 
 
 def skontroluj_zavislosti(riadky):
-    """Requires-Dist riadky -> (problemy, neoverene).
+    """Requires-Dist lines -> (problemy, neoverene).
 
-    problemy  - co chyba alebo je stare (treba novsi Zanshin); prazdne = OK,
-    neoverene - baliky, ktore tu su, ale ich verzia sa zistit neda (v builde
-                bez dist-info a bez `__version__`, napr. typing_extensions).
-                Prepustia sa: rozhodne o nich import a skusobne slovo.
+    problemy  - what is missing or old (a newer Zanshin is needed);
+                empty = OK,
+    neoverene - packages that are here, but whose version cannot be found
+                out (in the build without dist-info and without
+                `__version__`, e.g. typing_extensions). They are let
+                through: the import and the test word decide about them.
 
-    Riadky so znackou `extra` (volitelne doplnky, napr. 'extra == "dev"')
-    sa preskocia, ostatne znacky sa vyhodnotia (`plati_znacka`)."""
+    Lines with an `extra` marker (optional add-ons, e.g. 'extra == "dev"')
+    are skipped, the other markers are evaluated (`plati_znacka`)."""
     problemy, neoverene = [], []
     for riadok in riadky or ():
         try:
@@ -611,8 +632,9 @@ def skontroluj_zavislosti(riadky):
 
 
 def skontroluj_metadata(text, verzia, python_verzia=None):
-    """METADATA z wheelu: meno a verzia sedia, Python a zavislosti tu su.
-    Vracia zoznam neoverenych zavislosti (pozri `skontroluj_zavislosti`)."""
+    """METADATA from the wheel: name and version match, Python and the
+    dependencies are here. Returns the list of unverified dependencies
+    (see `skontroluj_zavislosti`)."""
     python_verzia = python_verzia or _python_verzia()
     sprava = email.parser.HeaderParser().parsestr(text)
     if (_normalizuj_meno(sprava.get("Name")) != "edge-tts"
@@ -629,11 +651,11 @@ def skontroluj_metadata(text, verzia, python_verzia=None):
 
 
 # --------------------------------------------------------------------------
-# Siet (jedine miesto modulu, kde sa chodi von)
+# Network (the only place in the module that goes out)
 # --------------------------------------------------------------------------
 
 def _over_url(url, hostitelia):
-    """Len https, presny hostitel, bez mena/hesla v URL, port 443."""
+    """Only https, exact host, no name/password in the URL, port 443."""
     try:
         cast = urllib.parse.urlsplit(url)
         port = cast.port
@@ -647,7 +669,7 @@ def _over_url(url, hostitelia):
 
 
 class _OverenePresmerovanie(urllib.request.HTTPRedirectHandler):
-    """Presmerovanie len na povoleneho hostitela - kazdy skok sa overi."""
+    """Redirect only to an allowed host - every hop is verified."""
 
     max_redirections = MAX_PRESMEROVANI
 
@@ -661,8 +683,8 @@ class _OverenePresmerovanie(urllib.request.HTTPRedirectHandler):
 
 
 def _otvor(req, hostitelia):
-    """Otvori poziadavku cez HTTPS s certifikatmi z certifi. Testy ho
-    nahradzaju - na siet nesmu ist nikdy."""
+    """Opens the request over HTTPS with certificates from certifi. Tests
+    replace it - they must never go to the network."""
     import ssl
 
     import certifi
@@ -687,8 +709,9 @@ def _citaj_so_stropom(resp, strop):
 
 
 def _http_get(url, strop, hostitelia, accept="*/*"):
-    """GET `url` -> bajty. Overi adresu pred aj po presmerovani a strop
-    velkosti. Chyby siete -> STAV_OFFLINE, HTTP chyba -> STAV_CHYBA."""
+    """GET `url` -> bytes. Verifies the address before and after a redirect
+    and the size cap. Network errors -> STAV_OFFLINE, HTTP error ->
+    STAV_CHYBA."""
     _over_url(url, hostitelia)
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT,
                                                "Accept": accept})
@@ -709,7 +732,7 @@ def _http_get(url, strop, hostitelia, accept="*/*"):
 
 
 def stiahni_zoznam_vydani():
-    """JSON projektu edge-tts z PyPI (dict). Blokuje - len z vlakna."""
+    """JSON of the edge-tts project from PyPI (dict). Blocks - thread only."""
     obsah = _http_get(PYPI_JSON_URL, JSON_STROP_B, _PYPI_HOSTITELIA,
                       accept="application/json")
     try:
@@ -722,12 +745,12 @@ def stiahni_zoznam_vydani():
 
 
 # --------------------------------------------------------------------------
-# Vyber verzie z PyPI
+# Choosing a version from PyPI
 # --------------------------------------------------------------------------
 
 def _vydania_z_json(data):
-    """{verzia: [subory]} - z "releases", alebo (ked PyPI "releases" raz
-    vypusti) aspon najnovsia verzia z "info" + "urls"."""
+    """{version: [files]} - from "releases", or (should PyPI ever drop
+    "releases") at least the newest version from "info" + "urls"."""
     vydania = data.get("releases") if isinstance(data, dict) else None
     if isinstance(vydania, dict) and vydania:
         return vydania
@@ -740,7 +763,7 @@ def _vydania_z_json(data):
 
 
 def _vhodny_subor(verzia, subory, python_verzia):
-    """Wheel py3-none-any danej verzie, ktory sa smie stiahnut, alebo
+    """A py3-none-any wheel of the given version that may be downloaded, or
     (None, dovod)."""
     ocakavany = "edge_tts-%s-py3-none-any.whl" % verzia
     dovod = "bez wheelu py3-none-any"
@@ -774,14 +797,14 @@ def _vhodny_subor(verzia, subory, python_verzia):
 
 
 def vyber_kandidata(data, aktivna, python_verzia=None):
-    """Z JSON-u PyPI vyberie najnovsiu FINALNU verziu (len cisla a bodky),
-    nestiahnutu (yanked), s wheelom py3-none-any pre tento Python a novsiu
-    nez `aktivna`.
+    """From the PyPI JSON picks the newest FINAL version (digits and dots
+    only), not withdrawn (yanked), with a py3-none-any wheel for this Python
+    and newer than `aktivna`.
 
-    Vracia dict so "stav":
+    Returns a dict with "stav":
       "candidate"      + verzia, url, sha256, subor, velkost, najnovsia,
-      STAV_AKTUALNY    - nic novsie (najnovsia = najnovsia finalna vobec),
-      STAV_NEKOMPATIBILNY - novsie verzie su, ale ani jedna sa tu neda pouzit.
+      STAV_AKTUALNY    - nothing newer (najnovsia = the newest final at all),
+      STAV_NEKOMPATIBILNY - newer versions exist, but none can be used here.
     """
     python_verzia = python_verzia or _python_verzia()
     vydania = _vydania_z_json(data)
@@ -789,10 +812,10 @@ def vyber_kandidata(data, aktivna, python_verzia=None):
     for verzia, subory in vydania.items():
         t = verzia_finalna(verzia)
         if t is None or not isinstance(subory, list):
-            continue            # predbezna, dev, post, lokalna alebo pokazena
+            continue            # pre-release, dev, post, local or broken
         platne = [f for f in subory if isinstance(f, dict) and not f.get("yanked")]
         if not platne:
-            continue            # stiahnute (yanked) vydanie alebo bez suborov
+            continue            # withdrawn (yanked) release or no files
         vsetky.append((t, verzia))
         if aktivna is None or je_novsia(verzia, aktivna):
             novsie.append((t, verzia, platne))
@@ -812,7 +835,7 @@ def vyber_kandidata(data, aktivna, python_verzia=None):
 
 
 def stiahni_wheel(kandidat):
-    """Stiahne wheel kandidata a overi velkost a sha256 z PyPI. Blokuje."""
+    """Downloads the candidate wheel, verifies size and PyPI sha256. Blocks."""
     data = _http_get(kandidat["url"], WHEEL_STROP_B, _SUBORY_HOSTITELIA)
     velkost = kandidat.get("velkost")
     if velkost is not None and len(data) != velkost:
@@ -823,7 +846,7 @@ def stiahni_wheel(kandidat):
 
 
 # --------------------------------------------------------------------------
-# Obsah wheelu (v pamati, nic sa nespusta)
+# Wheel content (in memory, nothing is run)
 # --------------------------------------------------------------------------
 
 def _zly_zip(dovod):
@@ -831,10 +854,11 @@ def _zly_zip(dovod):
 
 
 def _over_meno_v_zipe(info):
-    """Bezpecne meno polozky zipu (s '/'), inak _Zlyhanie verify_failed.
+    """A safe zip entry name (with '/'), otherwise _Zlyhanie verify_failed.
 
-    `orig_filename` je meno, ako je v archive: zipfile vo Windows meni '\\'
-    na '/' uz pri citani, takze spatnu lomku vidno len tam."""
+    `orig_filename` is the name as it is in the archive: on Windows zipfile
+    turns '\\' into '/' already when reading, so the backslash is only
+    visible there."""
     povodne = info.orig_filename
     meno = info.filename
     if not isinstance(povodne, str) or not povodne or len(povodne) > 255:
@@ -890,13 +914,14 @@ def _precitaj(zf, info, strop):
 
 
 def rozbal_wheel(data, verzia):
-    """Wheel (bajty) -> ({meno_suboru: obsah} pre edge_tts/, text METADATA).
+    """Wheel (bytes) -> ({file_name: content} for edge_tts/, METADATA text).
 
-    Rozbaluju sa LEN subory "edge_tts/<meno>.py" a "edge_tts/py.typed"
-    (7.3.1 nema v edge_tts ziadny podpriecinok). METADATA sa cita len do
-    pamate. Pomocny prehravac edge_playback/ a ostatne subory dist-info
-    (RECORD, WHEEL, licencia) su vo wheeli tiez - neberu sa, len sa overia
-    ich mena. Cokolvek ine vo wheeli = odmietnutie."""
+    ONLY the files "edge_tts/<meno>.py" and "edge_tts/py.typed" are
+    unpacked (7.3.1 has no subfolder in edge_tts). METADATA is only read
+    into memory. The helper player edge_playback/ and the other dist-info
+    files (RECORD, WHEEL, licence) are in the wheel too - they are not
+    taken, only their names are verified. Anything else in the wheel =
+    rejection."""
     distinfo = "edge_tts-%s.dist-info/" % verzia
     try:
         zf = zipfile.ZipFile(io.BytesIO(data))
@@ -919,7 +944,7 @@ def rozbal_wheel(data, verzia):
             if spolu > ZIP_SPOLU_STROP_B:
                 raise _zly_zip("obsah je vacsi nez %d B" % ZIP_SPOLU_STROP_B)
             if meno.endswith("/"):
-                continue                # priecinok - jeho subory sa overia samy
+                continue                # a folder - its files get verified on their own
             casti = meno.split("/")
             if (any(c.lower().endswith(_SPUSTITELNE_PRIPONY) for c in casti)
                     or casti[0].lower().endswith(".data")):
@@ -936,10 +961,10 @@ def rozbal_wheel(data, verzia):
             elif meno == distinfo + "METADATA":
                 metadata_info = info
             elif meno.startswith(distinfo):
-                pass                    # RECORD, WHEEL, licencia - nerozbaluju sa
+                pass                    # RECORD, WHEEL, licence - not unpacked
             elif (casti[0] == "edge_playback" and len(casti) == 2
                   and (casti[1] == "py.typed" or _je_modul_py(casti[1]))):
-                pass                    # prehravac z wheelu - Zanshin ho nepouziva
+                pass                    # player from the wheel - Zanshin does not use it
             elif casti[0].endswith(".dist-info"):
                 raise _zly_zip("metadata inej verzie %s" % _kratke(meno))
             else:
@@ -966,9 +991,10 @@ def _je_dynamicky_import(uzol):
 
 
 def skontroluj_kod(subory):
-    """Zdrojaky sa daju precitat (len ast.parse - nic sa nespusta) a balik
-    neimportuje sam seba absolutne ("import edge_tts..."). Taky import by pod
-    aliasom za behu natiahol PRIBALENU verziu a zmiesal dve verzie naraz."""
+    """The sources can be read (ast.parse only - nothing is run) and the
+    package does not import itself absolutely ("import edge_tts..."). Such
+    an import under the alias at runtime would pull in the BUNDLED version
+    and mix two versions at once."""
     for meno, obsah in sorted(subory.items()):
         if not meno.endswith(".py"):
             continue
@@ -990,14 +1016,15 @@ def skontroluj_kod(subory):
 
 
 # --------------------------------------------------------------------------
-# Nacitanie overeneho balika (MetaPathFinder + loader so sha256)
+# Loading the verified package (MetaPathFinder + loader with sha256)
 # --------------------------------------------------------------------------
 
 class _OverenyLoader(importlib.machinery.SourceFileLoader):
-    """Nacita JEDEN .py subor a pred spustenim overi jeho sha256.
+    """Loads ONE .py file and verifies its sha256 before running it.
 
-    Bytecode sa necita ani nezapisuje: v __pycache__ by mohlo lezat nieco,
-    co sa nikdy neoverilo, a do priecinka kniznice sa po instalacii nepise."""
+    Bytecode is neither read nor written: something that was never verified
+    could lie in __pycache__, and nothing is written into the library
+    folder after installation."""
 
     def __init__(self, fullname, path, ocakavany_hash):
         super().__init__(fullname, path)
@@ -1022,13 +1049,14 @@ class _OverenyLoader(importlib.machinery.SourceFileLoader):
 
 
 class _Hladac(importlib.abc.MetaPathFinder):
-    """Servuje LEN `meno` a `meno.<modul>` z jedneho priecinka balika.
+    """Serves ONLY `meno` and `meno.<modul>` from one package folder.
 
-    Pri starte je `meno` "edge_tts" a hladac stoji na sys.meta_path[0], teda
-    pred importerom PyInstalleru aj pred site-packages - inak by sa natiahla
-    pribalena verzia. Ine mena necha dalsim hladacom (vracia None). Modul
-    pod svojim menom, ktory v manifeste nie je (podpriecinok, podstrceny
-    subor), odmietne rovno - nesmie ho najst ani obycajny PathFinder."""
+    At start `meno` is "edge_tts" and the finder sits at sys.meta_path[0],
+    i.e. before the PyInstaller importer and before site-packages -
+    otherwise the bundled version would get loaded. Other names it leaves to
+    the next finders (returns None). A module under its name that is not in
+    the manifest (a subfolder, a planted file) it rejects outright - not
+    even the ordinary PathFinder may find it."""
 
     def __init__(self, meno, priecinok, hashe):
         self.meno = meno
@@ -1054,8 +1082,9 @@ class _Hladac(importlib.abc.MetaPathFinder):
 
 
 def _pridaj_hladac(hladac):
-    # Novy zoznam namiesto insert/remove: import v inom vlakne prave prechadza
-    # stary zoznam a posun prvkov by mu jeden hladac preskocil.
+    # A new list instead of insert/remove: an import in another thread may be
+    # walking the old list right now and shifting the items would make it
+    # skip a finder.
     sys.meta_path = [hladac] + [f for f in sys.meta_path if f is not hladac]
 
 
@@ -1069,11 +1098,11 @@ def _zabudni_moduly(meno):
 
 
 def nacitaj_balik(meno, priecinok_balika, hashe):
-    """Natiahne balik z `priecinok_balika` pod menom `meno` -> (modul, hladac).
+    """Loads the package from `priecinok_balika` as `meno` -> (module, finder).
 
-    Hladac ostava na sys.meta_path, kym modul zije (edge-tts moze dotiahnut
-    podmodul neskor). Pri chybe sa hladac aj ciastocne nacitane moduly
-    odstrania a chyba sa vyhodi dalej."""
+    The finder stays on sys.meta_path as long as the module lives (edge-tts
+    may pull in a submodule later). On an error the finder and any partly
+    loaded modules are removed and the error is raised on."""
     if meno in sys.modules:
         raise ImportError("meno %s uz je obsadene" % meno, name=meno)
     hladac = _Hladac(meno, priecinok_balika, hashe)
@@ -1088,7 +1117,7 @@ def nacitaj_balik(meno, priecinok_balika, hashe):
 
 
 def zahod_balik(modul, hladac):
-    """Opak `nacitaj_balik` - pre kandidata, ktory nepresiel."""
+    """The opposite of `nacitaj_balik` - for a candidate that did not pass."""
     _odober_hladac(hladac)
     if modul is not None:
         _zabudni_moduly(modul.__name__)
@@ -1099,8 +1128,9 @@ def _alias(verzia):
 
 
 def over_api(modul):
-    """Smoke test API bez siete: Communicate s korutinou save a konstruktor
-    s (text, hlas, rate=...) - presne to, co vola EdgeTTSCache.ensure."""
+    """API smoke test without the network: Communicate with a save coroutine
+    and a constructor with (text, voice, rate=...) - exactly what
+    EdgeTTSCache.ensure calls."""
     trieda = getattr(modul, "Communicate", None)
     if not isinstance(trieda, type):
         raise _Zlyhanie(STAV_NEKOMPATIBILNY, "API: chyba Communicate")
@@ -1113,7 +1143,7 @@ def over_api(modul):
 
 
 def verzia_modulu(modul):
-    """`__version__` modulu edge-tts, inak verzia z dist-info, inak None."""
+    """`__version__` of the edge-tts module, else from dist-info, else None."""
     verzia = getattr(modul, "__version__", None)
     if isinstance(verzia, str) and verzia.strip():
         return verzia.strip()
@@ -1121,9 +1151,10 @@ def verzia_modulu(modul):
 
 
 def pribalena_verzia():
-    """Verzia pribaleneho (nainstalovaneho) edge-tts podla dist-info, alebo
-    None. V builde funguje, lebo collect_all('edge_tts') bali aj dist-info.
-    Stiahnuty balik dist-info nema, takze toto je vzdy pribalena verzia."""
+    """Version of the bundled (installed) edge-tts by dist-info, or None.
+    Works in the build, because collect_all('edge_tts') bundles the
+    dist-info too. The downloaded package has no dist-info, so this is
+    always the bundled version."""
     try:
         return metadata.version("edge-tts") or None
     except Exception:
@@ -1131,7 +1162,7 @@ def pribalena_verzia():
 
 
 # --------------------------------------------------------------------------
-# Manifest a priecinky na disku
+# Manifest and folders on disk
 # --------------------------------------------------------------------------
 
 def _teraz():
@@ -1158,8 +1189,8 @@ def _platny_manifest(udaje):
 
 
 def citaj_manifest():
-    """Platny manifest stiahnutej kniznice, alebo None (nic nestiahnute,
-    pokazeny subor). Nikdy nevyhodi."""
+    """A valid manifest of the downloaded library, or None (nothing
+    downloaded, broken file). Never raises."""
     try:
         with open(os.path.join(kniznica_dir(), MANIFEST_MENO), encoding="utf-8") as fh:
             obsah = fh.read(256 * 1024)
@@ -1188,8 +1219,9 @@ def _zapis_manifest(udaje):
 
 
 def oznac_pokazenu(dovod):
-    """Stiahnuta kniznica sa nenacitala - pri dalsom starte sa uz neskusa
-    (kym ju tlacidlo nenahradi). Chyba zapisu sa len zaloguje."""
+    """The downloaded library did not load - on the next start it is no
+    longer tried (until the button replaces it). A write error is only
+    logged."""
     manifest = citaj_manifest()
     if manifest is None:
         return
@@ -1207,7 +1239,7 @@ def _priecinok_balika(manifest):
 
 
 def _over_subory(priecinok, hashe):
-    """Vsetky subory z manifestu su na disku a sedi ich sha256."""
+    """All files from the manifest are on disk and their sha256 matches."""
     for meno, sha in hashe.items():
         with open(os.path.join(priecinok, meno), "rb") as fh:
             data = fh.read(ZIP_SUBOR_STROP_B + 1)
@@ -1220,9 +1252,9 @@ def _hashe(subory):
 
 
 def _nainstaluj(subory, verzia):
-    """Zapise subory do tmp/stage-*/edge_tts a cely priecinok potom presunie
-    na miesto edge_tts-<verzia> (este NEAKTIVNY - manifest sa nemeni).
-    Vracia cestu k priecinku verzie."""
+    """Writes the files into tmp/stage-*/edge_tts and then moves the whole
+    folder into place as edge_tts-<verzia> (still INACTIVE - the manifest
+    does not change). Returns the path to the version folder."""
     koren = kniznica_dir()
     tmp = _tmp_dir()
     os.makedirs(tmp, exist_ok=True)
@@ -1234,7 +1266,7 @@ def _nainstaluj(subory, verzia):
             fh.write(obsah)
     ciel = os.path.join(koren, "edge_tts-%s" % verzia)
     if os.path.lexists(ciel):
-        # rovnaka verzia z predosleho pokusu (oznacena ako pokazena)
+        # the same version from a previous attempt (marked as broken)
         stary = os.path.join(tmp, "old-%s" % uuid.uuid4().hex[:8])
         nahrad_subor(ciel, stary)
         shutil.rmtree(stary, ignore_errors=True)
@@ -1247,8 +1279,8 @@ def _uprac_tmp():
 
 
 def _uprac_stare(ponechaj):
-    """Po aktivacii: prec ostatne priecinky edge_tts-<verzia> a tmp/.
-    Nic ine v priecinku kniznice sa nemaze."""
+    """After activation: the other edge_tts-<verzia> folders and tmp/ go.
+    Nothing else in the library folder is deleted."""
     koren = kniznica_dir()
     try:
         mena = os.listdir(koren)
@@ -1262,20 +1294,21 @@ def _uprac_stare(ponechaj):
 
 
 # --------------------------------------------------------------------------
-# Start appky (audio_engine.load_edge)
+# App start (audio_engine.load_edge)
 # --------------------------------------------------------------------------
 
 _NEZISTENA = object()
 
 
 def nacitaj_pri_starte(pribalena=_NEZISTENA):
-    """Stiahnuta kniznica pri starte appky -> (modul, verzia), alebo None =
-    pouzi pribalenu. Nikdy nevyhodi.
+    """The downloaded library at app start -> (module, version), or None =
+    use the bundled one. Never raises.
 
-    Stiahnuta vyhrava, len ked je platna, nie je oznacena ako pokazena a je
-    NOVSIA nez pribalena - dalsie vydanie Zanshinu s novsim edge-tts teda
-    vyhra samo. Ked sa nacitat neda, oznaci sa ako pokazena (dalsi start ju
-    uz neskusa) a appka ide s pribalenou."""
+    The downloaded one wins only when it is valid, not marked as broken and
+    NEWER than the bundled one - so the next Zanshin release with a newer
+    edge-tts wins by itself. When it cannot be loaded, it is marked as
+    broken (the next start no longer tries it) and the app goes on with the
+    bundled one."""
     manifest = citaj_manifest()
     if manifest is None or manifest.get("broken"):
         return None
@@ -1303,7 +1336,8 @@ def nacitaj_pri_starte(pribalena=_NEZISTENA):
             _zabudni_moduly(meno)
         dovod = _dovod_chyby(exc)
         if isinstance(exc, PermissionError):
-            # subor na chvilu drzi iny proces (antivirus) - nabuduce znova
+            # another process holds the file for a moment (antivirus) - again
+            # next time
             _log.warning("prirodzeny hlas: stiahnutu edge-tts %s sa teraz nepodarilo "
                          "precitat (%s) - pouzivam pribalenu %s", verzia, dovod,
                          pribalena or "?")
@@ -1320,12 +1354,13 @@ def nacitaj_pri_starte(pribalena=_NEZISTENA):
 
 
 # --------------------------------------------------------------------------
-# Aktualizacia na klik
+# Update on a click
 # --------------------------------------------------------------------------
 
 def aktivna_verzia():
-    """(verzia, stiahnuta) prave pouzivaneho edge-tts. Lacne - bez siete aj
-    bez disku. (None, False), ked prirodzeny hlas nie je dostupny."""
+    """(version, downloaded) of the edge-tts in use right now. Cheap - no
+    network and no disk. (None, False) when the natural voice is not
+    available."""
     ae = sys.modules.get("audio_engine")
     if ae is None:
         return pribalena_verzia(), False
@@ -1346,7 +1381,7 @@ def _skontroluj_abort(abort):
 
 
 def _syntetizuj(modul, text, hlas, cesta, timeout):
-    """Jedna hlaska modulom `modul` do `cesta`. Testy ho nahradzaju."""
+    """One cue with the module `modul` into `cesta`. Tests replace it."""
     import asyncio
 
     async def _run():
@@ -1357,7 +1392,7 @@ def _syntetizuj(modul, text, hlas, cesta, timeout):
 
 
 def _chyba_importu(exc):
-    """Prva ImportError v retazi chyby (`__cause__`, `__context__`), alebo None."""
+    """First ImportError in the chain (`__cause__`, `__context__`), or None."""
     videne = set()
     while exc is not None and id(exc) not in videne and len(videne) < 8:
         videne.add(id(exc))
@@ -1368,10 +1403,10 @@ def _chyba_importu(exc):
 
 
 def skusobne_slovo(modul, hlas=None, timeout=TEST_TIMEOUT_S):
-    """Povie `TEST_TEXT` modulom `modul` do docasneho suboru v tmp/ a zmaze
-    ho. Uspech = neprazdny subor. Chyba -> _Zlyhanie podla
-    audio_engine.druh_chyby_edge (odmietnute / offline / ine). Ide na siet
-    (Microsoft) - len z vlakna a len mimo sledovania."""
+    """Says `TEST_TEXT` with the module `modul` into a temporary file in tmp/
+    and deletes it. Success = a non-empty file. Error -> _Zlyhanie according
+    to audio_engine.druh_chyby_edge (refused / offline / other). Goes to the
+    network (Microsoft) - only from a thread and only outside watching."""
     tmp = _tmp_dir()
     os.makedirs(tmp, exist_ok=True)
     cesta = os.path.join(tmp, "test-%s.mp3" % uuid.uuid4().hex[:12])
@@ -1385,10 +1420,10 @@ def skusobne_slovo(modul, hlas=None, timeout=TEST_TIMEOUT_S):
                     audio_engine.EDGE_CHYBA_OFFLINE: STAV_OFFLINE}.get(druh, STAV_CHYBA)
             import_chyba = _chyba_importu(exc) if stav == STAV_CHYBA else None
             if import_chyba is not None:
-                # Modul, po ktorom edge-tts siahne az pri synteze (import vo
-                # funkcii), v tomto builde nie je - PyInstaller bali len to,
-                # co pri builde videl. Pomoze len novsi Zanshin, nie "skus
-                # znova" (overene v zamrazenom .exe).
+                # A module that edge-tts reaches for only during synthesis (an
+                # import inside a function) is not in this build - PyInstaller
+                # bundles only what it saw during the build. Only a newer
+                # Zanshin helps, not "try again" (verified in the frozen .exe).
                 stav = (STAV_OVERENIE_ZLYHALO if isinstance(import_chyba, PokazenySubor)
                         else STAV_NEKOMPATIBILNY)
                 raise _Zlyhanie(stav, "skusobne slovo: " + _dovod_chyby(import_chyba)) from None
@@ -1413,30 +1448,32 @@ def _aktivuj(modul, verzia, cache):
 
 
 def aktualizuj(cache=None, abort=None, hlas=None, over_aktualnu=True):
-    """Klik na "Aktualizovat hlas". BLOKUJE - volaj LEN z pomocneho vlakna.
+    """Click on "Update voice". BLOCKS - call ONLY from a helper thread.
 
-    Kroky: zoznam vydani z PyPI -> vyber verzie -> stiahnutie a overenie ->
-    kontrola zavislosti a kodu -> zapis do noveho priecinka -> nacitanie pod
-    aliasom a smoke test API -> skusobne slovo -> manifest -> vymena modulu
-    v audio_engine (pod zamkom `cache._lock`, aby ziadna hlaska nebola
-    rozpracovana starym modulom) -> upratanie starych verzii.
+    Steps: release list from PyPI -> version choice -> download and
+    verification -> dependency and code check -> write into a new folder ->
+    loading under the alias and API smoke test -> test word -> manifest ->
+    module swap in audio_engine (under the `cache._lock` lock, so that no cue
+    is half-done with the old module) -> cleanup of old versions.
 
-    `cache`  - EdgeTTSCache appky (jej zamok sa drzi pocas vymeny),
-    `abort`  - bez argumentov; True = prestan (zaplo sa sledovanie). Pyta sa
-               pred kazdym krokom, ktory ide na siet, pred zapisom a
-               nacitanim noveho kodu a po skusobnom slove (pred vymenou),
-    `hlas`   - hlas skusobneho slova (predvolene `TEST_HLAS`),
-    `over_aktualnu` - ked nic novsie nie je, skusobnym slovom over prave
-               bezacu verziu (STAV_AKTUALNY vs STAV_STALE_ODMIETNUTY).
+    `cache`  - the app's EdgeTTSCache (its lock is held during the swap),
+    `abort`  - no arguments; True = stop (watching was switched on). Asked
+               before every step that goes to the network, before writing
+               and loading the new code and after the test word (before
+               the swap),
+    `hlas`   - voice of the test word (default `TEST_HLAS`),
+    `over_aktualnu` - when there is nothing newer, verify the currently
+               running version with the test word (STAV_AKTUALNY vs
+               STAV_STALE_ODMIETNUTY).
 
-    Vracia `Vysledok`; vynimku nevyhodi. Do app.log ide jeden riadok."""
+    Returns a `Vysledok`; raises no exception. One line goes to app.log."""
     if not _beh.acquire(blocking=False):
         vysledok = Vysledok(STAV_ZANEPRAZDNENY, aktivna=aktivna_verzia()[0],
                             dovod="ina aktualizacia prave bezi")
     else:
         try:
             vysledok = _aktualizuj(cache, abort, hlas, over_aktualnu)
-        except _CHYBY_KNIZNICE as exc:  # poistka - GUI dostane vzdy vysledok
+        except _CHYBY_KNIZNICE as exc:  # safeguard - the GUI always gets a result
             vysledok = Vysledok(STAV_CHYBA, aktivna=aktivna_verzia()[0],
                                 dovod="necakana chyba %s" % _meno_chyby(exc))
         finally:
@@ -1489,8 +1526,8 @@ def _aktualizuj(cache, abort, hlas, over_aktualnu):
 def _vyskusaj_a_aktivuj(kandidat, subory, cache, abort, hlas):
     verzia = kandidat["verzia"]
     hashe = _hashe(subory)
-    # Ak sa sledovanie zaplo pocas stahovania, novy kod sa ani nezapise, ani
-    # nenatiahne (= nespusti) - pocas sledovania sa nic nemeni.
+    # If watching was switched on during the download, the new code is neither
+    # written nor loaded (= not run) - nothing changes while watching.
     _skontroluj_abort(abort)
     priecinok = _nainstaluj(subory, verzia)
     modul = hladac = None
@@ -1507,8 +1544,9 @@ def _vyskusaj_a_aktivuj(kandidat, subory, cache, abort, hlas):
         over_api(modul)
         _skontroluj_abort(abort)
         skusobne_slovo(modul, hlas)
-        # Slovo, ktore uz letelo, dobehne; ak sa medzitym zaplo sledovanie,
-        # nova verzia sa nenecha ani nevymeni (pocas sledovania nic).
+        # A word that was already in flight finishes; if watching was switched
+        # on meanwhile, the new version is neither kept nor swapped in (nothing
+        # while watching).
         _skontroluj_abort(abort)
         _zapis_manifest({
             "format": _FORMAT_MANIFESTU, "version": verzia,
@@ -1521,7 +1559,7 @@ def _vyskusaj_a_aktivuj(kandidat, subory, cache, abort, hlas):
             if hladac is not None:
                 zahod_balik(modul, hladac)
             shutil.rmtree(priecinok, ignore_errors=True)
-    # Od zapisu manifestu je nova verzia platna aj pre dalsi start.
+    # With the manifest written, the new version holds for the next start too.
     _nacitane[verzia] = (modul, hladac)
     _aktivuj(modul, verzia, cache)
     _uprac_stare(ponechaj=os.path.basename(priecinok))

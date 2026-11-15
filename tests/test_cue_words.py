@@ -1,16 +1,18 @@
 # -*- coding: utf-8 -*-
-"""Slová, ktoré appka hovorí a ukazuje V HRE (0.2, words-and-fixes).
+"""Words the app says and shows IN GAME (0.2, words-and-fixes).
 
-Rozhodnutia, ktoré tieto testy strážia:
-  * hláška nikdy nepovie „uvoľni sa“ ani „upokoj sa“ - v žiadnom z 11 jazykov.
-    Príkaz na STAV pod záťažou môže vyjsť naopak (Wegner 1997); appka hovorí
-    jedno slovo o tele. Platí pre hlasové slovo slotu (`slot.default.*`) aj
-    pre popisok pod obrázkom (`overlay.caption.*`).
-  * hlasové slovo „Teeth“ je „Jaw“ (ja 顎), zh 放松 („uvoľni sa“) je 松开
-    („povoľ“), ru popisok РАЗОЖМИ ЧЕЛЮСТЬ (nie РАССЛАБЬ), ja popisky v mäkkom
-    tvare na -て namiesto holého rozkazu (落とせ / ゆるめろ).
-  * existujúci profil so starým predvoleným slovom dostane nové slovo pri
-    načítaní nastavení; vlastné slovo hráča ostáva, ako ho napísal.
+Decisions these tests guard:
+  * a cue never says "uvoľni sa" (relax) or "upokoj sa" (calm down) - in
+    none of the 11 languages. A command about a STATE under load can
+    backfire (Wegner 1997); the app says one word about the body. Applies
+    to the slot's voice word (`slot.default.*`) and to the caption under
+    the picture (`overlay.caption.*`).
+  * the voice word "Teeth" is "Jaw" (ja 顎), zh 放松 ("uvoľni sa") is 松开
+    ("povoľ", loosen), ru caption РАЗОЖМИ ЧЕЛЮСТЬ (not РАССЛАБЬ), ja
+    captions in the soft -て form instead of a bare command (落とせ /
+    ゆるめろ).
+  * an existing profile with the old default word gets the new word when
+    the settings are loaded; the player's own word stays as they wrote it.
 """
 import json
 import os
@@ -24,13 +26,16 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import i18n  # noqa: E402
 import settings_model  # noqa: E402
 
-# Kľúče, ktoré sa dostanú DO HRY: hlasové slovo slotu a popisok pod vizuálom.
+# Keys that get INTO THE GAME: the slot's voice word and the caption under
+# the visual.
 _PREFIXY_V_HRE = ("slot.default.", "overlay.caption.")
 
-# Zakázané slová („uvoľni sa“ / „upokoj sa“), porovnávané bez ohľadu na
-# veľkosť písmen. Kontroluje sa ÚNIA všetkých jazykov v každom jazyku - kým
-# preklad chýba, je v slote anglický text a ani ten nesmie povedať „relax“.
-# 脱力 je doslova „uvoľnenie (sily)“ - preto zmizol z hlasového slova čeľuste.
+# Forbidden words ("uvoľni sa" / "upokoj sa"), compared regardless of case.
+# The UNION of all languages is checked in every language - while a
+# translation is missing, the slot has English text and that must not say
+# "relax" either.
+# 脱力 is literally "release (of strength)" - that is why it disappeared
+# from the jaw voice word.
 ZAKAZANE = {
     "sk": ("uvoľni sa", "uvolni sa", "upokoj", "relax"),
     "en": ("relax", "calm down"),
@@ -58,8 +63,8 @@ def _kluce_v_hre():
 
 
 def test_kontrola_nieco_kontroluje():
-    """Poistka proti prázdnemu testu: sú tam všetky štyri sloty a päť
-    popiskov a zoznam naozaj chytí staré znenie."""
+    """Safeguard against an empty test: all four slots and five captions are
+    there and the list really catches the old wording."""
     kluce = _kluce_v_hre()
     for kat in ("grounding", "jaw", "release", "breath"):
         assert f"slot.default.{kat}" in kluce
@@ -96,7 +101,7 @@ def test_hlasove_slovo_celuste_je_jaw():
 
 def test_zh_uvolnenie_je_povol():
     assert i18n.STRINGS["slot.default.release"]["zh"] == "松开"
-    # 0.2.2: kategoria slotu 2 je "ruka a pohlad" (audit UX), nie len stisk
+    # 0.3: the slot 2 category is "hand and gaze" (UX audit), not just grip
     assert i18n.STRINGS["cue.category.release"]["zh"] == "手与视线"
 
 
@@ -105,7 +110,7 @@ def test_ru_popisok_celuste_je_razozmi():
 
 
 def test_ja_popisky_su_v_makkom_tvare():
-    """-て (prosba), nie holý rozkaz 落とせ / ゆるめろ."""
+    """-て (a request), not the bare command 落とせ / ゆるめろ."""
     for kluc in (k for k in _kluce_v_hre() if k.startswith("overlay.caption.")):
         text = i18n.STRINGS[kluc]["ja"]
         assert text.endswith("て"), (kluc, text)
@@ -124,7 +129,7 @@ def test_novy_profil_hovori_jaw(jazyk):
 
 
 # --------------------------------------------------------------------------
-# Migracia stareho predvoleneho slova
+# Migration of the old default word
 # --------------------------------------------------------------------------
 
 @pytest.mark.parametrize("stare, index, nove", [
@@ -147,9 +152,10 @@ def test_vlastne_slovo_hraca_ostava(vlastne):
     ("脱力", 2), ("脱力", 0), ("脱力", None), ("放松", 1), ("放松", None),
 ])
 def test_ja_zh_slovo_mimo_svojho_slotu_ostava(slovo, index):
-    """脱力 je v ja aj názov kategórie „Release“ - v slote 2 ho hráč mohol
-    napísať sám a 顎 („čeľusť“) by tam bolo zlé slovo. Mení sa len v slote,
-    kde bolo predvolené."""
+    """In ja, 脱力 is also the name of the "Release" category - in slot 2 the
+    player could have written it themselves and 顎 ("jaw") would be the
+    wrong word there. It changes only in the slot where it was the
+    default."""
     assert settings_model.migrate_slot_text(slovo, index) == slovo
 
 
@@ -159,9 +165,10 @@ def test_migracia_znesie_aj_nezmysel():
 
 
 def test_normalize_slot_slovo_nemeni():
-    """Karta slotu normalizuje pri každej prestavbe - keby menila aj slovo,
-    hráčovi by sa prepísalo pod rukami uprostred úpravy. Mení sa len pri
-    načítaní nastavení (`app.load_settings`)."""
+    """The slot card normalises on every rebuild - if it also changed the
+    word, it would be rewritten under the player's hands in the middle of
+    editing. It changes only when the settings are loaded
+    (`app.load_settings`)."""
     assert settings_model.normalize_slot({"text": "Teeth"})["text"] == "Teeth"
 
 
@@ -170,8 +177,8 @@ def nastavenia(tmp_path, monkeypatch):
     import app as app_mod
     import app_prefs
     cesta = str(tmp_path / "dandurf_settings.json")
-    # `load_settings` byva v mixine app_prefs (PrefsMixin) a cita
-    # SETTINGS_PATH zo svojho modulu - presmerovat ho treba tam.
+    # `load_settings` lives in the app_prefs mixin (PrefsMixin) and reads
+    # SETTINGS_PATH from its own module - it has to be redirected there.
     monkeypatch.setattr(app_prefs, "SETTINGS_PATH", cesta)
     povodny = i18n._lang["code"]
 
@@ -195,25 +202,26 @@ def test_nacitanie_prelozi_stare_slovo_vo_vsetkych_profiloch(nastavenia):
     slova = {p["name"]: [s["text"] for s in p["slots"]] for p in d["profiles"]}
     assert slova["Hlavny"] == ["Grounded", "Jaw", "Release", "Breathe"]
     assert slova["Druhy"] == ["Jaw", "顎", "松开", "my teeth"]
-    # mimo svojho slotu je to slovo hraca - ostava
+    # outside its own slot it is the player's word - it stays
     assert slova["Treti"] == ["Grounded", "Jaw", "脱力", "放松"]
 
 
 def test_nacitanie_stara_plocha_schema_tiez(nastavenia):
-    """Nastavenia spred profilov (len `slots`) idú tou istou cestou."""
+    """Settings from before profiles (only `slots`) go the same way."""
     d = nastavenia({"lang": "sk", "theme": "zen",
                     "slots": [{"text": "Teeth"}, {"text": "Zuby"}]})
     sloty = d["profiles"][0]["slots"]
     assert [s["text"] for s in sloty[:2]] == ["Jaw", "Zuby"]
-    # chybajuce kategorie sa doplnia na koniec, vypnute (0.2)
+    # missing categories are added at the end, switched off (0.2)
     assert len(sloty) == 4 and not any(s["enabled"] for s in sloty[2:])
 
 
 def test_panel_vyskumu_nesluboval_upokojenie():
-    """Úvod panela „Z čoho appka vychádza“ hovoril „kedy ti pomôcť sa
-    upokojiť“ / „help you calm down“ - veta, ktorú návrh o hláškach pod
-    záťažou zrušil. V 0.2 panel nahradil text autora „Ako to vzniklo“
-    (`origin.*`) - ani ten nesmie povedať „upokoj sa“ - v žiadnom jazyku."""
+    """The intro of the "Z čoho appka vychádza" (What the app builds on) panel
+    said "kedy ti pomôcť sa upokojiť" / "help you calm down" - a sentence
+    that the proposal about cues under load removed. In 0.2 the panel was
+    replaced by the author's "How it came about" text (`origin.*`) - that
+    must not say "upokoj sa" either - in any language."""
     for kluc in ("origin.title", "origin.text", "origin.examples"):
         zaznam = i18n.STRINGS[kluc]
         for jazyk in i18n.LANGUAGES:

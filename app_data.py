@@ -1,23 +1,25 @@
-"""Data hraca - cast hlavnej appky (DandurfApp z app.py).
+"""Player data - part of the main app (DandurfApp from app.py).
 
-DataMixin je mixin DandurfApp: app.py ho dedi a cely stav (cesty k suborom,
-relacia, profily, sloty, widgety) zije na DandurfApp. Tu su len metody, ktore
-s nim pracuju cez `self` - mixin nema __init__ ani vlastne atributy.
+DataMixin is a mixin of DandurfApp: app.py inherits it and the whole state
+(file paths, session, profiles, slots, widgets) lives on DandurfApp. Here
+there are only methods that work with it through `self` - the mixin has no
+__init__ and no attributes of its own.
 
-Dve sekcie presunute z app.py bez zmeny:
-  * data: mazanie, export, import (faza 4) - panely Data a O appke,
-    export/import/mazanie historie a co sa ulozi na konci merania (suhrn
-    relacie, meracie okna, dotaznik kontextu, promocia),
-  * import / export profilov (zdielanie kodom) - profil ako kod do schranky
-    a odstranenie slotov navyse.
+Two sections moved from app.py unchanged:
+  * data: delete, export, import (phase 4) - the Data and About panels,
+    export/import/delete of the history and what gets saved at the end of
+    a measurement (session summary, measurement windows, context
+    questionnaire, graduation),
+  * profile import / export (sharing by code) - a profile as a code to the
+    clipboard and removal of extra slots.
 
-Pozor v testoch: `_close_hr_session`, `_suhrn_relacie` a `_maybe_graduate`
-citaju `time` z tohto modulu - falosne hodiny treba podstrcit aj tu
-(`app_data.time`), nie len na module app.
+Watch out in tests: `_close_hr_session`, `_suhrn_relacie` and
+`_maybe_graduate` read `time` from this module - a fake clock has to be
+slipped in here too (`app_data.time`), not just on the app module.
 
-Od 0.2.2 tu je aj ochrana relacie mimo normalneho zatvorenia: vypnutie
-Windows (`_pri_vypinani_windows`), kontrolny bod kazdych 5 minut
-(`_zapis_rozpracovanu_relaciu`) a jeho obnova pri starte
+Since 0.3 this also holds the protection of a session outside a normal
+close: Windows shutdown (`_pri_vypinani_windows`), a checkpoint every 5
+minutes (`_zapis_rozpracovanu_relaciu`) and its recovery at start
 (`_obnov_rozpracovanu_relaciu`).
 """
 
@@ -49,14 +51,15 @@ from ui_dialogs import ImportDataDialog, ImportProfileDialog, SessionEndDialog
 
 from app_spolocne import app_log
 
-# Kontrolny bod otvorenej relacie (`_zapis_rozpracovanu_relaciu`). Viac
-# by pri pade stratilo dlhy koniec vecera, menej by zapisovalo na disk
-# zbytocne casto uprostred hrania.
+# Checkpoint of an open session (`_zapis_rozpracovanu_relaciu`). More
+# would lose a long end of the evening on a crash, less would write to
+# disk needlessly often in the middle of playing.
 ROZPRACOVANA_KAZDYCH_MS = 5 * 60 * 1000
-# Po WM_SAVE_YOURSELF: ak proces o tolkoto este zije, vypnutie Windows sa
-# zrusilo (`_po_zrusenom_vypnuti`). Bezne vypnutie proces ukonci skor.
+# After WM_SAVE_YOURSELF: if the process is still alive after this long,
+# the Windows shutdown was cancelled (`_po_zrusenom_vypnuti`). A normal
+# shutdown ends the process sooner.
 VYPNUTIE_ZRUSENE_MS = 20 * 1000
-# Upozornenie na nainstalovanu 0.2 az ked okno stoji a dobehol start.
+# Warning about an installed 0.2 only once the window stands and start is done.
 STARA_INSTALACIA_MS = 1500
 
 
@@ -64,20 +67,22 @@ _CESTA_V_TEXTE = re.compile(r"(?:[A-Za-z]:|\\\\)[\\/][^'\"\n]*")
 
 
 def bez_ciest(text):
-    """Chybova sprava bez celych ciest - zostane len meno suboru.
+    """Error message without full paths - only the file name stays.
 
-    "[Errno 13] Permission denied: 'C:\\Users\\<ucet>\\...\\hr_sessions.json'"
-    by do dennika aj do app.log vyniesla meno uctu vo Windows (PRIVACY.md)."""
+    "[Errno 13] Permission denied: 'C:\\Users\\<user>\\...\\hr_sessions.json'"
+    would carry the Windows account name into the journal and into app.log
+    (PRIVACY.md)."""
     return _CESTA_V_TEXTE.sub(
         lambda z: os.path.basename(z.group(0).rstrip("\\/")) or "…", str(text or ""))
 
 
 def _ak_vies(app, meno, *args, **kwargs):
-    """Zavola `app.<meno>(...)`, ked ho `app` ma - inak nic.
+    """Calls `app.<meno>(...)` when `app` has it - otherwise nothing.
 
-    Zatvorenie relacie (`_close_hr_session`) bezi v testoch aj na atrapach
-    so styrmi atributmi. Doplnky 0.2.2 (neulozena relacia, vypnute "Zmazat")
-    ich nesmu zhodit - a chyba v nich nesmie zhodit ukladanie relacie."""
+    Closing a session (`_close_hr_session`) also runs in tests on dummies
+    with four attributes. The 0.3 add-ons (unsaved session, disabled
+    "Zmazat") must not crash them - and an error in them must not crash
+    the saving of the session."""
     fn = getattr(app, meno, None)
     if not callable(fn):
         return None
@@ -89,9 +94,9 @@ def _ak_vies(app, meno, *args, **kwargs):
 
 
 class DataMixin:
-    """Data hraca, koniec relacie a zdielanie profilov (mixin DandurfApp)."""
+    """Player data, session end and profile sharing (DandurfApp mixin)."""
 
-    # ---------- data: mazanie, export, import (faza 4) ----------
+    # ---------- data: delete, export, import (phase 4) ----------
 
     def _build_data_panel(self, parent, pal):
         panel = ui_kit.Panel(parent, pal, title=tr("data.title"))
@@ -100,16 +105,17 @@ class DataMixin:
                      text_color=pal["text_dim"], anchor="w",
                      justify="left", wraplength=560).pack(fill="x", pady=(0, 12))
 
-        # HIERARCHIA TLACIDIEL (0.2.2, audit UX). "Zmazat historiu" vyzeralo
-        # presne ako "Importovat" a stalo hned vedla - najnebezpecnejsia
-        # akcia appky ako neutralna. Teraz: export a import su vedlajsie
-        # tlacidla (ram >= 3:1), zmazanie je `danger` (ram aj text v cervenej)
-        # a odsadene o 24 px, aby sa netrafilo omylom.
+        # BUTTON HIERARCHY (0.3, UX audit). "Zmazat historiu" (Delete history)
+        # looked exactly like "Importovat" and sat right next to it - the most
+        # dangerous action of the app looking neutral. Now: export and import
+        # are secondary buttons (border >= 3:1), delete is `danger` (border and
+        # text in red) and set 24 px apart so it is not hit by mistake.
         rad = ctk.CTkFrame(panel.body, fg_color="transparent")
         rad.pack(fill="x")
-        # "Otvorit priecinok s datami" (0.2.2): zalohy pred importom, odlozeny
-        # pokazeny subor nastaveni aj neulozena relacia lezia tam - a hrac sa
-        # k nim inak nevedel dostat.
+        # "Otvorit priecinok s datami" (Open the data folder, 0.3): backups
+        # before import, the set-aside broken settings file and the unsaved
+        # session all lie there - and the player had no other way to get to
+        # them.
         for text, prikaz in ((tr("data.export.btn"), self.export_all_json),
                              (tr("data.import.btn"), self.import_all_json),
                              (tr("data.open_folder.btn"), self.open_data_folder)):
@@ -118,26 +124,27 @@ class DataMixin:
         self.data_delete_btn = ui_kit.button(rad, pal, tr("data.delete.btn"), kind="danger",
                                              command=self.delete_history, height=32)
         self.data_delete_btn.pack(side="left", padx=(16, 0))
-        # Preco je "Zmazat" vypnute (pocas sledovania). Nepakuje sa, kym nie
-        # je co povedat - rovnako ako `data_note` nizsie.
+        # Why "Zmazat" (Delete) is disabled (while watching). Not packed until
+        # there is something to say - same as `data_note` below.
         self.data_delete_reason = ctk.CTkLabel(
             panel.body, text="", font=ui_kit.ui(11), text_color=pal["text_dim"],
             anchor="w", justify="left", wraplength=560)
         self._refresh_data_delete_state()
 
-        # Vysledok exportu/importu. Prazdny riadok sa NEPAKUJE - prazdny
-        # CTkLabel je vysoky ako riadok textu a pod tlacidlami ostavala
-        # nevysvetlena medzera. Ukaze sa az s prvou spravou (`_data_note`).
+        # Result of export/import. An empty line is NOT PACKED - an empty
+        # CTkLabel is as tall as a line of text and an unexplained gap was left
+        # under the buttons. It shows up only with the first message
+        # (`_data_note`).
         self.data_note = ctk.CTkLabel(panel.body, text="", font=ui_kit.ui(11),
                                       text_color=pal["text_dim"], anchor="w",
                                       justify="left", wraplength=560)
 
     def show_about(self):
-        """Tlacidlo "A" v titulkovej liste: otvor Nastavenia a skoc na O appke.
+        """The "A" button in the title bar: open Settings and jump to About.
 
-        Posun sa robi az po prekresleni (`after`), lebo pred nim este nemá
-        `winfo_y()` co vratit - stranka nie je rozlozena a sekcia by skoncila
-        na nahodnom mieste.
+        The scroll is done only after the redraw (`after`), because before
+        it `winfo_y()` has nothing to return yet - the page is not laid out
+        and the section would end up in a random place.
         """
         self._navigate("vseobecne")
         self.root.after(80, self._scroll_to_about)
@@ -146,8 +153,8 @@ class DataMixin:
         self._posun_vseobecne_na(getattr(self, "about_panel", None))
 
     def _posun_vseobecne_na(self, panel):
-        """Posunie stranku Vseobecne tak, aby `panel` bol hore. Spolocne pre
-        ⓘ (O appke) aj ⚙ pri "Tep v hre" (sekcia panela s tepom)."""
+        """Scrolls the General page so that `panel` is at the top. Shared by
+        ⓘ (About) and ⚙ at "Tep v hre" (the heart-rate panel section)."""
         wrap = getattr(self, "vseobecne_wrap", None)
         if panel is None or wrap is None:
             return
@@ -159,16 +166,17 @@ class DataMixin:
             vyska = float(max(1, wrap.winfo_height()))
             canvas.yview_moveto(max(0.0, min(1.0, panel.winfo_y() / vyska)))
         except Exception:
-            # Skrolovanie je pohodlie, nie funkcia. Ked sa nepodari, hrac je
-            # aspon na spravnej stranke - to je stale lepsie nez vynimka.
+            # Scrolling is a convenience, not a feature. When it fails, the
+            # player is at least on the right page - that is still better than
+            # an exception.
             app_log.debug("posun na sekciu Vseobecne zlyhal", exc_info=True)
 
     def _build_about_panel(self, parent, pal):
-        """Preco appka vznikla a kde najst autora.
+        """Why the app came to be and where to find the author.
 
-        Text je osobny a zamerne nie je v Sprievodcovi: Sprievodca hovori,
-        ako to funguje a preco to funguje. Toto hovori, PRECO to vobec
-        existuje - a to je ina otazka aj iny hlas.
+        The text is personal and deliberately not in the Guide: the Guide
+        says how it works and why it works. This says WHY it exists at all
+        - and that is a different question and a different voice.
         """
         panel = ui_kit.Panel(parent, pal, title=tr("about.title"))
         panel.pack(fill="x", pady=(14, 0))
@@ -181,12 +189,13 @@ class DataMixin:
                      text_color=pal["text_dim"], anchor="w", justify="left",
                      wraplength=560).pack(fill="x", pady=(6, 8))
 
-        # ODKAZY HNED ZA VETOU, ktora na ne ukazuje (0.2.2, audit UX). Veta
-        # "...zastav sa u nas:" koncila dvojbodkou, za ktorou bolo ~50 px
-        # prazdna a dalsia sekcia - odkazy prisli az pod nou s vlastnym
-        # nadpisom. Chip je tu spravne: je to externy odkaz (jediny druh,
-        # pre ktory chip ostava). Sipka napovie, ze to otvori prehliadac -
-        # rovnaky mechanizmus ako zdroje v Sprievodcovi a v Historii.
+        # LINKS RIGHT AFTER THE SENTENCE that points to them (0.3, UX audit).
+        # The sentence "...zastav sa u nas:" ended with a colon followed by
+        # ~50 px of empty space and the next section - the links came only
+        # below it with their own heading. A chip is right here: it is an
+        # external link (the only kind for which the chip stays). The arrow
+        # hints that it opens the browser - the same mechanism as the sources
+        # in the Guide and in History.
         rad = ctk.CTkFrame(panel.body, fg_color="transparent")
         rad.pack(fill="x", pady=(0, 16))
         for nazov, url in guide_content.COMMUNITY_LINKS:
@@ -194,36 +203,39 @@ class DataMixin:
                         lambda u=url: webbrowser.open(u)).pack(
                 side="left", padx=(0, 8))
 
-        # NAJHLBSIA VRSTVA "PRECO" - pre toho, kto cita medzi riadkami.
-        # Nie pribeh autora, ale co appka NAOZAJ meria: medzeru medzi meranym
-        # a citenym. Zamerne tlmene (text_faint, tenka ciara) - kto cita pomaly
-        # a az sem, najde to sam. To je cely zmysel: appka je nastroj na tu
-        # medzeru, nie na cislo.
+        # THE DEEPEST LAYER OF "WHY" - for the one who reads between the lines.
+        # Not the author's story, but what the app REALLY measures: the gap
+        # between the measured and the felt. Deliberately muted (text_faint,
+        # thin line) - whoever reads slowly and all the way here finds it on
+        # their own. That is the whole point: the app is a tool for that gap,
+        # not for a number.
         ui_kit.linka(panel.body, pal).pack(fill="x", pady=(2, 12))
         ctk.CTkLabel(panel.body, text=tr("about.between_lines"), font=ui_kit.ui(11),
                      text_color=pal["text_faint"], anchor="w", justify="left",
                      wraplength=560).pack(fill="x", pady=(0, 4))
 
-        # COPYRIGHT A LICENCIA VIDITELNE, nie zahrabane v subore LICENSE.
+        # COPYRIGHT AND LICENCE VISIBLE, not buried in the LICENSE file.
         #
-        # GPLv3 odporuca, aby interaktivny program vypisal kratke oznamenie
-        # o autorstve a zaruke. Hlavne je to ale slub hracovi: appka mu
-        # priamo v okne hovori, pod cim ju dostal a co s nou smie robit.
+        # GPLv3 recommends that an interactive program print a short notice
+        # about authorship and warranty. But above all it is a promise to the
+        # player: the app tells them right in the window under what terms they
+        # got it and what they may do with it.
         ui_kit.linka(panel.body, pal).pack(fill="x", pady=(16, 10))
-        # Verzia sa berie z `app.version_short`, nie zadrôtovaná - inak sa pri
-        # ďalšom bumpe rozíde s titulkom (B27).
+        # The version is taken from `app.version_short`, not hard-coded -
+        # otherwise with the next bump it drifts apart from the title (B27).
         ctk.CTkLabel(panel.body,
                      text=tr("about.copyright", version=tr("app.version_short")),
                      font=ui_kit.ui(10), text_color=pal["text_faint"],
                      anchor="w", justify="left", wraplength=560).pack(fill="x")
 
     def _refresh_data_delete_state(self):
-        """"Zmazat historiu" je pocas otvorenej relacie VYPNUTE (0.2.2).
+        """"Zmazat historiu" (Delete history) is OFF during an open session (0.3).
 
-        Beziaca relacia sa uklada az pri zatvoreni - po zmazani by sa hned
-        znova zapisala do prazdnej historie (a s nou aj jej kontrolny bod).
-        Veta pod tlacidlom povie preco; po zastaveni sledovania sa tlacidlo
-        vrati. Vola sa pri otvoreni a zatvoreni relacie."""
+        A running session is saved only on close - after a delete it would
+        be written right back into the empty history (and its checkpoint
+        with it). A sentence under the button says why; after watching
+        stops, the button comes back. Called when a session opens and
+        closes."""
         btn = getattr(self, "data_delete_btn", None)
         if btn is None:
             return
@@ -239,14 +251,14 @@ class DataMixin:
                 elif dovod.winfo_manager():
                     dovod.pack_forget()
         except Exception:
-            pass            # panel sa prave prestavuje
+            pass            # the panel is being rebuilt
 
     def open_data_folder(self):
-        """Otvori priecinok s datami v Prieskumnikovi (`os.startfile`).
+        """Opens the data folder in Explorer (`os.startfile`).
 
-        Tam su zalohy pred importom, odlozene pokazene subory aj relacia,
-        ktoru sa nepodarilo ulozit. Cesta sa do dennika nepise - v %APPDATA%
-        nesie meno uctu (PRIVACY.md)."""
+        It holds the backups before import, set-aside broken files and the
+        session that could not be saved. The path is not written into the
+        journal - in %APPDATA% it carries the account name (PRIVACY.md)."""
         try:
             os.startfile(DATA_DIR)
         except Exception:
@@ -265,7 +277,7 @@ class DataMixin:
         self.log(text)
 
     def export_all_json(self):
-        """Cela historia aj meracie okna do jedneho suboru."""
+        """The whole history and the measurement windows into one file."""
         cesta = filedialog.asksaveasfilename(
             defaultextension=".json", initialfile="zanshin-export.json",
             filetypes=[("JSON", "*.json")])
@@ -284,10 +296,10 @@ class DataMixin:
             self._data_note(str(exc))
 
     def import_all_json(self):
-        """Jedine miesto, kam vstupuje cudzi subor.
+        """The only place where a foreign file comes in.
 
-        Prisny parser je v `data_io`; tu sa uz len pyta zlucit/nahradit
-        (vlastny dialog `ImportDataDialog`) a zapisuje sa vysledok.
+        The strict parser is in `data_io`; here it only asks merge/replace
+        (own dialog `ImportDataDialog`) and the result is written.
         """
         cesta = filedialog.askopenfilename(filetypes=[("JSON", "*.json")])
         if not cesta:
@@ -307,16 +319,18 @@ class DataMixin:
             sprava += "\n" + tr("data.import.dropped", n=zahodene)
         sprava += "\n\n" + tr("data.import.flagged")
         sprava += "\n\n" + tr("data.import.question")
-        # Vlastny dialog, nie systemovy askyesnocancel: ten mal tlacidla
-        # Ano/Nie v jazyku Windowsu a volby natvrdo v texte ("= Ano"), takze
-        # v inom jazyku nesedeli. Nahradit ide az na druhe potvrdenie.
+        # Own dialog, not the system askyesnocancel: that one had Yes/No
+        # buttons in the Windows language and the choices hard-coded in the
+        # text ("= Ano"), so in another language they did not match. Replace
+        # goes only after a second confirmation.
         ImportDataDialog(self, sprava, lambda volba: self._zapis_import(
             sessions, windows, nahradit=(volba == "replace")))
 
     def _zapis_import(self, sessions, windows, nahradit):
-        """Zapise vysledok importu. Najprv ZALOHA oboch suborov (aj pri
-        zluceni - aj to ich prepisuje), potom atomicky zapis. Hlasi sa
-        pocet zaznamov zo suboru, ktore v historii naozaj pribudli."""
+        """Writes the import result. First a BACKUP of both files (also on
+        merge - that overwrites them too), then an atomic write. It reports
+        the number of records from the file that really got added to the
+        history."""
         try:
             orez = {}
             relacie, okna, n_relacii, n_okien = data_io.vysledok_importu(
@@ -331,13 +345,15 @@ class DataMixin:
             self._refresh_history_page()
             sprava = tr("data.import.done", sessions=n_relacii, windows=n_okien)
             if orez.get("vypadlo"):
-                # STROP HISTORIE (0.2.2): najstarsie relacie nad MAX_SESSIONS
-                # vypadli - doteraz potichu. Vlastne su v zalohe pred importom,
-                # zo suboru ostavaju v importovanom subore.
+                # HISTORY CAP (0.3): the oldest sessions over MAX_SESSIONS
+                # dropped out - until now silently. The player's own are in the
+                # backup before import, the ones from the file stay in the
+                # imported file.
                 sprava += "\n" + tr("data.import.limit", max=hr_stats.MAX_SESSIONS,
                                     n=orez["vypadlo"])
             if zalohy:
-                # len mena suborov - cela cesta v %APPDATA% nesie meno uctu
+                # file names only - the full path in %APPDATA% carries the
+                # account name
                 sprava += "\n" + tr("data.import.backup", files=", ".join(
                     os.path.basename(z) for z in zalohy))
                 sprava += " " + tr("data.import.backup_where")
@@ -347,14 +363,15 @@ class DataMixin:
             self._data_note(str(exc))
 
     def delete_history(self):
-        """Zmaze historiu. MUSI presne vymenovat, co zmize.
+        """Deletes the history. It MUST list exactly what will disappear.
 
-        Sub "vsetko ostava u teba" znamena aj to, ze "zmazat" naozaj
-        zmaze - a to sa da ukazat len menovite.
+        The promise "everything stays with you" also means that "delete"
+        really deletes - and that can only be shown by name.
         """
-        # Stare priecinky po premenovani appky: migracia z nich historiu len
-        # KOPIROVALA, takze tam ostala druha kopia - maze sa aj ta a dialog
-        # ju menuje (jeden riadok na priecinok, viz data_io.plan_riadky).
+        # Old folders after the app was renamed: the migration only COPIED the
+        # history from them, so a second copy stayed there - it gets deleted
+        # too and the dialog names it (one line per folder, see
+        # data_io.plan_riadky).
         stare = legacy_data_dirs()
         plan = data_io.delete_plan(DATA_DIR, legacy_dirs=stare)
         riadky = []
@@ -364,17 +381,18 @@ class DataMixin:
                 riadky.append(f"  · {meno} — {tr('data.delete.empty')}")
             else:
                 riadky.append(f"  · {meno} — {polozka['bytes'] / 1024:.0f} kB")
-        # POCAS SLEDOVANIA NIE (0.2.2): beziaca relacia by sa pri zatvoreni
-        # hned znova ulozila do prazdnej historie. Tlacidlo je vtedy vypnute
-        # (`_refresh_data_delete_state`); toto je poistka pre Ctrl+K a pod.
+        # NOT WHILE WATCHING (0.3): a running session would be saved right
+        # back into the empty history on close. The button is disabled then
+        # (`_refresh_data_delete_state`); this is a safeguard for Ctrl+K etc.
         if getattr(self, "_hr_session_open", False):
             self._data_note(tr("data.delete.stop_first"))
             return
-        # Potvrdenie v okne appky, nie systemovy dialog: tlacidlo nesie
-        # sloveso "Zmazat historiu" a je cervene, nie "Ano". TRI VOLBY
-        # (0.2.2, audit): "Najprv exportovat..." spusti export a otazka sa
-        # vrati - zmazat sa tak da az s kopiou v ruke. Predvolene (fokus,
-        # Enter, Escape) je Zrusit.
+        # Confirmation in the app window, not a system dialog: the button
+        # carries the verb "Zmazat historiu" (Delete history) and is red, not
+        # "Ano" (Yes). THREE CHOICES (0.3, audit): "Najprv exportovat..."
+        # (Export first) runs the export and the question comes back - so
+        # deleting is possible only with a copy in hand. The default (focus,
+        # Enter, Escape) is Cancel.
         text = tr("data.delete.intro") + "\n\n" + "\n".join(riadky)
         while True:
             volba = self._spytaj_zmazanie(text)
@@ -385,7 +403,8 @@ class DataMixin:
                 return
             break
         if getattr(self, "_hr_session_open", False):
-            # sledovanie sa zaplo, kym bola otazka otvorena (napr. auto-profil)
+            # watching turned on while the question was open (e.g.
+            # auto-profile)
             self._data_note(tr("data.delete.stop_first"))
             return
         pocet = data_io.delete_all(DATA_DIR, log=self.log_threadsafe,
@@ -399,10 +418,12 @@ class DataMixin:
         self._data_note(tr("data.delete.done", n=pocet))
 
     def _spytaj_zmazanie(self, text):
-        """Otazka pred zmazanim celej historie: "delete" / "export" / "cancel".
+        """Question before deleting the whole history: "delete" / "export" /
+        "cancel".
 
-        `ui_kit.choose` (tri tlacidla v okne appky, fokus na Zrusit); bez neho
-        aspon `ui_kit.confirm` - potom bez volby exportu."""
+        `ui_kit.choose` (three buttons in the app window, focus on Cancel);
+        without it at least `ui_kit.confirm` - then without the export
+        choice."""
         choose = getattr(ui_kit, "choose", None)
         if callable(choose):
             return choose(
@@ -417,23 +438,26 @@ class DataMixin:
         return "delete" if ano else "cancel"
 
     def delete_history_session(self, session):
-        """Zmaze JEDNU ulozenu relaciu z historie (detail v Historii, 0.2.2).
+        """Deletes ONE saved session from the history (detail in History, 0.3).
 
-        Napr. 14-hodinova "relacia" cez uspany PC: spankovy tep by inak tlacil
-        pokojovu zakladnu a jedinou napravou bolo zmazat celu historiu.
-        Potvrdenie menuje datum a dlzku (fokus na Zrusit). Po zmazani sa
-        postrehy prepocitaju rovnako ako tlacidlom "Prepocitat" (zakladna,
-        hranica a prah sa beru z historie pri dalsej relacii) a stranka sa
-        prekresli. Prave nahravana relacia v historii este nie je - a keby
-        tam jej `started` bol, appka ju zmazat neponukne."""
+        E.g. a 14-hour "session" across a sleeping PC: the sleeping heart
+        rate would otherwise push down the resting baseline and the only fix
+        was to delete the whole history. The confirmation names the date
+        and the length (focus on Cancel). After the delete the insights are
+        recomputed the same way as with the "Prepocitat" (Recompute) button
+        (the baseline, the limit and the threshold are taken from the
+        history at the next session) and the page is redrawn. The session
+        being recorded right now is not in the history yet - and if its
+        `started` were there, the app does not offer to delete it."""
         if not isinstance(session, dict) or session.get("started") is None:
             return False
         if self._je_nahravana_relacia(session):
             return False
         try:
             started = float(session.get("started"))
-            time.localtime(started)         # cas mimo rozsahu -> vynimka
-            # datum v jazyku appky, ako tabulka v Historii (0.2.2 davka 4b)
+            time.localtime(started)         # time out of range -> exception
+            # date in the app language, like the table in History
+            # (0.3 batch 4b)
             kedy = ui_kit.datum_text(started, cas=True)
         except (TypeError, ValueError, OverflowError, OSError):
             return False
@@ -448,8 +472,8 @@ class DataMixin:
                                        log=self.log_threadsafe):
             self.log(tr("history.delete_session.failed"))
             return False
-        # Meracie okna tej relacie idu s nou - inak by jej hlasky dalej
-        # vstupovali do grafu "ktora pripomienka zabera".
+        # The measurement windows of that session go with it - otherwise its
+        # cues would keep entering the "which cue works" chart.
         try:
             okna = measure.load_windows(self.hr_windows_path)
             ostava = [w for w in okna if not (
@@ -466,12 +490,12 @@ class DataMixin:
             self._refresh_history_page()
         except Exception:
             app_log.exception("historia: prekreslenie po zmazani relacie zlyhalo")
-        # To iste ako "Prepocitat" (`history_recompute_btn`).
+        # The same as "Prepocitat" (Recompute, `history_recompute_btn`).
         self.run_hr_analysis()
         return True
 
     def _je_nahravana_relacia(self, session):
-        """Je to relacia, ktora sa prave nahrava? Tu sa zmazat neda."""
+        """Is this the session being recorded now? Cannot be deleted here."""
         if not getattr(self, "_hr_session_open", False):
             return False
         try:
@@ -481,17 +505,19 @@ class DataMixin:
             return False
 
     def _ask_session_context(self, summary):
-        """Opyta sa, co sa pri relacii dialo. Otvara sa az PO ulozeni
-        relacie - dotaznik sa pripaja k zaznamu, ktory uz existuje.
+        """Asks what was going on during the session. Opens only AFTER the
+        session is saved - the questionnaire attaches to a record that
+        already exists.
 
-        Kratke relacie sa neukladaju vobec, takze sa na ne ani nepytame:
-        volajuci to riesi tym, ze sem vojde len ked `save_session` uspel.
+        Short sessions are not saved at all, so we do not ask about them
+        either: the caller handles this by coming here only when
+        `save_session` succeeded.
         """
         try:
-            # LEN NAOZAJ DORUCENE. `delivered` doplnil `_on_cue_event`;
-            # bez tejto podmienky dotaznik ratal aj hlasky, ktore sa
-            # nedorucili (vsetky sloty vypnute, zlyhany vizual) a protirecil
-            # ulozenemu poctu `triggers` (bug B19).
+            # ONLY THE REALLY DELIVERED ONES. `delivered` is filled in by
+            # `_on_cue_event`; without this condition the questionnaire also
+            # counted cues that were not delivered (all slots off, failed
+            # visual) and contradicted the saved count of `triggers` (bug B19).
             tiche = sum(1 for c in self._cue_log
                         if c.get("typ") == trigger.E_DELIVER
                         and c.get("delivered")
@@ -500,11 +526,13 @@ class DataMixin:
                          if c.get("typ") == trigger.E_DELIVER
                          and c.get("delivered"))
             dialog = SessionEndDialog(self, summary, cues=vsetky, silent=tiche)
-            # Kazdy otvoreny dotaznik si appka pamata (0.2.2 davka 4b): ked
-            # hrac ukonci appku z listy alebo sa vypina Windows, kym dotaznik
-            # z bezneho Stop este visi, `_dokonci_otvorene_dotazniky` ulozi
-            # dotknute odpovede - `root.destroy()` by ich inak zahodil.
-            # Zavrete okna sa pri tom zahodia, aby zoznam za dlhy beh nerastol.
+            # The app remembers every open questionnaire (0.3 batch 4b): when
+            # the player quits the app from the tray or Windows is shutting
+            # down while a questionnaire from a normal Stop is still open,
+            # `_dokonci_otvorene_dotazniky` saves the answers that were
+            # touched - `root.destroy()` would otherwise throw them away.
+            # Closed windows are dropped along the way so the list does not
+            # grow over a long run.
             otvorene = []
             for stary in list(getattr(self, "_otvorene_dotazniky", None) or ()):
                 try:
@@ -514,20 +542,22 @@ class DataMixin:
                     pass
             otvorene.append(dialog)
             self._otvorene_dotazniky = otvorene
-            # PRI ZATVARANI APPKY SA MUSI POCKAT.
+            # WHEN THE APP IS CLOSING IT HAS TO WAIT.
             #
-            # Dialog robi `grab_set()`, ale nie `wait_window()`, takze sa
-            # `_ask_session_context` vratila okamzite. Pri beznom vypnuti
-            # merania to je spravne - okno visi a hrac ho vyplni, kedy chce.
-            # Lenze `_quit` ide hned na `root.destroy()`, cize sa dotaznik
-            # zahodil skor, nez sa stihol vykreslit: pri zatvoreni appky sa
-            # kontext relacie NEDAL vyplnit vobec. A prave vtedy sa vypina
-            # najcastejsie - dohral som a idem spat.
+            # The dialog does `grab_set()`, but not `wait_window()`, so
+            # `_ask_session_context` returned immediately. On a normal stop of
+            # the measurement that is right - the window stays and the player
+            # fills it in whenever they like. But `_quit` goes straight to
+            # `root.destroy()`, so the questionnaire was thrown away before it
+            # could even be drawn: when closing the app the session context
+            # could NOT be filled in at all. And that is exactly when it is
+            # turned off most often - I finished playing and I am going to
+            # sleep.
             if getattr(self, "_zatvara_sa", False):
-                # Cez tuto referenciu dotaznik zavrie druhe "Ukoncit" z listy
-                # (viz `_quit`). Inak by vo vnorenej slucke `wait_window`
-                # prebehlo cele druhe ukoncenie a tento `_quit` by sa vratil
-                # do zniceneho okna.
+                # Through this reference the second "Ukoncit" (Quit) from the
+                # tray closes the questionnaire (see `_quit`). Otherwise the
+                # whole second quit would run inside the nested `wait_window`
+                # loop and this `_quit` would return into a destroyed window.
                 self._dotaznik_pri_zatvarani = dialog
                 try:
                     self.root.wait_window(dialog.top)
@@ -537,18 +567,19 @@ class DataMixin:
             app_log.exception("dotaznik kontextu sa nepodarilo otvorit")
 
     def _dokonci_dotaznik(self, dotaznik):
-        """Dokonci dotaznik, ktory by ukoncenie appky alebo vypnutie Windows
-        inak zahodilo (0.2.2, rozhodnutie zadavatela; davka 4b ho rozsirila).
+        """Finishes a questionnaire that quitting the app or a Windows shutdown
+        would otherwise throw away (0.3, the requester's decision; batch 4b
+        extended it).
 
-        Dotkol sa hrac aspon jednej odpovede -> ulozi sa ako "Ulozit"; nie ->
-        zavrie sa ako "Preskocit". Do dennika ide jeden riadok: ulozene,
-        zavrety prazdny, alebo ze sa ulozit nepodarilo. Pocas tohto ulozenia
-        `save_session_context` neotvara okno s chybou - pri zatvarani by na
-        neho nikto neklikol a vypnutie Windows by cakalo.
+        Did the player touch at least one answer -> it is saved as "Ulozit"
+        (Save); no -> it is closed as "Preskocit" (Skip). One line goes into
+        the journal: saved, closed empty, or that saving failed. During this
+        save `save_session_context` does not open an error window - while
+        closing nobody would click it and the Windows shutdown would wait.
 
-        Dotaznik bez `bolo_vyplnene` (atrapy) sa bere ako prazdny. Zavrie sa
-        aj ked ulozenie zlyhalo: prvy `_quit` na neho moze cakat
-        (`wait_window`)."""
+        A questionnaire without `bolo_vyplnene` (dummies) is taken as empty.
+        It is closed even when saving failed: the first `_quit` may be
+        waiting for it (`wait_window`)."""
         try:
             vyplneny = bool(getattr(dotaznik, "bolo_vyplnene", lambda: False)())
         except Exception:
@@ -573,7 +604,7 @@ class DataMixin:
                 pass
         finally:
             self._dotaznik_bez_okna_chyby = False
-        # `confirm` atrap nic nevracia - None nie je neuspech.
+        # The `confirm` of dummies returns nothing - None is not a failure.
         try:
             self.log(tr("session.context.save_failed") if ok is False
                      else tr("log.quit_questionnaire_saved"))
@@ -582,12 +613,14 @@ class DataMixin:
         return ok is not False
 
     def _dokonci_otvorene_dotazniky(self):
-        """Kazdy este otvoreny dotaznik po relacii (`_otvorene_dotazniky`,
-        zaklada `_ask_session_context`) dokonci podla `_dokonci_dotaznik`.
+        """Finishes every questionnaire still open after a session
+        (`_otvorene_dotazniky`, set up by `_ask_session_context`) according
+        to `_dokonci_dotaznik`.
 
-        Vola sa pri prvom "Ukoncit" a pri vypnuti Windows (WM_SAVE_YOURSELF).
-        Okno, ktore uz zaniklo (hrac ho ulozil alebo preskocil), sa preskoci.
-        Vracia pocet dokoncenych dotaznikov."""
+        Called on the first "Ukoncit" (Quit) and on Windows shutdown
+        (WM_SAVE_YOURSELF). A window that is already gone (the player saved
+        or skipped it) is skipped. Returns the number of finished
+        questionnaires."""
         zive = []
         for dotaznik in list(getattr(self, "_otvorene_dotazniky", None) or ()):
             top = getattr(dotaznik, "top", None)
@@ -604,14 +637,15 @@ class DataMixin:
     def save_session_context(self, summary, context, activity=None, note=None,
                              sleep=None, felt_load=None, valence=None,
                              body_peak=None, cue_verdict=None, setup=None):
-        """Doplni kontext k prave ulozenej relacii. Vola dialog.
+        """Adds the context to the session just saved. Called by the dialog.
 
-        Vracia True pri uspechu. Kontext (kava/alkohol/spanok - najvacsi
-        vysvetlitelny zdroj rozptylu v merani), cinnost (hral/pracoval) aj
-        vlastna poznamka sa NESMU stratit potichu: `attach_context` doteraz
-        vratil True/False, ale navratovka sa ignorovala a dialog sa zavrel
-        presne ako pri uspechu (bug B16). Teraz sa pri neuspechu zapise chyba
-        a hrac dostane spravu.
+        Returns True on success. The context (coffee/alcohol/sleep - the
+        biggest explainable source of variance in the measurement), the
+        activity (playing/working) and the player's own note MUST NOT be
+        lost silently: `attach_context` used to return True/False, but the
+        return value was ignored and the dialog closed exactly as on success
+        (bug B16). Now on failure an error is written and the player gets a
+        message.
         """
         try:
             ok = hr_stats.attach_context(
@@ -625,17 +659,19 @@ class DataMixin:
             ok = False
         if ok:
             self._history_cache = (0.0, None)
-            # Odpoved hral/pracoval moze relaciu presunut do druheho sveta
-            # (B3-worlds): detail by potom ukazoval na inu relaciu a postrehy
-            # by boli z inej mnoziny - preto nulovanie a nova analyza.
+            # The playing/working answer can move the session to the other
+            # world (B3-worlds): the detail would then point to a different
+            # session and the insights would come from a different set - hence
+            # the reset and a new analysis.
             zmena_sveta = (hr_stats.normalize_activity(activity) is not None
                            and hr_stats.normalize_activity(activity)
                            != hr_stats.session_world(summary))
             if zmena_sveta:
                 self.history_detail_index = None
-            # Detail relacie v Historii ukazuje aj "citene · merane" - bez
-            # prekreslenia by tam po dotazniku ostala pomlcka do dalsej
-            # relacie. (Karta na Dnes si to precita sama pri dalsom tiku.)
+            # The session detail in History also shows "citene · merane" (felt
+            # · measured) - without a redraw a dash would stay there after the
+            # questionnaire until the next session. (The card on Today reads it
+            # by itself at the next tick.)
             try:
                 self._refresh_history_page()
             except Exception:
@@ -645,13 +681,14 @@ class DataMixin:
         else:
             app_log.error("kontext relacie sa neulozil - relacia sa nenasla "
                           "alebo subor nebolo mozne zapisat")
-            # Pri ukonceni / vypnuti Windows dokoncuje dotaznik appka
-            # (`_dokonci_dotaznik`) a chybu zapise do dennika - okno by tam
-            # nikto nezavrel a vypnutie by na neho cakalo.
+            # On quit / Windows shutdown the app finishes the questionnaire
+            # itself (`_dokonci_dotaznik`) and writes the error into the
+            # journal - nobody would close a window there and the shutdown
+            # would wait for it.
             if getattr(self, "_dotaznik_bez_okna_chyby", False):
                 return False
             try:
-                # okno appky, nie systemove (0.2.2, davka 4)
+                # app window, not a system one (0.3, batch 4)
                 ui_kit.notify(getattr(self, "root", None), getattr(self, "pal", None),
                               APP_NAME, tr("session.context.save_failed"),
                               kind="warning")
@@ -660,13 +697,16 @@ class DataMixin:
         return bool(ok)
 
     def _save_measure_windows(self):
-        """Zostavi meracie okna prave skoncenej relacie a ulozi ich.
+        """Builds the measurement windows of the session that just ended and
+        saves them.
 
-        Pocita sa az tu, na konci: v tom momente je `hr_stats._all` cely,
-        takze staci jeden prechod a nic netreba casovat. Cenou je, ze okno
-        poslednej hlasky moze byt skratene - zapise sa s dovodom.
+        It is computed only here, at the end: at that moment `hr_stats._all`
+        is complete, so one pass is enough and nothing needs timing. The
+        price is that the window of the last cue may be cut short - it is
+        written with a reason.
 
-        Do suboru nejde ziadna surova krivka, len priemery za pasma okna.
+        No raw curve goes into the file, only averages over the bands of
+        the window.
         """
         try:
             cues = list(getattr(self.hr_stats, "cues", ()))
@@ -680,15 +720,16 @@ class DataMixin:
                 session_started=self.hr_stats.session_start,
                 game=self.active_profile_name or None,
             )
-            # Kazde okno si nesie parametre, s akymi relacia bezala
-            # (zadanie §3.3). Bez toho sa o mesiac neda povedat, ci bol
-            # rozdiel v tom, co sa zmenilo, alebo v tom, ako sa hrac vyspal.
+            # Every window carries the parameters the session ran with (spec
+            # §3.3). Without that, a month later you cannot tell whether the
+            # difference was in what changed or in how well the player slept.
             params = dict(self.cue_trigger.params)
             params["silent_share"] = self.cue_trigger.silent_share
-            # Svet relacie (B3-worlds) priamo v okne: okna ziju dlhsie nez
-            # relacie (MAX_SESSIONS), takze spajat ich so suhrnom by casom
-            # stratilo prave tie najstarsie. V `world` "work" hlaska nemala
-            # hlas ani zvuk - graf ucinnosti ich tak vie raz oddelit.
+            # The session world (B3-worlds) directly in the window: windows
+            # live longer than sessions (MAX_SESSIONS), so joining them with
+            # the summary would over time lose exactly the oldest ones. In
+            # `world` "work" the cue had no voice or sound - so the
+            # effectiveness chart can separate them one day.
             svet = getattr(self, "_session_world", hr_stats.WORLD_DEFAULT)
             for w in windows:
                 w["params"] = params
@@ -700,20 +741,24 @@ class DataMixin:
                 app_log.info("meracie okna: ulozenych %d, z toho platnych %d",
                              len(windows), platne)
         except Exception:
-            # Meranie nesmie zhodit ukladanie relacie - suhrn relacie je
-            # dolezitejsi nez okna a uklada sa hned za tymto.
+            # The measurement must not crash the saving of the session - the
+            # session summary is more important than the windows and is saved
+            # right after.
             app_log.exception("meracie okna: zostavenie/ulozenie zlyhalo")
 
     def _maybe_graduate(self, summary):
-        """Po ulozeni relacie: dosiahol hrac "plny Zanshin"? Spusti sa RAZ.
+        """After a session is saved: has the player reached "full Zanshin"?
+        Runs ONCE.
 
-        Cita ULOZENU historiu (vratane prave ulozenej relacie), vyhodnoti
-        `hr_stats.zanshin_graduation`; pri splneni nastavi trvaly flag, ulozi
-        nastavenia, oznaci summary pre dotaznik (mysticka sprava) a prepne
-        znacku na zlaty mesiac. Appka bezi dalej - je to len pozorovanie.
+        Reads the SAVED history (including the session just saved),
+        evaluates `hr_stats.zanshin_graduation`; when met it sets a
+        permanent flag, saves the settings, marks the summary for the
+        questionnaire (mystical message) and switches the mark to the
+        golden moon. The app keeps running - it is only an observation.
 
-        Len po HERNEJ relacii (`hr_stats.ZEN_SVET`): seria sa rata z hry a
-        kruh sa uzavrie po pokojnom vecere pri hre - nie v dotazniku po praci.
+        Only after a GAME session (`hr_stats.ZEN_SVET`): the streak is
+        counted from playing and the circle closes after a calm evening of
+        playing - not in the questionnaire after work.
         """
         try:
             if self.zanshin_graduated:
@@ -738,61 +783,69 @@ class DataMixin:
             app_log.exception("promocia: vyhodnotenie zlyhalo")
 
     def _close_hr_session(self, pri_vypnuti=False, koniec=None):
-        """Ulozi suhrn prave skoncenej relacie do hr_sessions.json.
+        """Saves the summary of the session just ended into hr_sessions.json.
 
-        `koniec` (cas, 0.2.2): relacia skoncila uz vtedy - posledny tik pred
-        uspanim PC (`_rozdel_relaciu_po_medzere`). Suhrn sa uzavrie k nemu a
-        dotaznik sa neotvori, hrac pri konci nebol. Ukladanie je inak to iste
-        (`je_ulozitelna`, kontrolny bod, ucenie).
+        `koniec` (a time, 0.3): the session already ended back then - the
+        last tick before the PC went to sleep (`_rozdel_relaciu_po_medzere`).
+        The summary is closed at that time and the questionnaire does not
+        open, the player was not there at the end. Saving is otherwise the
+        same (`je_ulozitelna`, checkpoint, learning).
 
-        Kratke relacie (pod minutu alebo bez dat) sa zahadzuju uz v
-        hr_stats.save_session - zapnut a hned vypnut senzor nie je relacia.
+        Short sessions (under a minute or without data) are thrown away
+        already in hr_stats.save_session - turning the sensor on and right
+        off again is not a session.
 
-        `pri_vypnuti=True` (vypinanie Windows, `_pri_vypinani_windows`):
-        ulozit a nic viac. Windows caka na odpoved len par sekund, takze bez
-        dotaznika (zahodil by sa s procesom), bez promocie (jednorazova
-        sprava by sa hracovi nikdy neukazala - vyhodnoti sa po dalsej
-        relacii) a bez prekreslovania Historie a analyzy v pozadi.
+        `pri_vypnuti=True` (Windows shutting down, `_pri_vypinani_windows`):
+        save and nothing more. Windows waits for an answer only a few
+        seconds, so no questionnaire (it would be thrown away with the
+        process), no graduation (a one-off message would never be shown to
+        the player - it is evaluated after the next session) and no redraw
+        of History and the analysis in the background.
         """
         if not self._hr_session_open:
             return
         self._hr_session_open = False
-        # "Zmazat historiu" sa s koncom relacie vrati (0.2.2).
+        # "Zmazat historiu" (Delete history) comes back with the end of the
+        # session (0.3).
         _ak_vies(self, "_refresh_data_delete_state")
-        # Ak sa prave cakalo na pauzu, zapise sa to. Podla toho, ako casto
-        # sa relacia skonci v tomto stave, sa da ladit `max_wait_s`.
+        # If it was just waiting for a pause, that gets written. From how often
+        # a session ends in this state, `max_wait_s` can be tuned.
         try:
             udalost = self.cue_trigger.close_session()
             if udalost is not None:
                 self._cue_log.append(dict(udalost))
         except Exception:
             app_log.exception("spustac hlasky: close_session zlyhal")
-        # `close_session` zapisuje do logu priamo, nie cez `_on_cue_event`,
-        # takze prstenec treba zhodit rucne. Senzor sa da vypnut bez toho,
-        # aby sa prestalo pocuvat - `set_live` to teda nechyti.
+        # `close_session` writes to the log directly, not through
+        # `_on_cue_event`, so the ring has to be dropped by hand. The sensor
+        # can be turned off without listening stopping - so `set_live` will not
+        # catch it.
         self._set_enso_armed(False)
         self._save_measure_windows()
-        # Udalosti automatu natrvalo. Az TU, nie priebezne: zapis na disk
-        # pri kazdej udalosti by sa diala v Tk vlakne uprostred hrania.
+        # Events of the state machine, permanently. Only HERE, not as they
+        # come: a disk write on every event would happen in the Tk thread in
+        # the middle of playing.
         try:
             data_io.append_events(self.hr_events_path, self._cue_log,
                                   started=getattr(self.hr_stats, "session_start", None))
         except Exception:
             app_log.exception("udalosti: zapis zlyhal")
-        # Relacia skoncila skor nez teraz (posledny tik pred uspanim PC,
-        # `_rozdel_relaciu_po_medzere`): suhrn sa uzavrie k tomu casu.
+        # The session ended earlier than now (the last tick before the PC went
+        # to sleep, `_rozdel_relaciu_po_medzere`): the summary is closed at
+        # that time.
         summary = (self._suhrn_relacie() if koniec is None
                    else self._suhrn_relacie(koniec=koniec))
-        # Az PO zostaveni suhrnu: tieto pocitadla patria uz len tejto
-        # relacii. `_suhrn_relacie` ich len cita (vola ho aj kontrolny bod
-        # uprostred relacie), nulovanie je vec zatvorenia.
+        # Only AFTER the summary is built: these counters still belong to this
+        # session only. `_suhrn_relacie` only reads them (the checkpoint calls
+        # it too, in the middle of a session); resetting is the job of closing.
         self._snooze_po_hlaske = None
         self._snooze_rel_s = 0.0
         self._snooze_rel_od = None
         self._hud_tick_t = None
-        # Chyba zapisu ide do dennika vlastnou vetou (`_relacia_sa_neulozila`),
-        # nie technickym riadkom zo `save_session`; ostatne riadky (napr.
-        # odlozeny pokazeny subor) idu do dennika ako doteraz.
+        # A write error goes into the journal with its own sentence
+        # (`_relacia_sa_neulozila`), not as a technical line from
+        # `save_session`; the other lines (e.g. a set-aside broken file) go
+        # into the journal as before.
         chyby_zapisu = []
 
         def _log_ulozenia(sprava):
@@ -805,34 +858,39 @@ class DataMixin:
         ulozitelna = hr_stats.je_ulozitelna(summary)
         ulozena = hr_stats.save_session(self.hr_sessions_path, summary,
                                         log=_log_ulozenia)
-        # Kontrolny bod uz netreba - relacia je v historii. Ked sa ulozit
-        # nedala (plny disk), ostava a obnova ju skusi pri dalsom starte;
-        # kratka relacia, ktora by neprisla ani tak, ho maze tiez.
+        # The checkpoint is no longer needed - the session is in the history.
+        # When it could not be saved (full disk), it stays and the recovery
+        # tries it at the next start; a short session, which would not get in
+        # anyway, deletes it too.
         if ulozena or not ulozitelna:
             hr_stats.zahod_rozpracovanu(self.hr_sessions_path)
         if not ulozena and ulozitelna:
-            # ZAPIS ZLYHAL (0.2.2): plny disk, zakazany pristup, zamknuty
-            # subor. Relacia nesmie zmiznut potichu - riadok, oznam a suhrn
-            # bokom do hr_session_pending.json (doplni ho dalsi start).
+            # WRITE FAILED (0.3): full disk, access denied, locked file. The
+            # session must not vanish silently - a line, a notice and the
+            # summary set aside into hr_session_pending.json (the next start
+            # adds it).
             _ak_vies(self, "_relacia_sa_neulozila",
                      summary, chyby_zapisu[-1] if chyby_zapisu else "?",
                      oznam=not pri_vypnuti and not getattr(self, "_zatvara_sa", False))
         elif not ulozena:
             _ak_vies(self, "_kratka_relacia_bez_tepu", summary)
         if ulozena:
-            # Znacku nastavovania nesie len PRVA relacia, ktora sa naozaj
-            # ulozila. Kratka (pod minutu, bez tepu - napr. pred sparovanim
-            # hodiniek) sa neulozi, takze znacka pocka na dalsiu.
+            # The setup mark is carried only by the FIRST session that really
+            # got saved. A short one (under a minute, no heart rate - e.g.
+            # before the watch is paired) is not saved, so the mark waits for
+            # the next one.
             self._relacia_nastavovania = False
-            # Disk je zase zapisovatelny - co minule ostalo bokom, ide dnu.
+            # The disk is writable again - what was left aside last time goes
+            # in.
             if not pri_vypnuti:
                 _ak_vies(self, "_dopln_cakajuce_relacie")
         if ulozena and not pri_vypnuti:
-            # Po uspani PC (`koniec`) bez dotaznika: hrac pri tom nebol a
-            # okno by mu po prebudeni vyskocilo pred hru (0.2.2). A preto ani
-            # bez promocie - jej jednorazovu spravu nesie prave dotaznik
-            # (`zen_graduation`), takze by sa nikdy neukazala; vyhodnoti sa
-            # po dalsej relacii, rovnako ako pri vypinani Windows.
+            # After the PC went to sleep (`koniec`) no questionnaire: the
+            # player was not there and the window would pop up in front of the
+            # game after wake-up (0.3). And for that reason no graduation
+            # either - its one-off message is carried by the questionnaire
+            # (`zen_graduation`), so it would never show; it is evaluated after
+            # the next session, just like on a Windows shutdown.
             if koniec is None:
                 self._maybe_graduate(summary)
                 self._ask_session_context(summary)
@@ -841,10 +899,10 @@ class DataMixin:
                         avg=summary.get("avg_bpm") or "-",
                         max=summary.get("max_bpm") or "-",
                         peak=summary.get("peak_stress")))
-            # nova relacia v historii -> prekresli stranku a prepocitaj
-            # postrehy (v pozadi). Cache historie musi ist prec ako prva,
-            # inak by karty aj graf este 20 sekund kreslili stav spred
-            # tejto relacie.
+            # a new session in history -> redraw the page and recompute the
+            # insights (in the background). The history cache has to go first,
+            # otherwise the cards and the chart would keep drawing the state
+            # from before this session for another 20 seconds.
             self._history_cache = (0.0, None)
             if pri_vypnuti:
                 return
@@ -855,68 +913,76 @@ class DataMixin:
             self.run_hr_analysis()
 
     def _suhrn_relacie(self, koniec=None):
-        """Suhrn beziacej relacie - presne to, co by ulozilo zatvorenie.
+        """Summary of the running session - exactly what closing would save.
 
-        BEZ VEDLAJSICH UCINKOV: vola ho `_close_hr_session` aj kontrolny bod
-        (`_zapis_rozpracovanu_relaciu`) kazdych par minut uprostred hrania,
-        takze nic nenuluje ani nepripocitava do stavu appky. Jeden zdroj
-        suhrnu, aby sa obnovena relacia nelisila od normalne ulozenej.
+        NO SIDE EFFECTS: it is called by `_close_hr_session` and also by the
+        checkpoint (`_zapis_rozpracovanu_relaciu`) every few minutes in the
+        middle of playing, so it resets nothing and adds nothing to the app
+        state. One source of the summary, so that a recovered session does not
+        differ from a normally saved one.
 
-        `koniec` (0.2.2) = relacia skoncila uz vtedy (posledny tik pred
-        uspanim PC) - vsetky casy v suhrne sa ratau po neho, nie po teraz.
+        `koniec` (0.3) = the session already ended then (the last tick before
+        the PC went to sleep) - all times in the summary are counted up to it,
+        not up to now.
         """
         summary = (self.hr_stats.summary() if koniec is None
                    else self.hr_stats.summary(koniec=koniec))
         teraz = time.time() if koniec is None else float(koniec)
-        # SVET, V KTOROM RELACIA ZACALA (B3-worlds). Samostatny kluc, nie
-        # `activity`: to je odpoved hraca v dotazniku a strojovy stitok by
-        # ju nesmel prekryt - neskor sa musi dat rozlisit, co hrac naozaj
-        # potvrdil. Ktory plati, rozhoduje `hr_stats.session_world`.
+        # THE WORLD THE SESSION STARTED IN (B3-worlds). A separate key, not
+        # `activity`: that is the player's answer in the questionnaire and a
+        # machine label must not cover it - later it has to be possible to tell
+        # what the player really confirmed. Which one applies is decided by
+        # `hr_stats.session_world`.
         summary["world"] = getattr(self, "_session_world", hr_stats.WORLD_DEFAULT)
-        # NASTAVOVANIE APPKY (0.2.2): kym sa po uvode neulozi prva relacia,
-        # je to sedenie pri stole (parovanie, prehliadka), nie hranie - prahy
-        # sa z nej neucia (`hr_stats.ciste_relacie`). Aj do kontrolneho bodu,
-        # aby to platilo aj po obnove. Hrac to v dotazniku moze zrusit.
+        # APP SETUP (0.3): until the first session after the introduction is
+        # saved, it is a sitting at the desk (pairing, tour), not playing -
+        # thresholds are not learned from it (`hr_stats.ciste_relacie`). Into
+        # the checkpoint too, so it still holds after a recovery. The player
+        # can cancel it in the questionnaire.
         if getattr(self, "_relacia_nastavovania", False):
             summary["setup"] = True
-        # EXKLUZIVNY FULLSCREEN (0.2.2 davka 4): appka ho v tejto relacii
-        # zbadala (`_warn_exclusive_fullscreen_once`) - obrazky nad takou
-        # hrou Windows nevykresli. Jeden priznak, dotaznik podla neho povie
-        # vetu `session.end.fullscreen_note`.
+        # EXCLUSIVE FULLSCREEN (0.3 batch 4): the app noticed it in this
+        # session (`_warn_exclusive_fullscreen_once`) - Windows does not draw
+        # pictures over such a game. One flag, the questionnaire uses it to say
+        # the sentence `session.end.fullscreen_note`.
         if getattr(self, "_session_fullscreen", False):
             summary["fullscreen"] = True
-        # PRECO SA TOTO PRILEPUJE K SUHRNU
-        # Prvy skutocny vecer skoncil s nulou hlasok, hoci spicka zataze bola
-        # 87 pri prahu 55. Zo suhrnu sa nedalo rozlisit, ci bolo pravidlo
-        # "suvisle 90 s" pritvrde, alebo ci pocitanie rozbijali vypadky tepu.
-        # Su to jednotlive cisla, nie krivka - do suboru nejde nic surove.
+        # WHY THIS IS ATTACHED TO THE SUMMARY
+        # The first real evening ended with zero cues, although the peak load
+        # was 87 at a threshold of 55. From the summary you could not tell
+        # whether the "sustained 90 s" rule was too strict, or whether
+        # heart-rate dropouts broke the counting.
+        # These are single numbers, not a curve - nothing raw goes to the file.
         try:
             summary["longest_above_s"] = round(self.cue_trigger.najdlhsi_nad_s, 1)
             summary["above_runs"] = self.cue_trigger.behov_nad
             summary["runs_cancelled_dip"] = self.cue_trigger.zrusenych_prepadom
             summary["runs_cancelled_gap"] = self.cue_trigger.zrusenych_vypadkom
             summary["stress_hold_s"] = self.cue_trigger.params["stress_hold_s"]
-            # Na AKOM prahu relacia bezala. Po par veceroch sa prah pocita z
-            # vlastnych dat (`_prah_z_dat`) a meni sa medzi relaciami - bez
-            # neho sa po par veceroch neda povedat, ci bol vecer na 55, 78
-            # alebo 72, ani oddelit vecery pred opravou spustaca a po nej.
+            # AT WHICH threshold the session ran. After a few evenings the
+            # threshold is computed from the player's own data (`_prah_z_dat`)
+            # and changes between sessions - without it, after a few evenings
+            # you cannot say whether an evening was at 55, 78 or 72, nor
+            # separate the evenings before and after the trigger fix.
             summary["stress_threshold"] = self.cue_trigger.params["stress_threshold"]
-            # BRANA HLASKY (0.2): kolko pauz vo vstupe appka za relaciu
-            # vobec videla a kolko natiahnuti sama zrusila (podla dovodu).
-            # Nula pauz za dlhy vecer = hlas nemal kedy zaznet; dotaznik to
-            # povie narovinu (`SessionEndDialog._preco_ticho`).
+            # CUE GATE (0.2): how many pauses in the input the app saw at all
+            # during the session and how many armings it cancelled itself
+            # (by reason). Zero pauses over a long evening = the voice had no
+            # moment to sound; the questionnaire says so plainly
+            # (`SessionEndDialog._preco_ticho`).
             summary["pause_episodes"] = self.cue_trigger.pause_episodes
             summary["cues_withheld"] = dict(self.cue_trigger.zadrzane)
-            # REBRIK HLASKY (0.2, `rebrik.py`): stupen a styl, na ktorych
-            # relacia bezala, a "teraz nie" kratko po hlaske - s tym, kolko
-            # relacia po nom este bezala (`_zapis_snooze_po_hlaske`).
+            # CUE LADDER (0.2, `rebrik.py`): the rung and style the session ran
+            # on, and "not now" shortly after a cue - together with how long
+            # the session kept running after it (`_zapis_snooze_po_hlaske`).
             summary["cue_rung"] = getattr(self, "_cue_rung", rebrik.HLAS)
             summary["cue_style"] = getattr(self, "_cue_style_rel", rebrik.STYL_HLAS)
-            # Kolko automatickych hlasok sa naozaj UKAZALO (0.2.1). Rebrik
-            # rata relaciu "s hlaskou" podla tohto, nie podla `auto_triggers`
-            # - to zapocita aj hlasku so zlyhanym obrazom, z ktorej hrac nic
-            # nevidel (viz `rebrik._hlasok`). Rovnake pravidlo ako dotaznik
-            # (`_ask_session_context`) a `hr_stats.last_auto_cue_ts`.
+            # How many automatic cues were really SHOWN (0.2.1). The ladder
+            # counts a session "with a cue" by this, not by `auto_triggers` -
+            # that one also counts a cue with a failed picture, of which the
+            # player saw nothing (see `rebrik._hlasok`). The same rule as the
+            # questionnaire (`_ask_session_context`) and
+            # `hr_stats.last_auto_cue_ts`.
             summary["cues_delivered"] = sum(
                 1 for c in getattr(self.hr_stats, "cues", ())
                 if c.get("source") == "auto" and c.get("delivered", True))
@@ -924,28 +990,29 @@ class DataMixin:
             if snooze is not None:
                 summary["snooze_after_cue_s"] = snooze[0]
                 summary["snooze_then_s"] = round(max(0.0, teraz - snooze[1]), 1)
-            # Dlhodoba zakladna, voci ktorej sa zataz v tejto relacii ratala
-            # (None = este nebola z coho).
+            # The long-term baseline the load in this session was computed
+            # against (None = there was nothing to build it from yet).
             dlhodoba = self.hr_stats.long_baseline
             summary["long_baseline_bpm"] = (round(float(dlhodoba), 1)
                                            if dlhodoba is not None else None)
         except Exception:
             app_log.exception("suhrn: pocitadla spustaca sa nepodarilo pridat")
-        # Kolko z relacie platilo "teraz nie" (od 24. 9. relaciu nezatvara).
-        # Pocitadla vyssie ten cas nevidia - automat vtedy spal - takze
-        # dotaznik aj postrehy podla nich nesmu vysvetlovat ticho, ktore si
-        # hrac vybral sam (`SessionEndDialog._preco_ticho`, `hr_insights`).
+        # How much of the session "not now" was in effect (since 24. 9. it does
+        # not close the session). The counters above do not see that time - the
+        # state machine was asleep then - so the questionnaire and the insights
+        # must not use them to explain a silence the player chose themselves
+        # (`SessionEndDialog._preco_ticho`, `hr_insights`).
         od = getattr(self, "_snooze_rel_od", None)
         stisene = getattr(self, "_snooze_rel_s", 0.0) or 0.0
         if od is not None:
             stisene += max(0.0, teraz - od)
         if stisene > 0.0:
             summary["snoozed_s"] = round(stisene, 1)
-        # Koľko relácie hráč reálne videl svoj tep (HUD). Doťahuje sa posledný
-        # úsek od posledného tiku po teraz - do lokálnych premenných, nie do
-        # `_hud_*` (kontrolný bod by inak ten úsek pripočítal dvakrát).
-        # Podiel z trvania: relácia s viditeľným HUD je iný experiment než
-        # naslepo (biofeedback).
+        # How much of the session the player actually saw their heart rate
+        # (HUD). The last stretch from the last tick to now is added - into
+        # local variables, not into `_hud_*` (otherwise the checkpoint would
+        # add that stretch twice). A share of the duration: a session with a
+        # visible HUD is a different experiment than a blind one (biofeedback).
         try:
             videl_s, aktivne_s = self._hud_vis_s, self._hud_active_s
             if self._hud_tick_t is not None:
@@ -955,9 +1022,9 @@ class DataMixin:
                     if self._hud_is_visible():
                         videl_s += dt
             summary["hud_visible_s"] = round(videl_s, 1)
-            # Podiel z AKTIVNEHO casu relacie, nie z hrubeho trvania: citatel
-            # aj menovatel zahadzuju rovnake medzery (uspanie PC), takze podiel
-            # po uspani neklesne umelo nadol.
+            # A share of the ACTIVE session time, not of the raw duration:
+            # numerator and denominator drop the same gaps (PC asleep), so the
+            # share does not drop artificially after a sleep.
             if aktivne_s > 0:
                 summary["hud_visible_frac"] = round(
                     max(0.0, min(1.0, videl_s / aktivne_s)), 3)
@@ -965,35 +1032,39 @@ class DataMixin:
             app_log.exception("suhrn: viditelnost HUD-u sa nepodarilo pridat")
         return summary
 
-    # ---------- vypnutie Windows, kontrolny bod, obnova po pade ----------
+    # ---------- Windows shutdown, checkpoint, crash recovery ----------
 
     def _pri_vypinani_windows(self):
-        """Windows sa vypina, restartuje alebo odhlasuje (WM_SAVE_YOURSELF).
+        """Windows is shutting down, restarting or logging off
+        (WM_SAVE_YOURSELF).
 
-        PRECO TOTO A NIE WM_DELETE_WINDOW: pri vypnuti PC Windows okno
-        nezatvara, posle WM_QUERYENDSESSION a potom proces ukonci. Tk na
-        Windows (tkWinWm.c, WmProc) z WM_QUERYENDSESSION spravi protokol
-        WM_SAVE_YOURSELF a obsluhu zavola HNED, synchronne - Windows medzitym
-        caka na odpoved. Overene nazivo na Tk 9.0, ktore appka bali
-        (tests/test_022b_data_vypnutie.py): WM_QUERYENDSESSION poslana
-        bezramovemu oknu schovanemu v liste zavola obsluhu WM_SAVE_YOURSELF,
-        WM_DELETE_WINDOW nie. Doteraz appka poznala len WM_DELETE_WINDOW,
-        takze vypnutie PC zahodilo celu relaciu aj jej udalosti.
+        WHY THIS AND NOT WM_DELETE_WINDOW: on PC shutdown Windows does not
+        close the window, it sends WM_QUERYENDSESSION and then ends the
+        process. Tk on Windows (tkWinWm.c, WmProc) turns WM_QUERYENDSESSION
+        into the WM_SAVE_YOURSELF protocol and calls the handler RIGHT AWAY,
+        synchronously - Windows meanwhile waits for the answer. Verified live
+        on Tk 9.0, which the app bundles (tests/test_022b_data_vypnutie.py):
+        WM_QUERYENDSESSION sent to a borderless window hidden in the tray calls
+        the WM_SAVE_YOURSELF handler, WM_DELETE_WINDOW does not. Until now the
+        app only knew WM_DELETE_WINDOW, so a PC shutdown threw away the whole
+        session and its events.
 
-        Musi byt RYCHLE: Windows po par sekundach ukaze "Tato appka brani
-        vypnutiu". Preto len ulozit relaciu bez dotaznika a nastavenia -
-        `_quit` (dotaznik, zastavenie vlakien) sa tu nevola, proces aj tak
-        skonci. Bezpecne aj pocas `_quit` (relacia uz je zavreta, ulozia sa
-        len nastavenia) aj dvakrat po sebe (`_hr_session_open` strazi).
+        It must be FAST: after a few seconds Windows shows "This app is
+        preventing shutdown". So we only save the session, without the
+        questionnaire and settings - `_quit` (questionnaire, stopping threads)
+        is not called here, the process ends anyway. Safe also during `_quit`
+        (the session is already closed, only the settings are saved) and twice
+        in a row (`_hr_session_open` guards it).
         """
         if getattr(self, "_vypnutie_bezi", False):
             return
         self._vypnutie_bezi = True
         try:
-            # Otvoreny dotaznik (z bezneho Stop, alebo ten, na ktory caka
-            # `_quit`) by proces zahodil: dotknute odpovede sa ulozia ako
-            # "Ulozit", nedotknuty sa zavrie ako "Preskocit" (0.2.2 davka 4b,
-            # to iste pravidlo ako pri ukonceni). Len zapis do suboru - rychle.
+            # An open questionnaire (from a normal Stop, or the one `_quit` is
+            # waiting for) would be thrown away with the process: touched
+            # answers are saved like "Save", an untouched one is closed like
+            # "Skip" (0.3 batch 4b, the same rule as on quit). Only a file
+            # write - fast.
             try:
                 self._dokonci_otvorene_dotazniky()
             except Exception:
@@ -1007,11 +1078,12 @@ class DataMixin:
             except Exception:
                 app_log.exception("vypnutie Windows: nastavenia sa nepodarilo ulozit")
             app_log.info("vypnutie Windows: relacia a nastavenia ulozene")
-            # VYPNUTIE SA MOZE ZRUSIT (ina appka ho zablokuje a hrac da
-            # Zrusit). Tk to appke nepovie - appka by potom pocuvala, ale
-            # bez otvorenej relacie by nemerala nic (presne chyba A1). Ked
-            # proces o chvilu este zije, vypnutie neprebehlo: relacia sa
-            # otvori znova. Ked Windows vypne, toto uz nikdy nepribehne.
+            # THE SHUTDOWN CAN BE CANCELLED (another app blocks it and the
+            # player presses Cancel). Tk does not tell the app - the app would
+            # then listen, but without an open session it would measure nothing
+            # (exactly bug A1). When the process is still alive a moment later,
+            # the shutdown did not happen: the session is opened again. When
+            # Windows does shut down, this never runs.
             stary = getattr(self, "_vypnutie_job", None)
             if stary is not None:
                 try:
@@ -1027,7 +1099,7 @@ class DataMixin:
             self._vypnutie_bezi = False
 
     def _po_zrusenom_vypnuti(self):
-        """Windows sa napokon nevyplo - meranie pokracuje novou relaciou."""
+        """Windows did not shut down after all - measuring in a new session."""
         self._vypnutie_job = None
         if getattr(self, "_quit_bezi", False) or getattr(self, "_zatvara_sa", False):
             return
@@ -1037,15 +1109,16 @@ class DataMixin:
             return
         try:
             if self.heart_rate_monitor.running:
-                # Prijem bezi dalej, siete sa nedotykame (ako `start_listening`).
+                # Receiving keeps running, we do not touch the network (like
+                # `start_listening`).
                 self._open_hr_session(prepoj=False, meria=True)
                 app_log.info("vypnutie Windows sa zrusilo - nova relacia otvorena")
         except Exception:
             app_log.exception("po zrusenom vypnuti sa relacia neotvorila")
 
     def _naplanuj_rozpracovanu_relaciu(self):
-        """Dalsi kontrolny bod o `ROZPRACOVANA_KAZDYCH_MS`. Vola sa raz z
-        `__init__`, potom sa tik planuje sam."""
+        """Next checkpoint in `ROZPRACOVANA_KAZDYCH_MS`. Called once from
+        `__init__`, after that the tick schedules itself."""
         try:
             self._rozpracovana_job = self.root.after(
                 ROZPRACOVANA_KAZDYCH_MS, self._tik_rozpracovanej_relacie)
@@ -1055,8 +1128,8 @@ class DataMixin:
 
     def _tik_rozpracovanej_relacie(self):
         self._rozpracovana_job = None
-        # Pocas ukoncovania nic: relacia sa prave uklada normalne a po
-        # `root.destroy()` uz niet kam planovat.
+        # Nothing while quitting: the session is being saved normally right now
+        # and after `root.destroy()` there is nowhere left to schedule.
         if getattr(self, "_quit_bezi", False) or getattr(self, "_zatvara_sa", False):
             return
         try:
@@ -1066,14 +1139,15 @@ class DataMixin:
         self._naplanuj_rozpracovanu_relaciu()
 
     def _zapis_rozpracovanu_relaciu(self):
-        """Kontrolny bod: suhrn otvorenej relacie do hr_session_open.json.
+        """Checkpoint: summary of the open session into hr_session_open.json.
 
-        PRECO KAZDYCH 5 MINUT, NIE PRI KAZDEJ VZORKE: zapis bezi v Tk vlakne
-        uprostred hrania (rovnaky dovod, preco sa udalosti pisu az na konci).
-        Pri pade sa strati najviac poslednych 5 minut, nie cely vecer.
-        Udalosti a meracie okna sa tu NEZAPISUJU - patria k zatvoreniu (okna
-        sa skladaju z celej relacie naraz), po pade preto chybaju.
-        Vracia True, ked sa zapisalo."""
+        WHY EVERY 5 MINUTES, NOT ON EVERY SAMPLE: the write runs in the Tk
+        thread in the middle of playing (the same reason why events are written
+        only at the end). On a crash at most the last 5 minutes are lost, not
+        the whole evening. Events and measurement windows are NOT WRITTEN
+        here - they belong to closing (windows are built from the whole session
+        at once), so after a crash they are missing. Returns True when it
+        wrote."""
         if not getattr(self, "_hr_session_open", False):
             return False
         summary = self._suhrn_relacie()
@@ -1083,14 +1157,16 @@ class DataMixin:
                                            log=app_log.warning)
 
     def _obnov_rozpracovanu_relaciu(self):
-        """Pri starte: relacia, ktora sa minule neulozila, ide do historie.
+        """At start: a session that was not saved last time goes into history.
 
-        Vola sa z `__init__` pred zapnutim senzora (nova relacia sa este
-        neotvorila). Do dennika jeden riadok, technicke dovody len do app.log.
+        Called from `__init__` before the sensor is switched on (no new session
+        is open yet). One line to the journal, technical reasons only to
+        app.log.
 
-        Najprv relacie, ktore sa minule nedali ULOZIT (`hr_session_pending`,
-        0.2.2): su uplne, kym kontrolny bod tej istej relacie je az 5 minut
-        stary - ten sa potom zahodi ako duplikat (`_uz_v_historii`).
+        First the sessions that could not be SAVED last time
+        (`hr_session_pending`, 0.3): they are complete, while the checkpoint of
+        the same session is up to 5 minutes old - that one is then thrown away
+        as a duplicate (`_uz_v_historii`).
         """
         _ak_vies(self, "_dopln_cakajuce_relacie")
         try:
@@ -1101,7 +1177,7 @@ class DataMixin:
             return None
         if obnovena is None:
             return None
-        # Rovnaky tvar datumu ako zoznam relacii v Historii (jazyk appky).
+        # The same date format as the session list in History (app language).
         kedy = ui_kit.datum_text(obnovena["started"], cas=True)
         self.log(tr("log.hr_session_recovered", time=kedy))
         self._history_cache = (0.0, None)
@@ -1111,19 +1187,20 @@ class DataMixin:
             app_log.exception("historia: prekreslenie po obnove zlyhalo")
         return obnovena
 
-    # ---------- relacia, ktoru sa nepodarilo ulozit (0.2.2) ----------
+    # ---------- session that could not be saved (0.3) ----------
 
     def _relacia_sa_neulozila(self, summary, chyba, oznam=True):
-        """Zapis relacie zlyhal (plny disk, zakazany pristup, JSON).
+        """Writing the session failed (full disk, access denied, JSON).
 
-        Do 0.2.2 zmizla potichu: technicky riadok v denniku a nic viac. Teraz
-        jeden riadok, jeden oznam v okne appky (ziadne systemove okno) a
-        suhrn bokom do hr_session_pending.json - pri dalsom starte (alebo po
-        dalsom uspesnom ulozeni) sa doplni ako obnovena relacia. Kontrolny
-        bod tej istej relacie OSTAVA ako druha kopia: start doplni najprv
-        tuto (uplnu) a starsi kontrolny bod potom zahodi ako duplikat.
-        `oznam=False` pri ukoncovani a vypinani Windows - okno by zablokovalo
-        koniec; riadok v denniku a subor bokom ostavaju."""
+        Before 0.3 it vanished silently: a technical line in the journal and
+        nothing more. Now one line, one notice in the app window (no system
+        window) and the summary set aside into hr_session_pending.json - on the
+        next start (or after the next successful save) it is added as a
+        recovered session. The checkpoint of the same session STAYS as a second
+        copy: start first adds this (complete) one and then throws the older
+        checkpoint away as a duplicate. `oznam=False` when quitting and on a
+        Windows shutdown - a window would block the end; the journal line and
+        the set-aside file remain."""
         chyba = bez_ciest(chyba)
         odlozena = hr_stats.zapis_cakajucu(self.hr_sessions_path, summary,
                                            log=lambda m: app_log.warning("%s", bez_ciest(m)))
@@ -1145,7 +1222,8 @@ class DataMixin:
                     return
                 except Exception:
                     app_log.exception("oznam o neulozenej relacii sa neukazal")
-            # Bez oznamu aspon riadok v paneli dat (dennik uz veta ma).
+            # Without a notice at least a line in the data panel (the journal
+            # already has the sentence).
             widget = getattr(self, "data_note", None)
             if widget is not None:
                 try:
@@ -1162,8 +1240,9 @@ class DataMixin:
         return odlozena
 
     def _kratka_relacia_bez_tepu(self, summary):
-        """Relacia bezala aspon minutu, ale z hodiniek neprislo ani 10 vzoriek
-        tepu - neulozi sa (`je_ulozitelna`). Doteraz bez slova (audit 4)."""
+        """The session ran for at least a minute, but not even 10 heart-rate
+        samples came from the watch - it is not saved (`je_ulozitelna`). Until
+        now without a word (audit 4)."""
         try:
             trvanie = float(summary.get("duration_s") or 0)
             vzorky = float(summary.get("samples") or 0)
@@ -1173,8 +1252,9 @@ class DataMixin:
             self.log(tr("log.hr_session_no_data"))
 
     def _dopln_cakajuce_relacie(self):
-        """Relacie z hr_session_pending.json do historie (`hr_stats.obnov_cakajuce`).
-        Jeden riadok do dennika za kazdu. Vracia zoznam doplnenych."""
+        """Sessions from hr_session_pending.json into history
+        (`hr_stats.obnov_cakajuce`). One journal line for each. Returns the list of
+        the added ones."""
         try:
             doplnene = hr_stats.obnov_cakajuce(self.hr_sessions_path, log=app_log.info)
         except Exception:
@@ -1191,12 +1271,13 @@ class DataMixin:
         return doplnene
 
     def _upozorni_na_staru_instalaciu(self):
-        """Raz: nainstalovana 0.2 zdiela s touto verziou priecinok dat.
+        """Once: an installed 0.2 shares the data folder with this version.
 
-        Jej odinstalator sa pyta "Ponechat nastavenia...?" a pri Nie zmaze
-        %APPDATA%\\Zanshin - aj historiu tejto (ZIP) verzie, ktora byva
-        v tom istom priecinku. Pri behu zo zdrojakov data lezia vedla
-        main.py, takze to tu neplati a kontrola sa preskoci.
+        Its uninstaller asks "Ponechat nastavenia...?" (Keep settings...?) and
+        on No deletes %APPDATA%\\Zanshin - including the history of this (ZIP)
+        version, which lives in the same folder. When running from source the
+        data lives next to main.py, so this does not apply here and the check
+        is skipped.
         """
         if getattr(self, "old_installer_warned", False):
             return
@@ -1213,8 +1294,8 @@ class DataMixin:
         self.log(text)
 
         def _ukaz():
-            # Zapamata sa az po ukazani: ked appka skonci skor, povie sa to
-            # pri dalsom starte.
+            # Remembered only after it was shown: when the app ends earlier, it
+            # is said on the next start.
             try:
                 ui_kit.notify(getattr(self, "root", None), getattr(self, "pal", None),
                               APP_NAME, text)
@@ -1229,17 +1310,18 @@ class DataMixin:
             app_log.exception("upozornenie na staru instalaciu sa nenaplanovalo")
 
     def _warn_exclusive_fullscreen_once(self):
-        """Jedna rada do logu, ak hra bezi v exkluzivnom fullscreene.
+        """One tip to the log if the game runs in exclusive fullscreen.
 
-        V nom Windows cudzie vrstvene okna nevykresli vobec - hrac by
-        videl, ze senzor bezi, ale ziadny vizual by sa neukazal a nemal by
-        ako zistit preco.
+        In it Windows does not draw foreign layered windows at all - the player
+        would see that the sensor is running, but no visual would show up and
+        they would have no way to find out why.
 
-        Riadok do dennika ide raz za beh appky. Od 0.2.2 (davka 4) si to
-        navyse pamata KAZDA relacia (`_session_fullscreen`, nuluje ho
-        `_open_hr_session`) - suhrn nesie `fullscreen` a dotaznik po hre
-        povie jednu vetu, preco obrazky nad tou hrou nebolo vidno. Ked uz
-        relacia aj dennik vedia, dalsie sekundy sa okno nekontroluje.
+        The journal line goes once per app run. Since 0.3 (batch 4) EVERY
+        session also remembers it (`_session_fullscreen`, reset by
+        `_open_hr_session`) - the summary carries `fullscreen` and the
+        post-game questionnaire says one sentence about why the pictures could
+        not be seen over that game. Once both the session and the journal know,
+        the window is not checked in the following seconds.
         """
         if (getattr(self, "_fullscreen_warned", False)
                 and getattr(self, "_session_fullscreen", False)):
@@ -1254,7 +1336,7 @@ class DataMixin:
         except Exception:
             pass
 
-    # ---------- import / export profilov (zdielanie kodom) ----------
+    # ---------- profile import / export (sharing by code) ----------
 
     def export_profile_code(self):
         self._sync_active_profile_slots()
@@ -1263,9 +1345,9 @@ class DataMixin:
         if profile is None:
             return
         try:
-            # Len to, co ma zmysel pre druheho hraca (`slot_na_zdielanie`):
-            # BEZ absolutnych ciest k nahravkam (niesli meno uctu vo Windows),
-            # bez uid a bez mrtvych poli z cias klavesovych spustacov.
+            # Only what makes sense for another player (`slot_na_zdielanie`):
+            # NO absolute paths to recordings (they carried the Windows account
+            # name), no uid and no dead fields from the days of key triggers.
             payload = {"name": profile["name"],
                        "slots": [slot_na_zdielanie(s) for s in profile["slots"]]}
             raw = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
@@ -1293,16 +1375,16 @@ class DataMixin:
         while name in existing:
             name = f"{base_name} ({suffix})"
             suffix += 1
-        # Importovany profil dostane CERSTVE uid a bez lokalnych nahravok
-        # (`slot_zo_zdielania`). uid z ineho profilu/stroja by inak zdielalo
-        # subory nahravok (rec_<uid>.wav) a re-nahratie by prepisalo cudzi
-        # klip - presne ta strata dat, proti ktorej uid vzniklo (B1). Cesty
-        # k .wav sa nuluju VZDY, aj pri prazdnom `sfx_key`: cudzia cesta by
-        # sa inak prehrala, keby na tomto PC nahodou existovala. Padne to na
-        # TTS / preset SFX.
+        # An imported profile gets a FRESH uid and no local recordings
+        # (`slot_zo_zdielania`). A uid from another profile/machine would
+        # otherwise share the recording files (rec_<uid>.wav) and re-recording
+        # would overwrite someone else's clip - exactly the data loss uid was
+        # created against (B1). Paths to .wav are reset ALWAYS, even with an
+        # empty `sfx_key`: a foreign path would otherwise be played if it
+        # happened to exist on this PC. It falls back to TTS / preset SFX.
         slots = [s for s in (slot_zo_zdielania(x) for x in data["slots"]) if s]
-        # Kod z 0.1 moze niest menej nez styri sloty - chybajuce kategorie
-        # sa doplnia na koniec (vypnute), nic sa neprepise.
+        # A code from 0.1 may carry fewer than four slots - the missing
+        # categories are added at the end (disabled), nothing is overwritten.
         slots = doplnit_kategorie(slots)
         self._sync_active_profile_slots()
         self.profiles.append({"name": name, "slots": slots})
@@ -1314,10 +1396,10 @@ class DataMixin:
         self.log(tr("log.profile_imported", name=name))
 
     def remove_slot(self, index):
-        # Styri kategorie su pevne: kategoriu, obrazok aj meranie urcuje
-        # POZICIA slotu, takze odstranenie by posunulo texty pod cudziu
-        # kategoriu a vratit sa uz neda. Vypina sa prepinacom; ✕ ma len
-        # slot navyse z 0.1 (index 4+).
+        # The four categories are fixed: the category, picture and measurement
+        # are set by the slot's POSITION, so removing one would shift the texts
+        # under another category and there is no going back. It is turned off
+        # with the switch; only an extra slot from 0.1 (index 4+) has ✕.
         if je_kategoria(index):
             return
         if len(self.slots) <= 1:
@@ -1333,7 +1415,7 @@ class DataMixin:
                     label=removed.get("text") or mode_labels().get(removed.get("mode"), "")))
 
     def _on_slot_selection_change(self):
-        """Ukaze/schova listu hromadnych akcii podla poctu oznacenych slotov."""
+        """Shows/hides the bulk-action bar by the number of selected slots."""
         bar = getattr(self, "bulk_bar", None)
         if bar is None:
             return
@@ -1351,15 +1433,16 @@ class DataMixin:
         self._on_slot_selection_change()
 
     def remove_selected_slots(self):
-        """Odstrani vsetky oznacene sloty naraz - jedna akcia, jedno potvrdenie.
+        """Removes all selected slots at once - one action, one confirmation.
 
-        Rovnako ako remove_slot nedovoli zmazat uplne vsetko: aspon jeden
-        slot musi ostat, inak by profil zostal prazdny a appka by nemala co
-        spustat. Ak by vyber pokryval vsetky, jeden (prvy neoznaceny, alebo
-        posledny) sa zachova a hrac dostane hlasku.
+        Just like remove_slot it does not allow deleting absolutely everything:
+        at least one slot must stay, otherwise the profile would be left empty
+        and the app would have nothing to trigger. If the selection covered all
+        of them, one (the first unselected, or the last) is kept and the player
+        gets a message.
         """
-        # Len sloty navyse (index 4+) - styri kategorie sa neodstranuju,
-        # viz `remove_slot`.
+        # Only extra slots (index 4+) - the four categories are not removed,
+        # see `remove_slot`.
         selected = [i for i, slot in enumerate(self.slots)
                     if slot.selected and not je_kategoria(i)]
         if not selected:
@@ -1372,7 +1455,7 @@ class DataMixin:
                   or mode_labels().get(self.slots[i].mode, "")
                   or tr("slots.unnamed", n=i + 1) for i in selected]
         preview = ", ".join(labels[:4]) + ("…" if len(labels) > 4 else "")
-        # Okno appky so slovesom na tlacidle, fokus na "Zrusit" (0.2.2).
+        # App window with a verb on the button, focus on "Cancel" (0.3).
         if not ui_kit.confirm(
                 okno, pal, APP_NAME,
                 tr("slots.remove_confirm", n=len(selected), list=preview),

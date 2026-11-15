@@ -1,35 +1,38 @@
-"""Export, import a mazanie dát hráča.
+"""Export, import and deletion of the player's data.
 
-TRI VECI, KAŽDÁ S INÝM RIZIKOM
-------------------------------
-MAZANIE musí presne vymenovať, čo maže, a naozaj to všetko zmazať. Sľub
-"všetko ostáva u teba" je na store page; keby mazanie niečo nechalo, bol by
-to najhorší druh chyby - taký, ktorý nikto nevidí.
+THREE THINGS, EACH WITH A DIFFERENT RISK
+----------------------------------------
+DELETION has to list exactly what it deletes, and really delete all of
+it. The promise "everything stays with you" is on the store page; if
+deletion left something behind, it would be the worst kind of bug - one
+that nobody sees.
 
-EXPORT je neškodný. Robí sa dvojaký: CSV relácií (to je v `hr_stats`, pre
-človeka do tabuľky) a JSON so VŠETKÝM vrátane meracích okien - na prenos na
-iný počítač alebo "pošli mi to, som beta tester".
+EXPORT is harmless. It comes in two kinds: a CSV of sessions (that is in
+`hr_stats`, for a person, into a spreadsheet) and a JSON with EVERYTHING
+including the measurement windows - for moving to another computer or
+"send it to me, I'm a beta tester".
 
-IMPORT je jediný z tých troch, ktorý vie uškodiť, a robí to POTICHU. Cudzie
-dáta otrávia základňu aj model a nikde sa to neprejaví - appka len začne
-byť horšia. Preto:
+IMPORT is the only one of the three that can do harm, and it does so
+SILENTLY. Foreign data poisons the baseline and the model and it shows
+nowhere - the app just starts getting worse. Hence:
 
-  * prisny parser, ziadny `pickle`, ziadny `eval`. Subor najviac
-    `MAX_IMPORT_BAJTOV`, len UTF-8, len `json.loads` a potom kontrola typu
-    kazdeho pola (`clean_session`, `clean_window`) - NaN ani nekonecno
-    neprejdu nikde. Relacia bez pouzitelneho `started`/`duration_s` a okno
-    bez `ts` sa zahodia cele a spocitaju; pole zleho typu sa zahodi samo a
-    zaznam ostane, ako keby bol zo starsej verzie appky.
-  * importované záznamy dostanú `imported: True` a appka sa z nich neučí:
-    základňa, hranice a prah (`hr_stats.ciste_relacie`), rebrík hlášky,
-    postrehy, účinnosť (`measure`) aj karta poslednej relácie ich
-    preskakujú. Cudzie telo nie je tvoje telo.
-  * hráč si vyberie ZLÚČIŤ alebo NAHRADIŤ - nikdy sa to neuhádne za neho.
-    NAHRADIŤ až na druhé potvrdenie a vždy so zálohou oboch súborov
-    (`zaloha_pred_importom`).
+  * a strict parser, no `pickle`, no `eval`. The file is at most
+    `MAX_IMPORT_BAJTOV`, UTF-8 only, only `json.loads` and then a type
+    check of every field (`clean_session`, `clean_window`) - neither NaN
+    nor infinity gets through anywhere. A session without a usable
+    `started`/`duration_s` and a window without `ts` are dropped whole and
+    counted; a field of the wrong type is dropped on its own and the
+    record stays, as if it came from an older version of the app.
+  * imported records get `imported: True` and the app does not learn from
+    them: the baseline, limits and threshold (`hr_stats.ciste_relacie`),
+    the cue ladder, insights, effectiveness (`measure`) and the last
+    session card all skip them. A foreign body is not your body.
+  * the player chooses MERGE or REPLACE - it is never guessed for them.
+    REPLACE only after a second confirmation and always with a backup of
+    both files (`zaloha_pred_importom`).
 
-Modul je čisto dátový: žiadny Tk, žiadne dialógy. Cesty dostáva zvonku,
-takže sa celý dá otestovať v tmp priečinku.
+The module is purely about data: no Tk, no dialogs. It gets its paths
+from outside, so the whole thing can be tested in a tmp folder.
 """
 
 import glob
@@ -39,44 +42,50 @@ import os
 from datetime import datetime
 import shutil
 
-# os.replace, ktory prezije kratky zamok suboru vo Windows (antivirus,
-# indexovanie). `paths` nenatahuje ziadny modul appky - ziadny Tk ani kruh.
+# os.replace that survives a short file lock on Windows (antivirus,
+# indexing). `paths` pulls in no app module - no Tk and no cycle.
 from paths import nahrad_subor
 
-# Verzia formátu. Keď sa raz zmení tvar dát, starý súbor sa dá rozpoznať
-# a buď domigrovať, alebo slušne odmietnuť - namiesto tichého nezmyslu.
+# Format version. Once the shape of the data changes, an old file can be
+# recognised and either migrated or politely refused - instead of silent
+# nonsense.
 EXPORT_VERSION = 1
 
-# Čo všetko sa dá vymazať. Poradie je poradie v zozname pre hráča.
-# `label` je i18n kľúč, nie hotový text - modul nevie o jazyku.
+# Everything that can be deleted. The order is the order in the list for
+# the player. `label` is an i18n key, not finished text - the module
+# knows nothing about language.
 MAZATELNE = (
     ("data.delete.sessions", "hr_sessions.json"),
-    # hr_events.jsonl je záznam KAŽDEJ hlášky za každý večer (tep, záťaž,
-    # hra). Doteraz sa pri "Zmazať históriu" NEMAZAL - dialóg pritom hlásil
-    # "Zmazané". Presne ten najhorší druh chyby, pred ktorým varuje hlavička
-    # tohto modulu: mazanie, ktoré niečo nechá.
+    # hr_events.jsonl is a record of EVERY cue for every evening (heart
+    # rate, load, game). Until now "Delete history" did NOT delete it -
+    # while the dialog reported "Deleted". Exactly the worst kind of bug the
+    # header of this module warns about: a deletion that leaves something.
     ("data.delete.events", "hr_events.jsonl"),
     ("data.delete.windows", "hr_windows.json"),
     ("data.delete.insights", "hr_insights.json"),
-    # Kontrolny bod otvorenej relacie (`hr_stats.ROZPRACOVANA_MENO`) - ten
-    # isty suhrn ako v hr_sessions.json, len este neuzavrety. Bez neho by po
-    # "Zmazat" pri dalsom starte obnova vratila do historie posledny vecer.
+    # Checkpoint of the open session (`hr_stats.ROZPRACOVANA_MENO`) - the
+    # same summary as in hr_sessions.json, just not closed yet. Without it,
+    # after "Delete" the recovery at the next start would bring the last
+    # evening back into the history.
     ("data.delete.open_session", "hr_session_open.json"),
-    # Relacie, ktore sa nepodarilo ulozit (`hr_stats.CAKAJUCA_MENO`, 0.2.2) -
-    # bez nich by sa po "Zmazat" pri dalsom starte vratili do historie.
+    # Sessions that could not be saved (`hr_stats.CAKAJUCA_MENO`, 0.3) -
+    # without this entry they would come back into the history at the next
+    # start after "Delete".
     ("data.delete.pending_session", "hr_session_pending.json"),
 )
-# Priečinky, ktoré sa zmažú celé (a hneď vytvoria prázdne, ak do nich appka
-# píše za behu). `logs` tu ZÁMERNE NIE JE: v dev režime je `data_dir`
-# priečinok projektu a `logs/` v ňom drží gui_screenshots aj ďalšie veci, čo
-# s históriou hráča nesúvisia - rmtree celého priečinka ich mazal. Vlastné
-# logy appky sa preto mažú po súboroch (viz `_LOG_SUBORY` v `delete_plan`).
+# Folders that are deleted whole (and created again empty right away if
+# the app writes into them while running). `logs` is NOT here ON PURPOSE:
+# in dev mode `data_dir` is the project folder and `logs/` in it holds
+# gui_screenshots and other things that have nothing to do with the
+# player's history - an rmtree of the whole folder deleted them. The
+# app's own logs are therefore deleted file by file (see `_LOG_SUBORY` in
+# `delete_plan`).
 MAZATELNE_PRIECINKY = (
     ("data.delete.tts", os.path.join("audio", "tts_cache")),
 )
-# Vlastné log súbory appky. Živý `app.log` tu NIE JE - počas behu je
-# zamknutý (open handler) a nesie len túto reláciu; rotáciou sa aj tak
-# prepíše. Mažú sa rotované kópie a crash.log.
+# The app's own log files. The live `app.log` is NOT here - while running
+# it is locked (open handler) and carries only this session; rotation
+# overwrites it anyway. The rotated copies and crash.log are deleted.
 _LOG_SUBORY = ("crash.log",) + tuple("app.log.%d" % i for i in range(1, 6))
 
 
@@ -84,29 +93,33 @@ _LOG_SUBORY = ("crash.log",) + tuple("app.log.%d" % i for i in range(1, 6))
 # Export
 # --------------------------------------------------------------------------
 
-# Najviac udalosti, ktore sa v logu drzia. Jeden vecer ich urobi radovo
-# desiatky, takze 20 000 je nieco ako pol roka hrania - a subor pod 5 MB.
+# The most events kept in the log. One evening produces on the order of
+# dozens, so 20 000 is something like half a year of playing - and a file
+# under 5 MB.
 MAX_UDALOSTI = 20000
 
 
 def append_events(path, events, started=None, max_riadkov=MAX_UDALOSTI):
-    """Prida udalosti automatu do JSONL logu. Vrati pocet zapisanych.
+    """Appends state machine events to the JSONL log. Returns the count.
 
-    PRECO JSONL A NIE JSON
+    WHY JSONL AND NOT JSON
     ----------------------
-    Jedna udalost na riadok znamena, ze sa da citat aj rozpisany subor,
-    dopisovat bez nacitania celku, a otvorit v com chces. Cely JSON by sa
-    musel pri kazdom zapise nacitat, rozparsovat a prepisat.
+    One event per line means that even a half-written file can be read,
+    appended to without loading the whole, and opened in whatever you
+    like. A whole JSON would have to be loaded, parsed and rewritten on
+    every write.
 
-    PRECO SA TO VOBEC UKLADA
-    ------------------------
-    `app._cue_log` zbieral kazdu udalost stavoveho automatu - natiahnutia,
-    dorucenia aj zrusenia s dovodom - a na konci relacie ich POCET pouzil
-    v dialogu. Potom sa zahodili. Priebeh vecera sa tak nedal precitat
-    spatne ani pri diagnostike, ani pri hladani, preco appka mlcala.
+    WHY IT IS SAVED AT ALL
+    ----------------------
+    `app._cue_log` collected every event of the state machine - arming,
+    deliveries and cancellations with a reason - and at the end of the
+    session used their COUNT in the dialog. Then they were thrown away.
+    So the course of the evening could not be read back afterwards,
+    neither for diagnostics nor when looking for why the app stayed
+    silent.
 
-    `started` je zaciatok relacie; zapise sa ku kazdej udalosti, aby sa
-    dali zoskupit bez hadania z casov.
+    `started` is the start of the session; it is written with every
+    event, so they can be grouped without guessing from the times.
     """
     udalosti = [u for u in (events or []) if isinstance(u, dict)]
     if not udalosti:
@@ -135,7 +148,7 @@ def append_events(path, events, started=None, max_riadkov=MAX_UDALOSTI):
 
 
 def read_events(path):
-    """Udalosti z JSONL logu. Poskodeny riadok sa preskoci, nie zhodi."""
+    """Events from the JSONL log. A damaged line is skipped, not a crash."""
     von = []
     if not os.path.exists(path):
         return von
@@ -156,16 +169,17 @@ def read_events(path):
     return von
 
 
-# Stlpce, ktore idu na zaciatok, ak v datach su. Zvysok sa doplni podla
-# abecedy - aby sa subor nezmenil zakazdym, ked pribudne kluc.
+# Columns that go first, if they are in the data. The rest is added in
+# alphabetical order - so that the file does not change every time a key
+# is added.
 _PORADIE = ("kedy", "ts", "typ", "arm", "delivery", "category", "reason",
             "cue_id", "valid", "reasons", "pre_bpm", "post_bpm",
             "pre_load", "post_load", "offset_s", "game")
 
 
 def _bunka(hodnota):
-    """Jedna bunka pre Excel. Desatinna CIARKA (SK/CZ Excel inak vidi text),
-    zoznam ako medzerou oddeleny text, None ako prazdno."""
+    """One cell for Excel. A decimal COMMA (SK/CZ Excel sees text otherwise),
+    a list as space-separated text, None as empty."""
     if hodnota is None:
         return ""
     if isinstance(hodnota, bool):
@@ -175,21 +189,22 @@ def _bunka(hodnota):
     if isinstance(hodnota, (list, tuple)):
         return " ".join(str(x) for x in hodnota)
     text = str(hodnota)
-    # Bodkocarka je oddelovac (viz hr_stats.CSV_SEPARATOR) - v texte nema co
-    # robit, inak sa riadok rozpadne na viac stlpcov.
+    # The semicolon is the separator (see hr_stats.CSV_SEPARATOR) - it has no
+    # business in text, otherwise the row falls apart into more columns.
     return text.replace(";", ",").replace("\r", " ").replace("\n", " ")
 
 
 def export_rows_csv(rows, path, separator=";"):
-    """Zoznam slovnikov do CSV. Vrati pocet riadkov.
+    """List of dicts to CSV. Returns the number of rows.
 
-    Stlpce sa odvodia zo VSETKYCH riadkov, nie z prveho - inak by kluc,
-    ktory pribudol az neskor (napr. nova kategoria hlasky), z exportu ticho
-    vypadol.
+    Columns are derived from ALL rows, not from the first - otherwise a
+    key that only appeared later (e.g. a new cue category) would silently
+    drop out of the export.
 
-    Nazvy stlpcov sa NEPREKLADAJU. Su to diagnosticke data: kto ich otvara,
-    hlada `pre_bpm` a `arm`, nie "tep pred". Prekladat dvadsat takych nazvov
-    do vsetkych jazykov appky by bola praca, ktora nikomu nepomoze.
+    Column names are NOT TRANSLATED. This is diagnostic data: whoever
+    opens it is looking for `pre_bpm` and `arm`, not "heart rate before".
+    Translating twenty such names into all the app's languages would be
+    work that helps nobody.
     """
     riadky = [r for r in (rows or []) if isinstance(r, dict)]
     if not riadky:
@@ -205,7 +220,7 @@ def export_rows_csv(rows, path, separator=";"):
         von.append(separator.join(_bunka(r.get(k)) for k in poradie))
 
     tmp = path + ".tmp"
-    # utf-8-sig: bez BOM zjedol Excel diakritiku (to iste ako v hr_stats)
+    # utf-8-sig: without a BOM Excel mangled diacritics (same as in hr_stats)
     with open(tmp, "w", encoding="utf-8-sig", newline="") as fh:
         fh.write("\r\n".join(von) + "\r\n")
     nahrad_subor(tmp, path, uprac_zdroj=True)
@@ -213,10 +228,10 @@ def export_rows_csv(rows, path, separator=";"):
 
 
 def s_casom(rows, kluc="ts"):
-    """Prida citatelny cas k riadkom, ktore maju Unix timestamp.
+    """Adds a readable time to rows that have a Unix timestamp.
 
-    Bez toho je v tabulke stlpec cisel typu 1789620987.3, s ktorym sa v
-    Exceli neda nic robit bez vzorca.
+    Without it the table has a column of numbers like 1789620987.3, which
+    you cannot do anything with in Excel without a formula.
     """
     von = []
     for r in rows or []:
@@ -226,8 +241,8 @@ def s_casom(rows, kluc="ts"):
         try:
             z["kedy"] = datetime.fromtimestamp(float(r[kluc])).strftime(
                 "%d.%m.%Y %H:%M:%S")
-        # OverflowError/OSError: cas mimo rozsahu (vo Windows uz rok 3001)
-        # - v okne naimportovanom pred 0.2.1 sa take cislo mohlo ocitnut.
+        # OverflowError/OSError: time out of range (on Windows already the year
+        # 3001) - such a number could end up in a window imported before 0.2.1.
         except (KeyError, TypeError, ValueError, OverflowError, OSError):
             pass
         von.append(z)
@@ -235,7 +250,7 @@ def s_casom(rows, kluc="ts"):
 
 
 def build_bundle(sessions, windows, insights=None, app_version=""):
-    """Všetko naraz, ako obyčajný JSON-ovateľný slovník."""
+    """Everything at once, as a plain JSON-serialisable dict."""
     return {
         "format": "zanshin-dojosync",
         "version": EXPORT_VERSION,
@@ -247,8 +262,8 @@ def build_bundle(sessions, windows, insights=None, app_version=""):
 
 
 def write_bundle(path, bundle):
-    """Zápis cez `.tmp` + `os.replace` - pád uprostred nenechá polovičný
-    súbor tam, kde hráč čaká zálohu."""
+    """Write via `.tmp` + `os.replace` - a crash midway does not leave a half
+    file where the player expects a backup."""
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as fh:
         json.dump(bundle, fh, ensure_ascii=False, indent=2)
@@ -257,33 +272,35 @@ def write_bundle(path, bundle):
 
 
 # --------------------------------------------------------------------------
-# Import - jediné miesto, kam vstupuje cudzí súbor
+# Import - the only place a foreign file enters
 # --------------------------------------------------------------------------
 
 class ImportError_(Exception):
-    """Súbor sa nedá použiť. Text je pre hráča, nie traceback."""
+    """The file cannot be used. The text is for the player, not a traceback."""
 
 
-# Najvacsi subor, ktory import vobec otvori. Plny export (400 relacii s
-# krivkou, 5000 okien s parametrami, poznamky na doraz) ma okolo 12,5 MB,
-# takze 50 MB je asi styrnasobok. Vacsi subor export zo Zanshinu byt nemoze
-# - a `json.loads` by z neho v pamati spravil este niekolkonasobne viac.
+# The largest file the import will open at all. A full export (400
+# sessions with a curve, 5000 windows with parameters, notes at the
+# limit) is around 12.5 MB, so 50 MB is about four times that. A larger
+# file cannot be an export from Zanshin - and `json.loads` would make
+# several times more of it in memory.
 MAX_IMPORT_BAJTOV = 50 * 1024 * 1024
 
-# Rozumny rozsah casovej znacky (`started`, `ts`): 1. 1. 2000 az 1. 1. 2100.
-# Znacka mimo neho nie je z tejto appky - a graf Historie
-# (`aggregate_by_period`) na nej vo Windows padne (OSError): za rokom 2100
-# uz `datetime.fromtimestamp`, v roku 1970 zaokruhlenie na zaciatok dna,
-# mesiaca ci roka, ktory v miestnom case (napr. UTC+1) vyjde pred 1970. Zly
-# zaznam by tak zhodil stranku pri kazdom otvoreni, nie raz. Preto spodna
-# hranica NIE JE nula.
+# Sensible timestamp range (`started`, `ts`): 1. 1. 2000 to 1. 1. 2100.
+# A stamp outside it is not from this app - and the History chart
+# (`aggregate_by_period`) crashes on it on Windows (OSError): past the
+# year 2100 already `datetime.fromtimestamp`, in 1970 the rounding to
+# the start of a day, month or year that in local time (e.g. UTC+1)
+# falls before 1970. A bad record would thus bring down the page on
+# every opening, not once. That is why the lower bound is NOT zero.
 MIN_CAS = 946684800.0
 MAX_CAS = 4102444800.0
 
-# Stropy pre JEDNO pole. Vlastne data su hlboko pod nimi (poznamka ma
-# `hr_stats.NOTE_MAX` = 280 znakov, krivka `hr_stats.CURVE_POINTS` = 600
-# bodov, vnorenie jedna uroven: `zone_seconds`, `params`). Su tu, aby jeden
-# cudzi zaznam nenafukol historiu tak, ze sa Historia kresli minuty.
+# Caps for ONE field. The app's own data is far below them (a note has
+# `hr_stats.NOTE_MAX` = 280 characters, a curve `hr_stats.CURVE_POINTS` =
+# 600 points, nesting one level: `zone_seconds`, `params`). They are here
+# so that one foreign record does not bloat the history so much that
+# History takes minutes to draw.
 MAX_TEXT = 2000
 MAX_POLOZIEK = 100000
 MAX_HLBKA = 4
@@ -293,21 +310,21 @@ _NIE_CISLO = object()
 
 
 def _nie_cislo(_text):
-    """`parse_constant` pre `json.loads`: NaN, Infinity a -Infinity.
+    """`parse_constant` for `json.loads`: NaN, Infinity and -Infinity.
 
-    `json.loads` ich bez toho ticho prijme ako float - a jedno NaN v priemere
-    spravi NaN z celeho grafu. Vrati sa objekt, ktory neprejde ziadnou
-    kontrolou typu nizsie: pole s nim sa zahodi, zaznam s nim v `started`
-    alebo `ts` tiez (a spocita sa)."""
+    Without it `json.loads` silently accepts them as float - and one NaN
+    in an average makes NaN of the whole chart. It returns an object that
+    passes none of the type checks below: a field with it is dropped, and
+    so is a record with it in `started` or `ts` (and it is counted)."""
     return _NIE_CISLO
 
 
 def _konecne(hodnota):
-    """Obycajne konecne cislo? bool, NaN ani nekonecno nie.
+    """A plain finite number? Not bool, NaN or infinity.
 
-    `1e999` da z `json.loads` nekonecno aj bez `parse_constant`. Cele cislo
-    nad rozsah floatu (10**400) `math.isfinite` neprevedie - OverflowError,
-    teda tiez nie."""
+    `1e999` gives infinity from `json.loads` even without
+    `parse_constant`. An integer beyond the float range (10**400) cannot
+    be converted by `math.isfinite` - OverflowError, so also no."""
     if isinstance(hodnota, bool) or not isinstance(hodnota, (int, float)):
         return False
     try:
@@ -326,24 +343,27 @@ def _cislo(hodnota, minimum=None, maximum=None):
     return hodnota
 
 
-# --- kontrola typu jedneho pola -------------------------------------------
+# --- type check of a single field -----------------------------------------
 #
-# PRECO NESTACI `started` A `ts`
-# Import zapisuje priamo do hr_sessions.json a hr_windows.json - a odtial to
-# cita Historia, grafy aj CSV export. Pole zleho typu sa predtym prenieslo
-# bez kontroly a ostalo v historii natrvalo: `"baseline_bpm": "abc"` zhodi
-# graf Historie (`float` v `aggregate_by_period`), `"context": 5` alebo
-# `"zone_seconds": "x"` CSV export (`session_row`), `"cue_id": [..]` dalsi
-# import (nehashovatelny kluc v `merge_windows`). Znamym poliam sa preto
-# kontroluje typ, v akom ich appka zapisuje; nezname (ina verzia appky)
-# musia byt aspon obycajne JSON data s konecnymi cislami. Co neprejde,
-# zahodi sa - zaznam ostane, ako keby bol zo starsej verzie, ktora to pole
-# este nemala. None prejde vzdy: appka ho sama zapisuje ako "nevieme".
+# WHY `started` AND `ts` ARE NOT ENOUGH
+# The import writes directly into hr_sessions.json and hr_windows.json -
+# and from there History, the charts and the CSV export read it. A field
+# of the wrong type used to be carried over unchecked and stayed in the
+# history for good: `"baseline_bpm": "abc"` brings down the History chart
+# (`float` in `aggregate_by_period`), `"context": 5` or
+# `"zone_seconds": "x"` the CSV export (`session_row`), `"cue_id": [..]`
+# the next import (an unhashable key in `merge_windows`). So known fields
+# are checked for the type the app writes them in; unknown ones (another
+# app version) must at least be plain JSON data with finite numbers.
+# Whatever fails is dropped - the record stays, as if it came from an
+# older version that did not have that field yet. None always passes:
+# the app itself writes it as "we don't know".
 
 def _je_text(hodnota):
-    """Text, ktory sa da aj ZAPISAT. `json.loads` prijme aj osamely surrogate
-    (`"\\ud800"`), `zapis_zoznam` (UTF-8) na nom ale padne - az PO zalohe a
-    pripadne s polovicou importu na disku (relacie zapisane, okna nie)."""
+    """Text that can also be WRITTEN. `json.loads` even accepts a lone
+    surrogate (`"\\ud800"`), but `zapis_zoznam` (UTF-8) crashes on it -
+    only AFTER the backup and possibly with half of the import on disk
+    (sessions written, windows not)."""
     if not isinstance(hodnota, str) or len(hodnota) > MAX_TEXT:
         return False
     try:
@@ -358,14 +378,14 @@ def _je_bool(hodnota):
 
 
 def _je_skalar(hodnota):
-    """Text, cislo, bool alebo None - da sa pouzit aj ako kluc v mnozine
-    (`merge_windows` pari okna podla `(ts, cue_id)`)."""
+    """Text, number, bool or None - can also be used as a key in a set
+    (`merge_windows` pairs windows by `(ts, cue_id)`)."""
     return (hodnota is None or isinstance(hodnota, bool)
             or _konecne(hodnota) or _je_text(hodnota))
 
 
 def _je_cisla(hodnota):
-    """Krivka: zoznam cisel. None je diera (`activity_trace`)."""
+    """Curve: a list of numbers. None is a gap (`activity_trace`)."""
     return (isinstance(hodnota, list) and len(hodnota) <= MAX_POLOZIEK
             and all(x is None or _konecne(x) for x in hodnota))
 
@@ -383,8 +403,8 @@ def _je_cisla_podla(hodnota):
 
 
 def _je_obycajne(hodnota, hlbka=MAX_HLBKA):
-    """Obycajne JSON data: skalar, alebo zoznam/slovnik z nich, najviac
-    `hlbka` urovni. Kontrola NEZNAMEHO pola."""
+    """Plain JSON data: a scalar, or a list/dict of them, at most `hlbka`
+    levels deep. The check for an UNKNOWN field."""
     if _je_skalar(hodnota):
         return True
     if hlbka <= 0:
@@ -400,14 +420,15 @@ def _je_obycajne(hodnota, hlbka=MAX_HLBKA):
 
 
 def _je_slovnik(hodnota):
-    """`params` okna: slovnik obycajnych hodnot (cisla, texty, bool)."""
+    """A window's `params`: a dict of plain values (numbers, texts, bool)."""
     return isinstance(hodnota, dict) and _je_obycajne(hodnota)
 
 
-# Polia, ktore appka do relacie zapisuje, a typ, v akom ich cita. Zdroj:
-# `hr_stats.HeartStats.summary` (+ `kadencia_vzoriek`), `app._close_hr_session`
-# a `hr_stats.attach_context`. Nove pole, ktore tu chyba, nie je chyba -
-# prejde kontrolou neznameho pola (`_je_obycajne`).
+# Fields the app writes into a session, and the type it reads them as.
+# Source: `hr_stats.HeartStats.summary` (+ `kadencia_vzoriek`),
+# `app._close_hr_session` and `hr_stats.attach_context`. A new field that
+# is missing here is not a bug - it passes the unknown-field check
+# (`_je_obycajne`).
 _TYPY_RELACIE = {
     **dict.fromkeys((
         "min_bpm", "avg_bpm", "max_bpm", "time_over_s", "time_high_s",
@@ -427,7 +448,7 @@ _TYPY_RELACIE = {
     **dict.fromkeys(("zen_graduation", "imported"), _je_bool),
 }
 
-# To iste pre meracie okno: `measure.build_window` a
+# The same for a measurement window: `measure.build_window` and
 # `app._save_measure_windows`.
 _TYPY_OKNA = {
     **dict.fromkeys((
@@ -445,7 +466,7 @@ _TYPY_OKNA = {
 
 
 def _ocistene_polia(raw, typy):
-    """Kopia zaznamu bez poli, ktore neprejdu kontrolou typu (viz vyssie)."""
+    """Copy of the record minus fields that fail the type check (see above)."""
     out = {}
     for kluc, hodnota in raw.items():
         if not _je_text(kluc):
@@ -456,13 +477,14 @@ def _ocistene_polia(raw, typy):
 
 
 def clean_session(raw):
-    """Jedna relacia z cudzieho suboru, alebo None.
+    """One session from a foreign file, or None.
 
-    `started` a `duration_s` musia davat zmysel, inak sa zo zaznamu neda
-    nic spocitat - bez nich sa zahodi cely (a spocita). Ostatne polia
-    prejdu kontrolou typu (`_ocistene_polia`): nezname sa prenesu, ak su to
-    obycajne data - ina verzia appky moze ukladat viac a zahadzovat to by
-    bola strata -, pole zleho typu sa zahodi samo.
+    `started` and `duration_s` have to make sense, otherwise nothing can
+    be computed from the record - without them it is dropped whole (and
+    counted). The other fields go through the type check
+    (`_ocistene_polia`): unknown ones are carried over if they are plain
+    data - another app version may store more and throwing it away would
+    be a loss -, a field of the wrong type is dropped on its own.
     """
     if not isinstance(raw, dict):
         return None
@@ -478,8 +500,8 @@ def clean_session(raw):
 
 
 def clean_window(raw):
-    """Jedno meracie okno z cudzieho suboru, alebo None. Pravidla ako pri
-    `clean_session`; bez pouzitelneho `ts` sa okno zahodi cele."""
+    """One measurement window from a foreign file, or None. Rules as for
+    `clean_session`; without a usable `ts` the window is dropped whole."""
     if not isinstance(raw, dict):
         return None
     ts = _cislo(raw.get("ts"), minimum=MIN_CAS, maximum=MAX_CAS)
@@ -492,13 +514,14 @@ def clean_window(raw):
 
 
 def _nacitaj_json(path):
-    """Obsah cudzieho suboru ako JSON, alebo `ImportError_`.
+    """Content of a foreign file as JSON, or `ImportError_`.
 
-    Velkost sa overi PRED citanim a citanie je aj tak zastropovane (subor
-    moze medzitym narast). Kodovanie je len UTF-8 (tak pise `write_bundle`),
-    BOM sa znesie - Notepad ho vie pridat. Ine kodovanie, rozbity JSON,
-    cislo s tisickami cifier (ValueError) aj vnorenie nad strop rekurzie
-    su "toto nie je platny JSON", nie traceback.
+    The size is checked BEFORE reading and the reading is capped anyway
+    (the file may grow in the meantime). The encoding is UTF-8 only (that
+    is what `write_bundle` writes), a BOM is tolerated - Notepad can add
+    one. Another encoding, broken JSON, a number with thousands of digits
+    (ValueError) and nesting beyond the recursion limit are all "this is
+    not valid JSON", not a traceback.
     """
     try:
         if os.path.getsize(path) > MAX_IMPORT_BAJTOV:
@@ -512,15 +535,16 @@ def _nacitaj_json(path):
     try:
         return json.loads(obsah.decode("utf-8-sig"), parse_constant=_nie_cislo)
     except (ValueError, RecursionError):
-        # UnicodeDecodeError aj JSONDecodeError su podtriedy ValueError.
+        # UnicodeDecodeError and JSONDecodeError are subclasses of ValueError.
         raise ImportError_("data.import.not_json")
 
 
 def parse_bundle(path):
-    """Načíta a overí cudzí súbor. Vracia (sessions, windows, zahodene).
+    """Loads and checks a foreign file. Returns (sessions, windows, zahodene).
 
-    Vyhodí `ImportError_` s vetou pre hráča, keď sa súbor použiť nedá.
-    Privelky subor je "foreign": export zo Zanshinu taky byt nemoze.
+    Raises `ImportError_` with a sentence for the player when the file
+    cannot be used. An oversized file is "foreign": an export from
+    Zanshin cannot be like that.
     """
     raw = _nacitaj_json(path)
 
@@ -546,11 +570,11 @@ def parse_bundle(path):
 
 
 def merge_sessions(existing, incoming):
-    """Zlúči relácie a zoradí podľa času. Duplikát = rovnaký `started`.
+    """Merges sessions and sorts them by time. Duplicate = the same `started`.
 
-    Vlastný záznam vyhráva: keby sa importoval export z toho istého
-    počítača, nemá zmysel prepísať vlastnú reláciu jej kópiou s príznakom
-    `imported`.
+    Your own record wins: if an export from the same computer were
+    imported, there is no point in overwriting your own session with its
+    copy flagged `imported`.
     """
     known = {s.get("started") for s in existing if isinstance(s, dict)}
     spolu = list(existing) + [s for s in incoming if s.get("started") not in known]
@@ -565,29 +589,32 @@ def merge_windows(existing, incoming):
 
 
 def vlastne(zaznamy):
-    """Len vlastné záznamy, bez importovaných (`imported`).
+    """Only your own records, without imported ones (`imported`).
 
-    Kde appka ráta "koľko relácií už máš" (napr. dávkovanie tichých
-    hlášok, `trigger.silent_share_for`), cudzie relácie nesmú posunúť
-    počítadlo - import 15 relácií od kamaráta by inak ukončil fázu, v
-    ktorej sa tvoje telo ešte len porovnáva."""
+    Where the app counts "how many sessions you already have" (e.g. the
+    dosing of silent cues, `trigger.silent_share_for`), foreign sessions
+    must not move the counter - importing 15 sessions from a friend would
+    otherwise end the phase in which your body is still only being
+    compared."""
     return [z for z in (zaznamy or ()) if isinstance(z, dict) and not z.get("imported")]
 
 
 def vysledok_importu(moje_s, moje_w, cudzie_s, cudzie_w, nahradit,
                      max_s=None, max_w=None, info=None):
-    """Čo sa po importe zapíše - a KOĽKO ZO SÚBORU NAOZAJ PRIBUDLO.
+    """What an import writes - and HOW MANY RECORDS THE FILE REALLY ADDED.
 
-    Vracia (relacie, okna, pridane_relacie, pridane_okna). Hlásenie po
-    importe predtým ukazovalo dĺžku celého zlúčeného zoznamu: po zlúčení s
-    200 vlastnými reláciami tvrdilo "importované: 205", hoci zo súboru
-    pribudlo 5. Ráta sa preto, koľko záznamov zo súboru v zapisovanom
-    zozname naozaj je - duplikát (vlastný záznam vyhráva) ani to, čo odreže
-    strop dĺžky histórie (`max_s`, `max_w`), sa nepočíta.
+    Returns (relacie, okna, pridane_relacie, pridane_okna). The report
+    after an import used to show the length of the whole merged list:
+    after merging with 200 of your own sessions it claimed "imported:
+    205", although the file added 5. So what is counted is how many
+    records from the file really are in the list being written - neither
+    a duplicate (your own record wins) nor what the history length cap
+    (`max_s`, `max_w`) cuts off is counted.
 
-    `info` (voliteľný dict, 0.2.2) dostane, koľko relácií odrezal strop
-    `max_s`: `vypadlo` spolu, z toho `vypadlo_vlastnych` (tie sú v zálohe
-    pred importom) - hlásenie to má povedať, nie orezať potichu.
+    `info` (an optional dict, 0.3) receives how many sessions the `max_s`
+    cap cut off: `vypadlo` in total, of which `vypadlo_vlastnych` (those
+    are in the pre-import backup) - the report should say so, not trim
+    silently.
     """
     cudzie_s = [s for s in (cudzie_s or ()) if isinstance(s, dict)]
     cudzie_w = [w for w in (cudzie_w or ()) if isinstance(w, dict)]
@@ -609,8 +636,8 @@ def vysledok_importu(moje_s, moje_w, cudzie_s, cudzie_w, nahradit,
     if info is not None:
         info["vypadlo"] = len(vypadli)
         info["vypadlo_vlastnych"] = sum(1 for s in vypadli if id(s) not in zo_suboru_s)
-    # Tie isté objekty (merge ani sorted ich nekopírujú) - podľa identity sa
-    # dá presne povedať, ktoré prišli zo súboru.
+    # The same objects (neither merge nor sorted copies them) - by identity
+    # it can be said exactly which ones came from the file.
     zo_suboru_w = {id(w) for w in cudzie_w}
     return (relacie, okna,
             sum(1 for s in relacie if id(s) in zo_suboru_s),
@@ -618,15 +645,16 @@ def vysledok_importu(moje_s, moje_w, cudzie_s, cudzie_w, nahradit,
 
 
 def zaloha_pred_importom(cesty, znacka=None):
-    """Odloží aktuálne súbory dát vedľa pôvodných ako
-    `<súbor>.pred-importom-<čas>.bak`. Vracia zoznam záloh.
+    """Puts the current data files aside next to the originals as
+    `<súbor>.pred-importom-<čas>.bak`. Returns the list of backups.
 
-    Kópia 1:1 (`shutil.copy2`), nie prepis do iného tvaru. Predošlá záloha
-    `hr_sessions.json.bak` bola vo formáte exportu, ktorý `load_sessions`
-    nevie načítať - vrátiť sa z nej nedalo ani premenovaním - a meracie
-    okná (`hr_windows.json`) sa pri NAHRADIŤ prepísali bez zálohy vôbec.
-    Prípona je súrodenec pôvodného súboru, takže "Zmazať históriu"
-    (`delete_plan`) zmaže aj zálohy.
+    A 1:1 copy (`shutil.copy2`), not a rewrite into another shape. The
+    previous backup `hr_sessions.json.bak` was in the export format, which
+    `load_sessions` cannot load - you could not go back from it even by
+    renaming - and the measurement windows (`hr_windows.json`) were
+    overwritten on REPLACE with no backup at all. The suffix makes it a
+    sibling of the original file, so "Delete history" (`delete_plan`)
+    deletes the backups too.
     """
     znacka = znacka or datetime.now().strftime("%Y%m%d-%H%M%S")
     zalohy = []
@@ -640,8 +668,8 @@ def zaloha_pred_importom(cesty, znacka=None):
 
 
 def zapis_zoznam(cesta, data):
-    """Zoznam do JSON cez `.tmp` + `os.replace` - pád uprostred nenechá
-    polovičnú históriu (predtým sa importovalo priamo cez open('w'))."""
+    """List to JSON via `.tmp` + `os.replace` - a crash midway does not leave
+    a half history (the import used to write directly via open('w'))."""
     tmp = cesta + ".tmp"
     with open(tmp, "w", encoding="utf-8") as fh:
         json.dump(list(data), fh, ensure_ascii=False, indent=2)
@@ -650,28 +678,30 @@ def zapis_zoznam(cesta, data):
 
 
 # --------------------------------------------------------------------------
-# Mazanie
+# Deletion
 # --------------------------------------------------------------------------
 
 def delete_plan(data_dir, legacy_dirs=()):
-    """Čo sa zmaže, ako zoznam (i18n kľúč, cesta, existuje, veľkosť).
+    """What gets deleted, as a list of (i18n key, path, exists, size).
 
-    Vracia sa to PRED mazaním, aby sa dalo hráčovi presne ukázať, čo
-    zmizne. Sľub "všetko ostáva u teba" znamená aj to, že "zmazať" naozaj
-    zmaže - a to sa dá ukázať len menovite.
+    It is returned BEFORE deleting, so the player can be shown exactly
+    what will disappear. The promise "everything stays with you" also
+    means that "delete" really deletes - and that can only be shown by
+    name.
 
-    `legacy_dirs` sú staré priečinky, z ktorých migrácia pri premenovaní
-    appky dáta KOPÍROVALA (`paths.legacy_data_dirs`). Kópia histórie tepu
-    v nich zostala - bez nich by "zmazať" nechalo druhú kópiu, presne ten
-    najhorší druh chyby z hlavičky modulu. Z nich idú do plánu len veci,
-    ktoré tam naozaj sú, s kľúčom `legacy` = ten priečinok.
+    `legacy_dirs` are old folders from which the migration COPIED the
+    data when the app was renamed (`paths.legacy_data_dirs`). A copy of
+    the heart rate history stayed in them - without them "delete" would
+    leave a second copy, exactly the worst kind of bug from the module
+    header. From them only things that really are there go into the plan,
+    with the key `legacy` = that folder.
     """
     plan = _plan_priecinka(data_dir, _LOG_SUBORY)
     ciel = os.path.normcase(os.path.abspath(data_dir))
     for stary in legacy_dirs or ():
         if os.path.normcase(os.path.abspath(stary)) == ciel:
             continue
-        # V starom priečinku nič nežije, takže ide aj `app.log`.
+        # Nothing lives in the old folder, so `app.log` goes too.
         for polozka in _plan_priecinka(stary, ("app.log",) + _LOG_SUBORY):
             if polozka["exists"]:
                 polozka["legacy"] = stary
@@ -680,14 +710,14 @@ def delete_plan(data_dir, legacy_dirs=()):
 
 
 def plan_riadky(plan):
-    """Plán mazania zložený do riadkov pre dialóg.
+    """The deletion plan put together into rows for the dialog.
 
-    Vracia [{"label", "params", "exists", "bytes"}]. Položky aktuálneho
-    priečinka idú po jednej ako doteraz. Kópie v starých priečinkoch sa
-    zhrnú do JEDNÉHO riadku na priečinok (`data.delete.legacy`) - hráč má
-    vedieť, že zmiznú aj tie a koľko ich je; zoznam súborov by dialóg
-    zahltil. Len meno priečinka, nie celá cesta: cesta v %APPDATA% nesie
-    meno účtu vo Windows.
+    Returns [{"label", "params", "exists", "bytes"}]. Items of the current
+    folder go one by one as before. Copies in old folders are summed up
+    into ONE row per folder (`data.delete.legacy`) - the player should
+    know that those disappear too and how many there are; a list of files
+    would swamp the dialog. Only the folder name, not the full path: a
+    path in %APPDATA% carries the Windows account name.
     """
     riadky, stare = [], {}
     for polozka in plan or ():
@@ -706,15 +736,16 @@ def plan_riadky(plan):
 
 
 def _plan_priecinka(data_dir, log_subory):
-    """Plán mazania jedného priečinka dát (viz `delete_plan`)."""
+    """Deletion plan for one data folder (see `delete_plan`)."""
     plan = []
     for kluc, meno in MAZATELNE:
         cesta = os.path.join(data_dir, meno)
         plan.append({"label": kluc, "path": cesta, "exists": os.path.exists(cesta),
                      "bytes": os.path.getsize(cesta) if os.path.exists(cesta) else 0})
-        # SÚRODENCI: zálohy a dočasné súbory (hr_windows.json.pred-prepoctom-*,
-        # hr_sessions.json.bak, *.tmp). Bez nich "zmazať" nechá kópiu dát.
-        # `glob.escape` na základe, nech prípadné [ ] * v ceste nemätie glob.
+        # SIBLINGS: backups and temporary files
+        # (hr_windows.json.pred-prepoctom-*, hr_sessions.json.bak, *.tmp).
+        # Without them "delete" leaves a copy of the data. `glob.escape` on the
+        # base, so any [ ] * in the path do not confuse glob.
         for subor in sorted(glob.glob(glob.escape(cesta) + ".*")):
             plan.append({"label": "data.delete.backup", "path": subor,
                          "exists": True, "bytes": os.path.getsize(subor)})
@@ -730,8 +761,9 @@ def _plan_priecinka(data_dir, log_subory):
                         pass
         plan.append({"label": kluc, "path": cesta, "exists": os.path.isdir(cesta),
                      "bytes": velkost})
-    # Vlastné logy po SÚBOROCH, nie celý priečinok - v dev režime `logs/`
-    # drží aj gui_screenshots a iné veci mimo histórie hráča.
+    # The app's own logs FILE BY FILE, not the whole folder - in dev mode
+    # `logs/` also holds gui_screenshots and other things outside the
+    # player's history.
     logs_dir = os.path.join(data_dir, "logs")
     for meno in log_subory:
         cesta = os.path.join(logs_dir, meno)
@@ -742,11 +774,12 @@ def _plan_priecinka(data_dir, log_subory):
 
 
 def delete_all(data_dir, log=None, legacy_dirs=()):
-    """Zmaže všetko z `delete_plan`. Vracia počet zmazaných položiek.
+    """Deletes all of `delete_plan`. Returns the number of deleted items.
 
-    Priečinok z plánu (cache hlášok) sa zmaže aj s obsahom a hneď vytvorí
-    prázdny - appka doň píše za behu. V starých priečinkoch (`legacy`) sa
-    nič znova nevytvára: tam už appka nepíše.
+    A folder from the plan (the cue cache) is deleted with its contents
+    and created again empty right away - the app writes into it while
+    running. In the old folders (`legacy`) nothing is created again: the
+    app no longer writes there.
     """
     zmazane = 0
     for polozka in delete_plan(data_dir, legacy_dirs):

@@ -1,8 +1,9 @@
-"""UI dialogy a karty hlavneho okna - vsetko, co otvara vlastny CTkToplevel
-alebo je samostatny vizualny "widget" (karta slotu, tooltip, stepper).
+"""UI dialogs and cards of the main window - everything that opens its own
+CTkToplevel or is a standalone visual "widget" (slot card, tooltip, stepper).
 
-Vsetky triedy tu pracuju s `app` (instancia DandurfApp z app.py) len cez
-jeho verejne metody/atributy - neduplikuju ziadnu logiku, len ju volaju.
+All classes here work with `app` (the DandurfApp instance from app.py) only
+through its public methods/attributes - they duplicate no logic, they only
+call it.
 """
 
 import os
@@ -17,7 +18,7 @@ import numpy as np
 import customtkinter as ctk
 
 import guide_panel
-import logging_setup      # okno parovania: chyba v on_close ide do app.log
+import logging_setup      # pairing window: an error in on_close goes to app.log
 import ui_kit
 
 try:
@@ -26,14 +27,15 @@ try:
 except Exception:
     PIL_AVAILABLE = False
 
-import hr_stats           # CONTEXT_IDS pre dotaznik na konci relacie
-import rebrik             # stupen rebrika hlasky (obraz / pauza)
-import trigger            # dovody, preco sa appka sama rozhodla mlcat
-import hud_paint          # onboarding kresli realne piktogramy a HUD
-import netinfo            # skryta IP v okne parovania (mask_ip)
+import hr_stats           # CONTEXT_IDS for the questionnaire at the end of a session
+import rebrik             # cue ladder rung (picture / pause)
+import trigger            # reasons why the app decided on its own to stay silent
+import hud_paint          # the onboarding draws real pictograms and the HUD
+import netinfo            # hidden IP in the pairing window (mask_ip)
 import sfx_assets
 import theme as theme_mod
-# speak_sapi_isolated: ukazka hlasu v uvode - VZDY hlas z Windows, nikdy Edge
+# speak_sapi_isolated: voice preview in the introduction - ALWAYS the
+# Windows voice, never Edge
 from audio_engine import MicRecorder, play_audio_file, speak_sapi_isolated
 from i18n import cislo, tr
 from paths import APP_NAME, AUDIO_DIR, images_dir
@@ -44,12 +46,12 @@ from settings_model import (BREATH_SECONDS_MAX, BREATH_SECONDS_MIN, MODE_COMBO, 
 
 
 # --------------------------------------------------------------------------
-# Jednoduchy hover tooltip (obycajny tk.Toplevel - nepotrebuje CTk temovanie)
+# Simple hover tooltip (a plain tk.Toplevel - needs no CTk theming)
 # --------------------------------------------------------------------------
 
 class HoverTooltip:
-    """Priradi sa na existujuci widget - po najazdeni po chvili zobrazi
-    maly popis pod nim, po odchode mysi zmizne."""
+    """Attached to an existing widget - on hover, after a moment it shows a
+    small description under it; it disappears when the mouse leaves."""
 
     def __init__(self, widget, text, pal, delay=350):
         self.widget = widget
@@ -83,10 +85,11 @@ class HoverTooltip:
             self._tip.wm_overrideredirect(True)
             self._tip.attributes("-topmost", True)
             self._tip.wm_geometry(f"+{x}+{y}")
-            # Rovnaky tvar ako bubliny v bocnom paneli (`ui_shell._HoverTip`):
-            # zaoblene, s ramom z temy. `tk.Label(relief="solid")` kreslil
-            # hranaty ram systemovou farbou - jedine miesto v appke, kde bol
-            # ostry ciernobiely okraj.
+            # The same shape as the tooltips in the sidebar
+            # (`ui_shell._HoverTip`): rounded, with a theme frame.
+            # `tk.Label(relief="solid")` drew a square frame in the system
+            # colour - the only place in the app with a sharp black-and-white
+            # edge.
             frame = ctk.CTkFrame(self._tip, fg_color=self.pal["surface_alt"],
                                  corner_radius=8, border_width=1,
                                  border_color=self.pal["border"])
@@ -108,21 +111,22 @@ class HoverTooltip:
 
 
 # --------------------------------------------------------------------------
-# Dialog s podrobnym nastavenim jedneho slotu
+# Dialog with the detailed settings of one slot
 # --------------------------------------------------------------------------
 
 class SlotSettingsDialog:
-    """Hlas jednej hlasky. Nic viac.
+    """The voice of one cue. Nothing more.
 
-    Do 18. 9. tu sedelo aj cele casovanie - vlastna pauza, oneskorenie,
-    "kazde N-te spustenie", opakovanie a rozptyl. Ziadna z tych hodnot sa pri
-    hrani necitala: automaticku hlasku spusta `trigger.CueTrigger` podla
-    zataze tela a doruci ju `_emit`, ktory z karty berie text, rezim a zvuk.
-    Sest posuvnikov teda ladilo jedine tlacidlo Test.
+    Until 18. 9. the whole timing sat here too - its own pause, delay,
+    "every N-th trigger", repetition and spread. None of those values was
+    read during play: the automatic cue is fired by `trigger.CueTrigger`
+    based on the body's load and delivered by `_emit`, which takes the
+    text, mode and sound from the card. So six sliders tuned only the Test
+    button.
 
-    Kedy sa appka ozve sa nastavuje na jednom mieste pre vsetky hlasky
-    (stranka Hlasky, "ako casto sa ozvem"), lebo to je vlastnost cloveka,
-    nie jednotlivej vety.
+    When the app speaks up is set in one place for all cues (the Cues
+    page, "How often I speak up"), because that is a property of the
+    person, not of a single sentence.
     """
 
     def __init__(self, app, slot):
@@ -148,10 +152,10 @@ class SlotSettingsDialog:
                      anchor="w").pack(fill="x")
         self.voice_var = tk.StringVar()
         names = [tr("voice.global")] + app.current_voice_names()
-        # `ui_kit.option_menu` (0.2.2 davka 4b), nie hola CTkOptionMenu: ten
-        # isty vzhlad ako vyber hlasu v Nastaveniach a sirka podla najdlhsieho
-        # mena hlasu - "Microsoft Hedda Desktop - German (Germany)" sa
-        # v pevnych 340 px orezalo.
+        # `ui_kit.option_menu` (0.3 batch 4b), not a bare CTkOptionMenu: the
+        # same look as the voice choice in Settings and a width by the longest
+        # voice name - "Microsoft Hedda Desktop - German (Germany)" got cut off
+        # in a fixed 340 px.
         self.voice_box = ui_kit.option_menu(
             body, pal, width=340, values=names, variable=self.voice_var)
         self.voice_box.pack(fill="x", pady=(6, 6))
@@ -161,11 +165,12 @@ class SlotSettingsDialog:
                      text_color=pal["text_dim"], anchor="w", justify="left",
                      wraplength=340).pack(fill="x", pady=(0, 14))
 
-        # --- Vlastna nahravka hlasu ------------------------------------------
-        # Namiesto strojoveho hlasu (TTS) sa da pouzit vlastna nahravka: tvoj
-        # hlas povie "dychaj". Ak je nastavena, prehra sa namiesto TTS (viz
-        # app._speak_text) - cela a cista, bez filtra na kroky, rovnako ako
-        # offline hlas. Zije tu, lebo je to sucast "hlasu jednej hlasky".
+        # --- Own voice recording ---------------------------------------------
+        # Instead of the machine voice (TTS) your own recording can be used:
+        # your voice says "dychaj" (breathe). If set, it is played instead of
+        # TTS (see app._speak_text) - whole and clean, without the footsteps
+        # filter, the same as the offline voice. It lives here because it is
+        # part of "the voice of one cue".
         ctk.CTkLabel(body, text=tr("dialog.voice_rec_label"),
                      font=ui_kit.ui(12, "bold"), text_color=pal["text"],
                      anchor="w").pack(fill="x")
@@ -174,8 +179,8 @@ class SlotSettingsDialog:
             text_color=pal["text_dim"], anchor="w", justify="left", wraplength=340)
         self.voice_clip_status.pack(fill="x", pady=(4, 6))
 
-        # Tlacidla z `ui_kit.button` (0.2.2 davka 4b): vedlajsie s ramom
-        # `control_border`, Ulozit hlavne - ako vo vsetkych oknach appky.
+        # Buttons from `ui_kit.button` (0.3 batch 4b): secondary ones with a
+        # `control_border` frame, Save primary - as in all app windows.
         vrow = ctk.CTkFrame(body, fg_color="transparent")
         vrow.pack(fill="x", pady=(0, 4))
         ui_kit.button(vrow, pal, tr("dialog.voice_rec_record"),
@@ -219,11 +224,12 @@ class SlotSettingsDialog:
             pass
         self.top.destroy()
 
-    # ---- vlastna nahravka hlasu ----
+    # ---- own voice recording ----
     #
-    # Nahravka je okamzita operacia so suborom, preto sa (na rozdiel od vyberu
-    # hlasu v rozbalovacke) uklada hned - Zrusit nema co brat spat a clovek by
-    # neprisiel o nahravku len preto, ze zavrel dialog.
+    # A recording is an immediate file operation, so (unlike the voice choice
+    # in the dropdown) it is saved at once - Cancel has nothing to take back
+    # and the person would not lose a recording just because they closed the
+    # dialog.
 
     def _voice_clip_text(self):
         vp = getattr(self.slot, "voice_path", "")
@@ -246,7 +252,7 @@ class SlotSettingsDialog:
         dialog = RecordDialog(self.app, self.slot.index + 1, target)
         self.app.root.wait_window(dialog.top)
         try:
-            self.top.grab_set()   # vrat grab spat tomuto dialogu
+            self.top.grab_set()   # give the grab back to this dialog
         except Exception:
             pass
         if dialog.saved_path:
@@ -264,7 +270,8 @@ class SlotSettingsDialog:
             self.slot.voice_path = self.slot._import_into_store(
                 path, f"voice_pick_{self.slot.uid}")
         except Exception as exc:
-            # okno appky nad tymto dialogom, nie systemove (0.2.2, davka 4)
+            # the app's window above this dialog, not a system one (0.3, batch
+            # 4)
             ui_kit.notify(self.top, self.app.pal, APP_NAME,
                           tr("record.save_error", err=exc), kind="error")
             return
@@ -278,7 +285,7 @@ class SlotSettingsDialog:
         self._commit_voice(tr("log.slot_voice_cleared", n=self.slot.index + 1))
 
 # --------------------------------------------------------------------------
-# Dialog na vytvorenie noveho profilu (hry)
+# Dialog for creating a new profile (game)
 # --------------------------------------------------------------------------
 
 class NewProfileDialog:
@@ -332,18 +339,19 @@ class NewProfileDialog:
 
 
 class DevLayerDialog:
-    """Vyvojarska vrstva: cisla zo zadania §2, editovatelne za behu.
+    """Developer overlay: the numbers from spec §2, editable at runtime.
 
-    PRECO EXISTUJE: tie cisla su odhady z literatury, nie z tela tohto
-    hraca. Prve tyzdne sa bude zistovat, ze hlaska chodi bud priskoro,
-    alebo vobec. Bez moznosti otocit to za behu by sa muselo rebuildovat
-    kazdy vecer.
+    WHY IT EXISTS: those numbers are estimates from the literature, not
+    from this player's body. In the first weeks it will turn out that the
+    cue comes either too early or not at all. Without a way to turn it at
+    runtime one would have to rebuild every evening.
 
-    PRECO SA DA EDITOVAT LEN MEDZI RELACIAMI: zadanie §3.3. Menit prahy
-    uprostred relacie znamena merat pohyblivy ciel - okna z prvej polovice
-    vecera a z druhej by sa nedali porovnat a nikto by uz spatne nezistil,
-    ktore bolo ktore. Preto sa polia pri beziacej relacii ZAMKNU; nie je
-    to odporucanie v texte, ale vynutene.
+    WHY IT CAN BE EDITED ONLY BETWEEN SESSIONS: spec §3.3. Changing
+    thresholds in the middle of a session means measuring a moving target -
+    windows from the first half of the evening and from the second could
+    not be compared and nobody could find out afterwards which was which.
+    That is why the fields are LOCKED while a session is running; it is not
+    a recommendation in the text, but enforced.
     """
 
     POLIA = (
@@ -401,7 +409,8 @@ class DevLayerDialog:
                 row=riadok, column=2, sticky="w")
             self.entries[kluc] = var
 
-        # Podiel ticha zvlast - nie je to prah, je to navrh pokusu.
+        # The silence share separately - it is not a threshold, it is the
+        # experiment design.
         ctk.CTkLabel(body, text=tr("dev.silent"), font=ui_kit.ui(12),
                      text_color=pal["text_dim"], anchor="w").pack(
             fill="x", pady=(14, 4))
@@ -431,7 +440,8 @@ class DevLayerDialog:
                       hover_color=pal["border"], text_color=pal["text"],
                       command=self.fire).pack(side="left")
 
-        # Surovy vypis poslednych okien - to jedine, co o merani povie pravdu.
+        # Raw listing of the last windows - the only thing that tells the truth
+        # about the measurement.
         ctk.CTkLabel(body, text=tr("dev.windows"), font=ui_kit.ui(10, "bold"),
                      text_color=pal["text_faint"], anchor="w").pack(
             fill="x", pady=(18, 4))
@@ -491,16 +501,17 @@ class DevLayerDialog:
 
 
 class SessionEndDialog:
-    """Koniec relacie: co sa dialo, nie ako sa hrac cital.
+    """End of session: what happened, not how the player felt.
 
-    Nie je to dotaznik na pocity. Je to CISTENIE DAT. Rozpravanie je
-    najhorsi konfunder v tomto merani: ked hovoris, meni sa dych a tep ide
-    hore, takze hlaska, ktora do toho zaznie, vyzera neucinne - hoci s tym
-    nema nic spolocne.
+    It is not a questionnaire about feelings. It is DATA CLEANING. Talking
+    is the worst confounder in this measurement: when you talk, your
+    breathing changes and the heart rate goes up, so a cue that sounds
+    during it looks ineffective - although it has nothing to do with it.
 
-    "Preskocit" je rovnako velke tlacidlo ako "Ulozit" a je to zamerne.
-    Keby bolo mensie alebo len odkaz, raz sa odklikne naslepo - a nahodne
-    odkliknuty kontext su HORSIE data nez ziadny kontext.
+    "Skip" is a button as big as "Save" and that is deliberate. If it were
+    smaller or just a link, at some point it would get clicked away
+    blindly - and randomly clicked-through context is WORSE data than no
+    context.
     """
 
     def __init__(self, app, summary, cues=0, silent=0):
@@ -508,27 +519,29 @@ class SessionEndDialog:
         self.summary = summary
         self.vybrane = set()
         self.chips = {}
-        self.activity = None          # 'play' / 'work' / None (nevyjadril sa)
+        self.activity = None          # 'play' / 'work' / None (did not say)
         self._activity_btns = {}
-        # Svet relacie (B3-worlds): ten, v ktorom ZACALA (`world` zo
-        # `_close_hr_session`). Riadok hral/pracoval ho len ZVYRAZNI -
-        # `self.activity` ostava None, kym hrac naozaj neklikne, aby sa
-        # "len som klikol Ulozit" nezapisalo ako jeho odpoved.
+        # The session's world (B3-worlds): the one it STARTED in (`world` from
+        # `_close_hr_session`). The played/worked row only HIGHLIGHTS it -
+        # `self.activity` stays None until the player really clicks, so that
+        # "I just clicked Save" is not recorded as their answer.
         self._svet = hr_stats.session_world(summary)
-        self.note_box = None          # volna poznamka (CTkTextbox)
-        # Subjektivna vrstva (vyskum 2026-09-22) - to, co TEP NEVIDI.
+        self.note_box = None          # free note (CTkTextbox)
+        # Subjective layer (research 2026-09-22) - what the HEART RATE DOES NOT
+        # SEE.
         self.sleep = None             # 'rested'/'mid'/'broken'
-        self.felt_load = None         # 0-10 (vnimana zataz), None kym sa nedotkne
-        self.valence = None           # -2..+2 (zle..dobre)
-        self._body_sel = set()        # telo pocas spicky (viacvyber)
+        self.felt_load = None         # 0-10 (perceived load), None until touched
+        self.valence = None           # -2..+2 (bad..good)
+        self._body_sel = set()        # body during the peak (multi-select)
         self.cue_verdict = None       # landed/unneeded/disruptive/agitated/missed
         self._cue_fired = bool(cues)
         self._sleep_btns = {}
         self._val_btns = {}
         self._body_btns = {}
         self._cue_btns = {}
-        # "Len nastavovanie appky" (0.2.2). Prva relacia po uvode ho ma
-        # zapnute od appky (`setup` v suhrne) - `confirm` posle stav cipu.
+        # "Just setting up the app" (0.3). The first session after the
+        # introduction has it switched on by the app (`setup` in the summary) -
+        # `confirm` sends the chip state.
         self.setup = bool(summary.get("setup"))
         self._setup_btn = None
         pal = app.pal
@@ -536,10 +549,10 @@ class SessionEndDialog:
         minuty = int((summary.get("duration_s") or 0) // 60)
 
         self.top = ctk.CTkToplevel(app.root)
-        # S CASOM, nie s prazdnou medzerou. Bez neho bolo v titulku okna aj
-        # v liste uloh doslova "Hral si ." - veta, ktorej chyba to jedine
-        # cislo, kvoli ktoremu tam je.
-        # Pracovna relacia nema v titulku "Hral si".
+        # WITH THE TIME, not with an empty gap. Without it the window title and
+        # the taskbar literally said "Hral si ." (You played .) - a sentence
+        # missing the one number it is there for.
+        # A work session has no "Hral si" in the title.
         titulok = tr("session.end.title_work" if self._svet == "work"
                      else "session.end.title", time=self._cas(minuty))
         self.top.title(titulok)
@@ -548,13 +561,15 @@ class SessionEndDialog:
         self.top.transient(app.root)
         self.top.grab_set()
 
-        # V listke len meno appky: veta s casom je NADPIS tela nizsie (0.2.2,
-        # audit UX - "Hral si 26 min." bol najmenej viditelny text okna) a
-        # dvakrat pod sebou by tam stala zbytocne.
+        # Only the app name in the title bar: the sentence with the time is the
+        # HEADING of the body below (0.3, UX audit - "Hral si 26 min." was the
+        # least visible text of the window) and twice, one under the other, it
+        # would be pointless.
         chrome = ui_kit.DialogChrome(self.top, pal, APP_NAME, on_close=self.close)
-        # Podval s tlacidlami je PRIPNUTY dole (vzdy viditelny), obsah nad nim
-        # SCROLLUJE. Dotaznik narastol o subjektivnu vrstvu a na 1366x768 by sa
-        # inak k Ulozit/Preskocit nedalo dostat (nadvazuje na B33).
+        # The footer with the buttons is PINNED at the bottom (always visible),
+        # the content above it SCROLLS. The questionnaire grew by the
+        # subjective layer and on 1366x768 Save/Skip could otherwise not be
+        # reached (follows up on B33).
         footer = ctk.CTkFrame(chrome.body, fg_color="transparent")
         footer.pack(side="bottom", fill="x", padx=22, pady=(6, 16))
         self._footer = footer
@@ -564,18 +579,19 @@ class SessionEndDialog:
             scrollbar_button_hover_color=pal["accent"])
         body.pack(fill="both", expand=True, padx=(22, 10), pady=(18, 4))
 
-        # NADPIS TELA: kolko si hral (0.2.2, audit UX, davka 4). Bola to len
-        # drobna veta v listke okna - prave to jedno cislo, ku ktoremu sa
-        # vztahuju vsetky otazky pod nim.
+        # BODY HEADING: how long you played (0.3, UX audit, batch 4). It used
+        # to be just a small sentence in the window's title bar - exactly the
+        # one number that all the questions below relate to.
         self.heading_label = ctk.CTkLabel(
             body, text=titulok, font=ui_kit.ui(16, "bold"), text_color=pal["text"],
             anchor="w", justify="left", wraplength=420)
         self.heading_label.pack(fill="x", pady=(0, 6))
-        # EXKLUZIVNY FULLSCREEN (0.2.2 davka 4): kym hra zaberala celu
-        # obrazovku, Windows obrazky nad nou nevykreslil - jedna kratka veta
-        # hned pod nadpisom, inak by si hrac myslel, ze sa appka neozvala.
-        # Len ked sa naozaj ozvala, a nie v Praci (tam sa ozyva len obrazom
-        # a veta o hlase by neplatila).
+        # EXCLUSIVE FULLSCREEN (0.3 batch 4): while the game filled the whole
+        # screen, Windows did not draw the pictures over it - one short
+        # sentence right under the heading, otherwise the player would think
+        # the app did not speak up. Only when it really did speak up, and not
+        # in Work (there it speaks up only with a picture and the sentence
+        # about the voice would not hold).
         self.fullscreen_label = None
         if self.ukaz_fullscreen_vetu(summary, cues, self._svet):
             self.fullscreen_label = ctk.CTkLabel(
@@ -584,9 +600,10 @@ class SessionEndDialog:
                 wraplength=420)
             self.fullscreen_label.pack(fill="x", pady=(0, 8))
 
-        # PROMOCIA (easter egg): raz, ked hrac dosiahol "plny Zanshin".
-        # `_maybe_graduate` oznaci summary; kruh sa uz uzavrel do zlateho
-        # mesiaca, tu pribudne mysticka sprava (plt cez rieku).
+        # GRADUATION (easter egg): once, when the player reached "full
+        # Zanshin". `_maybe_graduate` marks the summary; the circle has already
+        # closed into a golden moon, here a mystical message is added (the raft
+        # across the river).
         if summary.get("zen_graduation"):
             zen = ctk.CTkFrame(body, fg_color=pal["surface"],
                                corner_radius=ui_kit.RADIUS_CONTROL,
@@ -601,18 +618,19 @@ class SessionEndDialog:
                          font=ui_kit.ui(12), text_color=pal["text"], anchor="w",
                          justify="left", wraplength=420).pack(fill="x", pady=(6, 0))
 
-        # V praci ide kazda hlaska len obrazom (B3-worlds) - veta o "naschval
-        # som mlcala" by tam tvrdila rozdiel, ktory nebol.
+        # At work every cue is only a picture (B3-worlds) - a sentence about
+        # "naschval som mlcala" (I stayed silent on purpose) would claim a
+        # difference there that did not exist.
         if cues and self._svet == "work":
             podnadpis = tr("session.end.cues_work", n=cues)
         elif cues and summary.get("cue_rung") == rebrik.OBRAZ:
-            # To iste v hre na stupni "obraz" (rebrik hlasky, 0.2).
+            # The same in game on the "picture" rung (cue ladder, 0.2).
             podnadpis = tr("session.end.cues_visual", n=cues)
         elif cues and silent:
-            # Tiche kontrolne rameno JE sucastou `cues` (ukazal sa len obrazok),
-            # nie navyse - veta to musi povedat ako "z toho", nie ako
-            # porovnanie. Pri nule by "0x som naschval mlcala" vyzeralo ako
-            # chyba sablony (audit UX, cast 3).
+            # The silent control arm IS part of `cues` (only a picture was
+            # shown), not extra - the sentence must say it as "of which", not as
+            # a comparison. At zero, "0x som naschval mlcala" would look like a
+            # template bug (UX audit, part 3).
             podnadpis = tr("session.end.cues_silent", n=cues, silent=silent)
         elif cues:
             podnadpis = tr("session.end.cues", n=cues)
@@ -622,28 +640,32 @@ class SessionEndDialog:
                      text_color=pal["text"], anchor="w", justify="left",
                      wraplength=420).pack(fill="x")
 
-        # KED SA NEOZVALA, POVEDZ PRECO.
-        # Samotne "neozvala som sa" necha hraca hadat medzi tromi velmi
-        # roznymi vecami: bol pokojny, appka ma pritvrde pravidlo, alebo mu
-        # vypadavali hodinky. Kazda z nich ma ine riesenie, tak sa rozlisia.
-        # Cisla dodava `CueTrigger` cez suhrn relacie (app.py,
-        # `_close_hr_session`); ked tam nie su, riadok sa proste nezobrazi.
+        # WHEN IT DID NOT SPEAK UP, SAY WHY.
+        # A bare "neozvala som sa" (I did not speak up) leaves the player
+        # guessing between three very different things: they were calm, the app
+        # has too strict a rule, or their watch kept dropping out. Each has a
+        # different fix, so they are told apart.
+        # The numbers come from `CueTrigger` via the session summary (app.py,
+        # `_close_hr_session`); when they are not there, the line simply is not
+        # shown.
         preco = self._preco_ticho(summary) if not cues else ""
         if preco:
             ctk.CTkLabel(body, text=preco, font=ui_kit.ui(11),
                          text_color=pal["text_faint"], anchor="w", justify="left",
                          wraplength=420).pack(fill="x", pady=(3, 10))
         else:
-            # Prazdny riadok bol vysoky ako riadok textu - pod vetou o
-            # hlaskach tak visela medzera ~30 px (0.2.2 davka 4).
+            # An empty row was as tall as a line of text - so under the
+            # sentence about cues there hung a gap of ~30 px (0.3 batch 4).
             ctk.CTkFrame(body, fg_color="transparent", height=12).pack(fill="x")
 
-        # AKO TO SLO - krivka celeho vecera priamo nad otazkami.
+        # HOW IT WENT - the curve of the whole evening right above the
+        # questions.
         #
-        # Dotaznik sa pyta, co sa dialo. Bez obrazka si to hrac musi
-        # vybavit z hlavy; s nim vidi, kde tep vyskocil a kedy sa appka
-        # ozvala, a odpoveda na to, co ma pred ocami. Je to ta ista
-        # `SessionTrace`, ktora je na Dnes aj v Historii - ziadny novy graf.
+        # The questionnaire asks what happened. Without a picture the player
+        # has to recall it from memory; with it they see where the heart rate
+        # jumped and when the app spoke up, and answer what is in front of
+        # their eyes. It is the same `SessionTrace` that is on Today and in
+        # History - no new chart.
         krivka = summary.get("curve") or []
         if len(krivka) >= 10:
             stopa = ui_kit.SessionTrace(body, pal, height=84)
@@ -655,22 +677,23 @@ class SessionEndDialog:
                 duration_s=summary.get("duration_s") or 0.0,
                 triggers=summary.get("trigger_offsets_s") or (),
                 activity=summary.get("activity_curve") or ())
-            # vo svete Praca "kedy sa pracovalo", nie "hralo" (0.2.2 davka 4b)
+            # in the Work world "when you worked", not "played" (0.3 batch 4b)
             ctk.CTkLabel(body, text=tr("session.end.trace_hint_work" if self._svet == "work"
                                        else "session.end.trace_hint"),
                          font=ui_kit.ui(10), text_color=pal["text_faint"],
                          anchor="w", justify="left", wraplength=420).pack(
                 fill="x", pady=(0, 14))
 
-        # -- AKO SA TO CITILO (subjektivne) - to, co TEP NEVIDI --------------
-        # Aktivacia (tep) a valencia (dobre/zle) su dve NEZAVISLE osi; hlavny
-        # nalez je ROZCHOD merane x citene (tep moze byt plochy, a clovek sa
-        # pritom citi zle). Preto ordinalne skaly s pevnymi id, nie volny text.
+        # -- HOW IT FELT (subjective) - what the HEART RATE DOES NOT SEE -----
+        # Activation (heart rate) and valence (good/bad) are two INDEPENDENT
+        # axes; the main finding is the DIVERGENCE measured x felt (the heart
+        # rate can be flat while the person feels bad). Hence ordinal scales
+        # with fixed ids, not free text.
         ctk.CTkLabel(body, text=tr("session.felt.header").upper(),
                      font=ui_kit.ui(10, "bold"), text_color=pal["text_faint"],
                      anchor="w").pack(fill="x", pady=(0, 8))
 
-        # Vnimana zataz 0-10 (posuvnik). None kym sa nedotkne (0 != nevyjadril sa).
+        # Perceived load 0-10 (slider). None until touched (0 != did not say).
         load_row = ctk.CTkFrame(body, fg_color="transparent")
         load_row.pack(fill="x", pady=(0, 2))
         ctk.CTkLabel(load_row, text=tr("session.felt.load"), font=ui_kit.ui(12),
@@ -678,11 +701,11 @@ class SessionEndDialog:
         self._load_val = ctk.CTkLabel(load_row, text="—", width=28,
                                       font=ui_kit.mono(12), text_color=pal["accent"])
         self._load_val.pack(side="right")
-        # NEVYPLNENY POSUVNIK NEVYZERA AKO ODPOVED (0.2.2, audit UX). Gombik
-        # musi niekde stat a stal na 0 v zlatej - presne ten zly datovy bod,
-        # pred ktorym varuje komentar vyssie. Kym sa ho hrac nedotkne, je
-        # cely v `switch_off` (prazdna draha, ziadna hodnota, vedla "—");
-        # prvy dotyk ho zafarbi akcentom (`_on_load`).
+        # AN UNFILLED SLIDER DOES NOT LOOK LIKE AN ANSWER (0.3, UX audit). The
+        # knob has to be somewhere and it sat at 0 in gold - exactly the bad
+        # data point the comment above warns about. Until the player touches
+        # it, it is all in `switch_off` (empty track, no value, "—" next to
+        # it); the first touch colours it with the accent (`_on_load`).
         sl = ui_kit.block_slider_wheel(ctk.CTkSlider(
             body, from_=0, to=10, number_of_steps=10,
             progress_color=pal["switch_off"], button_color=pal["switch_off"],
@@ -694,7 +717,7 @@ class SessionEndDialog:
         ctk.CTkLabel(body, text=tr("session.felt.load_hint"), font=ui_kit.ui(10),
                      text_color=pal["text_faint"], anchor="w").pack(fill="x", pady=(0, 10))
 
-        # Valencia (5 stupnov, jednovyber).
+        # Valence (5 levels, single choice).
         ctk.CTkLabel(body, text=tr("session.felt.valence"), font=ui_kit.ui(12),
                      text_color=pal["text_dim"], anchor="w").pack(fill="x", pady=(0, 6))
         val_row = ctk.CTkFrame(body, fg_color="transparent")
@@ -712,7 +735,8 @@ class SessionEndDialog:
             btn.grid(row=0, column=i, padx=(0, 4), sticky="ew")
             self._val_btns[v] = btn
 
-        # Telo pocas spicky (viacvyber, ZAZITKOVE dlazdice - nie symptomovy skrining).
+        # Body during the peak (multi-select, EXPERIENCE tiles - not symptom
+        # screening).
         ctk.CTkLabel(body, text=tr("session.felt.body_q"), font=ui_kit.ui(12),
                      text_color=pal["text_dim"], anchor="w").pack(fill="x", pady=(0, 6))
         body_row = ctk.CTkFrame(body, fg_color="transparent")
@@ -727,9 +751,10 @@ class SessionEndDialog:
             btn.grid(row=i // 3, column=i % 3, padx=(0, 6), pady=(0, 4), sticky="w")
             self._body_btns[bid] = btn
 
-        # Verdikt o hlaske - otazka podla toho, ci cue zaznel. "Rozhodila ma"
-        # (0.2) je ina vec nez "rusila": vzrusenie, nie pozornost. Obe
-        # stisia rebrik hlasky o stupen (`rebrik.py`).
+        # Verdict on the cue - the question depends on whether the cue sounded.
+        # "it wound me up" (0.2) is a different thing from "it disrupted":
+        # arousal, not attention. Both lower the cue ladder by one rung
+        # (`rebrik.py`).
         if self._cue_fired:
             cue_q, cue_opts = tr("session.felt.cue_q_fired"), (
                 "landed", "unneeded", "disruptive", "agitated")
@@ -752,11 +777,12 @@ class SessionEndDialog:
 
         ui_kit.linka(body, pal).pack(fill="x", pady=(2, 12))
 
-        # CINNOST: hral alebo pracoval? Jednovyber (nie cipy - su to vylucne
-        # moznosti). Navrchu zamerne: je to najzakladnejsi kontext vecera a
-        # od neho sa bude dat oddelit "praca" od "hry" - z realnych dat, nie
-        # dohadom. Bez kliku = hrac sa nevyjadril (None), rovnako ako pri
-        # cipoch; relacia potom patri svetu, v ktorom zacala (`world`).
+        # ACTIVITY: played or worked? Single choice (not chips - they are
+        # mutually exclusive options). At the top on purpose: it is the most
+        # basic context of the evening and from it "work" can be separated from
+        # "play" - from real data, not by guessing. No click = the player did
+        # not say (None), the same as with the chips; the session then belongs
+        # to the world it started in (`world`).
         ctk.CTkLabel(body, text=tr("session.context.activity_question").upper(),
                      font=ui_kit.ui(10, "bold"), text_color=pal["text_faint"],
                      anchor="w").pack(fill="x", pady=(0, 8))
@@ -771,15 +797,17 @@ class SessionEndDialog:
                 font=ui_kit.ui(12), command=lambda k=kind: self._set_activity(k))
             btn.pack(side="left", padx=(0, 6))
             self._activity_btns[kind] = btn
-        # Svet, v ktorom relacia zacala, je hned vidno - kto zabudol prepnut,
-        # opravi to jednym klikom. Ulozi sa ale az ten klik.
+        # The world the session started in is visible at once - whoever forgot
+        # to switch fixes it with one click. But only that click gets saved.
         self._paint_activity(self._svet)
 
-        # LEN NASTAVOVANIE APPKY (0.2.2). Uvod, parovanie a prehliadka su
-        # pokoj pri stole, nie hranie - z takej relacie by sa hranica aj prah
-        # stiahli k pokoju (ta ista chyba ako 110 -> 80 v KNOWN_ISSUES), takze
-        # sa z nej neucia (`hr_stats.ciste_relacie`). Vlastny rad, nie tretia
-        # odpoved na hral/pracoval: je to prepinac a svet relacie nemeni.
+        # JUST SETTING UP THE APP (0.3). The introduction, pairing and the tour
+        # are calm at the desk, not playing - from such a session the limit and
+        # the threshold would be pulled towards calm (the same bug as 110 -> 80
+        # in KNOWN_ISSUES), so they are not learnt from it
+        # (`hr_stats.ciste_relacie`). Its own row, not a third answer to
+        # played/worked: it is a switch and does not change the session's
+        # world.
         setup_row = ctk.CTkFrame(body, fg_color="transparent")
         setup_row.pack(fill="x", pady=(0, 2))
         self._setup_btn = ctk.CTkButton(
@@ -789,10 +817,12 @@ class SessionEndDialog:
             hover_color=pal["surface_alt"], text_color=pal["text_dim"],
             font=ui_kit.ui(12), command=self._prepni_setup)
         self._setup_btn.pack(side="left")
-        # Zapnuty cip pri otvoreni zapla appka sama (prva relacia po uvode -
-        # dotaznik ide hned po ulozeni, hrac ho este nevidel). Bez vety by
-        # nevedel preco, a kto pritom naozaj hral, by ho Ulozenim nechal:
-        # prvy vecer by sa potom do ucenia nezaratal.
+        # The chip that is on at opening was switched on by the app itself (the
+        # first session after the introduction - the questionnaire comes right
+        # after saving, the player has not seen it yet). Without a sentence
+        # they would not know why, and whoever really played during it would
+        # leave it on by Saving: the first evening would then not count towards
+        # learning.
         setup_hint = (tr("session.context.setup_hint_first") if self.setup
                       else tr("session.context.setup_hint"))
         ctk.CTkLabel(body, text=setup_hint,
@@ -801,10 +831,11 @@ class SessionEndDialog:
             fill="x", pady=(0, 10))
         self._paint_setup()
 
-        # DVA RADY, nie jeden. Prvy je "co sa dialo pocas vecera", druhy
-        # "s cim si do neho sadol" - su to rozne veci a posuvaju rozne
-        # cisla. Deviatim cipom v jednom rade by sa navyse dialog rozsypal:
-        # `pack(side="left")` nezalamuje a posledne by vypadli von.
+        # TWO ROWS, not one. The first is "what happened during the evening",
+        # the second "what you sat down to it with" - they are different things
+        # and move different numbers. Nine chips in one row would also make the
+        # dialog fall apart: `pack(side="left")` does not wrap and the last
+        # ones would fall out.
         for nadpis, skupina in (("session.context.question", hr_stats.CONTEXT_DIANIE),
                                 ("session.context.body_question", hr_stats.CONTEXT_TELO)):
             ctk.CTkLabel(body, text=tr(nadpis).upper(),
@@ -812,10 +843,11 @@ class SessionEndDialog:
                          anchor="w").pack(fill="x", pady=(0, 8))
             chips = ctk.CTkFrame(body, fg_color="transparent")
             chips.pack(fill="x", pady=(0, 10))
-            # GRID, nie pack(side="left"): rad čipov sa nezalamuje, a šesť
-            # čipov vedľa seba nafúklo dialóg na 1416 px - na 1366×768 sa
-            # potom nedalo dostať k Uložiť/Preskočiť (B33). Tri stĺpce ho
-            # držia v rozumnej šírke a čipy sa zalomia na viac riadkov.
+            # GRID, not pack(side="left"): a row of chips does not wrap, and
+            # six chips side by side bloated the dialog to 1416 px - on
+            # 1366×768 it was then impossible to reach Save/Skip (B33). Three
+            # columns keep it at a sensible width and the chips wrap onto more
+            # rows.
             for i, cid in enumerate(skupina):
                 btn = ctk.CTkButton(
                     chips, text=tr(f"session.context.{cid}"), height=30,
@@ -828,9 +860,10 @@ class SessionEndDialog:
                          sticky="w")
                 self.chips[cid] = btn
 
-        # SPANOK minulu noc (nahradza binarne 'unavený'): 3 urovne, jednovyber.
-        # Nevyspatie dvíha osobnu zakladnu na cely den - vysvetľuje, preco ta
-        # ista hra raz "nič" a inokedy "zle".
+        # SLEEP last night (replaces the binary 'unavený' (tired)): 3 levels,
+        # single choice. Lack of sleep raises the personal baseline for the
+        # whole day - it explains why the same game is once "nothing" and
+        # another time "bad".
         ctk.CTkLabel(body, text=tr("session.sleep.q").upper(), font=ui_kit.ui(10, "bold"),
                      text_color=pal["text_faint"], anchor="w").pack(fill="x", pady=(2, 8))
         sleep_row = ctk.CTkFrame(body, fg_color="transparent")
@@ -850,8 +883,9 @@ class SessionEndDialog:
                      text_color=pal["text_faint"], anchor="w", justify="left",
                      wraplength=420).pack(fill="x", pady=(14, 12))
 
-        # VLASTNA POZNAMKA: volny text k veceru (co cipy nezachytia - nova hra,
-        # zle spanok, hadka, cokolvek). Appka ju len drzi a ukaze, neinterpretuje.
+        # OWN NOTE: free text about the evening (what the chips do not capture -
+        # a new game, bad sleep, an argument, anything). The app only keeps and
+        # shows it, does not interpret it.
         ctk.CTkLabel(body, text=tr("session.context.note_label").upper(),
                      font=ui_kit.ui(10, "bold"), text_color=pal["text_faint"],
                      anchor="w").pack(fill="x", pady=(0, 6))
@@ -863,9 +897,9 @@ class SessionEndDialog:
 
         tlacidla = ctk.CTkFrame(self._footer, fg_color="transparent")
         tlacidla.pack(fill="x")
-        # Rovnaka sirka oboch: preskocenie musi byt rovnako lahke ako ulozenie.
-        # `ui_kit.button` (0.2.2 davka 4b): Preskocit je vedlajsie tlacidlo
-        # s ramom `control_border` ako vo vsetkych oknach, nie siva vypln.
+        # The same width for both: skipping must be as easy as saving.
+        # `ui_kit.button` (0.3 batch 4b): Skip is a secondary button with a
+        # `control_border` frame as in all windows, not a grey fill.
         ui_kit.button(tlacidla, pal, tr("common.save"), kind="primary", width=132,
                       height=34, command=self.confirm).pack(side="left")
         ui_kit.button(tlacidla, pal, tr("session.end.skip"), width=132, height=34,
@@ -873,45 +907,49 @@ class SessionEndDialog:
 
         self.top.protocol("WM_DELETE_WINDOW", self.close)
 
-        # PEVNA VELKOST okna. Bez nej sa pri resizable(False) toplevel roztiahne
-        # na celu vysku obsahu (aj pod spodok obrazovky, tlacidla mimo) a suzi
-        # sa na sirku scroll-kanvasu (~pravy stlpec cipov orezany). S pevnou
-        # geometriou telo scrolluje vnutri a footer ostava pripnuty a viditelny.
-        # Rozmery su LOGICKE - CTk ich prenasobi mierkou DPI.
-        # Stred PRACOVNEJ plochy monitora pod kurzorom (nie celej obrazovky
-        # hlavneho monitora) a nizsi, ked sa 680 px na plochu nezmesti -
-        # paticka s tlacidlami ostane nad listou uloh.
+        # FIXED window SIZE. Without it, with resizable(False) the toplevel
+        # stretches to the full height of the content (even below the bottom of
+        # the screen, buttons off-screen) and shrinks to the width of the scroll
+        # canvas (~the right column of chips cut off). With a fixed geometry the
+        # body scrolls inside and the footer stays pinned and visible.
+        # The dimensions are LOGICAL - CTk multiplies them by the DPI scale.
+        # Centre of the WORK AREA of the monitor under the cursor (not the whole
+        # screen of the main monitor) and lower when 680 px do not fit in the
+        # work area - the footer with the buttons stays above the taskbar.
         ui_kit.umiestni_dialog(self.top, self.app.root, 660, 680)
 
     @staticmethod
     def _preco_ticho(summary):
-        """Preco za celu relaciu nezaznela ani jedna hlaska.
+        """Why not a single cue sounded during the whole session.
 
-        Poradie podmienok NIE JE lubovolne: vypadky tepu sa pytaju ako prve,
-        lebo pri nich su ostatne cisla nedoveryhodne - najdlhsi usek moze
-        vyzerat kratko len preto, ze ho rozsekali diery v datach.
+        The order of conditions is NOT arbitrary: heart-rate dropouts are
+        asked first, because with them the other numbers are
+        untrustworthy - the longest stretch may look short just because
+        gaps in the data chopped it up.
 
-        Potom BRANA (0.2): ani jedna pauza vo vstupe za dlhu relaciu je
-        podozrenie na vstup, ktory nikdy neutichne (gyro, packa bez mrtvej
-        zony) - hracovi to treba povedat, nie ho z toho vinit. A ked sa
-        appka sama rozhodla mlcat (zataz este stupala alebo bol tep v
-        kritickom pasme), nesmie to zniet ako "zataz nebola dost dlho hore".
+        Then the GATE (0.2): not a single pause in input during a long
+        session suggests input that never goes quiet (gyro, a stick
+        without a dead zone) - the player needs to be told, not blamed for
+        it. And when the app decided by itself to stay silent (the load was
+        still rising or the heart rate was in the critical zone), it must
+        not sound like "the load was not up long enough".
 
-        Uplne na zaciatku PAUZA REBRIKA (0.2): appka mala hlasky vypnute,
-        takze kazda ina veta by vysvetlovala ticho, ktore si vybrala sama.
+        At the very start the LADDER PAUSE (0.2): the app had cues switched
+        off, so any other sentence would explain a silence it chose itself.
         """
         if summary.get("cue_rung") == rebrik.PAUZA:
             return tr("session.end.none_paused")
         behov = summary.get("above_runs")
         if behov is None:
-            return ""                      # starsia relacia, cisla nemá
+            return ""                      # older session, has no numbers
         vypadkov = summary.get("runs_cancelled_gap") or 0
         if vypadkov >= 2 and vypadkov >= (summary.get("runs_cancelled_dip") or 0):
             return tr("session.end.none_dropouts", n=vypadkov)
-        # "TERAZ NIE" POCAS RELACIE (od 24. 9. ju nezatvara). Automat vtedy
-        # spal, takze pocitadla nizsie ten cas nevidia: "zataz sa ani raz
-        # nedostala nad hranicu" by mohlo tvrdit ticho, ktore si hrac vybral
-        # sam. Vypadky vyssie su pravda aj tak (mimo stisenia).
+        # "NOT NOW" DURING THE SESSION (since 24. 9. it does not close it). The
+        # automation was asleep then, so the counters below do not see that
+        # time: "the load never got above the limit" could claim a silence that
+        # the player chose themselves. The dropouts above are true anyway
+        # (outside the snooze).
         try:
             stisene = float(summary.get("snoozed_s") or 0)
         except (TypeError, ValueError):
@@ -924,7 +962,8 @@ class SessionEndDialog:
             trvanie = float(summary.get("duration_s") or 0)
         except (TypeError, ValueError):
             trvanie = 0.0
-        # `is not None`: stara relacia pocet pauz nema a nula by klamala.
+        # `is not None`: an old session has no pause count and a zero would
+        # lie.
         if pauz is not None and pauz == 0 and trvanie >= 300:
             return tr("session.end.none_nopause")
         zadrzane = summary.get("cues_withheld")
@@ -936,8 +975,9 @@ class SessionEndDialog:
         except (TypeError, ValueError):
             branou = 0
         if branou > 0:
-            # Len brana (telo), nie `nedalo_sa` (odstup, snooze, chodza) -
-            # veta hovori o tepe a pri tom by nebola pravdiva.
+            # Only the gate (body), not `nedalo_sa` (spacing, snooze,
+            # walking) - the sentence talks about the heart rate and would
+            # not be true then.
             return tr("session.end.none_withheld")
         if not behov:
             return tr("session.end.none_never")
@@ -947,29 +987,33 @@ class SessionEndDialog:
 
     @staticmethod
     def _cas(minuty):
-        """Bez `@staticmethod` posielal `self._cas(minuty)` dva argumenty a
-        cely dotaznik padol na TypeError uz pri prvom riadku. Bol to DRUHY
-        dovod, preco sa kontext relacie nikdy nepodarilo vyplnit - prvym
-        bolo, ze sa dialog pri zatvarani appky zahodil skor, nez sa vykreslil."""
+        """Without `@staticmethod`, `self._cas(minuty)` passed two arguments and
+        the whole questionnaire crashed on a TypeError at the very first
+        line. It was the SECOND reason why the session context could never
+        be filled in - the first was that the dialog was thrown away on app
+        close before it was drawn."""
         if minuty < 60:
             return tr("history.minutes", m=minuty)
-        # Od hodiny "2 h 03 min", nie "2:03" (0.2.2 davka 4): v nadpise
-        # dotaznika sa "2:03 hrania" citalo ako dve minuty. Ten isty format
-        # ako karta "Dĺžka relácie" a os stopy relacie (`ui_kit.dlzka_text`).
+        # From an hour on "2 h 03 min", not "2:03" (0.3 batch 4): in the
+        # questionnaire heading "2:03 hrania" (2:03 of playing) read as two
+        # minutes. The same format as the "Session length" card and the session
+        # trace axis (`ui_kit.dlzka_text`).
         return ui_kit.dlzka_text(minuty * 60)
 
     def _set_activity(self, kind):
-        """Jednovyber hral/pracoval. Klik je ODPOVED hraca - az ten sa ulozi
-        do `activity`, aj ked klikne na uz zvyrazneny svet (potvrdenie).
+        """Single choice played/worked. The click is the player's ANSWER - only
+        it gets saved into `activity`, even when they click the already
+        highlighted world (confirmation).
 
-        Druhy klik uz odpoved nerusi: riadok ukazuje svet relacie, ktory by
-        po zruseni ostal aj tak zvyrazneny, takze "zrusenie" by nebolo
-        vidno. (Do B3-worlds tu druhy klik vracal "nevyjadril sa".)"""
+        A second click no longer cancels the answer: the row shows the
+        session's world, which would stay highlighted after cancelling
+        anyway, so "cancelling" would not be visible. (Until B3-worlds a
+        second click here returned "did not say".)"""
         self.activity = kind
         self._paint_activity(kind)
 
     def _paint_activity(self, zvyrazneny):
-        """Prefarbi tlacidla hral/pracoval - zvyrazni len `zvyrazneny`."""
+        """Repaints played/worked buttons - highlights only `zvyrazneny`."""
         pal = self.app.pal
         for k, btn in self._activity_btns.items():
             if k == zvyrazneny:
@@ -992,12 +1036,13 @@ class SessionEndDialog:
                           text_color=pal["accent"])
 
     def _on_load(self, v):
-        """Posuvnik vnimanej zataze. Prvy dotyk = uz vyjadril sa (0 by inak
-        nebolo odlisitelne od 'nevyjadril sa')."""
+        """Perceived load slider. First touch = they have answered (0 would
+        otherwise be indistinguishable from 'did not say')."""
         self.felt_load = int(round(float(v)))
         try:
             self._load_val.configure(text=str(self.felt_load))
-            # od prveho dotyku je to odpoved - draha aj gombik v akcente
+            # from the first touch it is an answer - track and knob in the
+            # accent
             pal = self.app.pal
             self._load_slider.configure(progress_color=pal["accent"],
                                         button_color=pal["accent"])
@@ -1005,8 +1050,9 @@ class SessionEndDialog:
             pass
 
     def _pick_one(self, group, value, btns):
-        """Jednovyber (valencia/spanok/verdikt): druhy klik na to iste zrusi
-        (spat na None). `group` je nazov atributu, `btns` slovnik tlacidiel."""
+        """Single choice (valence/sleep/verdict): a second click on the same
+        cancels (back to None). `group` is the attribute name, `btns` a
+        dict of buttons."""
         pal = self.app.pal
         nova = None if getattr(self, group) == value else value
         setattr(self, group, nova)
@@ -1019,7 +1065,7 @@ class SessionEndDialog:
                               text_color=pal["text_dim"])
 
     def _toggle_body(self, bid):
-        """Viacvyber dlazdic 'telo pocas spicky'."""
+        """Multi-select of the 'body during the peak' tiles."""
         pal = self.app.pal
         btn = self._body_btns[bid]
         if bid in self._body_sel:
@@ -1032,12 +1078,12 @@ class SessionEndDialog:
                           text_color=pal["accent"])
 
     def _prepni_setup(self):
-        """Cip "Len nastavovanie appky" - zapnute/vypnute."""
+        """The "Just setting up the app" chip - on/off."""
         self.setup = not self.setup
         self._paint_setup()
 
     def _paint_setup(self):
-        """Prefarbi cip nastavovania podla `self.setup`."""
+        """Recolours the setup chip according to `self.setup`."""
         btn = self._setup_btn
         if btn is None:
             return
@@ -1051,12 +1097,13 @@ class SessionEndDialog:
 
     @staticmethod
     def ukaz_fullscreen_vetu(summary, cues, svet):
-        """Patri do hlavicky veta o exkluzivnom fullscreene? (0.2.2 davka 4)
+        """Does the exclusive-fullscreen line belong in the header? (0.3 batch 4)
 
-        Len ked appka v relacii zbadala hru na celu obrazovku (`fullscreen`
-        v suhrne), naozaj sa ozvala (`cues` > 0 - inak nebol ziadny obrazok,
-        ktory by nebolo vidno) a nie v Praci (tam ide vsetko len obrazom,
-        veta o hlase by neplatila)."""
+        Only when the app saw a full-screen game during the session
+        (`fullscreen` in the summary), really spoke up (`cues` > 0 -
+        otherwise there was no picture that could not be seen) and not in
+        Work (there everything is only a picture, the sentence about the
+        voice would not hold)."""
         try:
             return bool(isinstance(summary, dict) and summary.get("fullscreen")
                         and int(cues or 0) > 0 and svet != "work")
@@ -1064,13 +1111,14 @@ class SessionEndDialog:
             return False
 
     def bolo_vyplnene(self):
-        """Dotkol sa hrac aspon jednej odpovede? (0.2.2, druhe "Ukoncit")
+        """Did the player touch at least one answer? (0.3, the second "Quit")
 
-        Druhe "Ukoncit" z listy pocas otvoreneho dotaznika ho doteraz zavrelo
-        ako "Preskocit" a vyplnene odpovede zmizli. Rozhodnutie zadavatela:
-        nieco vyplnene = ulozit (ako "Ulozit"), nic = zavriet ako "Preskocit"
-        (`app._quit`). Zvyraznenie sveta relacie ani cip nastavovania od
-        appky odpovedou nie su - az klik."""
+        A second "Quit" from the tray while the questionnaire was open used
+        to close it like "Skip" and the filled-in answers disappeared. The
+        product owner's decision: something filled in = save (like "Save"),
+        nothing = close like "Skip" (`app._quit`). Neither the highlighted
+        session world nor the setup chip set by the app counts as an
+        answer - only a click."""
         if (self.vybrane or self._body_sel or self.activity is not None
                 or self.sleep is not None or self.felt_load is not None
                 or self.valence is not None or self.cue_verdict is not None):
@@ -1085,17 +1133,17 @@ class SessionEndDialog:
         return False
 
     def confirm(self):
-        # Prazdny zoznam NIE JE to iste, co preskocenie: [] znamena
-        # "nic z toho sa nedialo", None znamena "hrac sa nevyjadril".
+        # An empty list is NOT the same as skipping: [] means
+        # "none of this happened", None means "the player did not say".
         poznamka = ""
         if self.note_box is not None:
             try:
                 poznamka = self.note_box.get("1.0", "end")
             except Exception:
                 poznamka = ""
-        # Vysledok ulozenia sa vracia (0.2.2 davka 4b): pri ukonceni appky
-        # dotaznik dokoncuje appka (`_dokonci_dotaznik`) a do dennika podla
-        # neho zapise, ci sa odpovede ulozili.
+        # The save result is returned (0.3 batch 4b): when the app quits, the
+        # app finishes the questionnaire (`_dokonci_dotaznik`) and writes to
+        # the journal, based on it, whether the answers were saved.
         ok = self.app.save_session_context(
             self.summary, sorted(self.vybrane),
             activity=self.activity, note=poznamka,
@@ -1114,7 +1162,7 @@ class SessionEndDialog:
 
 
 # --------------------------------------------------------------------------
-# Import profilu z kodu (Base64/JSON) - na rychle zdielanie napr. na Discorde
+# Profile import from a code (Base64/JSON) - for quick sharing, e.g. on Discord
 # --------------------------------------------------------------------------
 
 class ImportProfileDialog:
@@ -1143,7 +1191,7 @@ class ImportProfileDialog:
         self.code_box.bind("<FocusIn>", lambda _e: app.set_typing(True))
         self.code_box.bind("<FocusOut>", lambda _e: app.set_typing(True))
 
-        # drobny text chyby: `danger_text` (>= 4,5:1), nie `danger` (theme.py)
+        # small error text: `danger_text` (>= 4,5:1), not `danger` (theme.py)
         self.error_label = ctk.CTkLabel(body, text="", text_color=pal["danger_text"],
                                         wraplength=380, justify="left")
         self.error_label.pack(anchor="w", pady=(0, 6))
@@ -1179,18 +1227,19 @@ class ImportProfileDialog:
 
 
 class ImportDataDialog:
-    """Import dat (Historia -> Tvoje data): Zlucit / Nahradit / Zrusit.
+    """Data import (History -> Your data): Merge / Replace / Cancel.
 
-    Predtym to bol systemovy `askyesnocancel` s textom natvrdo
-    "Zlucit = Ano / Nahradit = Nie": slova po slovensky v kazdom jazyku a
-    tlacidla v jazyku Windowsu, takze v anglickom rozhrani (alebo na
-    anglickom Windowse) volby nesedeli s tlacidlami - a nevratne NAHRADIT
-    bolo na "Nie". Teraz su volby priamo na tlacidlach (i18n) a NAHRADIT
-    ide az na druhy klik, s vetou, co presne sa prepise a ze sa odlozi
-    zaloha.
+    Before, it was a system `askyesnocancel` with the hard-coded text
+    "Zlucit = Ano / Nahradit = Nie" (Merge = Yes / Replace = No): Slovak
+    words in every language and buttons in the Windows language, so in the
+    English interface (or on English Windows) the options did not match
+    the buttons - and the irreversible REPLACE was on "No". Now the options
+    are right on the buttons (i18n) and REPLACE comes only on the second
+    click, with a sentence saying exactly what gets overwritten and that a
+    backup is set aside.
 
-    `on_choice("merge" | "replace")` sa zavola az po potvrdeni a az po
-    zatvoreni dialogu; Zrusit, krizik ani Escape nevolaju nic.
+    `on_choice("merge" | "replace")` is called only after confirmation and
+    only after the dialog closes; Cancel, the X and Escape call nothing.
     """
 
     def __init__(self, app, message, on_choice):
@@ -1221,9 +1270,10 @@ class ImportDataDialog:
         self.top.protocol("WM_DELETE_WINDOW", self.close)
 
     def _button(self, text, command, primary=False, danger=False, width=120):
-        """Tlacidlo z `ui_kit.button` (0.2.2 davka 4b): Nahradit je druh
-        `danger` (ram aj text `danger_text`) ako "Zmazat" vsade v appke,
-        nie biely text v tmavocervenom rame s cervenym hoverom."""
+        """A button from `ui_kit.button` (0.3 batch 4b): Replace is of the
+        `danger` kind (frame and text `danger_text`) like "Delete"
+        everywhere in the app, not white text in a dark-red frame with a
+        red hover."""
         kind = "primary" if primary else ("danger" if danger else "secondary")
         btn = ui_kit.button(self.buttons, self.pal, text, command=command, kind=kind,
                             width=max(width, ui_kit._sirka_textu(text, ui_kit.ui(12))
@@ -1236,8 +1286,8 @@ class ImportDataDialog:
             w.destroy()
 
     def _choose(self):
-        """Prvy krok: co je v subore a tri volby. Zlucit je predvolena
-        (bezpecna) - Nahradit je obrysove, nie plne tlacidlo."""
+        """First step: what is in the file and three options. Merge is the
+        default (safe) - Replace is an outline button, not a filled one."""
         self._clear()
         self.text.configure(text=self.message)
         self._button(tr("common.cancel"), self.close, width=90)
@@ -1246,7 +1296,7 @@ class ImportDataDialog:
                      primary=True)
 
     def _confirm_replace(self):
-        """Druhy krok pre NAHRADIT - co presne sa prepise a kam ide zaloha."""
+        """REPLACE step two: what gets overwritten, where the backup goes."""
         self._clear()
         self.text.configure(text=tr("data.import.replace_confirm"))
         self._button(tr("data.import.back"), self._choose, width=90)
@@ -1266,13 +1316,13 @@ class ImportDataDialog:
 
 
 # --------------------------------------------------------------------------
-# Nastavenie in-game vizualnych overlayov - velkost, poloha a test pre
-# vsetky 4 sloty naraz, v jednom modalnom okne.
+# Setting up the in-game visual overlays - size, position and test for
+# all 4 slots at once, in one modal window.
 # --------------------------------------------------------------------------
 
-# Rohove predvolby polohy HUD-u (v % sirky/vysky monitora). Stredy su
-# zamerne posunute od okrajov - killfeed a chat v strielackach sedia
-# tesne pri ramci obrazovky.
+# Corner presets for the HUD position (in % of monitor width/height). The
+# centres are deliberately moved away from the edges - the killfeed and
+# chat in shooters sit right by the screen border.
 HUD_POSITION_PRESETS = [
     (13.0, 8.0), (50.0, 6.0), (87.0, 8.0),
     (13.0, 90.0), (50.0, 93.0), (87.0, 90.0),
@@ -1295,8 +1345,8 @@ class OverlaySettingsDialog:
         self.top = ctk.CTkToplevel(app.root)
         self.top.title(tr("overlay.dialog_title"))
         self.top.configure(fg_color=pal["bg"])
-        # Na stred plochy a cely na nej (760 px sa na 768-px obrazovku
-        # nezmesti nikdy) - viz `ui_kit.umiestni_dialog`.
+        # Centred on the work area and fully on it (760 px never fits on a
+        # 768-px screen) - see `ui_kit.umiestni_dialog`.
         ui_kit.umiestni_dialog(self.top, app.root, 520, 760,
                                min_width=470, min_height=480)
         self.top.transient(app.root)
@@ -1310,15 +1360,15 @@ class OverlaySettingsDialog:
                     text_color=pal["text_dim"], wraplength=430, justify="left").pack(
             anchor="w")
 
-        # POZN: tu sa kreslil vyber obrazovky a nizsie cela karta HUD-u.
-        # Boli to DRUHE kopie tych istych nastaveni, ktore su v
-        # Nastavenia -> Vseobecne, a rozchadzali sa: prepnutie HUD-u v tomto
-        # dialogu prepisalo `hud_config`, ale premennu prepinaca na stranke
-        # uz nie - hrac potom videl vypnute na jednom mieste a zapnute na
-        # druhom a nemal ako zistit, ktora hodnota plati.
+        # NOTE: the monitor choice was drawn here and the whole HUD card below.
+        # They were SECOND copies of the same settings that are in Settings ->
+        # General, and they drifted apart: switching the HUD in this dialog
+        # overwrote `hud_config`, but no longer the switch variable on the
+        # page - the player then saw it off in one place and on in the other
+        # and had no way to find out which value applied.
         #
-        # Tento dialog je na POLOHU A VELKOST. Co sa zapina a na ktorej
-        # obrazovke, je jedno miesto - stranka Vseobecne.
+        # This dialog is for POSITION AND SIZE. What is switched on and on
+        # which screen is one place - the General page.
 
         scroll = ctk.CTkScrollableFrame(
             chrome.body, fg_color="transparent", scrollbar_button_color=pal["surface_alt"],
@@ -1331,9 +1381,9 @@ class OverlaySettingsDialog:
 
         footer = ctk.CTkFrame(chrome.body, fg_color="transparent")
         footer.pack(fill="x", padx=20, pady=(0, 16))
-        # Vedlajsie tlacidlo (`ui_kit.button`), nie vypln `accent2` bez
-        # ramu v predvolenom pisme CTk (0.2.2 davka 4) - zmeny plati hned,
-        # "Zavriet" nie je hlavna akcia okna.
+        # A secondary button (`ui_kit.button`), not an `accent2` fill without
+        # a frame in the CTk default font (0.3 batch 4) - changes apply at
+        # once, "Close" is not the main action of the window.
         ui_kit.button(footer, pal, tr("common.close"), command=self.close,
                       width=100).pack(side="right")
 
@@ -1353,7 +1403,8 @@ class OverlaySettingsDialog:
 
         head = ctk.CTkFrame(inner, fg_color="transparent")
         head.pack(fill="x")
-        # Piktogram vizualu tym istym stetcom ako v hre, nie emoji z prekladu.
+        # The visual's pictogram with the same brush as in game, not an emoji
+        # from the translation.
         vizualy = ("grounding", "jaw", "release", "breath")
         if 0 <= index < len(vizualy):
             ui_kit.SlotIcon(head, pal, vizualy[index], size=22).pack(side="left", padx=(0, 8))
@@ -1366,8 +1417,8 @@ class OverlaySettingsDialog:
 
         scale_row = ctk.CTkFrame(inner, fg_color="transparent")
         scale_row.pack(fill="x", pady=(10, 0))
-        # Pismo appky (`ui_kit.ui`), nie predvolene CTk; velkost s ciarkou
-        # podla jazyka a znakom × (0.2.2 davka 4).
+        # The app font (`ui_kit.ui`), not the CTk default; the size with a
+        # comma by language and the × sign (0.3 batch 4).
         ctk.CTkLabel(scale_row, text=tr("overlay.scale"), text_color=pal["text_dim"],
                      font=ui_kit.ui(12), width=90, anchor="w").pack(side="left")
         scale_value_label = ctk.CTkLabel(scale_row, text=f"{cislo(cfg['scale'], 2)}×",
@@ -1381,9 +1432,9 @@ class OverlaySettingsDialog:
             label.configure(text=f"{cislo(value, 2)}×")
             self.app.on_overlay_config_change(idx, scale=value)
 
-        # Vsetky posuvniky okna jednym stylom (`ui_kit.slider`, 0.2.2 davka
-        # 4): X/Y mali tmavu vypln `accent2` a vyzerali vypnute vedla zlateho
-        # posuvnika velkosti.
+        # All sliders of the window in one style (`ui_kit.slider`, 0.3 batch
+        # 4): X/Y had a dark `accent2` fill and looked switched off next to the
+        # golden size slider.
         ui_kit.slider(scale_row, pal, from_=0.5, to=2.0, variable=scale_var,
                       number_of_steps=30,
                       command=on_scale).pack(side="left", fill="x", expand=True, padx=(8, 8))
@@ -1442,15 +1493,16 @@ class OverlaySettingsDialog:
 
         self._rows.append({"x_label": x_label, "y_label": y_label})
 
-        # Vedlajsie tlacidlo prirodzenej sirky (ram >= 3:1), nie ram cez
-        # celu kartu s kontrastom 1,24:1, ktory vyzeral ako vypnuty.
+        # A secondary button of natural width (frame >= 3:1), not a frame
+        # across the whole card with a contrast of 1,24:1 that looked switched
+        # off.
         ui_kit.button(inner, pal, tr("overlay.test"), height=32,
                       command=lambda idx=index: self.app.test_overlay(idx)).pack(
             anchor="w", pady=(12, 0))
 
     def _build_breath_seconds_rows(self, parent, pal):
-        """Dlzka nadychu/vydychu (v sekundach) - len pri slote Dych (index 3),
-        vedla existujuceho posuvnika Velkost."""
+        """Inhale/exhale length (in seconds) - only for the Breath slot (index
+        3), next to the existing Size slider."""
         row = ctk.CTkFrame(parent, fg_color="transparent")
         row.pack(fill="x", pady=(10, 0))
         ctk.CTkLabel(row, text=tr("overlay.breath_seconds"), text_color=pal["text_dim"],
@@ -1495,13 +1547,13 @@ class OverlaySettingsDialog:
         self.app.on_overlay_config_change(index, pos=(x, y))
 
     def close(self):
-        # DRAG-TEST SA MUSI UKONCIT SO ZATVORENIM DIALOGU.
+        # THE DRAG TEST MUST END WHEN THE DIALOG CLOSES.
         #
-        # Test rezim vypina klik-through, cize vizual nad hrou pohlcuje kliky
-        # mysou - a sam od seba nikdy neskonci. Kto klikol Test, zatvoril
-        # dialog a spustil hru, mal uprostred obrazovky nekliknutelnu plochu
-        # a ziadny sposob, ako zistit preco. Zatvorenie dialogu je posledny
-        # moment, kedy to appka vie chytit.
+        # Test mode turns off click-through, i.e. the visual over the game
+        # swallows mouse clicks - and it never ends by itself. Whoever clicked
+        # Test, closed the dialog and started the game had an unclickable area
+        # in the middle of the screen and no way to find out why. Closing the
+        # dialog is the last moment when the app can catch it.
         try:
             if self.app.overlay_manager.stop_all_tests():
                 self.app.log(tr("log.overlay_test_ukonceny"))
@@ -1517,11 +1569,13 @@ class OverlaySettingsDialog:
 
 
 def _qr_popis(kluc, v_navode=False):
-    """Popis pod QR. Posledny riadok posiela po adresu do „Ako sparovat
-    hodinky…“ - na karte senzora spravne, v SAMOTNOM navode by vsak hrac
-    hladal tlacidlo, ktore toto okno otvorilo. Tam ho nahradi odkaz na ramik
-    s adresou hore (`hr.qr_addr_above`). Len ked posledny riadok naozaj
-    odkazuje na navod - iny tvar prekladu ostane cely."""
+    """Caption under the QR. Its last line sends the player to "How to pair
+    your watch…" for the address - correct on the sensor card, but in the
+    guide ITSELF the player would look for the button that opened this
+    very window. There it is replaced by a reference to the box with the
+    address at the top (`hr.qr_addr_above`). Only when the last line
+    really refers to the guide - a different form of the translation stays
+    whole."""
     text = tr(kluc)
     if v_navode:
         riadky = text.split("\n")
@@ -1531,13 +1585,13 @@ def _qr_popis(kluc, v_navode=False):
 
 
 def watch_app_qr(parent, pal, v_navode=False, **pack_kw):
-    """QR na appku do telefonu - navonok len znacka, kod az na klik.
+    """QR for the phone app - outwardly just a badge, the code only on a click.
 
-    Je to ta ista vec na dvoch miestach (krokovy navod na parovanie aj
-    karta senzora v Nastaveniach), takze zije tu a nie dvakrat. Ked
-    obrazok chyba (napr. rozbity build), nevrati sa nic - chybajuci QR
-    nesmie zhodit dialog ani stranku. `v_navode=True` = QR v navode na
-    parovanie (viz `_qr_popis`).
+    It is the same thing in two places (the step-by-step pairing guide and
+    the sensor card in Settings), so it lives here and not twice. When the
+    image is missing (e.g. a broken build), nothing is returned - a missing
+    QR must not crash the dialog or the page. `v_navode=True` = QR in the
+    pairing guide (see `_qr_popis`).
     """
     base = images_dir()
     codes = [(os.path.join(base, "qr_watch_play.png"),
@@ -1551,11 +1605,12 @@ def watch_app_qr(parent, pal, v_navode=False, **pack_kw):
 
 
 def _stranka_vhre(app=None, tema=None):
-    """Meno stranky "V hre" pre texty s `{page}` (0.2.2 davka 4b).
+    """Name of the "In-game" page for texts with `{page}` (0.3 batch 4b).
 
-    Vo svete Praca sa stranka vola "Obrazovka" ako v bocnom paneli: pri
-    appke ju povie `app._nazov_vhre`, v uvode (appka este nie je) svet tej
-    temy, ktoru ma uvod prave zvolenu. Atrapy bez oboch -> meno z Hry."""
+    In the Work world the page is called "Screen", as in the sidebar: with
+    the app, `app._nazov_vhre` tells it; in the introduction (no app yet)
+    the world of the theme the introduction currently has selected. Fakes
+    without both -> the name from Play."""
     nazov = getattr(app, "_nazov_vhre", None)
     if callable(nazov):
         try:
@@ -1568,23 +1623,26 @@ def _stranka_vhre(app=None, tema=None):
 
 
 def stav_parovania(app):
-    """(druh, text) riadku stavu v okne parovania - zo SKUTOCNEHO prijmu.
+    """(kind, text) of the pairing window's status row - from REAL receiving.
 
-    Druh: "ok" (tep chodi), "caka" (cakam na telefon alebo na tep),
-    "pozor" (nieco nesedi, ale este to skusam), "chyba" (prijem nebezi).
-    Farbu k druhu vyberie dialog. Funkcia modulu, nie metoda dialogu, aby
-    sa dala overit na atrape appky bez Tk.
+    Kind: "ok" (heart rate is coming), "caka" (waiting for the phone or the
+    heart rate), "pozor" (something is off, but I am still trying),
+    "chyba" (receiving is not running). The dialog picks the colour for the
+    kind. A module function, not a dialog method, so it can be checked on
+    an app fake without Tk.
 
-    Cislo je vyhladene (`HeartStats.display_bpm`) - to iste ako na HUD-e,
-    na Dnes aj pri prepinaci, inak by okno parovania ukazovalo ine cislo
-    nez zvysok appky. CI tep chodi, rozhoduje surovy `_hr_last_bpm`, rovnako
-    ako v `_hr_status_display`.
+    The number is smoothed (`HeartStats.display_bpm`) - the same as on the
+    HUD, on Today and at the switch, otherwise the pairing window would
+    show a different number than the rest of the app. WHETHER the heart
+    rate is coming is decided by the raw `_hr_last_bpm`, the same as in
+    `_hr_status_display`.
     """
     stav = getattr(app, "_hr_state", "disconnected")
     port = getattr(app, "hr_port", "")
     if not getattr(app, "hr_monitoring_enabled", False):
-        # Okno je modalne a prijem zapina uz jeho otvorenie, takze vypnuty
-        # prijem tu znamena chybu portu alebo siete, nie volbu hraca.
+        # The window is modal and opening it already turns receiving on, so
+        # receiving being off here means a port or network error, not the
+        # player's choice.
         if stav == "busy_gave_up":
             return "chyba", tr("hr.pair_status_gave_up", port=port,
                                page=_stranka_vhre(app))
@@ -1596,45 +1654,51 @@ def stav_parovania(app):
             tep = surovy
         return "ok", tr("hr.pair_status_ok", bpm=tep)
     if stav in ("linked", "connected"):
-        # "connected" bez vzorky = tep chodil a nova relacia (`start_listening`
-        # pocas parovania, prvy start ho spusti sam) prave zmazala posledne
-        # cislo. Telefon je pripojeny - "cakam, kym sa pripoji" by klamalo.
+        # "connected" without a sample = the heart rate was coming and a new
+        # session (`start_listening` during pairing, the first start starts it
+        # by itself) has just cleared the last number. The phone is connected -
+        # "waiting for it to connect" would lie.
         return "caka", tr("hr.pair_status_linked")
     if stav == "busy":
         return "pozor", tr("hr.pair_status_busy", port=port)
     if stav == "no_client":
-        # Za `HR_NO_CLIENT_AFTER_MS` sa nikto nepripojil - rady su v boxe
-        # "Hodinky sa vobec nepripoja?" nizsie v tom istom okne.
+        # After `HR_NO_CLIENT_AFTER_MS` nobody has connected - the tips are in
+        # the "Watch won't connect at all?" box further down in the same
+        # window.
         return "pozor", tr("hr.pair_status_no_client")
     return "caka", tr("hr.pair_status_waiting")
 
 
 class WatchPairingDialog:
-    """Krokovy navod, ako dostat tep z hodiniek do appky.
+    """Step-by-step guide on getting the heart rate from the watch into the app.
 
-    Preco to potrebuje vlastny dialog: appka NEprijima tep priamo. Predstiera
-    OBS (obs-websocket v5) a spolieha sa na to, ze na telefone bezi appka,
-    ktora tep do OBS posiela - najbeznejsia je "HeartRateOnStream for OBS".
-    Hrac teda musi v telefone nastavit OBS spojenie na IP tohto pocitaca, co
-    je bez navodu takmer nemozne uhadnut.
+    Why it needs its own dialog: the app does NOT receive the heart rate
+    directly. It pretends to be OBS (obs-websocket v5) and relies on an app
+    running on the phone that sends the heart rate to OBS - the most
+    common is "HeartRateOnStream for OBS". So the player has to set up an
+    OBS connection on the phone to this computer's IP, which is nearly
+    impossible to guess without a guide.
 
-    Dialog ukazuje aj REALNU IP a port tohto PC (nie zastupne priklady),
-    takze si ich hrac len prepise do telefonu. IP sa zisti best-effort - ak
-    sa neda, ukaze sa rada, ako ju najst rucne.
+    The dialog also shows the REAL IP and port of this PC (not placeholder
+    examples), so the player just copies them into the phone. The IP is
+    detected best-effort - if it cannot be, a tip on how to find it by hand
+    is shown.
 
-    SKRYTA IP (0.2): adresa je zamaskovana (`netinfo.mask_ip`), kym hrac
-    neklikne "Ukazat IP" - okno parovania byva na streame aj na screenshote
-    pre testera. Tlacidlo prepina `app.show_ip`, ktore plati pre celu appku
-    (aj pole IP v Nastaveniach a dennik) a len do restartu.
+    HIDDEN IP (0.2): the address is masked (`netinfo.mask_ip`) until the
+    player clicks "Show IP" - the pairing window tends to be on stream and
+    in screenshots for a tester. The button toggles `app.show_ip`, which
+    applies to the whole app (also the IP field in Settings and the
+    journal) and only until restart.
 
-    ZIVY STAV (0.2.2): pod ramikom s adresou je riadok, ktory sa kazdu
-    sekundu prekresli zo skutocneho stavu prijmu (`stav_parovania`). Dialog
-    bol predtym slepy - uspech bolo vidno len za modalnym oknom - a krok 5
-    radil prepinac zapnut, hoci prijem uz zaplo samotne otvorenie navodu
-    (`open_watch_pairing`). Kto posluchol, prijem si vypol.
+    LIVE STATUS (0.3): under the address box there is a row that is
+    redrawn every second from the real receiving state (`stav_parovania`).
+    The dialog was blind before - success was visible only behind the modal
+    window - and step 5 advised turning the switch on, although opening the
+    guide itself had already turned receiving on (`open_watch_pairing`).
+    Whoever followed the advice turned receiving off.
 
-    `on_close` (volitelne) sa zavola raz, az po zavreti okna - sprievodca
-    prveho spustenia po nom spusti prehliadku appky.
+    `on_close` (optional) is called once, only after the window closes -
+    the first-start guide starts the app tour after it.
     """
 
     STAV_OBNOVA_MS = 1000
@@ -1650,11 +1714,12 @@ class WatchPairingDialog:
         self.top = ctk.CTkToplevel(app.root)
         self.top.title(tr("hr.pair_title"))
         self.top.configure(fg_color=pal["bg"])
-        # Okno bez ramu (DialogChrome) OS neumiestni - bez polohy sa otvaralo
-        # v rohu obrazovky. Stred rata ten isty pomocnik ako hlavne okno
-        # (`ui_kit.vycentrovana_geometria`); na nizkej obrazovke (1366x768
-        # pri 125-150 %) je dialog nizsi, aby paticka so Zavriet ostala na
-        # ploche - kroky maju posuvnik.
+        # The OS does not place a frameless window (DialogChrome) - without a
+        # position it opened in the corner of the screen. The centre is
+        # computed by the same helper as for the main window
+        # (`ui_kit.vycentrovana_geometria`); on a low screen (1366x768 at
+        # 125-150 %) the dialog is lower so the footer with Close stays on the
+        # work area - the steps have a scrollbar.
         ui_kit.umiestni_dialog(self.top, app.root, 560, 640,
                                min_width=520, min_height=560)
         self.top.transient(app.root)
@@ -1676,7 +1741,7 @@ class WatchPairingDialog:
             scrollbar_button_hover_color=pal["accent"])
         scroll.pack(fill="both", expand=True, padx=18, pady=12)
 
-        # panel s realnou IP/portom tohto PC
+        # panel with the real IP/port of this PC
         net = ctk.CTkFrame(scroll, fg_color=pal["surface"], corner_radius=ui_kit.RADIUS_CONTROL,
                            border_width=1, border_color=pal["accent2"])
         net.pack(fill="x", pady=(0, 8))
@@ -1688,12 +1753,12 @@ class WatchPairingDialog:
         self._candidates = candidates
         ip = candidates[0] if candidates else None
         self._ip = ip
-        # VPN a virtualne adaptery (0.2.2): fyzicka adresa ide prva
-        # (`netinfo.local_ip_candidates`), virtualne nesu stitok a pod
-        # adresou je veta, ked aj ta prva je virtualna.
+        # VPN and virtual adapters (0.3): the physical address goes first
+        # (`netinfo.local_ip_candidates`), virtual ones carry a label and under
+        # the address there is a sentence when even the first one is virtual.
         self._virtualne = self._virtual_ips()
-        # Mobilny hotspot Windowsu (0.2.2 davka 4b): telefon sa nan dostane,
-        # takze len neutralny stitok "(hotspot)", ziadne varovanie.
+        # Windows Mobile hotspot (0.3 batch 4b): the phone can reach it, so
+        # just a neutral "(hotspot)" label, no warning.
         self._hotspoty = self._hotspot_ips()
         addr_row = ctk.CTkFrame(net_in, fg_color="transparent")
         addr_row.pack(fill="x", pady=(4, 0))
@@ -1710,26 +1775,29 @@ class WatchPairingDialog:
                          text_color=pal["text_faint"], wraplength=480, anchor="w",
                          justify="left").pack(fill="x", pady=(6, 0))
         else:
-            # "Ukazat IP" sa pakuje PRED adresu (`before=`), takze miesto v
-            # rade dostane ako prve. Dlhsi riadok adresy ho inak z okna
-            # vytlacil a adresa sa potom nedala odkryt (0.2.2, stitok VPN).
-            # Vedlajsie tlacidlo, nie chip (0.2.2 davka 4b): chip je len pre
-            # externe odkazy (↗ GitHub). Sirka podla dlhsieho z oboch textov,
-            # aby pri "Ukazat IP" <-> "Skryt IP" neposkocilo.
+            # "Show IP" is packed BEFORE the address (`before=`), so it gets
+            # its place in the row first. A longer address line otherwise
+            # pushed it out of the window and the address then could not be
+            # revealed (0.3, VPN label).
+            # A secondary button, not a chip (0.3 batch 4b): a chip is only for
+            # external links (↗ GitHub). Width by the longer of both texts, so
+            # it does not jump on "Show IP" <-> "Hide IP".
             self.ip_toggle = ui_kit.button(
                 addr_row, pal, tr("hr.ip_show"), command=self._toggle_ip,
                 fit_texts=(tr("hr.ip_hide"),), height=28)
             self.ip_toggle.pack(side="right", padx=(8, 0), before=self.ip_label)
-            # veta pod skrytou adresou - ako ju odkryt (len kym je skryta)
+            # sentence under the hidden address - how to reveal it (only while
+            # hidden)
             self.ip_hidden_label = ctk.CTkLabel(
                 net_in, text=tr("hr.ip_hidden_note"), font=ui_kit.ui(10),
                 text_color=pal["text_faint"], wraplength=480, anchor="w",
                 justify="left")
             self._ip_hidden_after = addr_row
             if ip in self._virtualne:
-                # Stitok "(VPN/virtualna)" NIE v riadku adresy (mono 20): tam
-                # sa nezmestil, orezal sa a vytlacil "Ukazat IP". Je to vlastny
-                # maly riadok hned pod adresou; veta pod nim povie, co s tym.
+                # The "(VPN/virtualna)" label NOT in the address row (mono 20):
+                # it did not fit there, got cut off and pushed out "Show IP".
+                # It is its own small row right under the address; the sentence
+                # under it says what to do about it.
                 self.ip_virtual_label = ctk.CTkLabel(
                     net_in, text=tr("hr.ip_virtual"), font=ui_kit.ui(11, "bold"),
                     text_color=pal["warn"], anchor="w")
@@ -1739,14 +1807,16 @@ class WatchPairingDialog:
                              text_color=pal["warn"], wraplength=480, anchor="w",
                              justify="left").pack(fill="x", pady=(6, 0))
             elif ip in self._hotspoty:
-                # ten isty riadok pod adresou, ale bez varovnej farby a vety
+                # the same row under the address, but without the warning
+                # colour and sentence
                 self.ip_virtual_label = ctk.CTkLabel(
                     net_in, text=tr("hr.ip_hotspot"), font=ui_kit.ui(11, "bold"),
                     text_color=pal["text_dim"], anchor="w")
                 self.ip_virtual_label.pack(fill="x", pady=(2, 0))
                 self._ip_hidden_after = self.ip_virtual_label
-            # PC s Wi-Fi + Ethernet + VPN ma adries viac a appka nevie, na
-            # ktorej je telefon - ukazeme aj ostatne, nech si hrac vyberie
+            # A PC with Wi-Fi + Ethernet + VPN has more addresses and the app
+            # does not know which one the phone is on - we show the others too,
+            # so the player can choose
             if len(candidates) > 1:
                 self.other_ips_label = ctk.CTkLabel(
                     net_in, text="", font=ui_kit.ui(10), text_color=pal["text_dim"],
@@ -1757,16 +1827,18 @@ class WatchPairingDialog:
                          justify="left").pack(fill="x", pady=(4, 0))
         self._render_ips()
 
-        # ZIVY STAV PRIJMU hned pod adresou - tam sa hrac pozera, ked ju
-        # prepisuje do telefonu, a nemusi zatvarat okno, aby videl, ci to ide.
+        # LIVE RECEIVING STATUS right under the address - that is where the
+        # player looks while copying it into the phone, and they do not have to
+        # close the window to see whether it works.
         self.status_label = ctk.CTkLabel(scroll, text="", font=ui_kit.ui(12, "bold"),
                                          anchor="w", justify="left", wraplength=500)
         self.status_label.pack(fill="x", padx=4, pady=(0, 14))
         self._obnov_stav()
 
-        # kroky; krok 2 je "stiahni si appku do telefonu" - tam patri QR,
-        # aby hrac nemusel na telefone nic pisat. Popis QR tu posiela na
-        # ramik s adresou hore, nie do „Ako sparovat hodinky…“ (to je toto okno).
+        # steps; step 2 is "download the app to your phone" - that is where the
+        # QR belongs, so the player does not have to type anything on the phone.
+        # The QR caption here points to the address box at the top, not to "How
+        # to pair your watch…" (that is this window).
         def qr_v_navode(col, pal_):
             return watch_app_qr(col, pal_, v_navode=True)
 
@@ -1781,14 +1853,17 @@ class WatchPairingDialog:
             self._step_row(scroll, pal, i, title, body,
                            extra=(lambda col, fn=extra: fn(col, pal)) if extra else None)
 
-        # co ak to nechodi - DVA rozne pripady, dva boxy. Telefon sa vobec
-        # nepripoji (firewall, Verejna siet, ina adresa) je iny problem nez
-        # "pripoji sa, ale tep nechodi" (scena/zdroj, hodinky nemeraju). Rada
-        # o firewalle bola predtym len v druhom boxe, teda pri opacnom pripade.
+        # what if it does not work - TWO different cases, two boxes. The phone
+        # not connecting at all (firewall, Public network, a different address)
+        # is a different problem from "it connects, but no heart rate comes"
+        # (scene/source, the watch does not measure). The tip about the
+        # firewall used to be only in the second box, i.e. for the opposite
+        # case.
         self._rada_box(scroll, pal, tr("hr.noconnect_title"), tr("hr.noconnect_body"))
         tb = self._rada_box(scroll, pal, tr("hr.trouble_title"), tr("hr.trouble_body"))
-        # Ovladac s gyrom / bez mrtvej zony hlasi vstup bez prestania a appka
-        # nenajde pauzu - ta ista rada ako riadok na Dnes (`dnes.nonstop_input`).
+        # A controller with a gyro / without a dead zone reports input non-stop
+        # and the app finds no pause - the same tip as the row on Today
+        # (`dnes.nonstop_input`).
         ctk.CTkLabel(tb, text=tr("hr.trouble_pad"), font=ui_kit.ui(11),
                      text_color=pal["text_dim"], wraplength=470, anchor="w",
                      justify="left").pack(fill="x", pady=(8, 0))
@@ -1800,14 +1875,15 @@ class WatchPairingDialog:
 
     @staticmethod
     def _rada_box(parent, pal, title, body):
-        """Box s radou (pruh vo farbe warn, nadpis, text). Vrati vnutorny
-        ramec, aby sa don dal pridat dalsi odsek."""
+        """A tip box (a strip in the warn colour, heading, text). Returns the
+        inner frame so another paragraph can be added to it."""
         box = ctk.CTkFrame(parent, fg_color=pal["surface"], corner_radius=ui_kit.RADIUS_CONTROL,
                            border_width=1, border_color=pal["line_soft"])
         box.pack(fill="x", pady=(6, 6))
-        # height=1: prazdny CTkFrame si inak vypyta predvolenych 200 px a box
-        # mal nad nadpisom aj pod textom prazdny pas. Na vysku boxu ho
-        # natiahne `fill="y"`, vysku urcuje text.
+        # height=1: an empty CTkFrame would otherwise ask for the default 200
+        # px and the box had an empty band above the heading and below the
+        # text. `fill="y"` stretches it to the box height, the text sets the
+        # height.
         stripe = ctk.CTkFrame(box, fg_color=pal["warn"], width=3, height=1, corner_radius=0)
         stripe.pack(side="left", fill="y")
         tb = ctk.CTkFrame(box, fg_color="transparent")
@@ -1820,31 +1896,32 @@ class WatchPairingDialog:
         return tb
 
     def _obnov_stav(self):
-        """Prekresli riadok stavu a naplanuje dalsie prekreslenie o sekundu.
+        """Redraws the status row and schedules the next redraw in a second.
 
-        Polling, nie udalost: stav prijmu meni pat roznych ciest v appke
-        (`_apply_hr_status`, `_apply_hr_bpm`, `_hr_no_client`, opakovana
-        vazba...) a tie o tomto okne nevedia. Raz za sekundu staci - tep
-        aj tak chodi zhruba v tomto rytme."""
+        Polling, not an event: five different paths in the app change the
+        receiving state (`_apply_hr_status`, `_apply_hr_bpm`,
+        `_hr_no_client`, the repeated bind...) and they do not know about
+        this window. Once a second is enough - the heart rate comes at
+        roughly this rhythm anyway."""
         self._stav_job = None
         if self._zavrete:
             return
         try:
             druh, text = stav_parovania(self.app)
             pal = self.app.pal
-            # chyba je text (12 bold) - `danger_text` (>= 4,5:1), nie
-            # `danger` (~3,7:1 na `bg`, pravidlo v theme.py)
+            # the error is text (12 bold) - `danger_text` (>= 4,5:1), not
+            # `danger` (~3,7:1 on `bg`, the rule in theme.py)
             farba = {"ok": pal["success"], "pozor": pal["warn"],
                      "chyba": pal.get("danger_text", pal["danger"])}.get(
                          druh, pal["text_dim"])
             self.status_label.configure(text=text, text_color=farba)
             self._stav_job = self.top.after(self.STAV_OBNOVA_MS, self._obnov_stav)
         except Exception:
-            pass            # okno medzitym zaniklo - dalsie kolo uz netreba
+            pass            # the window has meanwhile gone - no next round needed
 
     def _step_row(self, parent, pal, number, title, body, extra=None):
-        """`extra(col)` prida pod text kroku dalsi prvok (napr. QR na appku
-        do telefonu) - kroky, ktore ho nemaju, ostavaju cistym textom."""
+        """`extra(col)` adds another element under the step text (e.g. the QR
+        for the phone app) - steps without it stay plain text."""
         row = ctk.CTkFrame(parent, fg_color="transparent")
         row.pack(fill="x", pady=(0, 12))
         badge = ctk.CTkLabel(row, text=str(number), width=26, height=26,
@@ -1861,8 +1938,9 @@ class WatchPairingDialog:
             extra(col)
 
     def _local_ips(self):
-        """Vsetky IPv4 adresy tohto PC, preferovana prva (viz netinfo). Nikam
-        sa nepripaja - len sa opyta OS. Bez loopbacku a bez 169.254.x.x."""
+        """All IPv4 addresses of this PC, the preferred one first (see netinfo).
+        Connects nowhere - it only asks the OS. Without loopback and without
+        169.254.x.x."""
         try:
             import netinfo
             return netinfo.local_ip_candidates()
@@ -1870,7 +1948,7 @@ class WatchPairingDialog:
             return []
 
     def _virtual_ips(self):
-        """Adresy tohto PC na VPN / virtualnych adapteroch (`netinfo`)."""
+        """Addresses of this PC on VPN / virtual adapters (`netinfo`)."""
         try:
             import netinfo
             return netinfo.virtualne_adresy()
@@ -1878,7 +1956,7 @@ class WatchPairingDialog:
             return set()
 
     def _hotspot_ips(self):
-        """Adresy Mobilneho hotspotu Windowsu (`netinfo.hotspot_adresy`)."""
+        """Windows Mobile hotspot addresses (`netinfo.hotspot_adresy`)."""
         try:
             import netinfo
             return netinfo.hotspot_adresy()
@@ -1886,17 +1964,18 @@ class WatchPairingDialog:
             return set()
 
     def _local_ip(self):
-        """Zachovane pre spatnu kompatibilitu - preferovana adresa alebo None."""
+        """Kept for backward compatibility - the preferred address or None."""
         ips = self._local_ips()
         return ips[0] if ips else None
 
     def _render_ips(self):
-        """Prekresli adresy podla `app.show_ip` - skryte, kym ich hrac
-        vyslovne neodkryje (texty sklada `netinfo`, nie tento dialog)."""
+        """Redraws the addresses by `app.show_ip` - hidden until the player
+        explicitly reveals them (`netinfo` composes the texts, not this
+        dialog)."""
         show = bool(getattr(self.app, "show_ip", False))
         try:
             if self._ip:
-                # stitok VPN tu nie - ma vlastny riadok (`ip_virtual_label`)
+                # no VPN label here - it has its own row (`ip_virtual_label`)
                 self.ip_label.configure(text=netinfo.pairing_address(
                     self._ip, self.app.hr_port, show))
             if self.other_ips_label is not None:
@@ -1918,10 +1997,10 @@ class WatchPairingDialog:
                     self.ip_hidden_label.pack(fill="x", pady=(6, 0),
                                               after=self._ip_hidden_after)
         except Exception:
-            pass            # dialog medzitym zavreli
+            pass            # the dialog was closed meanwhile
 
     def _toggle_ip(self):
-        """Ukazat / Skryt IP - plati pre celu appku, len do restartu."""
+        """Show / Hide IP - applies to the whole app, only until restart."""
         nove = not bool(getattr(self.app, "show_ip", False))
         setter = getattr(self.app, "set_show_ip", None)
         if setter is not None:
@@ -1931,8 +2010,8 @@ class WatchPairingDialog:
         self._render_ips()
 
     def close(self):
-        # Zavriet sa da krizikom, Escape aj tlacidlom - `on_close` (napr.
-        # start prehliadky) sa ale smie zavolat len raz.
+        # It can be closed with the X, Escape and the button - but `on_close`
+        # (e.g. starting the tour) may be called only once.
         if self._zavrete:
             return
         self._zavrete = True
@@ -1952,14 +2031,15 @@ class WatchPairingDialog:
             try:
                 self._on_close()
             except Exception:
-                # Okno je uz zavrete a stav upratany - chyba volajuceho
-                # nesmie vyletiet do Tk ako "chyba okna parovania".
+                # The window is already closed and the state cleaned up - the
+                # caller's error must not fly up to Tk as a "pairing window
+                # error".
                 logging_setup.get_logger("app").exception(
                     "okno parovania: on_close zlyhal")
 
 
 # --------------------------------------------------------------------------
-# Karta slotu v hlavnom okne
+# Slot card in the main window
 # --------------------------------------------------------------------------
 
 class SlotCard:
@@ -1969,83 +2049,88 @@ class SlotCard:
     def __init__(self, app, index, data):
         self.app = app
         self.index = index
-        # Styri kategorie (sloty 0-3) su pevne - kategoriu, obrazok v hre aj
-        # meranie urcuje pozicia, takze ich odstranenie by posunulo texty pod
-        # cudziu kategoriu. Vypinaju sa prepinacom. Zaskrtavatko a ✕ ma len
-        # slot navyse z 0.1 (index 4+).
+        # The four categories (slots 0-3) are fixed - the position determines
+        # the category, the in-game picture and the measurement, so removing
+        # them would shift texts under another category. They are turned off
+        # with the switch. Only the extra slot from 0.1 (index 4+) has the
+        # checkbox and ✕.
         self.removable = not je_kategoria(index)
         data = normalize_slot(data)
 
-        # POZN: `key_type` a `key_repr` sa tu uz nedrzia. Hlasku nespusta
-        # stlacenie, takze karta nemala co s nimi robit - a `display_key()`
-        # z nich robila popisok, ktory sa kreslil aj do hry pod ikonku.
-        # V ulozenych profiloch kluce ostavaju (settings_model.DEFAULT_SLOT),
-        # aby sa stare subory nerozbili.
+        # NOTE: `key_type` and `key_repr` are no longer kept here. A cue is not
+        # fired by a key press, so the card had nothing to do with them - and
+        # `display_key()` made a label from them that was also drawn into the
+        # game under the icon.
+        # In saved profiles the keys remain (settings_model.DEFAULT_SLOT), so
+        # that old files do not break.
         self.mode = data["mode"]
         self.audio_path = data["audio_path"]
         self.sfx_key = data["sfx_key"]
         self.voice_edge = data["voice_edge"]
         self.voice_sapi = data["voice_sapi"]
-        self.voice_path = data["voice_path"]   # vlastna nahravka hlasu
-        self.uid = data["uid"]                 # stabilne meno pre nahravky
-        # CASOVANIE JEDNOTLIVEJ HLASKY TU UZ NIE JE.
+        self.voice_path = data["voice_path"]   # own voice recording
+        self.uid = data["uid"]                 # stable name for recordings
+        # PER-CUE TIMING IS NO LONGER HERE.
         #
-        # Vlastny cooldown, oneskorenie, "kazde N-te" a rozptyl sa citali
-        # jedine vo `fire_slot`, teda pri tlacidle Test a pri kliku v HUD
-        # nahlade. Automaticku hlasku spusta `_fire_somatic_cue` cez `_emit`,
-        # ktory z karty berie len `mode`, `sfx_path` a `text`. Tie polia teda
-        # nastavovali nieco, co sa pri hrani nikdy nepouzilo - a pritom
-        # vyzerali ako hlavny ovladac appky.
+        # Its own cooldown, delay, "every N-th" and spread were read only in
+        # `fire_slot`, i.e. for the Test button and a click in the HUD preview.
+        # The automatic cue is fired by `_fire_somatic_cue` via `_emit`, which
+        # takes only `mode`, `sfx_path` and `text` from the card. So those
+        # fields set something that was never used during play - and yet they
+        # looked like the app's main control.
         #
-        # V ulozenych profiloch kluce ostavaju (`settings_model.DEFAULT_SLOT`),
-        # aby sa stare subory nerozbili; appka ich uz len necita.
+        # In saved profiles the keys remain (`settings_model.DEFAULT_SLOT`), so
+        # that old files do not break; the app just no longer reads them.
         self.last_triggered = 0.0
 
-        # Plain-python zrkadla hodnot - listener vlakna NIKDY nesiahaju na Tk.
+        # Plain-python mirrors of the values - listener threads NEVER touch Tk.
         self.text_value = data["text"]
         self.enabled_value = data["enabled"]
 
         pal = app.pal
         self.pal = pal
 
-        # --- Pevny raster namiesto auto-sirok -------------------------------
-        # Keycap si berie svoj stlpec bez ohladu na to, aky je siroky, takze
-        # fraza kazdeho spustaca zacina na tej istej zvislici. Sirka keycapu
-        # tak stale nesie typ vstupu (klaves / mys / ovladac), ale uz netlaci
-        # text vedla seba - to bola jedina vec, ktora sa na maketе nezhodovala.
+        # --- Fixed grid instead of auto widths ------------------------------
+        # The keycap takes its column regardless of how wide it is, so every
+        # trigger's phrase starts on the same vertical line. The keycap width
+        # thus still carries the input type (key / mouse / controller), but no
+        # longer pushes the text beside it - that was the only thing that did
+        # not match the mockup.
         #
-        # Tk minsize stlpec NEOREZE, len ho nafukne, ak je obsah sirsi -
-        # preto ma kazdy prvok v rastri pevnu `width`.
+        # Tk minsize does NOT clip a column, it only inflates it if the content
+        # is wider - that is why every element in the grid has a fixed `width`.
         self.frame = ctk.CTkFrame(app.slots_container, fg_color=pal["card"],
                                   border_width=1, border_color=pal["line_soft"],
                                   corner_radius=ui_kit.RADIUS_CONTROL)
-        # Bez bocneho odsadenia: karta zacina aj konci na tej istej zvislici
-        # ako panel profilov nad nou a Sprievodca pod nou (PAGE_GUTTER). S
-        # `padx=2` stala o 3 px dnu - jedna zo "styroch lavych hran" z auditu.
+        # No side padding: the card starts and ends on the same vertical line
+        # as the profiles panel above it and the Guide below it (PAGE_GUTTER).
+        # With `padx=2` it stood 3 px inside - one of the "four left edges"
+        # from the audit.
         self.frame.pack(fill="x", pady=5)
 
         grid = ctk.CTkFrame(self.frame, fg_color="transparent")
         grid.pack(fill="x", padx=16, pady=12)
-        # Stlpec 0 mal 138 px pre keycap. Keycap zmizol vo faze 3 (hlasku
-        # nespusta klaves) a stlpec s pauzou (54 px) spolu s per-slot
-        # casovanim. Uvolnene miesto dostala fraza - jediny rastuci stlpec.
+        # Column 0 had 138 px for the keycap. The keycap disappeared in phase 3
+        # (a cue is not fired by a key) and so did the pause column (54 px),
+        # together with per-slot timing. The freed space went to the phrase -
+        # the only growing column.
         #
-        # Dnes stlpec 0 nesie tri veci v poradi, v akom sa pouzivaju:
-        # sipku na rozbalenie, zaskrtavatko na hromadny vyber a piktogram -
-        # presne ten, ktory hrac uvidi v hre.
+        # Today column 0 carries three things in the order they are used: the
+        # arrow for expanding, the checkbox for bulk selection and the
+        # pictogram - exactly the one the player will see in game.
         COLUMNS = ((0, 92, 0), (1, 210, 1), (2, 104, 0),
                    (3, 150, 0), (4, 96, 0), (5, 40, 0))
         for index, minsize, weight in COLUMNS:
             grid.grid_columnconfigure(index, minsize=minsize, weight=weight,
                                       pad=0)
 
-        # 0 - sipka, vyber (na hromadne odstranenie), piktogram
+        # 0 - arrow, selection (for bulk removal), pictogram
         col0 = ctk.CTkFrame(grid, fg_color="transparent")
         col0.grid(row=0, column=0, sticky="w", padx=(0, 14))
 
-        # Vysvetlivka existuje len pre styri zakladne hlasky - vlastny slot
-        # hraca ju nema, a vtedy sa sipka nekresli vobec. Zakazane tlacidlo
-        # by slubovalo obsah, ktory neexistuje.
+        # The explanation exists only for the four basic cues - the player's
+        # own slot does not have it, and then the arrow is not drawn at all. A
+        # disabled button would promise content that does not exist.
         self.guide_card = guide_panel.card_for_slot(self.index)
         self._detail_built = False
         if self.guide_card is not None:
@@ -2071,13 +2156,15 @@ class SlotCard:
             self.select_check.configure(variable=self.select_var)
             self.select_check.pack(side="left", padx=(0, 6))
         if self.guide_card is not None:
-            # TEN ISTY stetec ako in-game vizual (`hud_paint.render_slot_icon`),
-            # nie ilustracna ikonka: co hrac vidi v zozname, to uvidi aj v hre.
-            # Meno vizualu podla slotu, nie podla karty Sprievodcu: karta
-            # slotu 2 je "periphery" (oko), ale v hre aj v uvode je to ruka
-            # na mysi ("release") - zoznam ukazoval iny obrazok nez hra.
-            # `ui_kit.SlotIcon` sa pri zmene temy nakresli znova (zlata
-            # ikonka by inak ostala v indigovom svete Praca).
+            # THE SAME brush as the in-game visual
+            # (`hud_paint.render_slot_icon`), not an illustrative icon: what the
+            # player sees in the list, they will see in game. The visual's name
+            # by slot, not by the Guide card: the card of slot 2 is "periphery"
+            # (eye), but in game and in the introduction it is a hand on the
+            # mouse ("release") - the list showed a different picture than the
+            # game.
+            # `ui_kit.SlotIcon` is redrawn on a theme change (a golden icon
+            # would otherwise stay in the indigo Work world).
             vizualy = ("grounding", "jaw", "release", "breath")
             try:
                 if 0 <= self.index < len(vizualy):
@@ -2090,20 +2177,22 @@ class SlotCard:
                 obrazok.configure(cursor="hand2")
             except Exception:
                 pass
-        # FAZA 3: klaves tu uz nie je. Hlasku nespusta stlacenie, ale telo -
-        # zataz drziaca nad prahom (`trigger.CueTrigger`). Karta ostava, lebo
-        # nesie OBSAH: text hlasky, hlas, zvuk a vizual. To appka potrebuje
-        # dalej; zmizla len ta cast, ktora rozhodovala KEDY.
-        # Prekreslenie celej stranky je faza 5.
+        # PHASE 3: there is no key here any more. A cue is not fired by a key
+        # press, but by the body - load holding above the threshold
+        # (`trigger.CueTrigger`). The card stays because it carries the
+        # CONTENT: the cue text, voice, sound and visual. The app still needs
+        # that; only the part that decided WHEN is gone.
+        # Redrawing the whole page is phase 5.
 
-        # 1 - fraza + suhrn casovania pod nou
+        # 1 - phrase + timing summary below it
         text_col = ctk.CTkFrame(grid, fg_color="transparent")
         text_col.grid(row=0, column=1, sticky="ew", padx=(0, 14))
-        # PEVNY NAZOV KATEGORIE nad frazou (0.2.2, audit UX, davka 4). Frazu
-        # si hrac moze prepisat na cokolvek ("Ramena!") - a potom z karty
-        # nebolo poznat, ze je to Tazisko. Kategoriu urcuje pozicia slotu,
-        # takze nazov je pevny text, nie pole. Slot navyse z 0.1 (index 4+)
-        # kategoriu nema, ani nazov.
+        # FIXED CATEGORY NAME above the phrase (0.3, UX audit, batch 4). The
+        # player can rewrite the phrase to anything ("Ramena!" (Shoulders!)) -
+        # and then the card no longer showed that it is Grounding. The slot
+        # position determines the category, so the name is fixed text, not a
+        # field. The extra slot from 0.1 (index 4+) has no category, nor a
+        # name.
         self.category_label = None
         if je_kategoria(self.index):
             self.category_label = ctk.CTkLabel(
@@ -2126,22 +2215,23 @@ class SlotCard:
         self.summary_label = ctk.CTkLabel(text_col, text=self.summary_text(),
                                           text_color=pal["text_faint"],
                                           font=ui_kit.ui(11), anchor="w")
-        # Odkedy riadok nesie uz len prestaveny hlas, je vacsinou prazdny -
-        # a prazdny stitok je stale vysoky ako riadok textu. Pakuje sa preto
-        # az vtedy, ked ma co povedat.
+        # Since the row only carries a changed voice, it is mostly empty - and
+        # an empty label is still as tall as a line of text. So it is packed
+        # only when it has something to say.
         self._sync_summary_visibility()
 
-        # 2 - rezim (hlas / zvuk / oboje)
+        # 2 - mode (voice / sound / both)
         self.mode_var = tk.StringVar(value=mode_labels()[self.mode])
-        # V rastri karty smie rozbalovacka rast s textom (dlhsie preklady,
-        # nazvy zvukov) - pevna sirka by text orezala; stlpec rastra ju drzi.
+        # In the card grid the dropdown may grow with the text (longer
+        # translations, sound names) - a fixed width would cut the text; the
+        # grid column holds it.
         self.mode_box = ui_kit.option_menu(
             grid, pal, width=104, dynamic_resizing=True,
             values=[mode_labels()[m] for m in MODE_ORDER],
             variable=self.mode_var, font=ui_kit.ui(11), command=self.on_mode_change)
         self.mode_box.grid(row=0, column=2, sticky="w", padx=(0, 14))
 
-        # 3 - zvuk + mikrofon/subor
+        # 3 - sound + microphone/file
         self.sfx_group = ctk.CTkFrame(grid, fg_color="transparent", width=150)
         self.sfx_group.grid(row=0, column=3, sticky="w", padx=(0, 14))
         self.sfx_options = sfx_dropdown_options()
@@ -2153,8 +2243,9 @@ class SlotCard:
         self.sfx_box.pack(side="top", fill="x")
         sfx_tools = ctk.CTkFrame(self.sfx_group, fg_color="transparent")
         sfx_tools.pack(side="top", fill="x", pady=(4, 0))
-        # Vedlajsie tlacidla (`ui_kit.button`): ram `control_border` >= 3:1.
-        # S `line_soft` (1,11:1) vyzerali vypnute. Sirku dava stlpec rastra.
+        # Secondary buttons (`ui_kit.button`): a `control_border` frame >= 3:1.
+        # With `line_soft` (1,11:1) they looked switched off. The grid column
+        # gives the width.
         self.rec_button = ui_kit.button(
             sfx_tools, pal, tr("slot.record_short"), width=0, height=22,
             font=ui_kit.ui(10), command=self.record_audio)
@@ -2164,7 +2255,7 @@ class SlotCard:
             font=ui_kit.ui(10), command=self.choose_file)
         self.file_button.pack(side="left", fill="x", expand=True, padx=(2, 0))
 
-        # 4 - akcie
+        # 4 - actions
         actions = ctk.CTkFrame(grid, fg_color="transparent")
         actions.grid(row=0, column=4, sticky="e", padx=(0, 12))
         akcie = [(tr("common.test"), self.test, False),
@@ -2177,22 +2268,22 @@ class SlotCard:
                 width=26 if danger else 34, height=26, font=ui_kit.ui(10),
                 command=cmd).pack(side="left", padx=2)
 
-        # 5 - zapnute/vypnute
+        # 5 - on/off
         self.enabled_var = tk.BooleanVar(value=self.enabled_value)
         ui_kit.switch(grid, pal, variable=self.enabled_var,
                       command=self.on_enabled_change).grid(row=0, column=5, sticky="e")
 
-        # --- vysvetlivka, zabalena ---
+        # --- explanation, collapsed ---
         #
-        # Sedi v TEJ ISTEJ karte ako hlaska, nie o pol stranky nizsie:
-        # "preco zrovna celust" sa clovek pyta pri celusti. Obsah je ten
-        # isty, co ma Sprievodca (`guide_panel.populate_card_body`), takze
-        # sa tie dve miesta nemaju ako rozist.
+        # It sits in THE SAME card as the cue, not half a page lower: "why the
+        # jaw of all things" is what you ask at the jaw. The content is the
+        # same as in the Guide (`guide_panel.populate_card_body`), so the two
+        # places have no way to drift apart.
         self.detail_wrap = ctk.CTkFrame(self.frame, fg_color="transparent")
 
         self.refresh_mode_widgets()
 
-    # ---- zobrazenie ----
+    # ---- display ----
 
     @property
     def selected(self):
@@ -2210,11 +2301,12 @@ class SlotCard:
             pass
 
     def summary_text(self):
-        """Riadok pod frazou. Od 18. 9. nesie uz len hlas.
+        """The line under the phrase. Since 18. 9. it carries only the voice.
 
-        Predtym tu stal prehlad casovania (cd 30s, +2s, kazde 3.), teda
-        cisel, ktore sa pri hrani necitali. Ked hlas nie je prestaveny,
-        nie je co hlasit a riadok ostane prazdny - lepsie nez "predvolene".
+        Before, a timing overview stood here (cd 30s, +2s, every 3rd), i.e.
+        numbers that were not read during play. When the voice is not
+        changed, there is nothing to report and the line stays empty -
+        better than "default".
         """
         if self.mode not in (MODE_TTS, MODE_COMBO):
             return ""
@@ -2235,10 +2327,11 @@ class SlotCard:
             self.summary_label.pack_forget()
 
     def refresh_mode_widgets(self):
-        """Zhasne to, co k rezimu nepatri - ale stlpec NEODOBERIE.
+        """Dims what does not belong to the mode - but does NOT REMOVE the column.
 
-        Keby sa prvok z rastra odstranil, riadok by sa presypal a sloty by
-        prestali byt zarovnane pod sebou. Preto sa len zablokuje a stmavi.
+        If an element were removed from the grid, the row would reshuffle
+        and the slots would stop being aligned under each other. So it is
+        only disabled and darkened.
         """
         show_text = self.mode in (MODE_TTS, MODE_COMBO)
         show_sfx = self.mode in (MODE_SFX, MODE_COMBO)
@@ -2251,7 +2344,7 @@ class SlotCard:
         except Exception:
             pass
 
-    # ---- vysvetlivka ----
+    # ---- explanation ----
 
     @property
     def detail_open(self):
@@ -2261,12 +2354,12 @@ class SlotCard:
             return False
 
     def toggle_detail(self, _event=None):
-        """Rozbali/zabali vysvetlivku k tejto hlaske.
+        """Expands/collapses the explanation for this cue.
 
-        Telo sa stavia AZ PRI PRVOM ROZBALENI. Styri karty naraz znamenaju
-        styri piktogramy a par obrazoviek textu; postavit to vsetko pri
-        kazdom prekresleni stranky (zmena temy, zmena jazyka, pridanie
-        slotu) by bolo vidno ako seknutie.
+        The body is built ONLY ON THE FIRST EXPAND. Four cards at once mean
+        four pictograms and a few screens of text; building all of it on
+        every page redraw (theme change, language change, adding a slot)
+        would show up as a stutter.
         """
         if self.guide_card is None:
             return
@@ -2278,8 +2371,8 @@ class SlotCard:
             self.detail_wrap.pack(fill="x", padx=16, pady=(0, 14))
             sipka = self.CARET_OTVORENA
         try:
-            # Rozbalena sipka dostane farbu prizvuku - v zozname styroch
-            # kariet je tak na prvy pohlad vidno, ktora je otvorena.
+            # The expanded arrow gets the accent colour - so in a list of
+            # four cards you can see at first glance which one is open.
             self.caret.configure(
                 text=sipka,
                 text_color=(self.pal["accent"] if self.detail_open
@@ -2293,22 +2386,22 @@ class SlotCard:
         self._detail_built = True
         pal = self.pal
 
-        # ZASUVKA, nie pokracovanie karty.
+        # A DRAWER, not a continuation of the card.
         #
-        # Vysvetlivka ma vlastnu plochu a ram, aby bolo na prvy pohlad
-        # vidno, kde koncia ovladace hlasky a kde zacina text o tele. Bez
-        # toho sa obe casti zlievali do jedneho vysokeho obdlznika.
+        # The explanation has its own surface and frame, so you can see at a
+        # glance where the cue controls end and where the text about the body
+        # begins. Without it the two parts merged into one tall rectangle.
         #
-        # BEZ RAMU (0.2.2, audit UX): najviac jedna uroven ramu - karta v
-        # karte bola ram v rame. Zasuvku odlisuje vypln `surface_alt` a
-        # 2 px linka v `accent` po lavej hrane (v `accent2` ju vedla
-        # vyplne nebolo vidno).
+        # NO FRAME (0.3, UX audit): at most one level of frame - a card in a
+        # card was a frame in a frame. The drawer is set apart by the
+        # `surface_alt` fill and a 2 px line in `accent` along the left edge
+        # (in `accent2` it could not be seen next to the fill).
         zasuvka = ctk.CTkFrame(self.detail_wrap, fg_color=pal["surface_alt"],
                                corner_radius=ui_kit.RADIUS_CONTROL, border_width=0)
         zasuvka.pack(fill="x")
 
-        # Tenky pruh vo farbe prizvuku po lavej hrane - viaze zasuvku k
-        # hlaske nad nou, aby nevyzerala ako samostatna karta.
+        # A thin strip in the accent colour along the left edge - ties the
+        # drawer to the cue above it, so it does not look like a separate card.
         pruh = ctk.CTkFrame(zasuvka, fg_color="transparent")
         pruh.pack(fill="x", padx=2, pady=2)
         ctk.CTkFrame(pruh, fg_color=pal["accent"], width=2, height=1,
@@ -2323,9 +2416,10 @@ class SlotCard:
         ctk.CTkLabel(head, text=self.guide_card["title"],
                      font=ui_kit.ui(13, "bold"), text_color=pal["text"],
                      anchor="w").pack(side="left")
-        # `trigger` je popis okamihu v hre (drep, prebijanie, mierenie) -
-        # NIE klaves, ktory by hlasku spustal. Tie uz appka necita; ostava
-        # ako kontext, aby clovek vedel, kedy sa mu to typicky stane.
+        # `trigger` is a description of the in-game moment (crouch, reloading,
+        # aiming) - NOT a key that would fire the cue. The app no longer reads
+        # keys; it stays as context, so the person knows when it typically
+        # happens to them.
         ctk.CTkLabel(head, text=self.guide_card["trigger"],
                      font=ui_kit.ui(11), text_color=pal["text_faint"],
                      anchor="w").pack(side="left", padx=(12, 0))
@@ -2334,14 +2428,15 @@ class SlotCard:
                                        wraplength=620, sketch_side="left",
                                        sketch_size=104)
 
-    # ---- eventy (main thread) ----
+    # ---- events (main thread) ----
 
     def on_enabled_change(self):
         self.enabled_value = bool(self.enabled_var.get())
         self.app.save_settings()
-        # Pripravuju sa len zapnute hlasky (`_slot_na_pripravu` v
-        # app_audio.py): zapnutu treba pripravit (mimo hry hned, inak po
-        # hre), vypnutej sa zvysok rozbehnutej pripravy uz neposle.
+        # Only enabled cues are prepared (`_slot_na_pripravu` in
+        # app_audio.py): an enabled one needs preparing (outside a game at
+        # once, otherwise after the game), for a disabled one the rest of a
+        # running preparation is no longer sent.
         self.app.schedule_pregenerate(200)
 
     def on_text_change(self):
@@ -2371,10 +2466,11 @@ class SlotCard:
             self.app.remove_slot(self.index)
 
     def _import_into_store(self, src, name):
-        """Skopiruje vybrany zvuk do priecinka audio/ pod stabilnym menom a
-        vrati novu cestu. Ponechat cudziu cestu "tak ako je" by znamenalo, ze
-        slot stratí zvuk, ked sa povodny subor presunie ci zmaze - a v cistom
-        exporte by taky odkaz viedol mimo dat appky (B2)."""
+        """Copies the chosen sound into the audio/ folder under a stable name
+        and returns the new path. Keeping a foreign path "as is" would mean
+        that the slot loses its sound when the original file is moved or
+        deleted - and in a clean export such a reference would lead
+        outside the app data (B2)."""
         os.makedirs(AUDIO_DIR, exist_ok=True)
         ext = os.path.splitext(src)[1].lower() or ".wav"
         dest = os.path.join(AUDIO_DIR, name + ext)
@@ -2401,16 +2497,17 @@ class SlotCard:
                 self.mode = MODE_SFX
                 self.mode_var.set(mode_labels()[self.mode])
                 self.refresh_mode_widgets()
-                # Hlaska uz nehovori - rovnako ako `on_mode_change`: zvysok
-                # rozbehnutej pripravy jej text uz Microsoftu neposle.
+                # The cue no longer speaks - the same as `on_mode_change`: the
+                # rest of a running preparation no longer sends its text to
+                # Microsoft.
                 self.app.schedule_pregenerate()
             self.app.save_settings()
             self.app.log(tr("log.slot_sfx_set", n=self.index + 1,
                             name=os.path.basename(self.audio_path)))
 
     def record_audio(self):
-        # Meno podla stabilneho uid slotu, nie podla poradia (slot{n}.wav sa
-        # krizilo medzi profilmi = strata dat, B1).
+        # Name by the slot's stable uid, not by order (slot{n}.wav clashed
+        # between profiles = data loss, B1).
         target = os.path.join(AUDIO_DIR, f"rec_{self.uid}.wav")
         dialog = RecordDialog(self.app, self.index + 1, target)
         self.app.root.wait_window(dialog.top)
@@ -2422,8 +2519,9 @@ class SlotCard:
                 self.mode = MODE_SFX
                 self.mode_var.set(mode_labels()[self.mode])
                 self.refresh_mode_widgets()
-                # Vlastna nahravka namiesto hlasu: text sa uz nepripravuje a
-                # zvysok rozbehnutej pripravy ho neposle (PRIVACY to slubuje).
+                # Own recording instead of the voice: the text is no longer
+                # prepared and the rest of a running preparation does not send
+                # it (PRIVACY promises that).
                 self.app.schedule_pregenerate()
             self.app.save_settings()
             self.app.log(tr("log.slot_recorded", n=self.index + 1,
@@ -2433,9 +2531,9 @@ class SlotCard:
         self.app.fire_slot(self, ignore_cooldown=True, source="test")
 
     def to_dict(self):
-        # `key_type`/`key_repr` sa uz nezapisuju - karta ich nedrzi a hlasku
-        # nespusta klaves. `normalize_slot` ich pri nacitani doplni z
-        # `DEFAULT_SLOT`, takze stare profily sa nerozbiju.
+        # `key_type`/`key_repr` are no longer written - the card does not keep
+        # them and a cue is not fired by a key. `normalize_slot` fills them in
+        # from `DEFAULT_SLOT` on load, so old profiles do not break.
         return {
             "text": self.text_value,
             "mode": self.mode,
@@ -2479,10 +2577,10 @@ class RecordDialog:
 
         row = ctk.CTkFrame(body, fg_color="transparent")
         row.pack(fill="x")
-        # `ui_kit.button` (0.2.2 davka 4b): nahravanie je hlavna akcia okna
-        # (`primary`), nie cervena vypln s tmavym textom (~3:1 - `danger` je
-        # len pre chybu a zmazanie, theme.py). Prehrat je vypnute, kym nie je
-        # co prehrat - jednym vzhladom vypnuteho tlacidla.
+        # `ui_kit.button` (0.3 batch 4b): recording is the main action of the
+        # window (`primary`), not a red fill with dark text (~3:1 - `danger` is
+        # only for errors and deletion, theme.py). Play is disabled until there
+        # is something to play - with the single look of a disabled button.
         self.rec_btn = ui_kit.button(row, pal, tr("record.start"), kind="primary",
                                      fit_texts=(tr("record.stop"),), command=self.toggle)
         self.rec_btn.pack(side="left")
@@ -2549,10 +2647,10 @@ class RecordDialog:
 
 
 # --------------------------------------------------------------------------
-# Procedura pozadie pre "hero" uvodnu obrazovku Onboardingu - tmavy
-# bridlicovy gradient + jemny dymovy Enso kruh (~15% opacity). Cisto
-# dekorativne - ak PIL chyba alebo cokolvek zlyha, vrati None a volajuci
-# pouzije obycajnu plnu farbu ako doteraz.
+# Procedural background for the onboarding's "hero" intro screen - a dark
+# slate gradient + a subtle smoky Enso circle (~15% opacity). Purely
+# decorative - if PIL is missing or anything fails, it returns None and the
+# caller uses a plain solid colour as before.
 # --------------------------------------------------------------------------
 
 def _build_hero_background(width, height):
@@ -2569,7 +2667,7 @@ def _build_hero_background(width, height):
         rgb = base[None, None, :] + (edge - base)[None, None, :] * t[:, :, None]
         img = Image.fromarray(rgb.astype(np.uint8), mode="RGB").convert("RGBA")
 
-        # Jemny, mierne nepravidelny Enso (zenovy kruh) - ~15% opacity (38/255).
+        # Subtle, slightly irregular Enso (Zen circle) - ~15% opacity (38/255).
         ring = Image.new("RGBA", (width, height), (0, 0, 0, 0))
         draw = ImageDraw.Draw(ring)
         r = min(width, height) * 0.32
@@ -2583,133 +2681,146 @@ def _build_hero_background(width, height):
 
 
 # --------------------------------------------------------------------------
-# Onboarding wizard (prve spustenie) - vyber vizualneho / zvukoveho rezimu
+# Onboarding wizard (first start) - choosing the visual / sound mode
 # --------------------------------------------------------------------------
 
 
-# Styl hlasky (`rebrik.py`, nastavenie `cue_style`) a jeho popisok. Tie iste
-# vety su v onboardingu aj v Nastaveniach -> Zvuk, aby jedna volba nemala
-# dve mena. Poradie je od najhlasnejsieho, rovnako ako `rebrik.STYLY`.
+# Cue style (`rebrik.py`, the `cue_style` setting) and its label. The same
+# sentences are in the onboarding and in Settings -> Sound, so that one
+# choice does not have two names. The order is from the loudest, the same
+# as `rebrik.STYLY`.
 CUE_STYLE_LABELS = ((rebrik.STYL_HLAS, "ob.cue.voice"),
                     (rebrik.STYL_ZVUK, "ob.cue.sound"),
                     (rebrik.STYL_OBRAZ, "ob.cue.visual"))
 
 
 class OnboardingWizard:
-    """Sprievodca prvym spustenim - 5 krokov, kazdy nieco UKAZE alebo sa
-    na jednu vec opyta:
+    """First-start guide - 5 steps, each SHOWS something or asks about one
+    thing:
 
-      1) Co appka robi   - realne piktogramy overlay (grounding/jaw/breath)
-      2) Ako to vyzera v hre - HUD + piktogram nad hernym pozadim
-      3) Hodinky (nepovinne) - preco a "Sparovat teraz" (otvori sa po uvode)
-      4) Hlavny svet - Hra · Sumi / Praca · Aizome
-      5) Ako sa ma appka ozvat, ked hraca hra vytoci (styl hlasky) +
-         ukazka podla vybranej odpovede a hlasitost
+      1) What the app does   - real overlay pictograms (grounding/jaw/breath)
+      2) What it looks like in game - HUD + pictogram over a game background
+      3) Watch (optional) - why, and "Pair a watch now" (opens after the
+         introduction)
+      4) Main world - Play · Sumi / Work · Aizome
+      5) How the app should speak up when the game winds the player up
+         (cue style) + a preview based on the chosen answer, and volume
 
-    Predtym to boli 3 textove kroky (filozofia + diagnostika + vyber), ktore
-    nikdy neukazali NA CO appka je ani PRECO hodinky. Diagnostika symptomov
-    sa vypustila - novy hrac ma najprv pochopit produkt, nie rozhodovat o
-    slotoch skor, nez vie o co ide (predvolene su zapnute vsetky styri).
+    Before, these were 3 text steps (philosophy + diagnostics + choice)
+    that never showed WHAT the app is for or WHY the watch. The symptom
+    diagnostics were dropped - a new player should first understand the
+    product, not decide about slots before they know what it is about (by
+    default all four are on).
 
-    Vizualy sa GENERUJU za behu z hud_paint (piktogramy, HUD) - ziadne PNG
-    na disku, konzistentne s tym, co hrac uvidi v hre, a bez viazanosti na
-    konkretnu hru (copyright).
+    The visuals are GENERATED at runtime from hud_paint (pictograms, HUD) -
+    no PNGs on disk, consistent with what the player will see in game, and
+    not tied to a specific game (copyright).
 
-    Rozhranie pre app.py ostava: .confirmed, .choice, .volume_value,
-    .diagnostics, .top. Pribudlo .wants_pairing (ci hrac klikol "Sparovat
-    teraz" - app po uvode otvori WatchPairingDialog), .cue_style (styl
-    hlasky z kroku 5; None = hrac nevybral nic a ostava, co bolo) a
-    .quit_requested (prvy start: hrac uvod zavrel a potvrdil Ukoncit).
+    The interface for app.py stays: .confirmed, .choice, .volume_value,
+    .diagnostics, .top. Added: .wants_pairing (whether the player clicked
+    "Pair a watch now" - app opens WatchPairingDialog after the
+    introduction), .cue_style (cue style from step 5; None = the player
+    chose nothing and what was there stays) and .quit_requested (first
+    start: the player closed the introduction and confirmed Quit).
     """
 
     STEP_COUNT = 5
-    # Krok s hodinkami. "Preskocit" na krokoch 1-2 skoci SEM: predtym siel
-    # rovno na volbu sveta a obisiel prave krok, bez ktoreho appka mlci.
-    # Od neho dalej sa uz nepreskakuje - zvysok su volby.
+    # The watch step. "Skip to the watch" on steps 1-2 jumps HERE: before, it
+    # went straight to the world choice and bypassed exactly the step without
+    # which the app stays silent. From it on there is no more skipping - the
+    # rest are choices.
     KROK_HODINKY = 2
 
     def __init__(self, root, choice=None, volume=None, *, prvy_start=False):
-        # `choice`/`volume`: aktualny svet (tema) a hlasitost, ked sa uvod
-        # pusta znova z palety (`replay_onboarding`). Bez nich sprievodca
-        # zacinal na predvolenom svete a 80 % - kto ho len preklikol, skoncil
-        # z Prace v Hre (kde hlasky mozu hovorit nahlas) a s inou hlasitostou.
+        # `choice`/`volume`: the current world (theme) and volume when the
+        # introduction is replayed from the command palette
+        # (`replay_onboarding`). Without them the guide started on the default
+        # world and 80 % - whoever just clicked through it was moved from Work
+        # to Play (where cues may speak aloud) and got a different volume.
         #
-        # `prvy_start=True` (len `DandurfApp.__init__`): uvod je jedine okno
-        # appky - zavretie sa pyta na ukoncenie a okno drzi navrchu. Z palety
-        # (appka uz bezi) zavretie len zrusi uvod bez zmeny.
+        # `prvy_start=True` (only `DandurfApp.__init__`): the introduction is
+        # the app's only window - closing asks about quitting and the window
+        # stays on top. From the palette (the app is already running) closing
+        # only cancels the introduction without changes.
         self.choice = (choice if choice in (theme_mod.ZEN, theme_mod.MODERN)
                        else theme_mod.DEFAULT_THEME)
         self.confirmed = False
-        self.quit_requested = False       # prvy start: zavrel a dal Ukoncit
+        self.quit_requested = False       # first start: closed it and chose Quit
         self._prvy_start = bool(prvy_start)
-        self._otazka = None               # ramcek "Ukoncit Zanshin?", kym visi
+        self._otazka = None               # the "Quit Zanshin?" box while it is shown
         self._otazka_od = 0.0
-        self.wants_pairing = False        # klikol "Sparovat hodinky teraz"?
-        # Styl hlasky z kroku 5. NIC nie je predvybrane (zadavatel: ziadne
-        # predsudzovanie) - kto nevyberie, ostava na tom, co mal (novy hrac
-        # na hlase, ako pri "neviem").
+        self.wants_pairing = False        # clicked "Pair a watch now"?
+        # Cue style from step 5. NOTHING is preselected (product owner: no
+        # prejudging) - whoever does not choose stays with what they had (a new
+        # player on voice, as with "Not sure").
         self.cue_style = None
-        self._cue_volba = None            # ktore z tlacidiel (aj "neviem")
+        self._cue_volba = None            # which of the buttons (also "Not sure")
         try:
             self.volume_value = 80 if volume is None else max(0, min(100, int(volume)))
         except (TypeError, ValueError):
             self.volume_value = 80
-        # diagnostika sa uz nepyta - predvolene vsetky sloty zapnute
+        # diagnostics are no longer asked - by default all slots on
         self.diagnostics = {0: True, 1: True, 2: True, 3: True}
         self._assets_ready = sfx_assets.missing_count() == 0
-        self.preview_btn = None           # ukazka v kroku 5 (podla odpovede)
-        self._preview_job = None          # skrytie ukazky obrazka
+        self.preview_btn = None           # preview in step 5 (by answer)
+        self._preview_job = None          # hiding the picture preview
         self._preview_img = None
-        self._hovori = False              # ukazka hlasu prave znie
+        self._hovori = False              # the voice preview is sounding now
         self._step = 0
-        # Chrome onboardingu (nie len karty v kroku 4) ma sediet s
-        # DEFAULT_THEME - predtym bolo natvrdo MODERN, co bolo pri
-        # DEFAULT_THEME=MODERN neviditelne, ale po redizajne ("Sumi noc",
-        # DEFAULT_THEME=ZEN) by prve okno, ktore hrac vidi, svietilo do
-        # modra namiesto zlata.
+        # The onboarding chrome (not only the cards in step 4) should match
+        # DEFAULT_THEME - before, it was hard-coded MODERN, which was invisible
+        # with DEFAULT_THEME=MODERN, but after the redesign ("Sumi noc" (Sumi
+        # night), DEFAULT_THEME=ZEN) the first window the player sees would
+        # glow blue instead of gold.
         self._pal = theme_mod.tokens(self.choice)
-        self._photos = []                 # drz referencie na obrazky (GC)
+        self._photos = []                 # keep references to the images (GC)
 
         title = tr("onboarding.welcome", app=APP_NAME)
         self.top = ctk.CTkToplevel(root)
         self.top.title(title)
         self.top.configure(fg_color=self._pal["bg"])
-        # 600, nie 680: kroky su rozne vysoke a pri 680 ostavala pod
-        # najkratsim z nich takmer tretina okna prazdna. Obsah sa navyse v
-        # tele centruje (viz `_show_step`), takze rozdiel vysok medzi krokmi
-        # uz nevytvara dieru nad patkou.
+        # 600, not 680: the steps have different heights and at 680 almost a
+        # third of the window stayed empty under the shortest of them. Besides,
+        # the content is centred in the body (see `_show_step`), so the
+        # difference in heights between steps no longer creates a hole above
+        # the footer.
         self.top.geometry(self._centered_geometry(root, 720, 600))
-        self.top._zanshin_umiestnene = True     # DialogChrome ho uz nepresuva
+        self.top._zanshin_umiestnene = True     # DialogChrome no longer moves it
         self.top.resizable(False, False)
         self.top.transient(root)
         self.top.grab_set()
-        # ZAVRIET SA DA - krizikom, Esc aj Alt+F4 - ale nie "do prazdna".
+        # IT CAN BE CLOSED - with the X, Esc and Alt+F4 - but not "into
+        # nothing".
         #
-        # Predtym nesiel zavriet vobec: ikona v liste este neexistuje, okno
-        # bez ramu nema tlacidlo v paneli uloh, takze kto chcel odist, mohol
-        # len zabit proces. Teraz sa pri prvom starte opyta, ci ukoncit
-        # appku (`_on_close_request`); z palety uvod len zrusi.
+        # Before, it could not be closed at all: the tray icon does not exist
+        # yet, a frameless window has no button in the taskbar, so whoever
+        # wanted to leave could only kill the process. Now on the first start
+        # it asks whether to quit the app (`_on_close_request`); from the
+        # palette it only cancels the introduction.
         self.top.protocol("WM_DELETE_WINDOW", self._on_close_request)
         self.top.bind("<Alt-F4>", lambda _e: (self._on_close_request(), "break")[1])
         if self._prvy_start:
-            # Jedine okno appky (hlavne je schovane) a bez tlacidla v paneli
-            # uloh: po kliknuti inam by zmizlo za inym oknom a nedalo by sa
-            # najst. Navrchu len kym zije - Windows dialogy (SmartScreen,
-            # UAC) prichadzaju pred spustenim alebo na zabezpecenej ploche a
-            # vyzva firewallu az pri otvoreni portu, teda PO uvode.
+            # The app's only window (the main one is hidden) and without a
+            # taskbar button: after a click elsewhere it would disappear behind
+            # another window and could not be found. On top only while it lives
+            # - Windows dialogs (SmartScreen, UAC) come before launch or on the
+            # secure desktop, and the firewall prompt only when a port is
+            # opened, i.e. AFTER the introduction.
             try:
                 self.top.attributes("-topmost", True)
             except Exception:
                 pass
 
-        # Rovnaka tmava lista ako hlavne okno a ostatne dialogy (Sprievodca,
-        # parovanie) - onboarding bol posledne okno s Windows titulkom.
-        # Krizik aj Escape idu cez tu istu otazku ako krizik OS.
+        # The same dark title bar as the main window and the other dialogs
+        # (Guide, pairing) - the onboarding was the last window with a Windows
+        # title bar. The X and Escape go through the same question as the OS
+        # X button.
         self.chrome = ui_kit.DialogChrome(self.top, self._pal, title,
                                           on_close=self._on_close_request)
         host = self.chrome.body
 
-        # obsah kroku + spodna navigacna lista (obe do chrome.body, nie do top)
+        # step content + the bottom navigation bar (both into chrome.body, not
+        # into top)
         self.footer = ctk.CTkFrame(host, fg_color=self._pal["surface"],
                                    height=64, corner_radius=0)
         self.footer.pack(fill="x", side="bottom")
@@ -2723,20 +2834,21 @@ class OnboardingWizard:
 
     @staticmethod
     def _centered_geometry(root, width, height):
-        """Geometria vycentrovana v pracovnej ploche monitora, kde je kurzor.
+        """Geometry centred in the work area of the monitor where the cursor is.
 
-        Vypocet je spolocny s hlavnym oknom (`ui_kit.vycentrovana_geometria`):
-        predtym sa tu stred ratal z DPI monitora, na ktorom bol root, a na
-        dvoch monitoroch s inou mierkou sedel sprievodca mimo stredu.
-        Mierku na male obrazovky tu netreba riesit zvlast - appka ju nastavi
-        pred otvorenim sprievodcu (`ui_kit.umiestni_pevne_okno` v
-        `DandurfApp.__init__`) a sprievodca je mensi nez hlavne okno, takze
-        kde sa zmesti ono, zmesti sa aj on. Ked nie, ostane prilepeny hore a
-        titulna lista je na dosah.
+        The calculation is shared with the main window
+        (`ui_kit.vycentrovana_geometria`): before, the centre was computed
+        here from the DPI of the monitor the root was on, and on two
+        monitors with different scaling the guide sat off-centre. The
+        scale for small screens needs no separate handling here - the app
+        sets it before opening the guide (`ui_kit.umiestni_pevne_okno` in
+        `DandurfApp.__init__`) and the guide is smaller than the main
+        window, so where that fits, the guide fits too. If not, it stays
+        stuck to the top and the title bar is within reach.
         """
         return ui_kit.vycentrovana_geometria(root, width, height)
 
-    # ---- priprava audio balickov na pozadi ----
+    # ---- preparing the audio packs in the background ----
 
     def _prepare_assets(self):
         def progress(done, total):
@@ -2748,21 +2860,23 @@ class OnboardingWizard:
             return
         if done >= total:
             self._assets_ready = True
-            self._refresh_preview()       # ukazka zvuku uz moze hrat
+            self._refresh_preview()       # the sound preview can play now
 
-    # ---- zavretie: pri prvom starte otazka na ukoncenie ----
+    # ---- closing: on the first start a question about quitting ----
 
-    # Druha poziadavka o zavretie do tohto casu po prvej je TA ISTA klavesa:
-    # Alt+F4 pride ako klaves aj ako WM_DELETE_WINDOW. Bez toho by druha
-    # otazku hned zase zavrela.
+    # A second close request within this time after the first is THE SAME
+    # key: Alt+F4 comes as a key and also as WM_DELETE_WINDOW. Without this
+    # the second one would close the question again right away.
     OTAZKA_DUPLIKAT_S = 0.4
 
     def _on_close_request(self):
-        """Krizik, Esc, Alt+F4. Z palety uvod zrusi (appka bezi dalej a nic
-        sa nezmeni). Pri prvom starte sa opyta - uvod je jedine okno appky,
-        takze zavriet ho znamena ukoncit Zanshin. Otazka visi v okne, nie v
-        systemovom dialogu: ten by mal tlacidla Ano/Nie a pod oknom navrchu
-        by sa mohol stratit. Druhe Esc / krizik otazku zavrie (= Pokracovat)."""
+        """The X, Esc, Alt+F4. From the palette it cancels the introduction (the
+        app keeps running and nothing changes). On the first start it asks:
+        the introduction is the app's only window, so closing it means
+        quitting Zanshin. The question hangs in the window, not in a system
+        dialog: that would have Yes/No buttons and could get lost under the
+        always-on-top window. A second Esc / X closes the question
+        (= Continue)."""
         if not self._prvy_start:
             self._close(confirmed=False)
             return
@@ -2775,8 +2889,8 @@ class OnboardingWizard:
     def _show_quit_question(self):
         pal = self._pal
         self._otazka_od = time.monotonic()
-        # Cez cele telo okna (krok aj patku), aby sa pod otazkou nedalo nic
-        # klikat - je to rozhodnutie, nie poznamka na okraj.
+        # Over the whole window body (step and footer), so that nothing can be
+        # clicked under the question - it is a decision, not a side note.
         cover = ctk.CTkFrame(self.chrome.body, fg_color=pal["bg"], corner_radius=0)
         cover.place(relx=0, rely=0, relwidth=1, relheight=1)
         cover.lift()
@@ -2790,12 +2904,13 @@ class OnboardingWizard:
                      justify="center").pack(pady=(0, 22))
         row = ctk.CTkFrame(inner, fg_color="transparent")
         row.pack()
-        # `ui_kit.button` (0.2.2 davka 4b): ram `border` (1,2:1) vyzeral
-        # ako vypnute tlacidlo - vedlajsie ma ram `control_border` (>= 3:1).
+        # `ui_kit.button` (0.3 batch 4b): the `border` frame (1,2:1) looked
+        # like a disabled button - a secondary one has a `control_border` frame
+        # (>= 3:1).
         ui_kit.button(row, pal, tr("ob.quit.yes"), width=130, height=38,
                       command=self._quit).pack(side="left", padx=6)
-        # Pokracovat je to bezpecne a hlavne tlacidlo - kto len omylom
-        # stlacil Esc, jednym klikom alebo Enterom pokracuje.
+        # Continue is the safe and primary button - whoever just pressed Esc by
+        # mistake continues with one click or Enter.
         dalej = ui_kit.button(row, pal, tr("ob.quit.no"), kind="primary", width=150,
                               height=38, font=ui_kit.ui(12, "bold"),
                               command=self._hide_quit_question)
@@ -2815,35 +2930,36 @@ class OnboardingWizard:
                 pass
 
     def _quit(self):
-        """Ukoncit z otazky: nic sa neuklada, appka (`DandurfApp.__init__`)
-        skonci a dalsi start ukaze uvod znova."""
+        """Quit from the question: nothing is saved, the app
+        (`DandurfApp.__init__`) ends and the next start shows the
+        introduction again."""
         self.quit_requested = True
         self._close(confirmed=False)
 
-    # ---- navigacia ----
+    # ---- navigation ----
 
     def _build_footer(self):
         pal = self._pal
-        # vlavo: preskocit na krok s hodinkami (len na krokoch 1-2)
-        # Tlacidla patky z `ui_kit.button` (0.2.2 davka 4b): tie iste druhy
-        # ako v kazdom okne appky - Spat malo ram `border` (1,2:1), takze
-        # vyzeralo vypnute.
+        # left: skip to the watch step (only on steps 1-2)
+        # Footer buttons from `ui_kit.button` (0.3 batch 4b): the same kinds as
+        # in every app window - Back had a `border` frame (1,2:1), so it looked
+        # disabled.
         self.skip_btn = ui_kit.button(
             self.footer, pal, tr("ob.skip"), kind="quiet", width=120, height=34,
             font=ui_kit.ui(11), command=lambda: self._show_step(self.KROK_HODINKY))
         self.skip_btn.pack(side="left", padx=24)
 
-        # bodky postupu
+        # progress dots
         self.dots = ctk.CTkFrame(self.footer, fg_color="transparent")
         self.dots.pack(side="left", expand=True)
         self._dot_widgets = []
         for i in range(self.STEP_COUNT):
-            d = ctk.CTkFrame(self.dots, width=8, height=8, corner_radius=4,   # bodka, nie ovladac
+            d = ctk.CTkFrame(self.dots, width=8, height=8, corner_radius=4,   # dot, not a control
                              fg_color=pal["surface_alt"])
             d.pack(side="left", padx=4)
             self._dot_widgets.append(d)
 
-        # vpravo: spat + dalej/vstupit
+        # right: back + next/enter
         self.next_btn = ui_kit.button(
             self.footer, pal, tr("ob.next"), kind="primary", width=150, height=38,
             font=ui_kit.ui(12, "bold"), command=self._on_next)
@@ -2869,37 +2985,38 @@ class OnboardingWizard:
         for w in self.body.winfo_children():
             w.destroy()
         self._photos.clear()
-        # Obsah kroku ide do ramca, ktory sa v tele VYCENTRUJE (expand bez
-        # fill). Predtym sa pakoval priamo do `body`, takze sedel nalepeny
-        # hore a pod nim ostavala az tretina okna prazdna - kazdy zo styroch
-        # krokov je inak vysoky a pevna vyska okna sa ich nikdy netrafi.
+        # The step content goes into a frame that is CENTRED in the body
+        # (expand without fill). Before, it was packed directly into `body`, so
+        # it sat stuck to the top and up to a third of the window stayed empty
+        # under it - each of the four steps has a different height and a fixed
+        # window height never matches them.
         inner = ctk.CTkFrame(self.body, fg_color="transparent")
         inner.pack(expand=True)
         builder = (self._step1, self._step2, self._step3, self._step4,
                    self._step5)[index]
         builder(inner)
 
-        # stav navigacie
+        # navigation state
         pal = self._pal
         for i, d in enumerate(self._dot_widgets):
             d.configure(fg_color=pal["accent"] if i == index else pal["surface_alt"])
-        # "Spat" sa na prvom kroku SKRYJE, nie zasedivie - nie je kam ist a
-        # zasedivene tlacidlo vyzera ako nefunkcne rozhranie
+        # "Back" is HIDDEN on the first step, not greyed out - there is nowhere
+        # to go and a greyed-out button looks like a broken interface
         if index == 0:
             self.back_btn.pack_forget()
         elif not self.back_btn.winfo_ismapped():
             self.back_btn.pack(side="right", padx=6)
-        # Od kroku s hodinkami dalej uz nie je co preskakovat: na nom by skok
-        # viedol na to iste miesto a dalej su len volby.
+        # From the watch step on there is nothing more to skip: on it the jump
+        # would lead to the same place and after it there are only choices.
         self.skip_btn.pack_forget() if index >= self.KROK_HODINKY \
             else self.skip_btn.pack(side="left", padx=24, before=self.dots)
         last = index == self.STEP_COUNT - 1
         self.next_btn.configure(text=tr("onboarding.confirm") if last else tr("ob.next"))
 
-    # ---- spolocne prvky ----
+    # ---- shared elements ----
 
     def _icon_image(self, name, size):
-        """Piktogram overlay ako CTkImage (drzi referenciu kvoli GC)."""
+        """Overlay pictogram as a CTkImage (holds a reference for the GC)."""
         style = hud_paint.Style(self._pal)
         img = hud_paint.render_slot_icon(name, size, style)
         photo = ctk.CTkImage(light_image=img, dark_image=img, size=(size, size))
@@ -2920,19 +3037,20 @@ class OnboardingWizard:
                      text_color=self._pal["text_dim"], justify="center",
                      wraplength=width).pack(pady=(0, 4))
 
-    # ---- KROK 1: co appka robi ----
+    # ---- STEP 1: what the app does ----
 
     def _step1(self, parent):
         pal = self._pal
         self._kicker(parent, tr("ob.step1.kicker"))
         self._heading(parent, tr("ob.step1.title"))
 
-        # VSETKY STYRI realne piktogramy vedla seba.
+        # ALL FOUR real pictograms side by side.
         #
-        # Boli tu tri (chybalo Uvolnenie), lenze appka si nainstaluje styri
-        # spustace a karta Spustace hned hlasi "4" - prva obrazovka si tak
-        # protirecila s druhou. Ikony su preto uzsie (84 px, mensie okraje),
-        # aby sa styri do sirky okna zmestili.
+        # There were three here ("Uvolnenie" (Release) was missing), but the
+        # app installs four triggers and the Cues tab immediately says "4" - so
+        # the first screen contradicted the second. That is why the icons are
+        # narrower (84 px, smaller margins), so that four fit into the window
+        # width.
         icons = ctk.CTkFrame(parent, fg_color="transparent")
         icons.pack(pady=(8, 16))
         for name, cap_key in (("grounding", "ob.step1.cap_grounding"),
@@ -2948,36 +3066,39 @@ class OnboardingWizard:
                          text_color=pal["text_dim"]).pack(pady=(0, 14))
 
         self._para(parent, tr("ob.step1.body"), width=560)
-        # Ako sa to spusta - mechanizmus, ktory v celom uvode nikde nebol.
-        # Prave on je dovod, preco appka neotravuje: nic sa nepripomina
-        # navyse, visi to na klavesoch, ktore hrac aj tak tlaci.
+        # How it is triggered - a mechanism that was nowhere in the whole
+        # introduction. It is exactly the reason why the app is not annoying:
+        # nothing extra reminds you, it hangs on the keys the player presses
+        # anyway.
         ctk.CTkLabel(parent, text=tr("ob.step1.how"), font=ui_kit.ui(11),
                      text_color=pal["accent"], justify="center",
                      wraplength=560).pack(pady=(10, 0))
-        # Co hrac na prvy tep potrebuje (0.2.2, davka 4). Uvod to doteraz
-        # nepovedal nikde - a bez hodiniek a spolocnej siete appka mlci.
-        # Tichy riadok pod uvodom, nie dalsi odsek: nesmie prebit "ako".
+        # What the player needs for the first heart rate (0.3, batch 4). The
+        # introduction did not say it anywhere until now - and without a watch
+        # and a shared network the app stays silent. A quiet line under the
+        # intro, not another paragraph: it must not outshine the "how".
         ctk.CTkLabel(parent, text=tr("ob.step1.need"), font=ui_kit.ui(11),
                      text_color=pal["text_dim"], justify="center",
                      wraplength=560).pack(pady=(12, 0))
 
-    # ---- KROK 2: ako to vyzera v hre ----
+    # ---- STEP 2: what it looks like in game ----
 
     def _step2(self, parent):
         pal = self._pal
         self._kicker(parent, tr("ob.step2.kicker"))
         self._heading(parent, tr("ob.step2.title"))
 
-        # nahlad "obrazovky" - tmava plocha s mriezkou, HUD dole a piktogram
+        # preview of the "screen" - a dark surface with a grid, the HUD at the
+        # bottom and a pictogram
         preview = self._build_screen_preview(parent)
         preview.pack(pady=(6, 16))
 
         self._para(parent, tr("ob.step2.body", page=_stranka_vhre(tema=self.choice)),
                    width=540)
 
-        # Dve otazky, ktore si pri tejto appke polozi kazdy: "nezabanuju ma
-        # za to?" a "kam idu moje data?". Obe maju odpoved hned tu, nie az
-        # niekde v nastaveniach.
+        # Two questions everyone asks about this app: "will I get banned for
+        # it?" and "where does my data go?". Both are answered right here, not
+        # somewhere in the settings.
         for kluc in ("ob.step2.tag_safe", "ob.step2.tag_local"):
             tag = ctk.CTkFrame(parent, fg_color=pal["surface"], corner_radius=8,
                                border_width=1, border_color=pal["success"])
@@ -2987,23 +3108,24 @@ class OnboardingWizard:
                          wraplength=520).pack(padx=14, pady=8)
 
     def _build_screen_preview(self, parent):
-        """Male 'okno hry' (16:9) s mriezkou, HUD panelom v rohu a jednym
-        piktogramom - aby hrac videl, KDE na obrazovke to sedi."""
+        """A small 'game window' (16:9) with a grid, HUD panel in the corner
+        and one pictogram - so the player sees WHERE on the screen it
+        sits."""
         pal = self._pal
         W, H = 520, 292
         canvas = tk.Canvas(parent, width=W, height=H, highlightthickness=1,
                            highlightbackground=pal["border"], bg="#0b0f17", bd=0)
-        # mriezka
+        # grid
         for gx in range(0, W, W // 8):
             canvas.create_line(gx, 0, gx, H, fill="#141b26")
         for gy in range(0, H, H // 8):
             canvas.create_line(0, gy, W, gy, fill="#141b26")
-        # zameriavac v strede
+        # crosshair in the middle
         cx, cy = W // 2, H // 2
         canvas.create_line(cx - 8, cy, cx + 8, cy, fill="#3a4759")
         canvas.create_line(cx, cy - 8, cx, cy + 8, fill="#3a4759")
 
-        # HUD panel vlavo dole
+        # HUD panel bottom left
         try:
             style = hud_paint.Style(pal)
             hud = hud_paint.render_hud(
@@ -3019,7 +3141,7 @@ class OnboardingWizard:
         except Exception:
             pass
 
-        # piktogram (tazisko) dole v strede
+        # pictogram (grounding) bottom centre
         try:
             style = hud_paint.Style(pal)
             ico = hud_paint.render_visual("grounding", 150, 100, style,
@@ -3032,14 +3154,14 @@ class OnboardingWizard:
 
         return canvas
 
-    # ---- KROK 3: hodinky ----
+    # ---- STEP 3: watch ----
 
     def _step3(self, parent):
         pal = self._pal
         self._kicker(parent, tr("ob.step3.kicker"))
         self._heading(parent, tr("ob.step3.title"))
 
-        # velke srdce + krivka ako ilustracia
+        # a big heart + a curve as an illustration
         heart = ctk.CTkFrame(parent, fg_color="transparent")
         heart.pack(pady=(4, 14))
         try:
@@ -3059,21 +3181,21 @@ class OnboardingWizard:
             pass
 
         self._para(parent, tr("ob.step3.body"), width=540)
-        # druhy dovod pre hodinky: historia relacii a pokrok - tlmenejsi a
-        # mensi riadok pod hlavnym textom (doplnok, nie druhy odsek);
-        # ziadny dalsi obrazok, krok 3 uz ma HUD
+        # the second reason for the watch: session history and progress - a
+        # more muted and smaller line under the main text (an addition, not a
+        # second paragraph); no other picture, step 3 already has the HUD
         self.step3_body2 = ctk.CTkLabel(parent, text=tr("ob.step3.body2"),
                                         font=ui_kit.ui(11), text_color=pal["text_faint"],
                                         justify="center", wraplength=520)
         self.step3_body2.pack(pady=(6, 0))
 
-        # JEDNO tlacidlo, nie dve.
+        # ONE button, not two.
         #
-        # Boli tu "Spárovať teraz" aj "Preskočiť — spárujem neskôr", a v
-        # patke okna k tomu este "Ďalej" - tri cesty dopredu na jednej
-        # obrazovke, z toho dve rovnake. Preskocenie uz patka vie (krok je
-        # oznaceny ako nepovinny), takze tu ostava len ta akcia, ktora sa
-        # inde spravit neda.
+        # There were "Pair now" and "Skip - I'll pair later" here, and in the
+        # window footer also "Next" - three ways forward on one screen, two of
+        # them the same. The footer can already skip (the step is marked as
+        # optional), so only the action that cannot be done elsewhere stays
+        # here.
         self.pair_btn = ctk.CTkButton(parent, width=230, height=44, corner_radius=8,
                                       font=ui_kit.ui(12, "bold"), command=self._pair_now)
         self._pair_button_look()
@@ -3084,8 +3206,9 @@ class OnboardingWizard:
                      text_color=pal["text_faint"]).pack(pady=(6, 0))
 
     def _pair_button_look(self):
-        """Tlacidlo parovania podla toho, ci uz hrac parovanie zvolil - kto
-        sa na tento krok vrati, vidi, ze volba plati."""
+        """The pairing button by whether the player has already chosen
+        pairing - whoever comes back to this step sees that the choice
+        holds."""
         pal = self._pal
         if self.wants_pairing:
             self.pair_btn.configure(
@@ -3093,31 +3216,32 @@ class OnboardingWizard:
                 border_width=1, border_color=pal["accent"],
                 hover_color=pal["surface_alt"], text_color=pal["accent"])
         else:
-            # bez emoji (0.2.2 davka 4b): 🕑 bol jediny farebny obrazok na
-            # tlacidle v tichom rozhrani - a hodiny nie su hodinky
+            # no emoji (0.3 batch 4b): 🕑 was the only colourful picture on a
+            # button in a quiet interface - and a clock is not a watch
             self.pair_btn.configure(
                 text=tr("ob.step3.pair_now"), fg_color=pal["accent"],
                 border_width=0, hover_color=pal["accent_hover"], text_color=pal["bg"])
 
     def _pair_now(self):
-        """Hrac chce sparovat hned - parovanie sa otvori PO uvode
-        (`wants_pairing`) a uvod pokracuje dalsim krokom.
+        """The player wants to pair right away - pairing opens AFTER the
+        introduction (`wants_pairing`) and the introduction continues with
+        the next step.
 
-        Predtym tu uvod hned skoncil: kroky 4 a 5 (svet, hlasitost, styl
-        hlasky - a jedina zmienka o Microsofte) sa vobec neukazali a prva
-        prehliadka sa po parovani nespustila."""
+        Before, the introduction ended right here: steps 4 and 5 (world,
+        volume, cue style - and the only mention of Microsoft) were not
+        shown at all and the first tour did not start after pairing."""
         self.wants_pairing = True
         self._pair_button_look()
         self._show_step(self.KROK_HODINKY + 1)
 
-    # ---- KROK 4: hlavny svet ----
+    # ---- STEP 4: main world ----
 
     def _step4(self, parent):
-        """Hlavny svet (B3-worlds): Hra · Sumi alebo Praca · Aizome.
+        """Main world (B3-worlds): Play · Sumi or Work · Aizome.
 
-        Vzhlad patri svetu, takze sa nevybera zvlast. `self.choice` ostava
-        KLUC TEMY (rozhranie pre app.py); svet z neho appka odvodi cez
-        `theme_mod.theme_world`."""
+        The look belongs to the world, so it is not chosen separately.
+        `self.choice` stays the THEME KEY (interface for app.py); the app
+        derives the world from it via `theme_mod.theme_world`."""
         self._kicker(parent, tr("ob.step4.kicker"))
         self._heading(parent, tr("ob.step4.title"))
 
@@ -3130,9 +3254,10 @@ class OnboardingWizard:
         self._card(cards, 1, theme_mod.WORLD_THEME["work"],
                    tr("ob.world.work.title"), tr("ob.world.work.desc"))
 
-        # POZN: tu bol "Vyskusat zvuk" s hlasitostou. Prehral len zvuk - hlas
-        # nikto nepocul, a krok 5 sa nan aj tak pytal. Ukazka je teraz pri
-        # otazke na styl (`_build_preview_row`) a hra to, co hrac vybral.
+        # NOTE: there was a "Vyskusat zvuk" (Try the sound) with volume here.
+        # It played only the sound - nobody heard the voice, and step 5 asked
+        # about it anyway. The preview is now at the style question
+        # (`_build_preview_row`) and plays what the player chose.
         self._para(parent, tr("ob.step4.body"), width=480)
         self._select(self.choice)
 
@@ -3143,8 +3268,9 @@ class OnboardingWizard:
     def _play_sound_preview(self):
         if not self._assets_ready:
             return
-        # Vzdy zvuky HRY: v Praci hlasky zvuk nemaju (B3-worlds), takze
-        # jediny zvuk, ktory hrac od appky kedy pocuje, je z herneho sveta.
+        # Always the PLAY sounds: in Work cues have no sound (B3-worlds), so
+        # the only sound the player ever hears from the app is from the play
+        # world.
         pack = theme_mod.WORLD_THEME["play"]
         key = sfx_assets.default_sound_for_slot_index(pack, 0)
         if not key:
@@ -3193,31 +3319,35 @@ class OnboardingWizard:
             frame.configure(border_color=pal["accent"] if candidate == key
                             else pal["border"])
 
-    # ---- KROK 5: ako sa ma appka ozvat (styl hlasky) ----
+    # ---- STEP 5: how the app should speak up (cue style) ----
 
-    # Styri odpovede v poradi, ktore schvalil zadavatel. "Neviem" sa uklada
-    # ako hlas: rebrik (`rebrik.py`) ide o stupen nizsie po prvej vyhrade.
+    # Four answers in the order approved by the product owner. "Not sure" is
+    # saved as voice: the ladder (`rebrik.py`) goes one rung lower after the
+    # first objection.
     NEVIEM = "unsure"
     CUE_VOLBY = CUE_STYLE_LABELS + ((NEVIEM, "ob.cue.unsure"),)
 
     def _step5(self, parent):
-        """Styl hlasky (0.2). Styri ROVNAKO velke tlacidla pod sebou, nic
-        predvybrane a ziadne "odporucane" - odpoved patri hracovi. Tichy
-        riadok pod nimi povie, kde sa to da zmenit a ze appka moze ist sama
-        tichsie, hlasnejsie nikdy; druhy, ze prirodzeny hlas posiela texty
-        hlasok do Microsoftu a hlas z Windows nic.
+        """Cue style (0.2). Four EQUALLY big buttons one under the other,
+        nothing preselected and no "recommended" - the answer belongs to
+        the player. A quiet line under them says where it can be changed
+        and that the app may go quieter on its own, never louder; a second
+        one says that the natural voice sends the cue texts to Microsoft
+        and the Windows voice sends nothing.
 
-        Pod odpovedami je UKAZKA podla vybranej odpovede a hlasitost
-        (`_build_preview_row`) - predtym bol na kroku 4 len test zvuku, hlas
-        nikto nepocul a tu sa nan aj tak pytalo."""
+        Under the answers there is a PREVIEW based on the chosen answer,
+        and volume (`_build_preview_row`) - before, step 4 had only a sound
+        test, nobody heard the voice and it was asked about here anyway."""
         pal = self._pal
-        # Mensi okraj nad kickerom: krok 5 je najvyssi (styri odpovede,
-        # ukazka, dva riadky) a okno ma pevnu vysku 600.
+        # A smaller margin above the kicker: step 5 is the tallest (four
+        # answers, preview, two lines) and the window has a fixed height of
+        # 600.
         self._kicker(parent, tr("ob.step5.kicker"), top=6)
         self._heading(parent, tr("ob.cue.title"))
         if theme_mod.theme_world(self.choice) == "work":
-            # V Praci sa appka ozyva len obrazkom (B3-worlds) - bez tejto
-            # vety by sa otazka na hlas tvarila, ze plati aj tam.
+            # In Work the app speaks up only with a picture (B3-worlds) -
+            # without this sentence the question about the voice would
+            # pretend it applies there too.
             ctk.CTkLabel(parent, text=tr("ob.cue.work_note"), font=ui_kit.ui(11),
                          text_color=pal["accent"], justify="center",
                          wraplength=560).pack(pady=(0, 6))
@@ -3234,28 +3364,30 @@ class OnboardingWizard:
             btn.pack(pady=4)
             self._cue_buttons[volba] = btn
         self._build_preview_row(parent)
-        # Dva tiche riadky pod odpovedami, oba na sirku nadpisu (560): pri
-        # 480 sa zalamuju do viacerych riadkov a okno onboardingu ma pevnu
-        # vysku (600) - styri tlacidla a nadpis z nej uz beru vacsinu.
+        # Two quiet lines under the answers, both at the heading width (560):
+        # at 480 they wrap onto more lines and the onboarding window has a
+        # fixed height (600) - four buttons and the heading already take most
+        # of it.
         ctk.CTkLabel(parent, text=tr("ob.cue.note"), font=ui_kit.ui(11),
                      text_color=pal["text_faint"], justify="center",
                      wraplength=560).pack(pady=(6, 0))
-        # Co z odpovede "hlasom" odchadza z pocitaca - hrac to ma vediet uz
-        # tu, nie az v Nastaveniach (`data.hint` hovori to iste).
+        # What leaves the computer with the "voice" answer - the player should
+        # know it already here, not only in Settings (`data.hint` says the
+        # same).
         ctk.CTkLabel(parent, text=tr("ob.cue.online_note"), font=ui_kit.ui(11),
                      text_color=pal["text_faint"], justify="center",
                      wraplength=560).pack(pady=(8, 0))
         self._oznac_styl()
 
     def _vyber_styl(self, volba):
-        """Klik na jednu zo styroch odpovedi."""
+        """A click on one of the four answers."""
         self._cue_volba = volba
         self.cue_style = (rebrik.STYL_HLAS if volba == self.NEVIEM
                           else rebrik.normalize_cue_style(volba))
         self._oznac_styl()
 
     def _oznac_styl(self):
-        """Vybrana odpoved ma okraj vo farbe akcentu, ostatne ostanu rovnake."""
+        """The chosen answer has an accent-coloured border, the others stay."""
         pal = self._pal
         for volba, btn in getattr(self, "_cue_buttons", {}).items():
             vybrana = volba == self._cue_volba
@@ -3267,34 +3399,37 @@ class OnboardingWizard:
                 pass
         self._refresh_preview()
 
-    # ---- ukazka v kroku 5 ----
+    # ---- preview in step 5 ----
 
-    # Kolko ms visi ukazka obrazka - zhruba ako dlho piktogram v hre.
+    # How many ms the picture preview stays - roughly as long as a pictogram
+    # in game.
     PICTURE_PREVIEW_MS = 2600
 
     def _build_preview_row(self, parent):
-        """Riadok s ukazkou a hlasitostou pod odpovedami.
+        """The row with the preview and volume under the answers.
 
-        Ma PEVNU vysku a kym hrac nic nevybral, je prazdny: ukazka patri
-        k odpovedi a bez nej nie je co ukazat. Pevna vyska drzi odpovede na
-        mieste - inak by po prvom kliku poskocili hore."""
+        It has a FIXED height and while the player has chosen nothing, it
+        is empty: the preview belongs to an answer and without one there is
+        nothing to show. The fixed height keeps the answers in place -
+        otherwise they would jump up after the first click."""
         pal = self._pal
         row = ctk.CTkFrame(parent, fg_color="transparent", height=42)
         row.pack(fill="x", pady=(4, 0))
         row.pack_propagate(False)
         self._preview_row = ctk.CTkFrame(row, fg_color="transparent")
-        # Vedlajsie tlacidlo z `ui_kit.button` (0.2.2 davka 4b), nie vypln
-        # `accent2` (ta sama nic neznaci, theme.py); pocas pripravy zvukov je
-        # vypnute jednym vzhladom vypnuteho. Sirka rastie s textom odpovede
-        # (ukazka hlasu ma dlhu vetu, zvuk a obrazok kratku).
+        # A secondary button from `ui_kit.button` (0.3 batch 4b), not an
+        # `accent2` fill (that alone means nothing, theme.py); while the sounds
+        # are being prepared it is disabled with the single look of a disabled
+        # button. The width grows with the answer text (the voice preview has a
+        # long sentence, sound and picture a short one).
         self.preview_btn = ui_kit.button(
             self._preview_row, pal, "", width=140, height=36, font=ui_kit.ui(11),
             command=self._play_preview)
         self.preview_btn.pack(side="left")
         self._volume_box = ctk.CTkFrame(self._preview_row, fg_color="transparent")
         self.volume_var = tk.IntVar(value=self.volume_value)
-        # styl posuvnika ako v Nastaveniach (`ui_kit.slider`), nie predvoleny
-        # sivomodry z customtkinter
+        # slider style as in Settings (`ui_kit.slider`), not the default
+        # grey-blue from customtkinter
         ui_kit.slider(
             self._volume_box, pal, from_=0, to=100, number_of_steps=100,
             variable=self.volume_var, width=130,
@@ -3304,8 +3439,8 @@ class OnboardingWizard:
         self.volume_label.pack(side="left")
 
     def _refresh_preview(self):
-        """Text a stav ukazky podla vybranej odpovede. "Neviem" sa uklada
-        ako hlas, tak aj ukazka je hlasom."""
+        """Preview text and state by the chosen answer. "Not sure" is saved as
+        voice, so the preview is voice too."""
         btn = self.preview_btn
         if btn is None:
             return
@@ -3327,10 +3462,10 @@ class OnboardingWizard:
             if hlasitost:
                 self._volume_box.pack(side="left")
             else:
-                self._volume_box.pack_forget()   # obrazok nema hlasitost
+                self._volume_box.pack_forget()   # a picture has no volume
             self._preview_row.place(relx=0.5, rely=0.5, anchor="center")
         except Exception:
-            pass                                 # krok medzitym prestavali
+            pass                                 # the step was rebuilt meanwhile
 
     def _play_preview(self):
         if self.cue_style == rebrik.STYL_OBRAZ:
@@ -3341,15 +3476,17 @@ class OnboardingWizard:
             self._speak_preview()
 
     def _speak_preview(self):
-        """Ukazka hlasu - VZDY hlas z Windows (SAPI), ktory bezi v pocitaci.
+        """Voice preview - ALWAYS the Windows voice (SAPI), which runs locally.
 
-        Prirodzeny hlas (Edge) by text poslal do Microsoftu a uvod nesmie
-        poslat nikam nic: o tom, co prirodzeny hlas posiela, sa hrac dozvie
-        az o riadok nizsie (`ob.cue.online_note`). Preto aj popisok tlacidla
-        hovori, ze je to hlas z Windows a ze prirodzeny znie jemnejsie.
-        Veta je ta ista, akou sa appka v hre ozve (`slot.default.breath`)."""
+        The natural voice (Edge) would send the text to Microsoft and the
+        introduction must not send anything anywhere: what the natural voice
+        sends, the player learns only one line lower
+        (`ob.cue.online_note`). That is why the button label also says it
+        is the Windows voice and that the natural one sounds softer. The
+        sentence is the same one the app speaks up with in game
+        (`slot.default.breath`)."""
         if getattr(self, "_hovori", False):
-            return                               # dve ukazky naraz = hluk
+            return                               # two previews at once = noise
         text = tr("slot.default.breath")
         hlasitost = self.volume_value
         self._hovori = True
@@ -3358,21 +3495,22 @@ class OnboardingWizard:
             try:
                 speak_sapi_isolated(text, None, 0, hlasitost)
             except Exception:
-                pass                             # bez SAPI ukazka mlci
+                pass                             # without SAPI the preview stays silent
             finally:
                 self._hovori = False
 
         threading.Thread(target=povedz, daemon=True).start()
 
     def _show_picture_preview(self):
-        """Ukazka obrazka: piktogram sa na chvilu objavi dole v okne a
-        zmizne - tak, ako v hre pri okraji obrazovky. Tazisko (slot 1), ten
-        isty vizual ako na kroku 2 a ten isty slot ako ukazka zvuku; dych
-        nema vizual v `VISUAL_DRAW` (kresli ho `render_breath`)."""
+        """Picture preview: the pictogram appears briefly at the bottom of the
+        window and disappears - as in game at the edge of the screen.
+        Grounding (slot 1), the same visual as in step 2 and the same slot
+        as the sound preview; breath has no visual in `VISUAL_DRAW` (it is
+        drawn by `render_breath`)."""
         self._stop_picture_preview()
         try:
-            # tk obrazok CTk neskaluje - pri 150 % by bol piktogram mensi
-            # nez tlacidlo, ktore ho ukazuje
+            # CTk does not scale a tk image - at 150 % the pictogram would be
+            # smaller than the button that shows it
             mierka = float(ctk.ScalingTracker.get_window_scaling(self.top))
         except Exception:
             mierka = 1.0
@@ -3385,7 +3523,7 @@ class OnboardingWizard:
         except Exception:
             return
         label = tk.Label(self.body, image=photo, bd=0, bg=self._pal["bg"])
-        label.image = photo                      # referencia (GC)
+        label.image = photo                      # reference (GC)
         label.place(relx=0.5, rely=1.0, anchor="s", y=-6)
         self._preview_img = label
         self._preview_job = self.top.after(self.PICTURE_PREVIEW_MS,
@@ -3409,8 +3547,9 @@ class OnboardingWizard:
         self._close(confirmed=True)
 
     def _close(self, confirmed):
-        """Zavrie uvod. `confirmed=False` = zrusenie (paleta) alebo Ukoncit
-        pri prvom starte - app.py potom nic z uvodu neprevezme."""
+        """Closes the introduction. `confirmed=False` = cancel (palette) or
+        Quit on the first start - app.py then takes over nothing from the
+        introduction."""
         self.confirmed = bool(confirmed)
         self._stop_picture_preview()
         try:

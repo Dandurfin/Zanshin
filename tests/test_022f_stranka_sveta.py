@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
-"""Meno stranky "V hre" v textoch podla sveta (0.2.2 davka 4b).
+"""The "V hre" ("In-game") page name in texts follows the world (0.3 batch 4b).
 
-Vo svete Praca sa stranka v bocnom paneli vola "Obrazovka" (davka 4), no
-dennik, prazdna Historia, uvod, okno parovania a vysvetlivka "Cas nad
-hranicou" ju dalej menovali "V hre". Kazdy taky text ma teraz `{page}` a
-appka don dosadi meno, ake ma stranka v aktualnom svete.
+In the Work world the page in the side panel is called "Obrazovka" (Screen)
+(batch 4), but the journal, the empty History, the introduction, the
+pairing window and the "Cas nad hranicou" (Time over HR limit) explainer
+kept calling it "V hre". Every such text now has `{page}` and the app
+fills in the name the page has in the current world.
 
-Vsetko na atrapach - bez okna, data vymyslene.
+Everything on dummies - no window, made-up data.
 """
 import ast
 import re
@@ -24,7 +25,7 @@ import test_022b_instance_port as port
 S = i18n.STRINGS
 D = app_mod.DandurfApp
 
-# Texty, ktore posielaju na stranku "V hre" (hodinky, port, obrazky).
+# Texts that send you to the "V hre" page (watch, port, pictures).
 KLUCE_SO_STRANKOU = (
     "log.hr_port_busy", "log.hr_overlay_disabled", "log.vizualy_napravene",
     "ob.step2.body", "ob.step3.later_note", "history.empty", "metric.over.more",
@@ -33,8 +34,8 @@ KLUCE_SO_STRANKOU = (
 
 
 def _vzor_stranky(jazyk):
-    """Meno stranky z Hry v uvodzovkach alebo pred sipkou (= odkaz na stranku,
-    nie pridavne meno ako "In-game pictures" / 「ゲーム中の画像」)."""
+    """The page name from Play in quotes or before an arrow (= a link to the
+    page, not an adjective as in "In-game pictures" / 「ゲーム中の画像」)."""
     mena = {S["nav.vhre_short"][jazyk], S["nav.nastavenia_tabs.vhre"][jazyk]}
     kusy = []
     for meno in mena:
@@ -69,7 +70,7 @@ def test_v_praci_texty_menuju_obrazovku():
         for kluc in KLUCE_SO_STRANKOU:
             text = i18n.tr_lang(jazyk, kluc, page=praca, port=4455, card="X")
             assert praca in text, (kluc, jazyk)
-            if kluc != "log.vizualy_napravene":     # "Obrazky v hre" je panel
+            if kluc != "log.vizualy_napravene":     # "In-game pictures": a panel
                 assert hra not in text, (kluc, jazyk, text)
 
 
@@ -78,7 +79,8 @@ def test_stranka_vhre_podla_sveta():
         a = types.SimpleNamespace(world=svet)
         a._nazov_vhre = types.MethodType(D._nazov_vhre, a)
         assert app_spolocne.stranka_vhre(a) == i18n.tr(kluc)
-    # atrapa bez `_nazov_vhre` a pokazena metoda -> meno z Hry, ziadna vynimka
+    # a dummy without `_nazov_vhre` and a broken method -> the name from
+    # Play, no exception
     assert app_spolocne.stranka_vhre(types.SimpleNamespace()) == i18n.tr("nav.vhre_short")
 
     def zle():
@@ -133,7 +135,7 @@ def test_volajuci_dosadzaju_meno_stranky():
 
 
 # --------------------------------------------------------------------------
-# Prepnutie sveta prepise aj texty postavene raz
+# Switching the world also rewrites texts built only once
 # --------------------------------------------------------------------------
 
 class _Stitok:
@@ -153,7 +155,8 @@ def test_vysvetlivka_v_historii_sa_po_prepnuti_sveta_prepise():
     zivy, mrtvy, iny = _Stitok(), _Stitok(zije=False), _Stitok()
     app_spolocne.zapamataj_text_stranky(a, zivy, "metric.over.more")
     app_spolocne.zapamataj_text_stranky(a, mrtvy, "metric.over.more")
-    # text bez {page} si appka nepamata (zoznam by rastol zbytocne)
+    # the app does not remember a text without {page} (the list would
+    # grow needlessly)
     app_spolocne.zapamataj_text_stranky(a, iny, "metric.hrr.more")
     app_spolocne.zapamataj_text_stranky(a, None, "metric.over.more")
     assert len(a._texty_so_strankou) == 2
@@ -173,7 +176,7 @@ def test_prepnutie_sveta_prestavi_karty_na_dnes():
     a._nazov_vhre = types.MethodType(D._nazov_vhre, a)
     D._sync_world_nazvy(a)
     assert volania == ["karty", "stav"]
-    # karty este nepostavene (start) -> nic sa nestavia
+    # cards not built yet (start) -> nothing is built
     volania.clear()
     a.dashboard_grid = None
     D._sync_world_nazvy(a)

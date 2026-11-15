@@ -1,16 +1,20 @@
 # -*- coding: utf-8 -*-
-"""Prvy start ako celok (0.2.2, zaverecna brana davky 2).
+"""The first start as a whole (0.3, final gate of batch 2).
 
-Tri casti davky 2 sa na prvom starte stretnu v jednom vecere:
+The three parts of batch 2 meet on the first start in one evening:
 
-  * navod na parovanie (z uvodu) zapne prijem tepu hned po otvoreni okna,
-  * sledovanie zacne az po priprave hlasu (najviac `PRVY_START_MAX_S`),
-    teda casto UPROSTRED parovania - `start_listening` otvori relaciu
-    s `prepoj=False` nad uz pripojenym telefonom,
-  * prva relacia nesie znacku nastavovania (`setup`) aj v kontrolnom bode.
+  * the pairing guide (from the introduction) turns heart rate reception
+    on right after the window opens,
+  * watching starts only after the voice is prepared (at most
+    `PRVY_START_MAX_S`), i.e. often IN THE MIDDLE of pairing -
+    `start_listening` opens a session with `prepoj=False` over an already
+    connected phone,
+  * the first session carries the setup mark (`setup`) in the checkpoint
+    too.
 
-Testy tu strazia styky medzi nimi, nie casti samotne (tie maju vlastne
-subory test_022c_*). Bez Tk, vsetko v tmp priecinku.
+The tests here guard the joints between them, not the parts themselves
+(those have their own files test_022c_*). No Tk, everything in a tmp
+folder.
 """
 import json
 import os
@@ -39,9 +43,9 @@ class _Stop(Exception):
 
 
 def _otvor(prepoj):
-    """Skutocny `_open_hr_session` po ucenie prahov (ako
-    test_021_brana_veta_hranice). Atrapa `hud.configure` ho zastavi hned za
-    nim - stav spojenia je vtedy uz nastaveny."""
+    """The real `_open_hr_session` up to learning the thresholds (like
+    test_021_brana_veta_hranice). The `hud.configure` dummy stops it right
+    after that - the connection state is already set by then."""
     def _stop(**_kw):
         raise _Stop()
     a = types.SimpleNamespace(
@@ -56,8 +60,9 @@ def _otvor(prepoj):
 
 
 def test_nova_relacia_bez_prepojenia_necha_telefon_pripojeny():
-    """Sledovanie zacne uprostred parovania: siete sa nedotyka, telefon
-    spojenie drzi - priznak spojenia musi prezit."""
+    """Watching starts in the middle of pairing: it does not touch the
+    network, the phone holds the connection - the connection flag has to
+    survive."""
     a = _otvor(prepoj=False)
     assert a._hr_client_linked is True
     assert a._hr_state == "connected"
@@ -71,9 +76,10 @@ def test_restart_prijmu_priznak_zhodi():
 
 
 def test_vypadok_tepu_po_novej_relacii_hovori_pripojene():
-    """Hodinky na chvilu prestanu posielat (`disconnected`) po tom, co
-    sledovanie zacalo nad pripojenym telefonom: stav je "linked" (navod:
-    "telefon pripojeny - cakam na tep"), nie "odpojene / cakam na telefon"."""
+    """The watch stops sending for a moment (`disconnected`) after watching
+    has started over a connected phone: the state is "linked" (guide:
+    "phone connected - waiting for heart rate"), not "disconnected /
+    waiting for the phone"."""
     a = _otvor(prepoj=False)
     a.__dict__.update(
         _hr_generation=1, _hr_lost=False, _hr_lost_od=None,
@@ -89,9 +95,10 @@ def test_vypadok_tepu_po_novej_relacii_hovori_pripojene():
 
 
 def test_obnoveny_kontrolny_bod_nastavovania_znacku_drzi(tmp_path):
-    """Pad uprostred prvej relacie: kontrolny bod (`_suhrn_relacie` so
-    `setup`) sa po starte prida do historie ako `recovered` - a znacka
-    nastavovania v nej ostane (dotaznik sa uz nespyta)."""
+    """A crash in the middle of the first session: the checkpoint
+    (`_suhrn_relacie` with `setup`) is added to the history as `recovered`
+    after the start - and the setup mark stays in it (the questionnaire no
+    longer asks)."""
     cesta = str(tmp_path / "hr_sessions.json")
     teraz = time.time()
     suhrn = {"started": teraz - 900.0, "duration_s": 600.0, "samples": 300,

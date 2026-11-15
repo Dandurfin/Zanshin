@@ -1,15 +1,15 @@
 # -*- coding: utf-8 -*-
-"""Riadok skratky "teraz nie" podla SKUTOCNEHO vysledku registracie (0.2.2
-davka 4b).
+"""The "not now" shortcut row by the REAL registration result (0.3 batch 4b).
 
-`GlobalHotkey.start()` caka na vysledok najviac 2 s. Ked je Windows pri
-starte pomaly, vratil False - a riadok v Nastaveniach aj dennik tvrdili, ze
-skratku drzi iny program, hoci o chvilu fungovala. Teraz vlakno skratky
-povie vysledok samo (`on_result`), appka ho prenesie do Tk (`ui_call` =
-`root.after(0)`) a az potom zapise riadok a obnovi Nastavenia.
+`GlobalHotkey.start()` waits for the result at most 2 s. When Windows was
+slow at start, it returned False - and the row in Settings and the journal
+claimed that another program held the shortcut, although it worked a moment
+later. Now the shortcut thread reports the result itself (`on_result`), the
+app carries it into Tk (`ui_call` = `root.after(0)`) and only then writes
+the line and refreshes Settings.
 
-Ziadna skutocna registracia: Windows API je atrapa, ktora odpovie, az ked
-jej test povie.
+No real registration: the Windows API is a stub that answers only when the
+test tells it to.
 """
 import threading
 import types
@@ -23,12 +23,12 @@ from i18n import tr
 
 
 # --------------------------------------------------------------------------
-# GlobalHotkey s pomalou falosnou registraciou
+# GlobalHotkey with a slow fake registration
 # --------------------------------------------------------------------------
 
 class _PomalyUser32:
-    """RegisterHotKey odpovie, az ked test pusti `pust`; GetMessageW caka,
-    kym `stop()` neposle WM_QUIT (PostThreadMessageW atrapy)."""
+    """RegisterHotKey answers only when the test releases `pust`; GetMessageW
+    waits until `stop()` sends WM_QUIT (the stub's PostThreadMessageW)."""
 
     def __init__(self, uspech=True):
         self.pust = threading.Event()
@@ -64,7 +64,7 @@ def _atrapa_win32(monkeypatch, user32):
     monkeypatch.setattr(hotkey, "_win32", lambda: (ctypes_atrapa, user32))
     monkeypatch.setattr(hotkey, "AVAILABLE", True)
     monkeypatch.setattr(hotkey.GlobalHotkey, "CAKAJ_NA_REGISTRACIU_S", 0.05)
-    assert wintypes.MSG  # _slucka si ho berie zo skutocneho ctypes
+    assert wintypes.MSG  # _slucka takes it from the real ctypes
 
 
 @pytest.mark.parametrize("uspech", [True, False])
@@ -102,7 +102,7 @@ def test_rychla_registracia_vrati_vysledok_hned(monkeypatch):
     try:
         assert h.start() is True
         assert h.caka is False
-        # `on_result` ide aj tu (raz) - appka ho vtedy zahodi, uz to povedala
+        # `on_result` comes here too (once) - the app drops it; already said
         assert prislo.wait(5.0) and vysledky == [True]
     finally:
         h.stop()
@@ -134,11 +134,11 @@ def test_vynimka_v_on_result_nezabije_vlakno(monkeypatch):
 
 
 # --------------------------------------------------------------------------
-# Appka: riadok a dennik az po skutocnom vysledku
+# The app: row and journal only after the real result
 # --------------------------------------------------------------------------
 
 class _CakajucaSkratka:
-    """Atrapa GlobalHotkey: `start()` nedockal (`caka`), vysledok posle test."""
+    """GlobalHotkey stub: `start()` timed out (`caka`); the test answers."""
     instancie = []
 
     def __init__(self, combo, on_press, log=None, on_result=None):
@@ -176,7 +176,7 @@ def _appka(monkeypatch, combo="ctrl+alt+z"):
     a.denn = []
     a.log = a.denn.append
     a.fronta = []
-    a.ui_call = a.fronta.append          # ako root.after(0): az v Tk vlakne
+    a.ui_call = a.fronta.append          # like root.after(0): only in the Tk thread
     a.snooze_hotkey_row = types.SimpleNamespace(sub_label=_Stitok())
     a.snooze_hotkey_var = None
     a.pas = []
@@ -203,7 +203,7 @@ def test_neskory_uspech_zapise_zapnute_a_obnovi_riadok(monkeypatch):
     a = _appka(monkeypatch)
     a.start_snooze_hotkey()
     skratka = _CakajucaSkratka.instancie[-1]
-    skratka.dokonci(True)                 # z vlakna skratky
+    skratka.dokonci(True)                 # from the shortcut thread
     assert a.denn == [], "z vlakna nic priamo - az cez ui_call"
     _dorucit(a)
     pekne = hotkey.format_combo("ctrl+alt+z")
@@ -223,7 +223,7 @@ def test_neskore_zlyhanie_povie_obsadene_raz(monkeypatch):
     assert a.denn == [tr("log.hotkey_failed_tray", combo=pekne)]
     assert a._hotkey_zlyhala is True
     assert a.snooze_hotkey_row.sub_label.text == tr("settings.snooze_hotkey_taken", combo=pekne)
-    # druhy (oneskoreny) vysledok tej istej registracie sa uz nezapise
+    # a second (delayed) result of the same registration is no longer written
     a._po_registracii_skratky(a._hotkey_gen, False)
     assert len(a.denn) == 1
 
@@ -232,7 +232,7 @@ def test_vysledok_starej_skratky_sa_zahodi(monkeypatch):
     a = _appka(monkeypatch)
     a.start_snooze_hotkey()
     stara = _CakajucaSkratka.instancie[-1]
-    a.snooze_hotkey = "ctrl+alt+f9"       # hrac medzitym vybral inu
+    a.snooze_hotkey = "ctrl+alt+f9"       # the player picked another one meanwhile
     a.start_snooze_hotkey(po_zmene=True)
     stara.dokonci(False)
     _dorucit(a)
@@ -243,8 +243,9 @@ def test_vysledok_starej_skratky_sa_zahodi(monkeypatch):
 
 
 class _HotovaHned(_CakajucaSkratka):
-    """`start()` este vratil False, no vlakno skoncilo uspesne skor, nez sa
-    appka spytala na `caka` - vysledok je uz konecny v `registered`."""
+    """`start()` still returned False, but the thread finished successfully
+    before the app asked about `caka` - the result is already final in
+    `registered`."""
 
     def start(self):
         self.registered, self.caka = True, False
@@ -256,6 +257,6 @@ def test_vysledok_medzi_start_a_caka_sa_nestrati(monkeypatch):
     a = _appka(monkeypatch)
     monkeypatch.setattr(hotkey, "GlobalHotkey", _HotovaHned)
     assert a.start_snooze_hotkey() is True
-    _dorucit(a)                           # on_result vlakna sa zahodi - uz povedane
+    _dorucit(a)                           # the thread's on_result is dropped - already said
     assert a.denn == [tr("log.hotkey_on", combo=hotkey.format_combo("ctrl+alt+z"))]
     assert a._hotkey_zlyhala is False

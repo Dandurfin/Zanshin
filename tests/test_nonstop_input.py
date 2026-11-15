@@ -1,13 +1,14 @@
 # -*- coding: utf-8 -*-
-"""Vstup bez jedinej pauzy: tichy riadok na Dnes, raz za relaciu.
+"""Input without a single pause: a quiet line on Today, once per session.
 
-Stalo sa zadavatelovi: gyroskop ovladaca ("Motion Always On") hlasil
-Windowsu vstup kazdych ~16 ms, `GetLastInputInfo` nikdy nebol necinny a
-appka nenasla pauzu, v ktorej by sa ozvala - az kym gyro nevypol. Appka
-to naisto vediet nemoze, preto len tichy riadok na Dnes (nie v hre).
+It happened to the requester: the controller gyroscope ("Motion Always On")
+reported input to Windows every ~16 ms, `GetLastInputInfo` was never idle
+and the app found no pause in which to speak up - until he turned the gyro
+off. The app cannot know this for sure, so only a quiet line on Today (not
+in the game).
 
-Testy bezia bez Tk: `NonstopInputWatch` je cisty, metoda appky sa vola na
-malej atrape.
+The tests run without Tk: `NonstopInputWatch` is pure, the app method is
+called on a small dummy.
 """
 import os
 import sys
@@ -25,7 +26,7 @@ MIN20 = 20 * 60
 
 
 def _bez_pauzy(watch, od, sekund, watching=True, pause_s=0.0, krok=0.25):
-    """Posuva cas po 0.25 s (ako `_tick_activity`) a vracia koncovy cas."""
+    """Steps time by 0.25 s (like `_tick_activity`), returns the end time."""
     t = od
     koniec = od + sekund
     ukaz = False
@@ -54,10 +55,10 @@ def test_pauza_riadok_skryje_a_v_relacii_sa_uz_neukaze():
     w.update(T0, 0.0, True)
     t, ukaz = _bez_pauzy(w, T0, MIN20 + 1)
     assert ukaz
-    assert w.update(t + 0.25, 2.6, True) is False    # pauza 2,6 s prisla
+    assert w.update(t + 0.25, 2.6, True) is False    # a 2.6 s pause came
     t, ukaz = _bez_pauzy(w, t + 0.25, 2 * MIN20)
     assert not ukaz, "raz za relaciu"
-    w.reset()                                          # nova relacia
+    w.reset()                                          # new session
     w.update(t, 0.0, True)
     t, ukaz = _bez_pauzy(w, t, MIN20 + 1)
     assert ukaz
@@ -67,7 +68,7 @@ def test_kratka_pauza_pod_prahom_cas_nevynuluje():
     w = activity.NonstopInputWatch()
     w.update(T0, 0.0, True)
     t, _ = _bez_pauzy(w, T0, MIN20 - 60)
-    w.update(t + 0.25, 1.5, True)                      # 1,5 s < 2,5 s
+    w.update(t + 0.25, 1.5, True)                      # 1.5 s < 2.5 s
     t, ukaz = _bez_pauzy(w, t + 0.25, 70)
     assert ukaz
 
@@ -76,14 +77,15 @@ def test_pauza_sa_meria_prahom_spustaca():
     w = activity.NonstopInputWatch()
     w.update(T0, 0.0, True)
     t, _ = _bez_pauzy(w, T0, MIN20 - 60)
-    w.update(t + 0.25, 3.0, True, pause_needed_s=4.0)   # 3 s < 4 s prahu
+    w.update(t + 0.25, 3.0, True, pause_needed_s=4.0)   # 3 s < 4 s threshold
     t, ukaz = _bez_pauzy(w, t + 0.25, 70)
     assert ukaz
 
 
 def test_bez_tepu_cas_nerastie_ale_ani_sa_nenuluje():
-    """Vypadok tepu (hrac mozno nie je pri PC) cas zastavi. Kratky vypadok
-    uprostred vecera ho ale nesmie vynulovat - vypadky su caste."""
+    """A heart-rate dropout (the player may not be at the PC) stops the time. A
+    short dropout in the middle of the evening must not reset it, though -
+    dropouts are frequent."""
     w = activity.NonstopInputWatch()
     w.update(T0, 0.0, True)
     t, _ = _bez_pauzy(w, T0, MIN20 - 60)
@@ -107,7 +109,7 @@ def test_uspaty_pc_neprida_minuty_jednym_tikom():
 
 
 # --------------------------------------------------------------------------
-# appka: riadok len na Dnes, len ked pocuva a tep chodi
+# app: the line only on Today, only when listening and the heart rate is coming
 # --------------------------------------------------------------------------
 
 def _app():
@@ -191,21 +193,21 @@ def test_zapojenie_v_appke():
 
 
 def test_riadok_nie_je_v_hre():
-    """Len Dnes: HUD ani vizualy v hre o tom nevedia nic."""
+    """Today only: the HUD and the in-game visuals know nothing about it."""
     for nazov in ("hud.py", "hud_paint.py", "overlay.py"):
         src = _src(nazov)
         assert "nonstop" not in src and "_dnes_nonstop_text" not in src, nazov
 
 
 # --------------------------------------------------------------------------
-# texty
+# texts
 # --------------------------------------------------------------------------
 
 def test_texty_maju_vsetkych_jedenast_jazykov_a_min():
     for kluc in ("dnes.nonstop_input", "hr.trouble_pad"):
         zaznam = i18n.STRINGS[kluc]
         assert set(zaznam) == set(i18n.LANGUAGES), kluc
-        # jazyková fáza 0.2: vlastný preklad v každom jazyku
+        # language phase 0.2: its own translation in every language
         for jazyk in i18n.LANGUAGES:
             if jazyk not in ("sk", "en"):
                 assert zaznam[jazyk] != zaznam["en"], (kluc, jazyk)
@@ -215,7 +217,7 @@ def test_texty_maju_vsetkych_jedenast_jazykov_a_min():
 
 def test_texty_su_opatrne_a_radia_to_iste():
     riadok = i18n.STRINGS["dnes.nonstop_input"]
-    # appka o sebe v zenskom rode; "mozno", nie verdikt
+    # the app speaks of itself in the feminine; "mozno" (maybe), not a verdict
     assert "nezachytila" in riadok["sk"] and "možno" in riadok["sk"]
     assert "may be" in riadok["en"]
     assert "gyro" in riadok["sk"] and "mŕtvej zóny" in riadok["sk"]

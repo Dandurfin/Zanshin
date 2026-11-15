@@ -1,35 +1,38 @@
-"""Zistovanie obrazoviek a DPI - jediny zdroj pravdy o tom, KDE a AKO VELKY
-sa ma in-game overlay vykreslit.
+"""Screen and DPI detection - the single source of truth about WHERE and HOW
+BIG the in-game overlay should be drawn.
 
-Preco tento modul vznikol
--------------------------
-Povodny overlay.py si polohu ratal z `tk.Toplevel.winfo_screenwidth()`.
-To ma dve chyby, ktore sa naplno prejavia na modernych zostavach:
+Why this module exists
+----------------------
+The original overlay.py computed its position from
+`tk.Toplevel.winfo_screenwidth()`. That has two flaws which fully show up on
+modern setups:
 
-  1) `winfo_screenwidth()` vracia rozmer LEN PRIMARNEJ obrazovky. Kto ma
-     dva monitory a hru na tom druhom, ten vizual na nom nikdy neuvidi -
-     okno sa navyse este aj orezalo (`min(screen_w - w, ...)`) spat na
-     primarnu plochu.
+  1) `winfo_screenwidth()` returns the size of the PRIMARY screen ONLY.
+     Anyone with two monitors and the game on the second one never sees the
+     visual there - on top of that the window was also clamped
+     (`min(screen_w - w, ...)`) back onto the primary area.
 
-  2) Bez ohlasenia DPI-awareness Windows procesu klame: na 4K monitore so
-     150 % skalovanim vrati 2560x1440 namiesto 3840x2160 a vysledne okno
-     este aj rozmaze bitmapovym zvacsenim (preto bola appka na 4K
-     "rozmazana" a overlay sedel inde, nez mal).
+  2) Without declaring DPI awareness, Windows lies to the process: on a 4K
+     monitor with 150 % scaling it returns 2560x1440 instead of 3840x2160
+     and also blurs the resulting window with bitmap upscaling (that is why
+     the app was "blurry" on 4K and the overlay sat somewhere other than
+     where it should).
 
-Riesenie: `enable_dpi_awareness()` sa vola z main.py EST PRED vytvorenim
-Tk okna, a poloha/velkost sa rata voci konkretnemu monitoru zo
-`monitors()`, nie voci primarnej obrazovke.
+Solution: `enable_dpi_awareness()` is called from main.py BEFORE the Tk
+window is created, and position/size are computed relative to a specific
+monitor from `monitors()`, not relative to the primary screen.
 
-Velkost vizualov
-----------------
-Vizual zadany v pixeloch je na 1080p iny objekt nez na 4K (stvrtinovy).
-`scale_for(monitor)` preto vracia nasobok voci referencnej vyske 1080 px,
-takze 240x160 vizual zabera na kazdom rozliseni rovnaku CAST obrazovky -
-to je to, co hrac vnima ako "rovnako velke".
+Visual size
+-----------
+A visual given in pixels is a different object on 1080p than on 4K (a
+quarter of the size). So `scale_for(monitor)` returns a multiplier relative
+to the reference height of 1080 px, which means a 240x160 visual takes up the
+same PART of the screen at every resolution - that is what the player
+perceives as "the same size".
 
-Modul je cisty ctypes/stdlib, na ne-Windows systemoch ma bezpecnu
-nahradu (jeden virtualny monitor), aby sa dal projekt spustat aj pri
-vyvoji na Linuxe/macOS.
+The module is pure ctypes/stdlib; on non-Windows systems it has a safe
+fallback (one virtual monitor), so the project can also be run during
+development on Linux/macOS.
 """
 
 import ctypes
@@ -38,22 +41,23 @@ import sys
 
 IS_WINDOWS = sys.platform == "win32"
 
-# Referencna vyska obrazovky. Vsetky rozmery vizualov v overlay.py su
-# zadane v "1080p pixeloch" a prepocitavaju sa cez scale_for().
+# Reference screen height. All visual sizes in overlay.py are given in
+# "1080p pixels" and are converted through scale_for().
 REFERENCE_HEIGHT = 1080.0
 
-# Rozumne medze - na 720p notebooku nechceme vizualy zmensit na necitatelne
-# a na 8K stene ich nechceme nafuknut cez pol obrazovky.
+# Sensible limits - on a 720p laptop we do not want to shrink the visuals
+# until they are unreadable, and on an 8K wall we do not want to inflate them
+# over half the screen.
 MIN_SCALE = 0.65
 MAX_SCALE = 3.0
 
 
 class Monitor:
-    """Jedna fyzicka obrazovka v suradniciach virtualnej plochy.
+    """One physical screen in virtual desktop coordinates.
 
-    `x/y` mozu byt aj zaporne (monitor vlavo od primarneho), preto sa
-    poloha vizualu VZDY rata ako `x + width * percento`, nikdy nie len
-    z `width`.
+    `x/y` can also be negative (a monitor to the left of the primary one),
+    so the position of a visual is ALWAYS computed as
+    `x + width * percento`, never from `width` alone.
     """
 
     __slots__ = ("x", "y", "width", "height", "work_x", "work_y",
@@ -76,7 +80,7 @@ class Monitor:
 
     @property
     def scale(self):
-        """Nasobok velkosti vizualov voci 1080p referencii."""
+        """Multiplier of visual sizes relative to the 1080p reference."""
         return max(MIN_SCALE, min(MAX_SCALE, self.height / REFERENCE_HEIGHT))
 
     def contains(self, px, py):
@@ -84,11 +88,11 @@ class Monitor:
                 and self.y <= py < self.y + self.height)
 
     def label(self, index):
-        """Popisok do dropdownu - '1: 3840x2160 (hlavny)'."""
+        """Label for the dropdown - '1: 3840x2160 (primary)'."""
         suffix = " *" if self.primary else ""
         return f"{index + 1}: {self.width}x{self.height}{suffix}"
 
-    def __repr__(self):  # pragma: no cover - len na ladenie
+    def __repr__(self):  # pragma: no cover - only for debugging
         return (f"<Monitor {self.width}x{self.height}+{self.x}+{self.y} "
                 f"dpi={self.dpi}{' primary' if self.primary else ''}>")
 
@@ -101,17 +105,18 @@ _dpi_state = {"done": False, "mode": "none"}
 
 
 def enable_dpi_awareness():
-    """Ohlasi proces ako per-monitor DPI aware (V2, ak to Windows vie).
+    """Declares the process as per-monitor DPI aware (V2, if Windows can).
 
-    MUSI sa zavolat EST PRED `import customtkinter` a pred vytvorenim
-    prveho Tk okna - po vytvoreni okna uz Windows rezim procesu nemeni.
+    It MUST be called BEFORE `import customtkinter` and before the first Tk
+    window is created - once a window exists, Windows no longer changes the
+    process mode.
 
-    Skusa sa od najlepsieho po najstarsie:
-      V2   (Win10 1703+) - spravne DPI aj pri presune okna medzi monitormi
-      V1   (Win8.1+)     - per-monitor, ale bez auto-prepoctu neklientskej casti
-      System (Vista+)    - aspon ziadne rozmazanie na primarnom monitore
+    Tried from the best to the oldest:
+      V2   (Win10 1703+) - correct DPI even when moving a window between monitors
+      V1   (Win8.1+)     - per-monitor, but no auto-rescaling of the non-client area
+      System (Vista+)    - at least no blurring on the primary monitor
 
-    Vracia pouzity rezim ako retazec ('v2' / 'v1' / 'system' / 'none').
+    Returns the mode used as a string ('v2' / 'v1' / 'system' / 'none').
     """
     if _dpi_state["done"]:
         return _dpi_state["mode"]
@@ -119,9 +124,9 @@ def enable_dpi_awareness():
     if not IS_WINDOWS:
         return _dpi_state["mode"]
 
-    # DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 je handle s hodnotou -4;
-    # musi sa odovzdat ako pointer-sized typ, inak na 64-bit Windows
-    # prejde orezany na 32 bitov a volanie tíško zlyha.
+    # DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 is a handle with the value -4;
+    # it must be passed as a pointer-sized type, otherwise on 64-bit Windows it
+    # gets truncated to 32 bits and the call silently fails.
     try:
         user32 = ctypes.windll.user32
         user32.SetProcessDpiAwarenessContext.argtypes = [ctypes.c_void_p]
@@ -134,9 +139,9 @@ def enable_dpi_awareness():
         pass
 
     try:
-        # PROCESS_PER_MONITOR_DPI_AWARE = 2; rovnake volanie robi aj
-        # customtkinter pri importe - ak uspejeme my skor, jeho volanie
-        # uz len vrati E_ACCESSDENIED a nic nepokazi.
+        # PROCESS_PER_MONITOR_DPI_AWARE = 2; customtkinter makes the same
+        # call on import - if we succeed first, its call just returns
+        # E_ACCESSDENIED and breaks nothing.
         if ctypes.windll.shcore.SetProcessDpiAwareness(2) == 0:
             _dpi_state["mode"] = "v1"
             return "v1"
@@ -153,7 +158,7 @@ def enable_dpi_awareness():
 
 
 # --------------------------------------------------------------------------
-# Enumeracia monitorov (Windows)
+# Monitor enumeration (Windows)
 # --------------------------------------------------------------------------
 
 if IS_WINDOWS:
@@ -181,7 +186,7 @@ if IS_WINDOWS:
 
 
 def _monitor_dpi(hmonitor):
-    """Efektivne DPI monitora (96 = 100 %). Na starsich Windows vrati 96."""
+    """Effective DPI of the monitor (96 = 100 %). Older Windows return 96."""
     try:
         x, y = ctypes.c_uint(), ctypes.c_uint()
         # MDT_EFFECTIVE_DPI = 0
@@ -208,8 +213,8 @@ def _from_handle(hmonitor):
 
 
 def _fallback_monitor(tk_widget=None):
-    """Nahrada, ked Win32 API nie je k dispozicii (Linux/macOS vyvoj, alebo
-    ked enumeracia zlyha) - jedna obrazovka podla toho, co vie povedat Tk."""
+    """Fallback when the Win32 API is not available (Linux/macOS development,
+    or when enumeration fails) - one screen based on what Tk can tell."""
     width, height = 1920, 1080
     if tk_widget is not None:
         try:
@@ -221,11 +226,11 @@ def _fallback_monitor(tk_widget=None):
 
 
 def monitors(tk_widget=None):
-    """Vsetky pripojene obrazovky, primarna vzdy prva.
+    """All connected screens, the primary one always first.
 
-    Poradie je stabilne (primarna, potom zlava doprava, zhora nadol), aby
-    si hrac mohol v nastaveniach vybrat "Monitor 2" a ten vyber mal aj po
-    restarte appky rovnaky vyznam.
+    The order is stable (primary, then left to right, top to bottom), so the
+    player can pick "Monitor 2" in the settings and that choice keeps the
+    same meaning after the app restarts.
     """
     if not IS_WINDOWS:
         return [_fallback_monitor(tk_widget)]
@@ -269,7 +274,7 @@ def monitor_at_cursor(tk_widget=None):
 
 
 def foreground_window_rect():
-    """Obdlznik okna, ktore ma prave focus (typicky hra). None ak sa neda."""
+    """Rectangle of the focused window (typically the game), or None."""
     if not IS_WINDOWS:
         return None
     try:
@@ -285,8 +290,9 @@ def foreground_window_rect():
 
 
 def monitor_of_foreground(tk_widget=None):
-    """Monitor, na ktorom bezi aktivne okno - teda ten, na ktorom hrac
-    prave hra. Toto je predvoleny cielovy monitor pre overlay."""
+    """The monitor the active window is on - i.e. the one the player is
+    playing on right now. This is the default target monitor for the
+    overlay."""
     rect = foreground_window_rect()
     if rect is None:
         return monitor_at_cursor(tk_widget)
@@ -298,19 +304,20 @@ def monitor_of_foreground(tk_widget=None):
     return monitor_at_cursor(tk_widget)
 
 
-# Hodnoty do nastaveni: "auto" = monitor aktivneho okna, "cursor" = monitor
-# pod kurzorom, "primary" = hlavny, "0".."3" = konkretny index.
+# Values for the settings: "auto" = monitor of the active window, "cursor" =
+# monitor under the cursor, "primary" = the main one, "0".."3" = a specific
+# index.
 TARGET_AUTO = "auto"
 TARGET_CURSOR = "cursor"
 TARGET_PRIMARY = "primary"
 
 
 def resolve_target(target=TARGET_AUTO, tk_widget=None):
-    """Prelozi ulozenu volbu monitora na konkretny Monitor.
+    """Translates the saved monitor choice into a specific Monitor.
 
-    Vzdy vrati platny monitor - ak hrac odpojil obrazovku, na ktorej mal
-    overlay nastaveny, spadne sa na primarnu namiesto toho, aby vizual
-    skoncil mimo viditelnej plochy.
+    Always returns a valid monitor - if the player unplugged the screen the
+    overlay was set to, it falls back to the primary one instead of the
+    visual ending up outside the visible area.
     """
     all_monitors = monitors(tk_widget)
     if target == TARGET_PRIMARY:
@@ -326,12 +333,12 @@ def resolve_target(target=TARGET_AUTO, tk_widget=None):
 
 
 def place(monitor, width, height, pos_x_pct, pos_y_pct):
-    """Lava horna suradnica okna sirky `width` a vysky `height` tak, aby
-    jeho STRED sedel na zadanych percentach plochy `monitor`.
+    """Top-left coordinate of a window of width `width` and height `height`
+    such that its CENTRE sits at the given percentages of the `monitor` area.
 
-    Orezanie je na hranice TOHTO monitora (nie primarneho), takze vizual
-    ostava cely viditelny aj na druhej obrazovke a aj pri zapornych
-    suradniciach virtualnej plochy.
+    Clamping is to the bounds of THIS monitor (not the primary one), so the
+    visual stays fully visible even on the second screen and even with
+    negative virtual desktop coordinates.
     """
     cx = monitor.x + monitor.width * (pos_x_pct / 100.0)
     cy = monitor.y + monitor.height * (pos_y_pct / 100.0)
@@ -343,31 +350,31 @@ def place(monitor, width, height, pos_x_pct, pos_y_pct):
 
 
 # --------------------------------------------------------------------------
-# Okno appky na monitore - ci sa zmesti a kam ho dat
+# The app window on a monitor - whether it fits and where to put it
 # --------------------------------------------------------------------------
 #
-# Hlavne okno ma PEVNY logicky rozmer (DandurfApp.WINDOW_W/H) a CTk ho
-# nasobi mierkou displeja. Na beznom hernom notebooku (1920x1080 so 150 %)
-# je to ~1140 px vysky proti ~1008 px pracovnej plochy a okno sa neda ani
-# zmensit, ani maximalizovat - spodok bocneho menu (Nastavenia) skoncil pod
-# listou uloh. Tieto dve funkcie su cista matematika bez Tk, aby sa dali
-# overit pre kazdu zostavu bez skutocneho monitora.
+# The main window has a FIXED logical size (DandurfApp.WINDOW_W/H) and CTk
+# multiplies it by the display scale. On a typical gaming laptop (1920x1080
+# at 150 %) that is ~1140 px of height against ~1008 px of work area, and the
+# window can neither be shrunk nor maximised - the bottom of the side menu
+# (Settings) ended up under the taskbar. These two functions are pure maths
+# without Tk, so they can be checked for every setup without a real monitor.
 
-# Fyzicke px, ktore ostanu medzi oknom a okrajom pracovnej plochy (spolu za
-# obe strany). Okno presne na hrane listy uloh posobi ako "pod nou" a pri
-# zaokruhleni CTk by mohlo o pixel prelezt.
+# Physical px left between the window and the edge of the work area (in total
+# for both sides). A window exactly on the edge of the taskbar looks like it
+# is "under it", and with CTk rounding it could spill over by a pixel.
 WINDOW_FIT_MARGIN_PX = 16
-# Pod tuto cast normalnej velkosti appku nezmensime - pismo by bolo
-# necitatelne (velkost 10 by pri 100 % mala len 7 px). Radsej nech okno
-# trci dole a titulna lista ostane hore na dosah.
+# We do not shrink the app below this fraction of the normal size - the font
+# would be unreadable (size 10 would be only 7 px at 100 %). Better to let the
+# window stick out at the bottom and keep the title bar up top within reach.
 WINDOW_MIN_FIT = 0.7
 
 
 def dpi_scale(monitor):
-    """Kolko fyzickych px ma jeden logicky px na tomto monitore (96 DPI = 1.0).
+    """How many physical px one logical px is on this monitor (96 DPI = 1.0).
 
-    Ta ista hodnota, akou CTk nasobi rozmery okien (`GetDpiForMonitor`,
-    efektivne DPI), takze vypocet nizsie sedi s tym, co CTk naozaj nakresli."""
+    The same value CTk multiplies window sizes by (`GetDpiForMonitor`,
+    effective DPI), so the calculation below matches what CTk really draws."""
     try:
         dpi = int(getattr(monitor, "dpi", 96) or 96)
     except (TypeError, ValueError):
@@ -377,17 +384,18 @@ def dpi_scale(monitor):
 
 def window_fit_factor(width, height, scale, work_width, work_height,
                       margin=WINDOW_FIT_MARGIN_PX, minimum=WINDOW_MIN_FIT):
-    """Kolkokrat zmensit okno, aby sa cele zmestilo do pracovnej plochy.
+    """How much to shrink the window so that it fits whole into the work area.
 
-    `width`/`height` su LOGICKE px okna, `scale` je to, cim ich CTk nasobi
-    (DPI monitora krat uz nastavena mierka okien), `work_*` je pracovna
-    plocha monitora vo fyzickych px (bez listy uloh).
+    `width`/`height` are the window's LOGICAL px, `scale` is what CTk
+    multiplies them by (monitor DPI times the already set window scaling),
+    `work_*` is the monitor's work area in physical px (without the taskbar).
 
-    Vracia 1.0, ked sa okno zmesti aj s okrajom - vtedy sa nema menit nic.
-    Inak faktor < 1 zaokruhleny NADOL na tisiciny: CTk rozmer okna
-    zaokruhluje (`round`) a faktor zaokruhleny nahor by okno o pixel
-    pretiahol cez okraj. Nikdy nie menej nez `minimum` - ak sa okno nezmesti
-    ani tak, `center_in_work_area` ho prilepi k hornemu okraju plochy.
+    Returns 1.0 when the window fits including the margin - then nothing
+    should change. Otherwise a factor < 1 rounded DOWN to thousandths: CTk
+    rounds the window size (`round`) and a factor rounded up would push the
+    window a pixel over the edge. Never less than `minimum` - if the window
+    does not fit even then, `center_in_work_area` sticks it to the top edge
+    of the area.
     """
     try:
         scale = float(scale)
@@ -411,13 +419,13 @@ def window_fit_factor(width, height, scale, work_width, work_height,
 
 
 def center_in_work_area(monitor, px_width, px_height):
-    """Lavy horny roh okna `px_width` x `px_height` (FYZICKE px) tak, aby
-    sedelo v strede pracovnej plochy `monitor`.
+    """Top-left corner of a window `px_width` x `px_height` (PHYSICAL px) such
+    that it sits in the centre of the work area of `monitor`.
 
-    Pracovna plocha, nie cely monitor: lista uloh moze byt dole, hore aj na
-    boku a okno pod nou by bolo prave tam, kde ho clovek nevidi. Okno vacsie
-    nez plocha sa prilepi k jej hornemu (lavemu) okraju - titulna lista,
-    za ktoru sa okno taha, tak ostane vzdy na obrazovke.
+    The work area, not the whole monitor: the taskbar can be at the bottom,
+    top or on the side, and a window under it would be exactly where you do
+    not see it. A window larger than the area is stuck to its top (left)
+    edge - so the title bar the window is dragged by always stays on screen.
     """
     x = monitor.work_x + max(0, (monitor.work_width - int(px_width)) // 2)
     y = monitor.work_y + max(0, (monitor.work_height - int(px_height)) // 2)
@@ -425,12 +433,12 @@ def center_in_work_area(monitor, px_width, px_height):
 
 
 def is_fullscreen_foreground(tk_widget=None):
-    """True, ak aktivne okno presne prekryva cely svoj monitor.
+    """True if the active window exactly covers its whole monitor.
 
-    Heuristika na rozpoznanie exkluzivneho fullscreenu: v nom Windows
-    nekresli ziadne cudzie vrstvene okna, takze by hrac overlay nevidel a
-    nevedel preco. Appka mu v takom pripade raz poradi prepnut hru do
-    rezimu "Borderless / Okno bez okrajov".
+    A heuristic for recognising exclusive fullscreen: in it Windows does not
+    draw any foreign layered windows, so the player would not see the
+    overlay and would not know why. In that case the app advises them once
+    to switch the game to "Borderless / Okno bez okrajov" mode.
     """
     rect = foreground_window_rect()
     if rect is None:

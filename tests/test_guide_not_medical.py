@@ -1,11 +1,12 @@
-"""„Nie je to lekarska rada, Zanshin nie je zdravotnicka pomocka“ - v appke.
+""""Not medical advice, Zanshin is not a medical device" - in the app.
 
-KNOWN_ISSUES.md #5: ta veta zila len v README, kym Sprievodca ukazoval
-fyziologiu a dychacie techniky so zadrzami bez jedineho slova. Historia uz
-hovori „postrehy a tipy, nie diagnozy“ - Sprievodca ma hovorit rovnako
-ticho: jedna tlmena veta, nie varovny banner. A do hry nejde nikdy.
+KNOWN_ISSUES.md #5: that sentence lived only in the README, while the Guide
+showed physiology and breathing techniques with breath holds without a
+single word. History already says "Observations and tips, not diagnoses" -
+the Guide should speak just as quietly: one muted sentence, not a warning
+banner. And it never goes into the game.
 
-Staticke, bez Tk - rovnako ako test_overlay_features.
+Static, without Tk - same as test_overlay_features.
 """
 import os
 import sys
@@ -24,7 +25,7 @@ def _read(name):
 
 
 def _funkcia(src, hlavicka):
-    """Telo funkcie od `hlavicka` po najblizsie dva prazdne riadky."""
+    """Function body from `hlavicka` to the next two empty lines."""
     telo = src[src.index(hlavicka):]
     return telo[:telo.index(chr(10) * 3)]
 
@@ -36,14 +37,15 @@ def test_veta_hovori_to_podstatne_a_ticho():
 
     assert "nie lekárska rada" in sk and "nie je zdravotnícka pomôcka" in sk
     assert "not medical advice" in en and "not a medical device" in en
-    assert "srdc" in sk and "heart" in en     # s tazkostami so srdcom k lekarovi
-    # Zvysok Sprievodcu je prelozeny do vsetkych jazykov - jedina anglicka
-    # veta medzi nimi by bola prave ta, ktoru ma clovek precitat.
+    assert "srdc" in sk and "heart" in en     # with heart problems see a doctor
+    # The rest of the Guide is translated into all languages - the only
+    # English sentence among them would be exactly the one the person should
+    # read.
     for lang in i18n.LANGUAGES:
         if lang not in ("sk", "en"):
             assert preklady[lang] != en, lang
 
-    # Septat, nie kricat: ziadny vykricnik, ziadne VELKE slova, ziadny odstavec.
+    # Whisper, not shout: no exclamation mark, no CAPITAL words, no paragraph.
     for text in (sk, en):
         assert "!" not in text, text
         assert not [w for w in text.split() if len(w) > 2 and w.isupper()], text
@@ -52,7 +54,7 @@ def test_veta_hovori_to_podstatne_a_ticho():
 
 def test_sprievodca_ju_ma_v_hlavicke_a_pri_dychani():
     guide = _read("guide_panel.py")
-    # Jedno miesto, ktore text kresli - hlavicka aj karta ho len volaju.
+    # One place that draws the text - the header and the card only call it.
     assert guide.count(f'tr("{KLUC}")') == 1
 
     pomocnik = _funkcia(guide, "def not_medical_note")
@@ -61,34 +63,37 @@ def test_sprievodca_ju_ma_v_hlavicke_a_pri_dychani():
     for hlasne in ('"bold"', "danger", "warn", "border_width", "fg_color"):
         assert hlasne not in kod, f"poznamka ma septat, nie kricat ({hlasne})"
 
-    # okno Sprievodca: hned pod podtitulkom, vidno ju bez rozbalovania
+    # the Guide window: right under the subtitle, visible without expanding
     okno = guide[guide.index("class GuidePanel"):]
     assert "not_medical_note(header" in okno
-    # a nesmie sa orezat: okno ide zuzit na minsize 560, hlavicka ma padx 22
+    # and it must not get cut off: the window can be narrowed to minsize 560,
+    # the header has padx 22
     import re
     wrap = int(re.search(r"not_medical_note\(header, pal, wraplength=(\d+)\)",
                          okno).group(1))
     assert wrap <= 560 - 2 * 22, wrap
 
-    # dychacie techniky (box breathing ma zadrze) - vetva `techniques`;
-    # ta ista funkcia kresli aj kartu dychovej hlasky (ui_dialogs.SlotCard)
+    # breathing techniques (box breathing has holds) - the `techniques`
+    # branch; the same function also draws the breathing cue card
+    # (ui_dialogs.SlotCard)
     telo = _funkcia(guide, "def populate_card_body")
     techniky = telo[telo.index('card.get("techniques")'):
                     telo.index('elif card.get("custom_blocks")')]
     assert "not_medical_note(text_col" in techniky
-    # ostatne karty ju neopakuju - refren by uz nebol septanie
+    # the other cards do not repeat it - a refrain would no longer be a whisper
     assert telo.count("not_medical_note(") == 1
 
 
 def test_na_jednej_obrazovke_najviac_raz():
-    """Hlavicka okna Sprievodca stoji NAD scrollom, takze je vidno stale.
-    Keby ju zopakovala aj rozbalena karta dychania, ta ista veta by bola na
-    obrazovke dvakrat - to uz je refren, nie septanie."""
+    """The Guide window header stands ABOVE the scroll, so it is always
+    visible. If the expanded breathing card repeated it too, the same
+    sentence would be on the screen twice - that is a refrain, not a
+    whisper."""
     guide = _read("guide_panel.py")
     okno = guide[guide.index("class GuidePanel"):]
     assert "_GuideContent(scroll, pal, medical_note=False)" in okno
 
-    # karta dychovej hlasky (stranka Hlasky) hlavicku nema - tam ostava
+    # the breathing cue card (the Cues page) has no header - there it stays
     dialogs = _read("ui_dialogs.py")
     volanie = dialogs[dialogs.index("guide_panel.populate_card_body("):]
     volanie = volanie[:volanie.index(")") + 1]
@@ -96,8 +101,9 @@ def test_na_jednej_obrazovke_najviac_raz():
 
 
 def test_techniky_su_len_na_karte_dychania():
-    """Poznamka visi na vetve `techniques`. Keby techniky dostala aj ina
-    karta, poznamka by sa s nimi potichu rozmnozila - nech to niekto vidi."""
+    """The note hangs on the `techniques` branch. If another card got
+    techniques too, the note would quietly multiply with them - let
+    someone see it."""
     import guide_content
     s_technikami = [c["id"] for c in guide_content.guide_cards()
                     if c["techniques"] is not None]
@@ -105,7 +111,7 @@ def test_techniky_su_len_na_karte_dychania():
 
 
 def test_do_hry_nejde():
-    """Pocas hrania sa hraca nic nepyta a nic mu nepripomina."""
+    """While playing, nothing asks the player anything or reminds them."""
     for modul in ("overlay.py", "hud.py", "hud_paint.py", "layer_window.py"):
         if os.path.exists(os.path.join(os.path.dirname(os.path.dirname(
                 os.path.abspath(__file__))), modul)):

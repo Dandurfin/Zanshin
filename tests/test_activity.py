@@ -1,13 +1,15 @@
 # -*- coding: utf-8 -*-
-"""Sledovanie aktivity bez klavesoveho hooku.
+"""Activity watching without a keyboard hook.
 
-`ActivityTracker` dostava hodiny aj zdroj idle zvonku, takze sa da cely
-prejst bez Windowsu a bez cakania v realnom case - test posuva cas sam.
+`ActivityTracker` gets both the clock and the idle source from outside, so
+it can be run through entirely without Windows and without waiting in real
+time - the test moves time itself.
 
-Dolezite je hlavne to, ze pauza sa pocita od POSLEDNEHO VSTUPU, nie od
-momentu, kedy si to appka vsimla. Na tom stoji cely odklad hlasky na
-pauzu vo faze 2: keby sa pauza merala az od merania, prah 2,5 s by sa
-podla nahody trafil raz po 2,5 s a inokedy po 2,75 s.
+What matters most is that the pause is counted from the LAST INPUT, not
+from the moment the app noticed it. The whole postponing of a cue to a
+pause in phase 2 rests on that: if the pause were measured only from the
+measurement, the 2.5 s threshold would by chance be hit once after 2.5 s
+and another time after 2.75 s.
 """
 import os
 import sys
@@ -18,7 +20,7 @@ import activity  # noqa: E402
 
 
 class Hodiny:
-    """Rucne posuvany cas, aby test nemusel nic cakat."""
+    """Manually advanced time, so that the test does not have to wait."""
 
     def __init__(self, start=1000.0):
         self.t = start
@@ -31,7 +33,7 @@ class Hodiny:
 
 
 def sleduj(idle_values, hodiny=None, **kw):
-    """Tracker, ktoremu idle diktuje zoznam - jedna hodnota na poll()."""
+    """A tracker whose idle is dictated by a list - one value per poll()."""
     hodiny = hodiny or Hodiny()
     postupnost = iter(idle_values)
     tracker = activity.ActivityTracker(
@@ -40,7 +42,7 @@ def sleduj(idle_values, hodiny=None, **kw):
 
 
 def test_modul_sa_da_importovat_aj_ked_win32_nejde():
-    """Import nesmie padnut - inak by spadol import celej appky."""
+    """Import must not crash - otherwise the whole app's import would crash."""
     assert isinstance(activity.AVAILABLE, bool)
     assert activity.idle_ms() is None or activity.idle_ms() >= 0
 
@@ -67,30 +69,31 @@ def test_aktivny_a_pauza_sa_prepinaju():
 
 
 def test_pauza_sa_pocita_od_posledneho_vstupu_nie_od_merania():
-    """Idle 4000 ms znamena, ze pauza trva 4 s - aj ked meriame prave teraz."""
+    """Idle 4000 ms means the pause has lasted 4 s - even if we measure now."""
     tracker, hodiny = sleduj([4000])
     tracker.poll()
     assert tracker.pause_s() == 4.0
-    # a rastie dalej s casom, bez dalsieho pollu
+    # and it keeps growing with time, without another poll
     hodiny.posun(2.0)
     assert tracker.pause_s() == 6.0
 
 
 def test_zaznam_je_redsi_nez_pytanie():
-    """Pyta sa 4x za sekundu, do zaznamu ide 1x - inak by za styri hodiny
-    narastol na desiatky tisic dvojic zbytocne."""
+    """It asks 4x a second, 1x goes into the record - otherwise in four hours
+    it would needlessly grow to tens of thousands of pairs."""
     tracker, hodiny = sleduj([100] * 20)
     for _ in range(20):
         tracker.poll()
         hodiny.posun(activity.POLL_S)
-    # 20 pollov po 0,25 s = 5 sekund
+    # 20 polls of 0.25 s = 5 seconds
     assert 5 <= len(tracker.samples) <= 7
 
 
 def test_druhy_zdroj_sa_beri_ako_minimum():
-    """Gamepad (ak sa ukaze, ze treba) je dalsi zdroj vstupu, nie nahrada.
+    """A gamepad (if it proves needed) is another input, not a replacement.
 
-    Vysledne idle je "od posledneho vstupu ODKIALKOLVEK", cize minimum.
+    The resulting idle is "since the last input FROM ANYWHERE", i.e. the
+    minimum.
     """
     tracker, _ = sleduj([9000], extra_idle_fn=lambda: 100)
     assert tracker.poll() == 100
@@ -106,19 +109,20 @@ def test_rozbity_druhy_zdroj_neposkodi_meranie():
 
 
 def test_chybajuci_zdroj_idle_nespadne():
-    """Na systeme bez GetLastInputInfo sa len nic nevie - nepadne to."""
+    """On a system without GetLastInputInfo nothing is known - no crash."""
     tracker = activity.ActivityTracker(idle_fn=lambda: None, clock=Hodiny())
     assert tracker.poll() is None
     assert tracker.is_active is False
 
 
 def test_neznama_pauza_nie_je_nulova_pauza():
-    """None znamena "neviem", nie "ziadna pauza" - a je to rozdiel.
+    """None means "I don't know", not "no pause" - and that is a difference.
 
-    Faza 2 odklada hlasku na pauzu. Keby sa "neviem" tvarilo ako nula,
-    na stroji bez idle by pauza nikdy nenastala, vsetky hlasky by spadli
-    do vetvy "pauza neprisla" a tiche kontrolne rameno by sa s nimi
-    zmiesalo. Meranie by vyslo bez jedinej hlasnej hlasky.
+    Phase 2 postpones a cue to a pause. If "I don't know" pretended to be
+    zero, on a machine without idle a pause would never occur, all cues
+    would fall into the "pause did not come" branch and the silent control
+    arm would get mixed up with them. The measurement would come out
+    without a single loud cue.
     """
     slepy = activity.ActivityTracker(idle_fn=lambda: None, clock=Hodiny())
     slepy.poll()
@@ -127,7 +131,7 @@ def test_neznama_pauza_nie_je_nulova_pauza():
     hodiny = Hodiny()
     vidiaci = activity.ActivityTracker(idle_fn=lambda: 100, clock=hodiny)
     vidiaci.poll()
-    assert vidiaci.pause_s() == 0.0      # vie, ze pauza nie je
+    assert vidiaci.pause_s() == 0.0      # knows there is no pause
 
 
 def test_zapnutie_senzora_vynuluje_zaznam():
@@ -156,7 +160,7 @@ def test_podiel_aktivity_nad_vlastnym_zaznamom():
 
 
 def test_zaznam_ma_strop():
-    """Appka nechana bezat cez vikend nesmie zrat pamat donekonecna."""
+    """An app left running over the weekend must not eat memory forever."""
     povodny = activity.MAX_SAMPLES
     activity.MAX_SAMPLES = 10
     try:
@@ -166,22 +170,22 @@ def test_zaznam_ma_strop():
             tracker.poll()
             hodiny.posun(1.0)
         assert len(tracker.samples) == 10
-        # ostavaju NAJNOVSIE
+        # the NEWEST ones stay
         assert tracker.samples[-1][0] == hodiny.t - 1.0
     finally:
         activity.MAX_SAMPLES = povodny
 
 
 # --------------------------------------------------------------------------
-# Z čoho hráč práve hrá (ovládač vs klávesnica)
+# What the player is playing with right now (controller vs keyboard)
 # --------------------------------------------------------------------------
 
 def test_bez_gamepad_listenera_zdroj_nevieme():
-    """NEVIEME nie je to isté čo „klávesnica".
+    """WE DON'T KNOW is not the same as "keyboard".
 
-    Keby sa mlčanie ovládača hlásilo ako klávesnica, na stroji s vypnutým
-    listenerom by appka hráčovi s ovládačom napísala nepravdu — a bolo by to
-    na obrazovke, čiže by tomu veril.
+    If the controller's silence were reported as keyboard, on a machine with
+    the listener turned off the app would tell a player with a controller an
+    untruth - and it would be on the screen, so they would believe it.
     """
     tracker, hodiny = sleduj([50] * 5)
     for _ in range(5):
@@ -199,7 +203,7 @@ def test_cerstvy_vstup_z_ovladaca_sa_rozozna():
 
 
 def test_ked_ovladac_mlci_je_to_klavesnica():
-    """`GetLastInputInfo` hlási vstup, ovládač nie — takže to bolo niečo iné."""
+    """`GetLastInputInfo` has input, the controller none - so something else."""
     tracker, hodiny = sleduj([50] * 5)
     tracker.set_gamepad_watched(True)
     tracker.poll()
@@ -207,20 +211,20 @@ def test_ked_ovladac_mlci_je_to_klavesnica():
 
 
 def test_prechod_z_ovladaca_na_klavesnicu():
-    """Hráč odloží ovládač a začne písať do chatu."""
+    """The player puts the controller down and starts typing in chat."""
     tracker, hodiny = sleduj([50] * 6)
     tracker.set_gamepad_watched(True)
     tracker.note_external_input(now=hodiny.t)
     tracker.poll()
     assert tracker.source(now=hodiny.t) == activity.SRC_PAD
-    hodiny.posun(5.0)                       # ovládač už nehlási nič
+    hodiny.posun(5.0)                       # the controller reports nothing any more
     tracker.poll()
     assert tracker.source(now=hodiny.t) == activity.SRC_KB
 
 
 def test_zdroj_prezije_kratku_prestavku():
-    """Bez pamäte by piktogram pri každej prestávke zhasol a pri každom
-    stlačení sa rozsvietil — presne ten putujúci pohyb, ktorý ruší."""
+    """Without memory the pictogram would go out at every break and light up
+    at every press - exactly the wandering motion that distracts."""
     tracker, hodiny = sleduj([50, 50])
     tracker.set_gamepad_watched(True)
     tracker.note_external_input(now=hodiny.t)
@@ -242,8 +246,8 @@ def test_vypnutie_listenera_zdroj_zabudne():
 
 
 def test_zdroj_nikdy_nedrzi_co_sa_stlacilo():
-    """SAFETY.md: appka sa nedozvie, ktoré tlačidlo to bolo. Zisťuje sa
-    trieda zariadenia a nič viac."""
+    """SAFETY.md: the app never learns which button it was. Only the class of
+    the device is detected, nothing more."""
     tracker, hodiny = sleduj([50])
     tracker.set_gamepad_watched(True)
     tracker.note_external_input(now=hodiny.t)

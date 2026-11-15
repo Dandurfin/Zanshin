@@ -1,22 +1,24 @@
 # -*- coding: utf-8 -*-
-"""UX/UI a grafika podla auditu 0.2.2 (sekcia 2, "Jednotne pravidla dizajnu").
+"""UX/UI and graphics per the 0.3 audit (section 2, "Unified design rules").
 
-Strazi sa:
-  * kontrast tokenov v OBOCH temach (WCAG): obsahovy text >= 4,5:1,
-    ram vedlajsieho tlacidla >= 3:1, deliaca linka >= 1,5:1, zapnuty
-    prepinac sa od vypnuteho lisi aspon 3:1,
-  * jeden prepinac appky (`ui_kit.switch`) - ziadne holé `ctk.CTkSwitch(`
-    mimo ui_kit, zapnuty = `accent`,
-  * styri druhy tlacidla (`ui_kit.button`) a ich farby, prirodzena sirka,
-  * deliaca linka 1 px je naozaj vidno (`ui_kit.linka` ma `bg_color`),
-  * bocny panel zvyrazni skutocnu stranku aj pri navigacii z kodu,
-    ⚙ pri "Tep v hre" vedie do Vseobecnych na sekciu panela s tepom,
-  * dialogy sa centruju a zmestia na nizku obrazovku (1366x768 pri 150 %),
-  * cislo nesie farbu stavu, nie metriky (maximum tepu nie je `danger`),
-  * najmensie pismo 10, japoncina a cinstina maju vlastne pismo,
-  * zastavena appka nema cervenu bodku, nevyplneny posuvnik nevyzera ako 0.
+Guarded:
+  * token contrast in BOTH themes (WCAG): content text >= 4.5:1, a
+    secondary button's border >= 3:1, a divider line >= 1.5:1, a switch
+    that is on differs from one that is off by at least 3:1,
+  * one switch for the app (`ui_kit.switch`) - no bare `ctk.CTkSwitch(`
+    outside ui_kit, on = `accent`,
+  * four kinds of button (`ui_kit.button`) and their colours, natural width,
+  * a 1 px divider line really is visible (`ui_kit.linka` has `bg_color`),
+  * the side panel highlights the real page even when navigating from code,
+    ⚙ by "Heart rate in game" leads to General, to the heart-rate panel
+    section,
+  * dialogs are centred and fit a low screen (1366x768 at 150 %),
+  * a number carries the colour of the state, not of the metric (the
+    heart-rate maximum is not `danger`),
+  * the smallest font is 10, Japanese and Chinese have their own font,
+  * a stopped app has no red dot, an unfilled slider does not look like 0.
 
-Vsetko bez skutocneho okna - Tk triedy sa nahradzaju zapisovacmi atrapami.
+All without a real window - Tk classes are replaced by recording dummies.
 """
 import ast
 import os
@@ -58,14 +60,14 @@ def _app():
 
 
 class _Zapis:
-    """Atrapa Tk triedy: zapamata si argumenty, nic nekresli."""
+    """A Tk class dummy: remembers the arguments, draws nothing."""
 
     def __init__(self, *args, **kw):
         self.args, self.kw = args, kw
 
 
 # --------------------------------------------------------------------------
-# Kontrast tokenov
+# Token contrast
 # --------------------------------------------------------------------------
 
 @pytest.mark.parametrize("tema", TEMY)
@@ -74,14 +76,14 @@ def test_obsahovy_text_je_citatelny(tema):
     for token in ("text", "text_dim", "text_faint"):
         for pozadie in ("bg", "surface"):
             assert _kontrast(pal[token], pal[pozadie]) >= 4.5, (tema, token, pozadie)
-    # aj na zvyraznenom riadku (hover, vybrana relacia) aspon 4,3:1
+    # even on a highlighted row (hover, selected session) at least 4.3:1
     assert _kontrast(pal["text_faint"], pal["surface_alt"]) >= 4.3
 
 
 @pytest.mark.parametrize("tema", TEMY)
 def test_hierarchia_textu_ostala(tema):
-    """Svetlejsi `text_faint` nesmie predbehnut `text_dim` - poradie
-    text > text_dim > text_faint plati dalej."""
+    """The lighter `text_faint` must not overtake `text_dim` - the order
+    text > text_dim > text_faint still holds."""
     pal = theme.tokens(tema)
     assert _lum(pal["text"]) > _lum(pal["text_dim"]) > _lum(pal["text_faint"])
 
@@ -92,10 +94,10 @@ def test_ovladace_a_linky_maju_kontrast(tema):
     assert _kontrast(pal["control_border"], pal["surface"]) >= 3.0
     assert _kontrast(pal["rule"], pal["surface"]) >= 1.5
     assert _kontrast(pal["danger_text"], pal["surface"]) >= 4.5
-    # zapnuty prepinac (accent) proti vypnutemu (switch_off): do 0.2.2
-    # mal zapnuty `accent2` a kontrast 1,07:1
+    # a switch that is on (accent) against one that is off (switch_off): up to
+    # 0.3 the on state had `accent2` and a contrast of 1.07:1
     assert _kontrast(pal["accent"], pal["switch_off"]) >= 3.0
-    # tmavy text na hlavnom tlacidle
+    # dark text on the primary button
     assert _kontrast(pal["bg"], pal["accent"]) >= 4.5
 
 
@@ -117,7 +119,7 @@ def test_nove_tokeny_su_v_oboch_temach_a_v_mape_prefarbenia():
 
 
 # --------------------------------------------------------------------------
-# Jeden prepinac, styri tlacidla, viditelna linka
+# One switch, four buttons, a visible line
 # --------------------------------------------------------------------------
 
 def test_ziadny_holy_ctkswitch_mimo_ui_kit():
@@ -178,8 +180,9 @@ def test_tlacidlo_ma_prirodzenu_sirku(monkeypatch):
 
 
 def test_linka_je_vidno(monkeypatch):
-    """CTkFrame vysoky 1 px kreslil obdlznik s nulovou vyskou na platne vo
-    farbe rodica - linka nebola vidno vobec. `bg_color` to opravi."""
+    """A CTkFrame 1 px high drew a rectangle of zero height on a canvas in
+    the parent's colour - the line was not visible at all. `bg_color`
+    fixes that."""
     monkeypatch.setattr(ui_kit.ctk, "CTkFrame", _Zapis)
     pal = theme.tokens(theme.ZEN)
     linka = ui_kit.linka(None, pal)
@@ -188,7 +191,7 @@ def test_linka_je_vidno(monkeypatch):
 
 
 def test_deliace_linky_appky_idu_cez_linka():
-    """Ziadna 1 px CTkFrame bez `bg_color` (by bola neviditelna)."""
+    """No 1 px CTkFrame without `bg_color` (it would be invisible)."""
     vzor = re.compile(r'ctk\.CTkFrame\([^)]*height=1[,)]')
     for meno in subory_appky() + ["ui_dialogs.py", "ui_kit.py"]:
         for m in vzor.finditer(zdroj_suboru(meno)):
@@ -225,13 +228,13 @@ def test_vizualy_v_hre_kreslia_obrazok_z_hry_nie_emoji():
     karta = zdroj_suboru("ui_dialogs.py")
     i = karta.index("class SlotCard")
     slot = karta[i:karta.index("\nclass ", i + 1)]
-    # slot 2 je v hre ruka ("release"), nie oko z karty Sprievodcu
+    # in-game slot 2 is the hand ("release"), not the eye from the Guide card
     assert '("grounding", "jaw", "release", "breath")' in slot
     assert "ui_kit.SlotIcon(col0, pal, vizualy[self.index]" in slot
 
 
 # --------------------------------------------------------------------------
-# Navigacia
+# Navigation
 # --------------------------------------------------------------------------
 
 class _Riadok:
@@ -293,7 +296,7 @@ def test_karty_nastaveni_su_text_s_linkou_nie_chipy():
 
 
 # --------------------------------------------------------------------------
-# Dialogy: stred a na obrazovke
+# Dialogs: centred and on screen
 # --------------------------------------------------------------------------
 
 class _Tracker:
@@ -315,7 +318,7 @@ class _Top:
         self.min = (w, h)
 
 
-# 1366x768 pri 150 %, lista uloh 72 px; appka uz zmensena na 0,7
+# 1366x768 at 150 %, a 72 px taskbar; the app already scaled down to 0.7
 NIZKA_150 = display.Monitor(0, 0, 1366, 768, primary=True,
                             work=(0, 0, 1366, 696), dpi=144)
 
@@ -328,7 +331,7 @@ def test_parovaci_dialog_sa_zmesti_na_nizku_obrazovku(monkeypatch):
     mierka = 1.5 * 0.7
     assert round(h * mierka) <= NIZKA_150.work_height - display.WINDOW_FIT_MARGIN_PX
     assert w == 560
-    # minsize nikdy vacsi nez to, co sa zmesti - inak by Tk okno natiahol
+    # minsize never bigger than what fits - else Tk would stretch the window
     assert top.min[1] <= h
     rozmer, x, y = top.geo.split("+")
     assert rozmer == f"{w}x{h}"
@@ -369,8 +372,9 @@ def test_dialog_bez_rozmeru_sa_vycentruje():
 def test_zmazanie_historie_sa_potvrdzuje_v_okne_appky():
     telo = zdroj_metody("delete_history")
     assert "messagebox.askyesno(" not in telo
-    # 0.2.2 davka 4: otazka ma tri volby (Zmazat / Najprv exportovat / Zrusit)
-    # a je v `_spytaj_zmazanie` - `ui_kit.choose`, bez neho `ui_kit.confirm`.
+    # 0.3 batch 4: the question has three choices (Delete / Export first /
+    # Cancel) and lives in `_spytaj_zmazanie` - `ui_kit.choose`, without it
+    # `ui_kit.confirm`.
     assert "self._spytaj_zmazanie(" in telo
     otazka = zdroj_metody("_spytaj_zmazanie")
     assert '("delete", tr("data.delete.btn"), "danger")' in otazka
@@ -379,7 +383,7 @@ def test_zmazanie_historie_sa_potvrdzuje_v_okne_appky():
 
 
 # --------------------------------------------------------------------------
-# Farba, pismo, stav
+# Colour, font, state
 # --------------------------------------------------------------------------
 
 def test_cislo_nesie_farbu_stavu_nie_metriky():
@@ -448,7 +452,7 @@ def test_karty_bez_tepu_ukazuju_pomlcku_nie_nulu():
                               _history_cached=lambda: [])
     for stat in ("baseline", "hrr", "over", "avg", "max", "peak"):
         assert D._dashboard_stat_value(a, stat)[0] == "—", stat
-    # nula pripomienok je skutocna hodnota, nie "nevieme"
+    # zero cues is a real value, not "we don't know"
     assert D._dashboard_stat_value(a, "breath")[0] == "0"
 
 
@@ -470,8 +474,8 @@ def test_jas_fotky_na_dnes_ide_za_sledovanim():
 
 
 def test_okraj_stranky_je_jeden():
-    """Stranky, rad kariet aj dychajuci pas zacinaju na `PAGE_GUTTER`, a
-    posuvana plocha neodsadzuje obsah o svoj radius."""
+    """Pages, the tab row and the breathing bar all start at `PAGE_GUTTER`,
+    and the scrolling area does not indent the content by its radius."""
     assert ui_kit.PAGE_GUTTER == 24
     for meno in subory_appky():
         src = zdroj_suboru(meno)

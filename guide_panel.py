@@ -1,9 +1,9 @@
-"""Panel 'Sprievodca / Čo je za tým' - vysuvne okno s kartami.
+"""Panel 'Guide / What's behind it' - a slide-out window with cards.
 
-Kazda karta ma docasny vektorovy nacrt vykresleny cez tk.Canvas (jednoduha
-minimalisticka geometria). Ak v priecinku assets/guides/ existuje
-<id>.png, pouzije sa namiesto nacrtu - takto sa da neskor bez zmeny kodu
-nahradit za hotove ilustracie od artistu.
+Each card has a temporary vector sketch drawn with tk.Canvas (simple minimalist
+geometry). If <id>.png exists in the assets/guides/ folder, it is used instead
+of the sketch - this way it can later be replaced with finished illustrations
+from an artist without changing the code.
 """
 
 import math
@@ -93,16 +93,16 @@ def _draw_breath(c, pal, s):
 
 
 def _draw_philosophy(c, pal, s):
-    # rieka
+    # river
     for i, y in enumerate((s * 0.62, s * 0.68, s * 0.74)):
         c.create_line(10, y, s - 10, y, fill=pal["text_faint"], width=1, dash=(2, 4))
-    # plt
+    # raft
     raft_y = s * 0.56
     for i in range(5):
         x = 22 + i * 22
         c.create_line(x, raft_y - 16, x, raft_y, fill=pal["accent2"], width=3)
     c.create_line(20, raft_y - 16, s - 20, raft_y - 16, fill=pal["accent"], width=2)
-    # mesiac + prst ukazujuci nan
+    # moon + a finger pointing at it
     c.create_oval(s - 40, 14, s - 16, 38, outline=pal["accent"], width=2)
     c.create_line(24, 44, s - 46, 22, fill=pal["text_dim"], width=2, arrow=tk.LAST)
     c.create_text(s / 2, s - 12, text=tr("guide.philosophy.sketch_caption"),
@@ -119,18 +119,20 @@ SKETCHES = {
 
 
 def sketch_or_image(parent, pal, card_id, size=SKETCH_SIZE):
-    """Obrazok ku karte Sprievodcu.
+    """Picture for a Guide card.
 
-    Poradie zdrojov:
-      1. REALNY PIKTOGRAM z in-game overlay (hud_paint.render_slot_icon) -
-         pre karty, ktore zodpovedaju vizualu slotu (tazisko/celust/dych).
-         Toto je to, co hrac reálne uvidi v hre, takze Sprievodca ukazuje
-         presne ten obrazok, nie ilustracny nacrt (poziadavka pouzivatela).
-      2. PNG z assets/guides/<id>.png ak existuje (rucne dodany obrazok).
-      3. vektorovy nacrt ako posledna zaloha (karty bez vlastneho piktogramu,
-         napr. "periphery", "philosophy").
+    Order of sources:
+      1. THE REAL PICTOGRAM from the in-game overlay
+         (hud_paint.render_slot_icon) - for cards that match a slot's visual
+         (centre of gravity/jaw/breath). This is what the player really sees in
+         the game, so the Guide shows exactly that picture, not an illustrative
+         sketch (user's request).
+      2. PNG from assets/guides/<id>.png if it exists (a hand-supplied
+         picture).
+      3. vector sketch as the last fallback (cards without their own pictogram,
+         e.g. "periphery", "philosophy").
     """
-    # 1. realny piktogram z overlay
+    # 1. real pictogram from the overlay
     icon_map = {"grounding": "grounding", "jaw": "jaw", "breath": "breath",
                 "release": "release", "periphery": "periphery"}
     icon_name = icon_map.get(card_id)
@@ -141,23 +143,24 @@ def sketch_or_image(parent, pal, card_id, size=SKETCH_SIZE):
             img = hud_paint.render_slot_icon(icon_name, size, style)
             photo = ctk.CTkImage(light_image=img, dark_image=img, size=(size, size))
             label = ctk.CTkLabel(parent, image=photo, text="")
-            label.image = photo   # drz referenciu, inak GC zmaze obrazok
+            label.image = photo   # keep a reference, otherwise GC deletes the image
             return label
         except Exception:
             pass
 
-    # 1b. ZNACKA APPKY pre kartu o filozofii
+    # 1b. APP BADGE for the philosophy card
     #
-    # Kreslil sa tu vektorovy nacrt plte, rieky a mesiaca so sipkou ("prst
-    # ukazuje na mesiac"). Vedla stetcovych piktogramov ostatnych kariet
-    # posobil ako obrazok z inej appky: tenke ciary na Canvase, iny raster,
-    # iny jazyk. Znacka (enso + 残) povie to iste priamejsie - appka je ten
-    # prst, nie mesiac - a kresli sa tou istou cestou ako zvysok ikon
-    # (`hud_paint`, rovnaka `Style`, rovnaky stetec).
+    # A vector sketch of a raft, a river and a moon with an arrow ("a finger
+    # pointing at the moon") used to be drawn here. Next to the brush
+    # pictograms of the other cards it looked like a picture from another app:
+    # thin lines on a Canvas, a different raster, a different language. The
+    # badge (enso + 残) says the same thing more directly - the app is the
+    # finger, not the moon - and is drawn the same way as the rest of the icons
+    # (`hud_paint`, the same `Style`, the same brush).
     #
-    # `color=style.accent`: enso v bocnom paneli je SPINAC a farbou hlasi
-    # stav (zelena bezi / cervena stoji). Tu je to logo, ziadny stav
-    # nesleduje - cervena znacka v prirucke by sa citala ako chyba.
+    # `color=style.accent`: the enso in the sidebar is a SWITCH and reports the
+    # state by colour (green running / red stopped). Here it is a logo, it does
+    # not watch any state - a red badge in the handbook would read as an error.
     if card_id == "philosophy":
         try:
             import hud_paint
@@ -165,12 +168,12 @@ def sketch_or_image(parent, pal, card_id, size=SKETCH_SIZE):
             img = hud_paint.render_enso(size, style, color=style.accent)
             photo = ctk.CTkImage(light_image=img, dark_image=img, size=(size, size))
             label = ctk.CTkLabel(parent, image=photo, text="")
-            label.image = photo   # drz referenciu, inak GC zmaze obrazok
+            label.image = photo   # keep a reference, otherwise GC deletes the image
             return label
         except Exception:
             pass
 
-    # 2. rucne dodane PNG
+    # 2. hand-supplied PNG
     png_path = os.path.join(guides_dir(), f"{card_id}.png")
     if os.path.exists(png_path):
         try:
@@ -178,12 +181,12 @@ def sketch_or_image(parent, pal, card_id, size=SKETCH_SIZE):
             img = PILImage.open(png_path).convert("RGBA").resize((size, size))
             photo = ctk.CTkImage(light_image=img, dark_image=img, size=(size, size))
             label = ctk.CTkLabel(parent, image=photo, text="")
-            label.image = photo  # drz referenciu, inak GC zmaze obrazok
+            label.image = photo  # keep a reference, otherwise GC deletes the image
             return label
         except Exception:
             pass
 
-    # 3. vektorovy nacrt (zaloha)
+    # 3. vector sketch (fallback)
     canvas = tk.Canvas(parent, width=size, height=size, bg=pal["surface_alt"],
                        highlightthickness=1, highlightbackground=pal["card_border"])
     drawer = SKETCHES.get(card_id)
@@ -196,22 +199,22 @@ def sketch_or_image(parent, pal, card_id, size=SKETCH_SIZE):
 
 
 class _GuideContent:
-    """Obsah Sprievodcu (karty s piktogramami a vysvetleniami) - da sa
-    vlozit do samostatneho okna aj do stranky v lavom menu.
+    """Guide content (cards with pictograms and explanations) - it can be put
+    into a separate window as well as into a page in the left menu.
 
-    Predtym bol tento obsah zviazany na CTkToplevel okno. Pouzivatel chcel
-    Sprievodcu ako polozku v lavej navigacii, nie ako tlacidlo/okno - preto
-    je logika kariet oddelena od okna a da sa vlozit kamkolvek.
+    This content used to be tied to a CTkToplevel window. The user wanted the
+    Guide as an item in the left navigation, not as a button/window - that is
+    why the card logic is separated from the window and can be put anywhere.
     """
 
     def __init__(self, parent, pal, card_ids=None, expand_first=True,
                  wraplength=380, medical_note=True):
-        """`card_ids` obmedzi, ktore karty sa postavia.
+        """`card_ids` limits which cards are built.
 
-        Od 18. 9. stoji vysvetlivka ku kazdej hlaske PRIAMO v jej karte
-        (`ui_dialogs.SlotCard`), takze na spodok stranky ostava uz len
-        filozofia. Samostatne okno `GuidePanel` ich chce stale vsetkych pat,
-        preto je to parameter a nie natvrdo zapisany zoznam.
+        Since 18. 9. the explanation for each cue sits RIGHT IN its card
+        (`ui_dialogs.SlotCard`), so only the philosophy is left at the bottom
+        of the page. The separate `GuidePanel` window still wants all five,
+        which is why this is a parameter and not a hard-coded list.
         """
         self.pal = pal
         self._wraplength = wraplength
@@ -263,12 +266,13 @@ class _GuideContent:
 
 
 def not_medical_note(parent, pal, wraplength=380):
-    """Ticha veta: vseobecne tipy, nie lekarska rada; nie zdravotnicka pomocka.
+    """Quiet sentence: general tips, not medical advice; not a medical device.
 
-    Septat, nie kricat - ten isty styl ako poznamka pod postrehmi v Historii
-    (ui 10, text_faint), ziadny ramik ani vystrazna farba. Na kazdej obrazovke
-    najviac raz: v hlavicke okna Sprievodca a pod dychacimi technikami v karte
-    dychovej hlasky (box breathing ma zadrze dychu). Do hry nejde nikdy.
+    Whisper, not shout - the same style as the note under the insights in
+    History (ui 10, text_faint), no frame and no warning colour. At most once
+    on each screen: in the header of the Guide window and under the breathing
+    techniques in the breath cue card (box breathing has a breath hold). Never
+    goes into the game.
     """
     label = ctk.CTkLabel(parent, text=tr("guide.not_medical_note"),
                          font=ui_kit.ui(10), text_color=pal["text_faint"],
@@ -279,15 +283,16 @@ def not_medical_note(parent, pal, wraplength=380):
 
 def populate_card_body(body, card, pal, wraplength=380, sketch_side="right",
                        sketch_size=SKETCH_SIZE, medical_note=True):
-    """Vykresli obsah jednej karty Sprievodcu do lubovolneho ramca.
+    """Draws the content of one Guide card into any frame.
 
-    Vytiahnute z `_GuideContent`, lebo ten isty obsah teraz kresli aj karta
-    hlasky. Keby sa to kopirovalo, jedno z tych dvoch miest by sa pri prvej
-    zmene textu rozislo - a nikto by si nevsimol ktore.
+    Pulled out of `_GuideContent`, because the cue card now draws the same
+    content too. If it were copied, one of those two places would drift apart
+    on the first text change - and nobody would notice which one.
 
-    `sketch_side` je tu preto, ze karta hlasky je siroka cez cele okno.
-    Nacrt pri pravom okraji by od textu odletel o pol metra a prestal by s
-    nim tvorit jednu vec; v uzkom paneli Sprievodcu vpravo sedi spravne.
+    `sketch_side` is here because the cue card is as wide as the whole window.
+    A sketch at the right edge would fly half a metre away from the text and
+    stop forming one thing with it; in the narrow Guide panel it sits right on
+    the right.
     """
     row = ctk.CTkFrame(body, fg_color="transparent")
     row.pack(fill="x")
@@ -315,8 +320,9 @@ def populate_card_body(body, card, pal, wraplength=380, sketch_side="right",
                         justify="left", wraplength=wraplength).pack(fill="x", pady=(9, 0))
             block(text_col, tr("guide.block.steps_title"), tech["steps"])
             block(text_col, tr("guide.block.why_title"), tech["why"], dim=True)
-        # Dychacie techniky maju zadrze. Okno Sprievodca to uz povedalo v
-        # hlavicke nad scrollom - druhy raz na tej istej obrazovke netreba.
+        # The breathing techniques have breath holds. The Guide window already
+        # said so in the header above the scroll - a second time on the same
+        # screen is not needed.
         if medical_note:
             not_medical_note(text_col, pal, wraplength)
     elif card.get("custom_blocks") is not None:
@@ -326,8 +332,9 @@ def populate_card_body(body, card, pal, wraplength=380, sketch_side="right",
             ctk.CTkLabel(text_col, text=tr("guide.philosophy.sources_title"),
                         font=ui_kit.ui(11, "bold"), text_color=pal["accent"],
                         anchor="w", justify="left").pack(fill="x", pady=(9, 0))
-            # Tri priklady + veta, kde je cely zoznam (ZDROJE.md) - ten isty
-            # text ako panel "Ako to vzniklo" v Historii (guide_content).
+            # Three examples + a sentence saying where the full list is
+            # (ZDROJE.md) - the same text as the "How it came about" panel in
+            # History (guide_content).
             if card.get("sources_intro"):
                 ctk.CTkLabel(text_col, text=card["sources_intro"], font=ui_kit.ui(11),
                             text_color=pal["text_dim"], anchor="w", justify="left",
@@ -353,15 +360,15 @@ PHILOSOPHY_ID = "philosophy"
 
 
 def card_for_slot(index):
-    """Karta Sprievodcu, ktora patri k hlaske `index` - alebo None.
+    """The Guide card that belongs to cue `index` - or None.
 
-    Prve styri karty (`guide_content.GUIDE_CARD_IDS`) su presne tie styri
-    somaticke vizualy, ktore appka kresli do hry, a sedia na sloty 0-3 v
-    tom istom poradi (`measure.CATEGORIES`). Piata karta je filozofia -
-    tá nepatri ziadnej hlaske a sedi na spodku stranky.
+    The first four cards (`guide_content.GUIDE_CARD_IDS`) are exactly the four
+    somatic visuals the app draws into the game, and they map to slots 0-3 in
+    the same order (`measure.CATEGORIES`). The fifth card is the philosophy -
+    it belongs to no cue and sits at the bottom of the page.
 
-    Slot, ktory si pridal pouzivatel (index 4+), vysvetlivku nema; vracia
-    sa None a karta sa jednoducho neda rozbalit.
+    A slot the user added (index 4+) has no explanation; None is returned and
+    the card simply cannot be expanded.
     """
     try:
         index = int(index)
@@ -374,33 +381,36 @@ def card_for_slot(index):
 
 
 def build_guide_into(parent, pal):
-    """Filozofia a hranice nastroja - posledny blok stranky Hlasky.
+    """Philosophy and the limits of the tool - the last block of the Cues page.
 
-    ZIADNY VLASTNY SCROLL. Predchodca (`build_guide_page`) si vnutri robil
-    dalsi `CTkScrollableFrame`, co bolo v poriadku, kym bol samostatnou
-    strankou - odkedy sedi pod hlaskami, znamenalo to dva posuvniky vedla
-    seba a obsah zovraty do pasu vysokeho par centimetrov.
+    NO OWN SCROLL. The predecessor (`build_guide_page`) made another
+    `CTkScrollableFrame` inside itself, which was fine while it was a separate
+    page - since it sits under the cues, that meant two scrollbars side by side
+    and the content squeezed into a strip a few centimetres tall.
 
-    Styri vysvetlivky k hlaskam tu uz NIE SU: kazda sedi vo svojej karte
-    hlasky, lebo "co sa deje v tele" clovek hlada pri tej vete, ktoru pocuje,
-    nie o pol stranky nizsie. Ostala filozofia a zdroje - jedina cast, ktora
-    nepatri ziadnej konkretnej hlaske.
+    The four explanations for the cues are NO LONGER here: each sits in its own
+    cue card, because "what is happening in the body" is something you look for
+    next to the sentence you hear, not half a page lower. What is left is the
+    philosophy and the sources - the only part that belongs to no particular
+    cue.
 
-    Zacina ZABALENA. Je to desat odkazov na studie; kto ich chce, rozbali si
-    ich, a kto nie, nema pod hlaskami vysiet pol metra textu.
+    It starts COLLAPSED. It is ten links to studies; whoever wants them expands
+    them, and whoever does not should not have half a metre of text hanging
+    under the cues.
     """
-    # Sirsie zalomenie nez v uzkom okne Sprievodcu: tu ide o kartu cez celu
-    # sirku stranky a text zalomeny na 380 px by nechal vedla seba pol metra
-    # prazdna.
+    # A wider wrap than in the narrow Guide window: this is a card across the
+    # full page width and text wrapped at 380 px would leave half a metre of
+    # empty space next to it.
     return _GuideContent(parent, pal, card_ids=[PHILOSOPHY_ID],
                          expand_first=False, wraplength=620)
 
 
 class GuidePanel:
-    """Nemodalne okno so 'Sprievodca / Čo je za tým' - da sa drzat
-    otvorene popri hlavnom okne a prezerat si mechaniku ku kazdemu triggeru.
+    """Non-modal window with 'Guide / What's behind it' - it can be kept
+    open next to the main window to browse the mechanics of each trigger.
 
-    Obsah kariet je v _GuideContent (zdielany so strankou v lavom menu)."""
+    The card content is in _GuideContent (shared with the page in the left
+    menu)."""
 
     def __init__(self, app):
         self.app = app
@@ -409,15 +419,17 @@ class GuidePanel:
         self.top = ctk.CTkToplevel(app.root)
         self.top.title(tr("guide.window_title"))
         self.top.configure(fg_color=pal["bg"])
-        # Na stred pracovnej plochy a cely na nej (okno bez ramu OS
-        # neumiestni - otvaralo sa v rohu) - viz `ui_kit.umiestni_dialog`.
+        # In the centre of the work area and fully on it (the OS does not place
+        # a frameless window - it opened in the corner) - see
+        # `ui_kit.umiestni_dialog`.
         ui_kit.umiestni_dialog(self.top, app.root, 720, 680,
                                min_width=560, min_height=420)
         self.top.transient(app.root)
 
-        # Vlastna listka namiesto OS ramu - hlavne okno appky OS ram nema,
-        # tak ani "Sprievodca" nema mat navrchu Windows titulok (to bola
-        # jedna z nahlasenych chyb). Obsah ide do chrome.body.
+        # Own title bar instead of the OS frame - the main app window has no OS
+        # frame, so "Sprievodca" (Guide) should not have a Windows title on top
+        # either (that was one of the reported bugs). The content goes into
+        # chrome.body.
         chrome = ui_kit.DialogChrome(self.top, pal, tr("guide.window_title"),
                                      on_close=self.top.destroy)
         root = chrome.body
@@ -430,8 +442,9 @@ class GuidePanel:
         ctk.CTkLabel(header, text=tr("guide.panel_subtitle"),
                     font=ui_kit.ui(11), text_color=pal["text_dim"],
                     wraplength=650, justify="left").pack(anchor="w", pady=(4, 0))
-        # 500, nie 650 ako podtitulok: okno ide zuzit na 560 (minsize) a
-        # hlavicka ma potom ~516 px - pri 650 by sa veta orezala v strede.
+        # 500, not 650 like the subtitle: the window can be narrowed to 560
+        # (minsize) and the header then has ~516 px - at 650 the sentence would
+        # be cut off in the middle.
         not_medical_note(header, pal, wraplength=500)
 
         scroll = ctk.CTkScrollableFrame(

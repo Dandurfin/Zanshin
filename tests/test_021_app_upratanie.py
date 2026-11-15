@@ -1,11 +1,13 @@
 # -*- coding: utf-8 -*-
-"""0.2.1: upratanie po review a počítadlo v denníku len z Tk vlákna.
+"""0.2.1: clean-up after review; the journal counter only from the Tk thread.
 
-  * `_deliver` beží na vlastnom vlákne; `session_counts` mení LEN Tk vlákno
-    (cez `ui_call`) - `start_listening` ho medzitým vymieňa za nový slovník,
-  * mŕtve importy (`random` v app.py, `os` v make_icon.py) sú preč,
-  * main.py menuje vzhľady tak, ako sa volajú (Sumi / Aizome),
-  * Dandurf.spec vysvetľuje vypnuté UPX raz, nie dvakrát rovnakým textom.
+  * `_deliver` runs on its own thread; `session_counts` is changed ONLY by
+    the Tk thread (via `ui_call`) - `start_listening` meanwhile swaps it
+    for a new dict,
+  * dead imports (`random` in app.py, `os` in make_icon.py) are gone,
+  * main.py names the looks the way they are called (Sumi / Aizome),
+  * Dandurf.spec explains the disabled UPX once, not twice with the same
+    text.
 """
 import ast
 import os
@@ -39,7 +41,7 @@ def _pouzite_mena(meno):
 
 
 # --------------------------------------------------------------------------
-# `_deliver`: počítadlo cez `ui_call`
+# `_deliver`: the counter via `ui_call`
 # --------------------------------------------------------------------------
 
 def _dorucenie(source):
@@ -61,8 +63,8 @@ def test_deliver_nemeni_pocitadlo_z_cudzieho_vlakna():
     assert a.session_counts == {0: 0, 1: 0, 2: 0, 3: 0}, \
         "vlakno `_deliver` nesmie siahat na `session_counts`"
     assert len(fronta) == 1
-    # `start_listening` medzitym slovnik vymeni - prirastok ide do toho,
-    # ktory plati, ked sa to vykona na Tk vlakne
+    # `start_listening` swaps the dict in the meantime - the increment goes
+    # into the one that is current when it runs on the Tk thread
     a.session_counts = {0: 0, 1: 0, 2: 0, 3: 0}
     fronta.pop()()
     assert a.session_counts == {0: 0, 1: 0, 2: 1, 3: 0}
@@ -77,8 +79,8 @@ def test_deliver_test_ani_hud_nerata():
 
 
 def test_v_deliver_nie_je_priamy_zapis_pocitadla():
-    """Priradenie do `session_counts` smie byť len vo vnorenej funkcii,
-    ktorú dostane `ui_call` - nie v tele `_deliver` samom."""
+    """Assignment to `session_counts` may only be in the nested function
+    that `ui_call` receives - not in the body of `_deliver` itself."""
     fn = next(u for u in ast.walk(strom_appky())
               if isinstance(u, ast.FunctionDef) and u.name == "_deliver")
     vnorene = [u for u in ast.walk(fn)
@@ -92,11 +94,11 @@ def test_v_deliver_nie_je_priamy_zapis_pocitadla():
 
 
 # --------------------------------------------------------------------------
-# Mŕtve importy
+# Dead imports
 # --------------------------------------------------------------------------
 
 def test_app_neimportuje_random():
-    # cela appka: app.py aj mixiny app_*.py
+    # the whole app: app.py and the app_*.py mixins
     for meno in subory_appky():
         assert "random" not in _importy(meno), meno
         assert "random" not in _pouzite_mena(meno), meno
@@ -108,15 +110,15 @@ def test_make_icon_neimportuje_os():
 
 
 def test_note_cue_ostava_lebo_sa_vola():
-    """`_note_cue` je zámerný prázdny háčik - volá ho `fire_slot` a stráži ho
-    tests/test_measure.py. Upratanie ho preto nechalo tak."""
+    """`_note_cue` is a deliberate empty hook - `fire_slot` calls it and
+    tests/test_measure.py guards it. So the clean-up left it alone."""
     src = zdroj_appky()
     assert "def _note_cue(" in src
     assert "self._note_cue(" in src
 
 
 # --------------------------------------------------------------------------
-# Texty v kóde
+# Texts in the code
 # --------------------------------------------------------------------------
 
 def test_main_menuje_vzhlady_ako_sa_volaju():
@@ -129,5 +131,5 @@ def test_spec_vysvetluje_upx_raz():
     spec = _zdroj("Dandurf.spec")
     nastavenia = re.findall(r"^\s*upx=(\w+),", spec, re.M)
     assert nastavenia == ["False", "False"], "UPX musi ostat vypnuty v EXE aj COLLECT"
-    assert spec.count("signatura baleneho malveru") == 1
-    assert spec.count("# UPX VYPNUTY") == 2
+    assert spec.count("the signature of packed malware") == 1
+    assert spec.count("# UPX OFF") == 2

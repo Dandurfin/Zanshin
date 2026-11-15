@@ -1,13 +1,16 @@
 # -*- coding: utf-8 -*-
-"""Historia citatelne (0.2.2, davka 4 auditu UX).
+"""History made readable (0.3, UX audit batch 4).
 
-  * cisla vo vetach podla jazyka appky (`i18n.cislo`): desatinna ciarka v
-    sk cs de fr es pt ru bg, bodka v en ja zh, skutocny minus U+2212,
-  * mriezka Pravidelnost: najviac 26 tyzdnov od prvej relacie, mesiace nad
-    stlpcami a dni vlavo (pondelok prvy) z i18n, nie z Windowsu,
-  * zataz vsade ako "x/100", koniec osi dlhej relacie ako "2 h 18 min".
+  * numbers in sentences by the app's language (`i18n.cislo`): decimal
+    comma in sk cs de fr es pt ru bg, point in en ja zh, a real minus
+    U+2212,
+  * the Consistency grid: at most 26 weeks from the first session, months
+    above the columns and days on the left (Monday first) from i18n, not
+    from Windows,
+  * load everywhere as "x/100", the axis end of a long session as
+    "2 h 18 min".
 
-Synteticke data, bez okna.
+Synthetic data, no window.
 """
 import os
 import sys
@@ -162,7 +165,7 @@ def test_graf_ucinnosti_pise_cislo_podla_jazyka():
 
 
 # --------------------------------------------------------------------------
-# Pravidelnost
+# Consistency
 # --------------------------------------------------------------------------
 
 def test_mesiace_a_dni_vo_vsetkych_jazykoch():
@@ -172,7 +175,7 @@ def test_mesiace_a_dni_vo_vsetkych_jazykoch():
         assert len(mesiace[jazyk].split()) == 12, jazyk
         assert len(dni[jazyk].split()) == 7, jazyk
         assert len(set(dni[jazyk].split())) == 7, jazyk
-    # pondelok prvy, nie nedela
+    # Monday first, not Sunday
     assert dni["sk"].split()[0] == "po" and dni["en"].split()[0] == "Mon"
     assert dni["de"].split()[0] == "Mo" and dni["ja"].split()[0] == "月"
     assert mesiace["sk"].split()[10] == "nov"
@@ -187,7 +190,7 @@ def test_popisok_poctu_dni_nesie_tyzdne():
 
 
 def test_stlpce_mesiacov():
-    prvy = date(2026, 8, 3)              # pondelok
+    prvy = date(2026, 8, 3)              # Monday
     stlpce = ui_kit.DayGrid.stlpce_mesiacov(prvy, 0, 16)
     assert stlpce[0] == (0, 8), "prvy stlpec nesie svoj mesiac"
     for stlpec, mesiac in stlpce[1:]:
@@ -197,8 +200,8 @@ def test_stlpce_mesiacov():
 
 
 def test_prvy_stlpec_bez_popisku_ked_by_sa_prekryl():
-    # 27. 7. 2026 je pondelok - august zacina uz v prvom stlpci, jul by sa
-    # s nim prekryl
+    # 27. 7. 2026 is a Monday - August already starts in the first column,
+    # July would overlap with it
     stlpce = ui_kit.DayGrid.stlpce_mesiacov(date(2026, 7, 27), 0, 8)
     assert stlpce[0] == (0, 8)
     assert [m for _s, m in stlpce].count(7) == 0
@@ -250,7 +253,7 @@ def test_mriezka_dostane_mesiace_dni_a_najviac_pol_roka(sk):
 
 
 # --------------------------------------------------------------------------
-# Zataz "x/100" a dlzky
+# Load "x/100" and lengths
 # --------------------------------------------------------------------------
 
 def test_zataz_ako_x_zo_100():

@@ -1,21 +1,22 @@
 # -*- coding: utf-8 -*-
-"""Tlacidla a rozbalovacky po davke 4b auditu UX (0.2.2).
+"""Buttons and dropdowns after batch 4b of the UX audit (0.3).
 
-Strazi sa:
-  * bez emoji na tlacidle "Sparovat teraz" v uvode a v rozbalovacke zvuku
-    pripomienky ("Automaticky", "Vlastny subor: ...") - vo vsetkych 11
-    jazykoch; vlastny subor sa dalej zobrazuje aj vybera spravne,
-  * chip je len pre externe odkazy (↗) - "Ukazat IP" je vedlajsie tlacidlo
-    so stalou sirkou pre oba texty,
-  * vyber hlasu v okne pripomienky je `ui_kit.option_menu`, tlacidla okien
-    (dotaznik po hre, uvod, prehliadka) su z `ui_kit.button`,
-  * rozbalovacka hlasu v Nastaveniach sa pri novych hodnotach rozsiri
-    (dlhe mena hlasov Windowsu sa neorezu),
-  * VYPNUTE tlacidlo ma jeden vzhlad pre vsetky druhy (text `text_faint`,
-    ram `control_border`) a po zapnuti sa vrati povodny - aj ked sa medzitym
-    prepla tema.
+Guarded:
+  * no emoji on the "Pair a watch now" button in the introduction and in
+    the cue sound dropdown ("Automatic", "Custom file: ...") - in all 11
+    languages; a custom file is still shown and selected correctly,
+  * the chip is only for external links (↗) - "Show IP" is a secondary
+    button with a fixed width for both texts,
+  * the voice choice in the cue window is `ui_kit.option_menu`, the window
+    buttons (the after-game questionnaire, introduction, tour) come from
+    `ui_kit.button`,
+  * the voice dropdown in Settings widens with new values (long Windows
+    voice names do not get clipped),
+  * a DISABLED button has one look for all kinds (text `text_faint`, border
+    `control_border`) and gets its original look back once enabled - even
+    if the theme was switched in the meantime.
 
-Synteticke data; skutocne Tk len so schovanym oknom.
+Synthetic data; real Tk only with a hidden window.
 """
 import ast
 import os
@@ -74,7 +75,7 @@ def _metoda(subor, trieda, meno):
 
 
 # --------------------------------------------------------------------------
-# 1 + 2: bez emoji
+# 1 + 2: no emoji
 # --------------------------------------------------------------------------
 
 @pytest.mark.parametrize("kluc", ["ob.step3.pair_now", "ob.step3.pair_queued",
@@ -94,9 +95,9 @@ def test_tlacidlo_parovania_v_uvode_nepridava_emoji():
 
 @pytest.mark.parametrize("jazyk", JAZYKY)
 def test_vlastny_subor_v_rozbalovacke_zvuku(jazyk):
-    """Zobrazeny text vlastneho suboru nesie meno suboru a nie je zamenitelny
-    so ziadnou volbou zo zoznamu - vyber z rozbalovacky ho teda nikdy
-    neprepise na iny zvuk."""
+    """The shown text of a custom file carries the file name and cannot be
+    confused with any option from the list - so picking from the dropdown
+    never switches it to another sound."""
     import settings_model
     povodny = i18n._lang["code"]
     i18n.set_lang(jazyk)
@@ -113,8 +114,9 @@ def test_vlastny_subor_v_rozbalovacke_zvuku(jazyk):
 
 
 def test_vyber_zvuku_najde_hodnotu_podla_textu_bez_emoji(sk):
-    """`SlotCard.on_sfx_choice` hlada hodnotu podla zobrazeneho textu - bez
-    emoji musi "Automaticky" dalej znamenat prazdny kluc (podla temy)."""
+    """`SlotCard.on_sfx_choice` looks up the value by the shown text - without
+    the emoji, "Automaticky" (Automatic) must still mean the empty key (by
+    theme)."""
     import settings_model
     import ui_dialogs
     ulozene = []
@@ -130,7 +132,7 @@ def test_vyber_zvuku_najde_hodnotu_podla_textu_bez_emoji(sk):
 
 
 # --------------------------------------------------------------------------
-# 3: chip len pre externe odkazy
+# 3: chip only for external links
 # --------------------------------------------------------------------------
 
 def test_chip_len_pre_externe_odkazy():
@@ -159,7 +161,7 @@ def test_fit_texts_berie_sirku_z_najdlhsieho(monkeypatch):
 
 
 # --------------------------------------------------------------------------
-# 4: ovladace z ui_kit, nie hole CTk
+# 4: controls from ui_kit, not bare CTk
 # --------------------------------------------------------------------------
 
 def test_ziadna_hola_rozbalovacka_mimo_ui_kit():
@@ -185,7 +187,8 @@ def test_vyber_hlasu_pripomienky_je_option_menu():
 ])
 def test_tlacidla_okien_su_z_ui_kit(trieda, metoda):
     kod = _metoda("ui_dialogs.py", trieda, metoda)
-    # hole CTkButton smu ostat len vyberove cipy dotaznika (prepinaju sa)
+    # only the questionnaire's choice chips may stay bare CTkButton
+    # (they toggle)
     for m in re.finditer(r"ctk\.CTkButton\(", kod):
         okolie = kod[m.start():m.start() + 400]
         assert "_pick_one" in okolie or "_toggle_body" in okolie or "_prepni" in okolie \
@@ -201,7 +204,7 @@ def test_ukazka_v_uvode_a_prehliadka_su_z_ui_kit():
 
 
 # --------------------------------------------------------------------------
-# 5: rozbalovacka hlasu rastie s hodnotami
+# 5: the voice dropdown grows with its values
 # --------------------------------------------------------------------------
 
 class _Menu:
@@ -223,7 +226,7 @@ def test_nove_hodnoty_rozsiria_rozbalovacku(monkeypatch):
     ui_kit.nastav_hodnoty_menu(menu, ["Zira", dlhe])
     assert menu.kw["values"] == ["Zira", dlhe]
     assert menu.kw["width"] == 7 * len(dlhe) + ui_kit._MENU_CHROME_W
-    # spat na kratke hodnoty: nikdy uzsie nez povodne minimum
+    # back to short values: never narrower than the original minimum
     ui_kit.nastav_hodnoty_menu(menu, ["A"])
     assert menu.kw["width"] == ui_kit.CONTROL_W
 
@@ -252,7 +255,7 @@ def test_refresh_voice_box_pouziva_nastav_hodnoty_menu():
 
 
 # --------------------------------------------------------------------------
-# 6: jeden vzhlad vypnuteho tlacidla
+# 6: one look for a disabled button
 # --------------------------------------------------------------------------
 
 @pytest.mark.parametrize("tema", TEMY)
@@ -282,7 +285,7 @@ def test_vypnute_tlacidlo_naozaj(tema, druh):
         assert btn.cget("text_color_disabled") == pal["text_faint"]
         if druh in ("secondary", "danger"):
             assert btn.cget("border_color") == pal["control_border"]
-        # druhe vypnutie nic nepokazi
+        # disabling a second time breaks nothing
         btn.configure(state="disabled")
         btn.configure(state="normal")
         assert btn.cget("state") == "normal"
@@ -306,8 +309,9 @@ def test_vypnute_uz_pri_stavbe():
 
 
 def test_zapnutie_po_zmene_temy_vrati_farby_novej_temy():
-    """Prepnutie sveta prefarbi okno podla hodnot (`theme_recolor`). Ked sa
-    to stane, kym je "Zmazat" vypnute, po zapnuti ma mat cervenu NOVEJ temy."""
+    """Switching the world recolours the window by value (`theme_recolor`).
+    When that happens while "Delete" is disabled, once enabled it must have
+    the red of the NEW theme."""
     import theme_recolor
     root = _tk_root()
     try:
@@ -315,7 +319,7 @@ def test_zapnutie_po_zmene_temy_vrati_farby_novej_temy():
         btn = ui_kit.button(root, sumi, "Zmazať", kind="danger")
         btn.configure(state="disabled")
         mapa = theme_recolor.build_color_map(sumi, aizome)
-        # prefarbenie ako `theme_recolor` - farby podla hodnoty, bez stavu
+        # recolouring like `theme_recolor` - colours by value, without state
         btn.configure(**{k: mapa.get(str(btn.cget(k)).lower(), btn.cget(k))
                          for k in ("text_color", "border_color")})
         assert btn.cget("text_color").lower() == aizome["text_faint"].lower()
@@ -338,9 +342,9 @@ def test_farby_poslane_s_vypnutim_maju_prednost():
 
 
 def test_tlacidla_ktore_sa_vypinaju_su_z_ui_kit():
-    """"Zmazat historiu" (pocas sledovania) a "Zmazat tuto relaciu" (kym sa
-    nahrava) - oboje `ui_kit.button(kind="danger")`, takze vypnutie dostane
-    jednotny vzhlad bez dalsieho kodu."""
+    """"Delete history" (while watching) and "Delete this session" (while
+    recording) - both `ui_kit.button(kind="danger")`, so disabling gets a
+    uniform look without any extra code."""
     assert 'self.data_delete_btn = ui_kit.button(rad, pal, tr("data.delete.btn"), kind="danger"' \
         in zdroj_suboru("app_data.py")
     assert 'tr("history.delete_session.btn"), kind="danger"' in zdroj_suboru("app_history.py")

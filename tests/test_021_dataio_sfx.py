@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
-"""Stiahnutie SFX z GitHubu (0.2.1): citanie so stropom.
+"""Downloading SFX from GitHub (0.2.1): reading with a cap.
 
-`_try_download` citalo celu odpoved naraz (`resp.read()`) a az potom
-overilo SHA-256. Zmeneny alebo podvrhnuty obsah na tej adrese tak mohol
-appke natlacit do pamate hocico. Teraz sa cita po kusoch a nad
-`MAX_STIAHNUTIE_BAJTOV` sa skonci - SHA-256 ostava ako druha poistka.
+`_try_download` read the whole response at once (`resp.read()`) and only
+then checked SHA-256. Changed or forged content at that address could thus
+push anything into the app's memory. Now it is read in chunks and stops
+above `MAX_STIAHNUTIE_BAJTOV` - SHA-256 stays as a second safeguard.
 """
 import hashlib
 import os
@@ -19,7 +19,7 @@ import sfx_assets  # noqa: E402
 
 
 class _Server:
-    """Atrapa odpovede `urlopen`. `data=None` = server posiela donekonecna."""
+    """Stub `urlopen` response. `data=None` = the server sends forever."""
 
     def __init__(self, data=None):
         self.data = data
@@ -65,7 +65,7 @@ def test_nekonecna_odpoved_sa_zastavi_na_strope(tmp_path, monkeypatch):
 
 
 def test_skutocny_zvuk_sa_stiahne_cely_a_overi(tmp_path, monkeypatch):
-    """Strop nesmie orezat skutocny subor - SHA-256 musi sediet."""
+    """The cap must not cut off a real file - SHA-256 must match."""
     for pack, info in _stahovane():
         with open(_pribaleny(pack, info), "rb") as fh:
             obsah = fh.read()
@@ -80,8 +80,8 @@ def test_skutocny_zvuk_sa_stiahne_cely_a_overi(tmp_path, monkeypatch):
 
 
 def test_strop_je_nad_znamymi_subormi():
-    """Strop je kus nad skutocnymi velkostami (1,7 kB a 49,6 kB), nie
-    tesne na nich - a nie megabajty."""
+    """The cap is a bit above the real sizes (1,7 kB and 49,6 kB), not
+    right on them - and not megabytes."""
     velkosti = [os.path.getsize(_pribaleny(p, i)) for p, i in _stahovane()]
     assert velkosti
     assert max(velkosti) * 2 < sfx_assets.MAX_STIAHNUTIE_BAJTOV <= 1024 * 1024

@@ -1,13 +1,14 @@
 # -*- coding: utf-8 -*-
-"""Stavový automat hlášky — natiahnutie, odklad na pauzu, tiché rameno.
+"""Cue state machine — arming, postponing to a pause, the silent arm.
 
-Hodiny sú podstrčené, takže testy nič nečakajú v reálnom čase a 90-sekundové
-zotrvanie sa odsimuluje okamžite.
+The clock is faked, so the tests wait for nothing in real time and the
+90-second dwell is simulated instantly.
 
-Väčšina testov nižšie existuje preto, že práve tie prípady označila
-adversariálna kontrola návrhu za miesta, kde by sa meranie ticho pokazilo:
-zlúčenie `arm` a `delivery`, chýbajúci návrat z cooldownu, tolerancia
-prepadu, ktorá by z „súvisle nad 55" spravila „ani raz pod 45".
+Most of the tests below exist because exactly those cases were marked by
+the adversarial design review as places where the measurement would
+silently break: merging `arm` and `delivery`, a missing return from
+cooldown, a dip tolerance that would turn "continuously above 55" into
+"not once below 45".
 """
 import os
 import random
@@ -30,7 +31,7 @@ class Hodiny:
 
 
 def spusti(silent_share=0.0, rng_seed=1, **params):
-    """Automat s pevným generátorom, takže rameno je predvídateľné."""
+    """State machine with a fixed generator, so the arm is predictable."""
     h = Hodiny()
     t = trigger.CueTrigger(params=params, rng=random.Random(rng_seed), clock=h)
     t.open_session(silent_share=silent_share)
@@ -38,10 +39,11 @@ def spusti(silent_share=0.0, rng_seed=1, **params):
 
 
 def natiahni(t, h, stress=80.0, krok=1.0, zona="high"):
-    """Drž záťaž nad prahom, kým sa nenatiahne. Vráti udalosť natiahnutia.
+    """Hold load above the threshold until it arms. Returns the arming event.
 
-    `zona` je pásmo tepu pre bránu (0.2): „high" = známe a nie kritické,
-    záťaž stojí — brána pustí. Bez pásma (None) by hláška nešla vôbec."""
+    `zona` is the heart-rate band for the gate (0.2): "high" = known and
+    not critical, load is steady — the gate lets it through. Without a band
+    (None) the cue would not go at all."""
     for _ in range(200):
         ev = t.note_load(stress, h.t, zona=zona)
         if ev:
@@ -51,13 +53,13 @@ def natiahni(t, h, stress=80.0, krok=1.0, zona="high"):
 
 
 # --------------------------------------------------------------------------
-# Natiahnutie
+# Arming
 # --------------------------------------------------------------------------
 
 def test_spicka_nenatiahne():
-    """Skok po headshote nie je stres. Dve minúty na 120 áno."""
+    """A jump after a headshot is not stress. Two minutes at 120 is."""
     t, h = spusti()
-    for _ in range(10):                 # 10 s vysokej záťaže
+    for _ in range(10):                 # 10 s of high load
         assert t.note_load(95.0, h.t) is None
         h.posun(1.0)
     assert t.state == trigger.RISING
@@ -72,13 +74,13 @@ def test_zotrvanie_nad_prahom_natiahne():
 
 
 def test_kratky_prepad_natiahnutie_nezrusi():
-    """`stress` je vyhladený exponenciálnym priemerom a na hranici kmitá.
-    Tri sekundy pod prahom ho nesmú zhodiť."""
+    """`stress` is smoothed by an exponential average and oscillates at the
+    threshold. Three seconds below the threshold must not knock it down."""
     t, h = spusti()
     for _ in range(40):
         t.note_load(80.0, h.t)
         h.posun(1.0)
-    for _ in range(3):                  # krátky prepad
+    for _ in range(3):                  # a short dip
         t.note_load(40.0, h.t)
         h.posun(1.0)
     for _ in range(60):
@@ -90,14 +92,14 @@ def test_kratky_prepad_natiahnutie_nezrusi():
 
 
 def test_dlhy_prepad_natiahnutie_zrusi():
-    # Tolerancia sa tu určuje výslovne. Predtým sa test spoliehal na
-    # predvolenú hodnotu a spadol vo chvíli, keď sa zmenila z 5 s na 20 s —
-    # hoci na správaní, ktoré overuje, sa nezmenilo nič.
+    # The tolerance is set explicitly here. Before, the test relied on the
+    # default value and failed the moment it changed from 5 s to 20 s — even
+    # though nothing changed in the behaviour it checks.
     t, h = spusti(dip_grace_s=5.0)
     for _ in range(40):
         t.note_load(80.0, h.t)
         h.posun(1.0)
-    for _ in range(10):                 # dlhší prepad než tolerancia
+    for _ in range(10):                 # a dip longer than the tolerance
         t.note_load(40.0, h.t)
         h.posun(1.0)
     assert t.state == trigger.IDLE
@@ -105,27 +107,27 @@ def test_dlhy_prepad_natiahnutie_zrusi():
 
 
 def test_cas_pod_prahom_sa_do_zotrvania_nepocita():
-    """Poistka proti chybe, ktorú našla kontrola návrhu: „súvisle nad 55"
-    sa nesmie zvrhnúť na „ani raz pod 45".
+    """A guard against a bug found by the design review: "continuously above
+    55" must not degenerate into "not once below 45".
 
-    Záťaž kmitajúca tesne pod prahom nesmie natiahnuť, nech beží akokoľvek
-    dlho.
+    Load oscillating just below the threshold must not arm, however long
+    it runs.
     """
     t, h = spusti()
     for _ in range(300):
-        assert t.note_load(50.0, h.t) is None    # pod prahom 55
+        assert t.note_load(50.0, h.t) is None    # below the threshold of 55
         h.posun(1.0)
     assert not t.is_armed
 
 
 # --------------------------------------------------------------------------
-# Odklad na pauzu
+# Postponing to a pause
 # --------------------------------------------------------------------------
 
 def test_pauza_dorucí_hlasku():
     t, h = spusti()
     natiahni(t, h)
-    assert t.tick(pause_s=0.0, now=h.t) is None      # hrá, nedoručuje sa
+    assert t.tick(pause_s=0.0, now=h.t) is None      # playing, not delivered
     h.posun(5.0)
     ev = t.tick(pause_s=3.0, now=h.t)
     assert ev["typ"] == trigger.E_DELIVER
@@ -134,7 +136,7 @@ def test_pauza_dorucí_hlasku():
 
 
 def _drz(t, h, sekund, stress=80.0, zona="high", pause_s=0.0, krok=1.0):
-    """Vzorky tepu aj tiky počas čakania, ako v appke. Vráti udalosti."""
+    """HR samples and ticks while waiting, as in the app. Returns events."""
     udalosti = []
     for _ in range(int(sekund / krok)):
         h.posun(krok)
@@ -146,26 +148,27 @@ def _drz(t, h, sekund, stress=80.0, zona="high", pause_s=0.0, krok=1.0):
 
 
 def test_ked_pauza_nepride_ide_tichy_vizual():
-    """0.2: tichý obrázok po max_wait_s ostáva — ale len keď brána pustí
-    (pásmo známe a nie kritické, záťaž nestúpa). Inak sa natiahnutie zruší."""
+    """0.2: the silent picture after max_wait_s stays — but only when the gate
+    lets it through (band known and not critical, load not rising).
+    Otherwise the arming is cancelled."""
     t, h = spusti()
     natiahni(t, h)
-    ev = _drz(t, h, 91.0)[0]                         # prešiel max_wait_s
+    ev = _drz(t, h, 91.0)[0]                         # max_wait_s has passed
     assert ev["typ"] == trigger.E_DELIVER
     assert ev["delivery"] == trigger.D_TIMEOUT
-    assert ev["hlas"] is False                       # bez hlasu
-    assert ev["arm"] == trigger.ARM_VOICE            # ale rameno je hlasné!
+    assert ev["hlas"] is False                       # no voice
+    assert ev["arm"] == trigger.ARM_VOICE            # but the arm is the voice arm!
 
     t, h = spusti()
     natiahni(t, h, zona="critical")
-    ev = _drz(t, h, 91.0, zona="critical")[0]        # nad hranicou tepu
+    ev = _drz(t, h, 91.0, zona="critical")[0]        # over the heart-rate limit
     assert ev["typ"] == trigger.E_ABORT, "obrázok nesmie ísť nad hranicou"
     assert ev["reason"] == trigger.A_BEZ_PAUZY
 
     t, h = spusti()
     natiahni(t, h)
     udalosti = []
-    for i in range(91):                              # záťaž ešte stúpa
+    for i in range(91):                              # load still rising
         h.posun(1.0)
         t.note_load(80.0 + i, h.t, zona="high")
         ev = t.tick(pause_s=0.0, now=h.t)
@@ -176,23 +179,25 @@ def test_ked_pauza_nepride_ide_tichy_vizual():
 
 
 def test_timeout_nie_je_tiche_rameno():
-    """Najdôležitejší test v súbore.
+    """The most important test in the file.
 
-    Keď pauza nepríde, hláška ide ticho — ale NIE JE to kontrolné rameno.
-    Keby sa oboje zapísalo ako arm="silent", measure.summarize() by
-    porovnával dve rôzne veci: jedna skupina mala pauzu, druhá nie, a
-    rozdiel medzi ramenami by meral práve toto.
+    When the pause does not come, the cue goes silently — but it is NOT the
+    control arm. If both were recorded as arm="silent", measure.summarize()
+    would compare two different things: one group had a pause, the other
+    did not, and the difference between the arms would measure exactly
+    that.
 
-    A bez pauzy nezaznie hlas ani v hlasnom ramene — nikdy.
+    And without a pause the voice does not sound even in the voice arm —
+    ever.
     """
-    t, h = spusti(silent_share=0.0)                  # nikdy nelosuj ticho
+    t, h = spusti(silent_share=0.0)                  # never draw silence
     natiahni(t, h)
     udalosti = _drz(t, h, 91.0)
     assert len(udalosti) == 1
     ev = udalosti[0]
-    assert ev["hlas"] is False                       # nezaznelo
-    assert ev["arm"] == trigger.ARM_VOICE            # ale patrí do hlasného
-    assert ev["delivery"] == trigger.D_TIMEOUT       # a dôvod je zapísaný
+    assert ev["hlas"] is False                       # did not sound
+    assert ev["arm"] == trigger.ARM_VOICE            # but belongs to the voice arm
+    assert ev["delivery"] == trigger.D_TIMEOUT       # and the reason is recorded
 
 
 def test_odchod_od_pc_nie_je_pauza():
@@ -204,11 +209,12 @@ def test_odchod_od_pc_nie_je_pauza():
 
 
 def test_neznama_pauza_nedoruci_hned_ale_ani_necaka_navzdy():
-    """pause_s() vracia None, keď systém idle nehlási.
+    """pause_s() returns None when the system does not report idle.
 
-    Nesmie sa to tváriť ani ako „pauza je" (doručilo by sa hneď), ani ako
-    „pauza nie je navždy". Nechá sa dobehnúť max_wait_s a potom platí to
-    isté ako bez pauzy: tichý obrázok cez bránu, hlas nikdy.
+    That must not pretend to be "there is a pause" (it would be delivered
+    at once), nor "there is never a pause". max_wait_s is let run out and
+    then the same applies as without a pause: a silent picture via the
+    gate, voice never.
     """
     t, h = spusti()
     natiahni(t, h)
@@ -220,7 +226,7 @@ def test_neznama_pauza_nedoruci_hned_ale_ani_necaka_navzdy():
     assert ev["hlas"] is False
     assert t.pause_episodes == 0, "neznáma pauza nie je pauza"
 
-    # ... a nad hranicou vysokého tepu ani obrázok
+    # ... and above the high heart-rate limit not even a picture
     t, h = spusti()
     natiahni(t, h, zona="critical")
     udalosti = _drz(t, h, 91.0, zona="critical", pause_s=None)
@@ -228,8 +234,8 @@ def test_neznama_pauza_nedoruci_hned_ale_ani_necaka_navzdy():
 
 
 def test_ked_sa_nesmie_natiahnutie_sa_nespali():
-    """can_fire=False (cooldown, vypnutý vizuál) natiahnutie nezruší —
-    čaká sa ďalej."""
+    """can_fire=False (cooldown, visual off) does not cancel the arming —
+    it keeps waiting."""
     t, h = spusti()
     natiahni(t, h)
     h.posun(5.0)
@@ -244,15 +250,16 @@ def test_ked_sa_nesmie_natiahnutie_sa_nespali():
 # --------------------------------------------------------------------------
 
 def test_po_hlaske_sa_da_natiahnut_znova():
-    """Kontrola návrhu našla verziu, v ktorej prechod z cooldownu späť
-    neexistoval — po prvej hláške by relácia už nikdy nič nespustila."""
+    """The design review found a version in which the transition from
+    cooldown back did not exist — after the first cue the session would
+    never trigger anything again."""
     t, h = spusti()
     natiahni(t, h)
     h.posun(5.0)
     assert t.tick(pause_s=3.0, now=h.t)["typ"] == trigger.E_DELIVER
     assert t.state == trigger.COOLDOWN
 
-    h.posun(300.0)                                   # viac než min_gap_s
+    h.posun(300.0)                                   # more than min_gap_s
     t.tick(pause_s=0.0, now=h.t)
     assert t.state == trigger.IDLE
     natiahni(t, h)
@@ -260,21 +267,21 @@ def test_po_hlaske_sa_da_natiahnut_znova():
 
 
 def test_odstup_je_dlhsi_nez_refrakterna_zona():
-    """min_gap_s musí byť väčší než measure.REFRACTORY_AFTER_S (180 s).
+    """min_gap_s must be greater than measure.REFRACTORY_AFTER_S (180 s).
 
-    Inak si dve hlášky navzájom zneplatnia meracie okná a mesiac merania
-    je na nič.
+    Otherwise two cues invalidate each other's measurement windows and a
+    month of measuring is worthless.
     """
     import measure
     assert trigger.default_params()["min_gap_s"] > measure.REFRACTORY_AFTER_S
 
 
 # --------------------------------------------------------------------------
-# Tiché rameno
+# Silent arm
 # --------------------------------------------------------------------------
 
 def test_rameno_sa_losuje_uz_pri_natiahnuti():
-    """Aby sa dalo zapísať aj vtedy, keď sa hláška nakoniec nedoručí."""
+    """So it can be recorded even when the cue ends up not delivered."""
     t, h = spusti(silent_share=1.0)
     ev = natiahni(t, h)
     assert ev["arm"] == trigger.ARM_SILENT
@@ -285,9 +292,9 @@ def test_tiche_rameno_nezaznie_ale_dorucí_sa():
     natiahni(t, h)
     h.posun(5.0)
     ev = t.tick(pause_s=3.0, now=h.t)
-    assert ev["typ"] == trigger.E_DELIVER            # okno sa zapíše
-    assert ev["delivery"] == trigger.D_PAUSE         # pauza naozaj prišla
-    assert ev["hlas"] is False                       # len nezaznie
+    assert ev["typ"] == trigger.E_DELIVER            # the window is recorded
+    assert ev["delivery"] == trigger.D_PAUSE         # the pause really came
+    assert ev["hlas"] is False                       # it just does not sound
 
 
 def test_podiel_ticha_klesne_po_kalibracii():
@@ -298,16 +305,17 @@ def test_podiel_ticha_klesne_po_kalibracii():
 
 
 def test_podiel_ticha_nikdy_nie_je_nula():
-    """Bez kontrolného ramena vyjde „funguje" vždy, aj keby appka mlčala —
-    tep sa vracia dole aj sám."""
+    """Without a control arm, "it works" always comes out, even if the app
+    stayed silent — heart rate comes back down on its own too."""
     for n in (0, 15, 100, 10000):
         assert trigger.silent_share_for(n) > 0
 
 
 def test_losovanie_nezavisi_od_modulového_random():
-    """`app.fire_slot` používa random.uniform na jitter. Keby automat bral
-    z modulového generátora, akýkoľvek random.seed() inde v appke by
-    posunul aj rameno a kontrolná skupina by prestala byť náhodná."""
+    """`app.fire_slot` uses random.uniform for jitter. If the state machine
+    drew from the module's generator, any random.seed() elsewhere in the
+    app would shift the arm too and the control group would stop being
+    random."""
     vysledky = []
     for _ in range(2):
         random.seed(12345)
@@ -317,7 +325,7 @@ def test_losovanie_nezavisi_od_modulového_random():
 
 
 # --------------------------------------------------------------------------
-# Prerušenia
+# Interruptions
 # --------------------------------------------------------------------------
 
 def test_snooze_zrusi_natiahnutie():
@@ -326,7 +334,7 @@ def test_snooze_zrusi_natiahnutie():
     ev = t.suspend(trigger.A_SNOOZE, now=h.t)
     assert ev["reason"] == trigger.A_SNOOZE
     assert t.state == trigger.DORMANT
-    assert t.tick(pause_s=5.0, now=h.t) is None      # počas snooze ani vizuál
+    assert t.tick(pause_s=5.0, now=h.t) is None      # during snooze not even a visual
 
 
 def test_vypadok_tepu_zrusi_natiahnutie_a_pocita_sa_odznova():
@@ -335,14 +343,14 @@ def test_vypadok_tepu_zrusi_natiahnutie_a_pocita_sa_odznova():
     t.suspend(trigger.A_TEP_VYPADOL, now=h.t)
     t.resume(now=h.t)
     assert t.state == trigger.IDLE
-    for _ in range(10):                              # 10 s nestačí
+    for _ in range(10):                              # 10 s is not enough
         t.note_load(80.0, h.t)
         h.posun(1.0)
-    assert not t.is_armed                            # 90 s sa počíta odznova
+    assert not t.is_armed                            # 90 s counts from scratch
 
 
 def test_koniec_relacie_v_stave_cakania_sa_zapise():
-    """Podľa toho, ako často sa to stáva, sa dá ladiť max_wait_s."""
+    """How often this happens can be used to tune max_wait_s."""
     t, h = spusti()
     natiahni(t, h)
     h.posun(30.0)
@@ -352,26 +360,26 @@ def test_koniec_relacie_v_stave_cakania_sa_zapise():
 
 
 # --------------------------------------------------------------------------
-# Vývojárska vrstva — parametre len medzi reláciami (§3.3)
+# Developer overlay — parameters only between sessions (§3.3)
 # --------------------------------------------------------------------------
 
 def _zdroj(meno):
-    # utf-8-sig, nie utf-8: app.py ma na zaciatku BOM a `ast.parse` na nom
-    # padne s "invalid non-printable character U+FEFF".
+    # utf-8-sig, not utf-8: app.py has a BOM at the start and `ast.parse`
+    # fails on it with "invalid non-printable character U+FEFF".
     cesta = os.path.join(os.path.dirname(__file__), "..", meno)
     return open(cesta, encoding="utf-8-sig").read()
 
 
 def _telo(meno_suboru, meno_funkcie):
-    """Telo funkcie ako kód, BEZ docstringu a komentárov.
+    """Function body as code, WITHOUT the docstring and comments.
 
-    Hľadať podreťazec v surovom zdrojáku je pasca: docstring často
-    vysvetľuje, prečo sa niečo NEPOUŽÍVA, a test na tom spadne. Preto sa
-    číta AST a docstring sa zahodí.
+    Searching for a substring in the raw source is a trap: the docstring
+    often explains why something is NOT USED, and the test fails on that.
+    That is why the AST is read and the docstring is thrown away.
     """
     import ast
     if meno_suboru == "app.py":
-        # cela appka: app.py aj mixiny DandurfApp v app_*.py
+        # the whole app: app.py and the DandurfApp mixins in app_*.py
         from _zdroj_appky import strom_appky
         strom = strom_appky()
     else:
@@ -388,11 +396,12 @@ def _telo(meno_suboru, meno_funkcie):
 
 
 def _telo_metody(meno_suboru, trieda, metoda):
-    """Telo metódy KONKRÉTNEJ triedy.
+    """Body of a method of a SPECIFIC class.
 
-    `_telo` berie prvú funkciu daného mena v súbore — a to je pasca: keď
-    v `ui_shell.py` pribudol `_StateDot.set_live`, test o ense začal čítať
-    cudziu metódu a padol. Meno samo o sebe nestačí.
+    `_telo` takes the first function of the given name in the file — and
+    that is a trap: when `_StateDot.set_live` was added to `ui_shell.py`,
+    the enso test started reading someone else's method and failed. The
+    name alone is not enough.
     """
     import ast
     strom = ast.parse(_zdroj(meno_suboru))
@@ -412,22 +421,23 @@ def _telo_metody(meno_suboru, trieda, metoda):
 
 
 def test_nove_prahy_sa_beru_az_pri_novej_relacii():
-    """Meniť prahy uprostred relácie znamená merať pohyblivý cieľ.
+    """Changing thresholds mid-session means measuring a moving target.
 
-    Okná z prvej polovice večera a z druhej by sa nedali porovnať a nikto
-    by už spätne nezistil, ktoré bolo ktoré. Preto sa `_dev_params` čítajú
-    v `start_heart_rate_monitor`, nie pri uložení v dialógu.
+    Windows from the first half of the evening and from the second could
+    not be compared and nobody could tell afterwards which was which. That
+    is why `_dev_params` are read in `start_heart_rate_monitor`, not on
+    save in the dialog.
     """
-    # Logika sedi v `_open_hr_session`; `start_heart_rate_monitor` je uz
-    # len "otvor relaciu + nastartuj socket". Strazia sa OBE polovice
-    # retaze, inak by sa delegovanie dalo ticho zrusit.
+    # The logic sits in `_open_hr_session`; `start_heart_rate_monitor` is now
+    # just "open the session + start the socket". BOTH halves of the chain
+    # are guarded, otherwise the delegation could be silently removed.
     assert "_open_hr_session" in _telo("app.py", "start_heart_rate_monitor")
     assert "_dev_params" in _telo("app.py", "_open_hr_session"), \
         "start_heart_rate_monitor musí brať prahy z vývojárskej vrstvy"
 
 
 def test_dialog_ladenia_zamkne_polia_pocas_relacie():
-    """Nie je to odporúčanie v texte — polia sa naozaj zamknú."""
+    """It is not a recommendation in the text — the fields really lock."""
     src = _zdroj("ui_dialogs.py")
     blok = src[src.index("class DevLayerDialog"):]
     blok = blok[:blok.index("\nclass ", 5)]
@@ -436,11 +446,11 @@ def test_dialog_ladenia_zamkne_polia_pocas_relacie():
 
 
 def test_vynutena_hlaska_nejde_do_merania():
-    """`dev_force_cue` obchádza automat zámerne.
+    """`dev_force_cue` bypasses the state machine on purpose.
 
-    Vynútená hláška nie je meranie — keby sa zapísala do okien, spálila by
-    refraktérnu zónu okolo skutočnej hlášky a znečistila by dáta práve pri
-    ladení, teda vtedy, keď sa s ňou klikne najčastejšie.
+    A forced cue is not a measurement — if it were recorded into windows,
+    it would burn the refractory zone around a real cue and pollute the
+    data exactly while tuning, i.e. when it is clicked most often.
     """
     telo = _telo("app.py", "dev_force_cue")
     assert "note_trigger" not in telo, "vynútená hláška sa nesmie zapísať do relácie"
@@ -457,11 +467,11 @@ def test_pocitadla_sedia():
 
 
 # --------------------------------------------------------------------------
-# Hodinový strop (zadanie §2)
+# Hourly cap (spec §2)
 # --------------------------------------------------------------------------
 
 def _doruc(t, h):
-    """Prejde celý cyklus až po doručenie. Vráti udalosť alebo None."""
+    """Runs the whole cycle up to delivery. Returns the event or None."""
     for _ in range(400):
         ev = t.note_load(80.0, h.t, zona="high")
         h.posun(1.0)
@@ -472,15 +482,16 @@ def _doruc(t, h):
 
 
 def test_strop_zastavi_po_piatich_za_hodinu():
-    """`min_gap_s` sám nestačí — 240 s odstup dovolí až 15 hlášok za hodinu.
+    """`min_gap_s` alone is not enough — a 240 s gap allows up to 15 cues/hour.
 
-    Simulácia namerala pri vypätom večeri 6,9 za hodinu, teda nad zadaním.
+    A simulation measured 6.9 per hour on a tense evening, i.e. above the
+    spec.
     """
     t, h = spusti()
     for i in range(5):
         ev = _doruc(t, h)
         assert ev is not None and ev["typ"] == trigger.E_DELIVER, f"{i + 1}. hláška"
-    # šiesta sa už nesmie ani natiahnuť
+    # the sixth must not even arm
     for _ in range(600):
         assert t.note_load(80.0, h.t) is None, "šiesta hláška prekročila strop"
         h.posun(1.0)
@@ -488,12 +499,12 @@ def test_strop_zastavi_po_piatich_za_hodinu():
 
 
 def test_strop_pusti_dalsiu_ked_najstarsia_vyprsi():
-    """Okno je kĺzavé — po hodine od prvej hlášky sa miesto uvoľní."""
+    """The window is sliding — an hour after the first cue a slot frees up."""
     t, h = spusti()
     for _ in range(5):
         assert _doruc(t, h) is not None
     prva = t._delivered_at[0]
-    # presuň sa tesne za hodinu od prvej
+    # move to just past an hour after the first
     h.t = prva + trigger.HOUR_S + 1.0
     ev = _doruc(t, h)
     assert ev is not None and ev["typ"] == trigger.E_DELIVER
@@ -501,10 +512,11 @@ def test_strop_pusti_dalsiu_ked_najstarsia_vyprsi():
 
 
 def test_strop_sa_neda_obist_restartom_relacie():
-    """Vypnúť a zapnúť senzor nesmie strop vynulovať.
+    """Switching the sensor off and on must not reset the cap.
 
-    „Päť za hodinu" je o hráčovi, nie o relácii — a reštart by hráč urobil
-    presne vtedy, keď ho appka štve, čiže by dostal viac, nie menej.
+    "Five per hour" is about the player, not the session — and the player
+    would restart exactly when the app annoys them, i.e. they would get
+    more, not fewer.
     """
     t, h = spusti()
     for _ in range(5):
@@ -517,8 +529,8 @@ def test_strop_sa_neda_obist_restartom_relacie():
 
 
 def test_strop_sa_da_vypnut_nulou():
-    """Vývojárska vrstva musí vedieť strop odstaviť — bez toho sa nedá
-    odladiť nič, čo si vyžaduje veľa hlášok za krátky čas."""
+    """The developer overlay must be able to switch off the cap — without it
+    nothing that needs many cues in a short time can be tuned."""
     t, h = spusti(max_per_hour=0)
     for i in range(8):
         ev = _doruc(t, h)
@@ -527,8 +539,8 @@ def test_strop_sa_da_vypnut_nulou():
 
 
 def test_vycerpany_strop_nenatiahne_prstenec():
-    """Natiahnuť a nedoručiť by znamenalo, že prstenec na ense svieti a nič
-    nepríde. Pri vyčerpanom strope sa preto nenatiahne vôbec."""
+    """Arming and not delivering would mean the ring on the enso is lit and
+    nothing comes. With the cap used up it therefore does not arm at all."""
     t, h = spusti()
     for _ in range(5):
         assert _doruc(t, h) is not None
@@ -540,17 +552,18 @@ def test_vycerpany_strop_nenatiahne_prstenec():
 
 
 # --------------------------------------------------------------------------
-# Prstenec "natiahnute" na ense
+# The "armed" ring on the enso
 # --------------------------------------------------------------------------
 
 def test_prstenec_sa_zhadzuje_na_kazdej_ceste_von_z_natiahnutia():
-    """Zabudnuta cesta = prstenec, ktory svieti navzdy.
+    """A forgotten path = a ring that is lit forever.
 
-    Je to najtichsie mozne zlyhanie: automat je v poriadku, meranie je v
-    poriadku, len znacka klame. Nic v appke to nechyti - `CueTrigger` o UI
-    nevie a UI nema ako zistit, ze sa niekde stratila udalost.
+    It is the quietest possible failure: the state machine is fine, the
+    measurement is fine, only the mark lies. Nothing in the app catches it
+    - `CueTrigger` does not know about the UI and the UI has no way to find
+    out that an event got lost somewhere.
 
-    Von zo stavu ARMED vedu styri cesty a kazda musi prstenec zhodit.
+    Four paths lead out of the ARMED state and each must drop the ring.
     """
     cesty = {
         "_on_cue_event": "dorucenie aj zrusenie",
@@ -561,19 +574,22 @@ def test_prstenec_sa_zhadzuje_na_kazdej_ceste_von_z_natiahnutia():
         telo = _telo("app.py", meno)
         assert "_set_enso_armed" in telo, f"{meno} ({preco}) nezhadzuje prstenec"
 
-    # Stvrta cesta je vo widgete: ked sa prestane pocuvat, natiahnutie uz
-    # neplati a `set_live(False)` ho musi zahodit samo. Keby to robila len
-    # appka, po vypnuti a zapnuti pocuvania by prstenec svietil hned.
+    # The fourth path is in the widget: when listening stops, the arming no
+    # longer holds and `set_live(False)` must drop it itself. If only the app
+    # did it, after switching listening off and on the ring would light at
+    # once.
     telo = _telo_metody("ui_shell.py", "_EnsoButton", "set_live")
     assert "_armed" in telo, "set_live(False) musí zahodiť natiahnutie"
 
 
 def test_ikona_hodiniek_zapina_a_nikdy_nevypina():
-    """Zadanie §1.10. Predtým ikona len otvorila dialóg — nad vypnutým
-    senzorom, takže hráč postupoval podľa panelu a appka nič neprijala.
+    """Spec §1.10. Before, the icon only opened the dialog — over a switched
+    off sensor, so the player followed the panel and the app received
+    nothing.
 
-    A hlavne: nesmie vypínať. Ikona, ktorá raz zapne a inokedy vypne, je
-    pri jednom piktograme bez popisku nečitateľná.
+    And above all: it must not switch off. An icon that switches on one
+    time and off another is unreadable for a single pictogram without a
+    label.
     """
     telo = _telo("app.py", "open_watch_pairing")
     assert "_enable_hr_monitoring" in telo, "ikona hodiniek nezapína senzor"
@@ -585,20 +601,21 @@ def test_ikona_hodiniek_zapina_a_nikdy_nevypina():
 
 
 def test_zapnutie_senzora_nezahodi_beziacu_relaciu():
-    """`start_heart_rate_monitor` volá `hr_stats.reset_session()`. Zavolať ho
-    na bežiacej relácii by zahodilo celý večer nazbieraných dát len preto,
-    že hráč otvoril párovací panel."""
+    """`start_heart_rate_monitor` calls `hr_stats.reset_session()`. Calling
+    it on a running session would throw away a whole evening of collected
+    data just because the player opened the pairing panel."""
     telo = _telo("app.py", "_enable_hr_monitoring")
     assert "if self.hr_monitoring_enabled:" in telo and "return False" in telo, \
         "_enable_hr_monitoring sa musí vrátiť skôr, keď senzor už beží"
 
 
 def test_enso_sleduje_temu_nie_stav():
-    """PREMIUM REDIZAJN (2026-09, rozhodnutie "podla temy"): enso ma farbu
-    podla TEMY (style.accent - zlate v Sumi, modre v Aizome), NIE podla stavu.
-    Stav (pocuva/nie) nesie POHYB dychajuceho pasu + bodka v paneli
-    (_StateDot). render_enso preto NESMIE siahat na stavove farby
-    (success/danger) - tie patria bodke a pasu - a MUSI pouzit accent.
+    """PREMIUM REDESIGN (2026-09, decision "by theme"): the enso has a colour
+    by THEME (style.accent - gold in Sumi, blue in Aizome), NOT by state.
+    The state (listening/not) is carried by the MOVEMENT of the breathing
+    bar + the dot in the panel (_StateDot). render_enso therefore MUST NOT
+    reach for the state colours (success/danger) - those belong to the dot
+    and the bar - and MUST use accent.
     """
     import ast
     strom = ast.parse(_zdroj("hud_paint.py"))
@@ -618,16 +635,17 @@ def test_enso_sleduje_temu_nie_stav():
     assert "style.accent" in najdene, "enso ma mat farbu TEMY (style.accent)"
 
 # --------------------------------------------------------------------------
-# Hlavička Dnes — stav namiesto čísel
+# Today header — state instead of numbers
 # --------------------------------------------------------------------------
 
 def test_pas_a_prstenec_citaju_ten_isty_priznak():
-    """Jeden zdroj pravdy, nie dva.
+    """One source of truth, not two.
 
-    Prvá verzia mala prstenec z argumentu `_set_enso_armed` a text pásu si
-    stav odvodzoval znova z `cue_trigger.is_armed`. V appke to náhodou
-    sedelo, v ukážke už nie — pás hlásil „Počúvam", kým prstenec svietil.
-    Rozídu sa vždy, len nie hneď.
+    The first version had the ring from the argument of `_set_enso_armed`
+    and the bar text derived the state again from `cue_trigger.is_armed`.
+    In the app it happened to match, in the preview it no longer did - the
+    bar said "Listening" while the ring was lit. They always drift apart,
+    just not right away.
     """
     zapis = _telo("app.py", "_set_enso_armed")
     assert "_cue_armed = armed" in zapis, \
@@ -642,13 +660,15 @@ def test_pas_a_prstenec_citaju_ten_isty_priznak():
 
 
 def test_pas_ma_tri_stavy():
-    """Zastavené / počúvam / natiahnuté. To tretie je celý zmysel zmeny:
-    „natiahnuté" sa doteraz dalo prečítať len z prstenca, a ten má 68 px.
+    """Stopped / listening / armed. The third is the whole point of the
+    change: "armed" could until now only be read from the ring, and that
+    is 68 px.
 
-    „Zastavené" má odvtedy dve znenia — appka sa vie spustiť sama pri štarte
-    hry, ale len pri zapnutom automatickom prepínaní profilov. Voľba medzi
-    nimi býva v `_kamae_zastavene`, preto sa čítajú obe telá: stav musí
-    existovať, nie nutne na jednom riadku.
+    "Stopped" has had two wordings since then — the app can start by
+    itself when a game starts, but only with automatic profile switching
+    on. The choice between them lives in `_kamae_zastavene`, which is why
+    both bodies are read: the state must exist, not necessarily on one
+    line.
     """
     telo = _telo("app.py", "_kamae_state_text") + _telo("app.py", "_kamae_zastavene")
     for kluc in ("kamae.stopped", "kamae.running", "kamae.armed"):
@@ -656,66 +676,72 @@ def test_pas_ma_tri_stavy():
 
 
 def test_veta_o_starte_pri_hre_plati_len_ked_je_zapnuty():
-    """Appka sa sama spustí iba pri `auto_profile_enabled`.
+    """The app starts by itself only with `auto_profile_enabled`.
 
-    Jedna veta pre oba stavy by v tom druhom klamala — a komentár v `app.py`
-    o štvrtom stave pásu hovorí presne to, čo taká veta narobí: hráč ide
-    hrať s tým, že appka beží, a celý večer čaká na hlášku, ktorá nemá
-    odkiaľ prísť.
+    One sentence for both states would lie in the second one — and the
+    comment in `app.py` about the fourth state of the bar says exactly what
+    such a sentence does: the player goes to play thinking the app is
+    running, and waits the whole evening for a cue that has nowhere to come
+    from.
     """
     telo = _telo("app.py", "_kamae_zastavene")
     assert "auto_profile_enabled" in telo
     assert "kamae.stopped_sub_auto" in telo and "kamae.stopped_sub" in telo
-    # a ten sľub musí byť naozaj krytý kódom, ktorý štart robí
+    # and that promise must really be covered by the code that does the start
     assert "start_listening" in _telo("app.py", "_handle_game_found")
 
 
 def test_pas_neukazuje_odpocet():
-    """Merať hráčovi vlastný stav pred očami je presne to, čo appka nemá
-    robiť. Veta hovorí, že sa čaká — číslo tam nepatrí."""
+    """Measuring the player's own state before their eyes is exactly what the
+    app must not do. The sentence says it is waiting — a number does not
+    belong there."""
     telo = _telo("app.py", "_kamae_state_text")
     for zakazane in ("max_wait_s", "_armed_at", "time.time()", "waited"):
         assert zakazane not in telo, f"do textu pásu sa dostal odpočet: {zakazane}"
 
 
 def test_riadok_o_poslednej_hlaske_sa_skryva():
-    """Kým v relácii nič nebolo, riadok sa nezobrazí. Prázdny riadok s nulou
-    by bol počítadlo a appka má ukazovať stav, nie skóre."""
+    """While nothing has happened in the session, the line is not shown. An
+    empty line with a zero would be a counter, and the app should show
+    state, not a score."""
     telo = _telo("app.py", "_refresh_last_cue")
-    # Od prestavby stredu na Canvas nie je riadok widget — schová sa tak, že
-    # `_dnes_lastcue_text` je prázdny (`_paint_dnes_canvas` ho potom nekreslí).
+    # Since the centre was rebuilt onto a Canvas the line is not a widget — it
+    # is hidden by `_dnes_lastcue_text` being empty (`_paint_dnes_canvas` then
+    # does not draw it).
     assert "_dnes_lastcue_text" in telo, "bez hlášky sa riadok musí schovať"
     assert "if not cues" in telo or "not cues" in telo
 
 
 def test_riadok_o_hlaske_sa_nepakuje_do_scrollable_frame():
-    """`CTkScrollableFrame` je zložený widget — `dnes_body` je vnútorný rámec
-    na plátne, ale do `wrap` sa zabalí jeho obal, takže `pack(before=...)`
-    naň padne na TclError „isn't packed" — a padalo to ticho.
+    """`CTkScrollableFrame` is a composite widget — `dnes_body` is the inner
+    frame on the canvas, but what gets packed into `wrap` is its outer
+    wrapper, so `pack(before=...)` on it fails with TclError "isn't
+    packed" — and it failed silently.
 
-    Po prestavbe riadok sedí v strednom stĺpci a kotvu nepotrebuje. Test
-    ostáva ako poistka, aby sa tá cesta nevrátila."""
+    After the rebuild the line sits in the middle column and needs no
+    anchor. The test stays as a guard so that path does not come back."""
     telo = _telo("app.py", "_refresh_last_cue")
     assert "before=self.dnes_body" not in telo
     assert "dnes_body" not in telo
 
 
 # --------------------------------------------------------------------------
-# Pozastavenie: čo smie zdvihnúť tep a čo nie
+# Pausing: what heart rate may lift and what not
 # --------------------------------------------------------------------------
 
 def test_tep_nezdvihne_snooze():
-    """Najhoršia chyba, akú našla revízia.
+    """The worst bug the review found.
 
-    `resume()` sa volá z `_apply_hr_bpm`, teda KAŽDÚ SEKUNDU. Kým nevedel,
-    prečo bol automat pozastavený, zrušil „teraz nie" prvý úder srdca
-    o sekundu neskôr. Odmerané: pri 30-minútovom snooze sa natiahlo 10-krát
-    a do každého meracieho okna relácie sa zapísal nafúknutý `natiahnuti`.
+    `resume()` is called from `_apply_hr_bpm`, i.e. EVERY SECOND. While it
+    did not know why the state machine was paused, the first heartbeat a
+    second later cancelled "not now". Measured: during a 30-minute snooze
+    it armed 10 times and an inflated `natiahnuti` was written into every
+    measurement window of the session.
     """
     t, h = spusti()
     t.suspend(trigger.A_SNOOZE, now=h.t)
-    for _ in range(1800):                       # pol hodiny vzoriek tepu
-        t.resume(h.t)                           # presne ako _apply_hr_bpm
+    for _ in range(1800):                       # half an hour of heart-rate samples
+        t.resume(h.t)                           # exactly like _apply_hr_bpm
         assert t.note_load(80.0, h.t) is None, "tep zdvihol snooze"
         h.posun(1.0)
     assert t.state == trigger.DORMANT
@@ -732,8 +758,8 @@ def test_vedome_zdvihnutie_snooze_funguje():
 
 
 def test_vypadok_tepu_zdvihne_prva_vzorka():
-    """Toto `resume()` bez `force` zdvihnúť MUSÍ — je to presne ten prípad,
-    na ktorý bol napísaný."""
+    """This one `resume()` without `force` MUST lift — it is exactly the case
+    it was written for."""
     t, h = spusti()
     t.suspend(trigger.A_TEP_VYPADOL, now=h.t)
     t.resume(h.t)
@@ -741,12 +767,12 @@ def test_vypadok_tepu_zdvihne_prva_vzorka():
 
 
 def test_pozastavenie_nezmaze_odstup_medzi_hlaskami():
-    """Druhá polovica tej istej chyby.
+    """The second half of the same bug.
 
-    `_cooldown_until` sa číta LEN v stave COOLDOWN. Keď šlo pozastavenie
-    rovno na IDLE, jeden výpadok tepu zmazal štyri minúty odstupu — a ten
-    odstup musí byť väčší než `measure.REFRACTORY_AFTER_S`, inak si dve
-    hlášky navzájom zneplatnia meracie okná.
+    `_cooldown_until` is read ONLY in the COOLDOWN state. When pausing went
+    straight to IDLE, one heart-rate dropout erased four minutes of gap —
+    and that gap must be greater than `measure.REFRACTORY_AFTER_S`,
+    otherwise two cues invalidate each other's measurement windows.
     """
     t, h = spusti()
     natiahni(t, h)
@@ -754,32 +780,33 @@ def test_pozastavenie_nezmaze_odstup_medzi_hlaskami():
     assert t.tick(pause_s=3.0, now=h.t)["typ"] == trigger.E_DELIVER
     assert t.state == trigger.COOLDOWN
 
-    h.posun(10.0)                                # ešte hlboko v odstupe
+    h.posun(10.0)                                # still deep in the gap
     t.suspend(trigger.A_TEP_VYPADOL, now=h.t)
     t.resume(h.t)
     assert t.state == trigger.COOLDOWN, "odstup sa stratil pri výpadku tepu"
 
-    # a po uplynutí odstupu sa normálne pokračuje
+    # and after the gap has passed it continues normally
     h.posun(trigger.default_params()["min_gap_s"] + 1.0)
     t.tick(pause_s=0.0, now=h.t)
     assert t.state == trigger.IDLE
 
 
 def test_appka_zdvihne_spustac_na_vsetkych_troch_cestach():
-    """Von zo snooze vedú tri cesty a `start_listening` sa volá len
-    podmienene — pri snooze spustenom v nepočúvajúcom stave by spúšťač
-    ostal pozastavený navždy."""
+    """Three paths lead out of snooze and `start_listening` is only called
+    conditionally — with snooze started in a non-listening state the
+    trigger would stay paused forever."""
     for meno in ("_cancel_snooze", "start_listening"):
         assert "_resume_cue_trigger" in _telo("app.py", meno), meno
-    # vypršanie snooze je vnorená funkcia v _start_snooze
+    # snooze expiry is a nested function in _start_snooze
     assert "_resume_cue_trigger" in _telo("app.py", "_start_snooze")
 
 
 def test_zmena_ip_uprostred_relacie_nezahodi_vecer():
-    """`start_heart_rate_monitor` volá `hr_stats.reset_session()`, ktorý zmaže
-    `cues` aj `_all`. Bez korektného zatvorenia by sa meracie okná už nemali
-    z čoho zostaviť — a jediná cesta sem s otvorenou reláciou je zmena
-    IP/portu uprostred večera."""
+    """`start_heart_rate_monitor` calls `hr_stats.reset_session()`, which
+    deletes both `cues` and `_all`. Without a proper close the measurement
+    windows would have nothing to be built from — and the only way here
+    with an open session is changing the IP/port in the middle of the
+    evening."""
     assert "_open_hr_session" in _telo("app.py", "start_heart_rate_monitor")
     telo = _telo("app.py", "_open_hr_session")
     assert "_close_hr_session" in telo
@@ -788,37 +815,39 @@ def test_zmena_ip_uprostred_relacie_nezahodi_vecer():
 
 
 def test_tiche_rameno_sa_neda_vypnut_nedopatrenim():
-    """Dialóg ladenia sa predvypĺňal zo `cue_trigger.silent_share`, čo je
-    pred prvou reláciou 0.0. Kto ho otvoril a dal Uložiť bez toho, aby na to
-    pole siahol, vypol kontrolné rameno na celý beh appky — ticho."""
+    """The tuning dialog was prefilled from `cue_trigger.silent_share`, which
+    is 0.0 before the first session. Whoever opened it and pressed Save
+    without touching that field switched off the control arm for the whole
+    app run — silently."""
     telo = _telo("app.py", "_silent_share_for_next_session")
     assert "if not podiel" in telo, "nula sa musí brať ako nedopatrenie"
     assert "silent_share_for" in telo
 
 
 def test_riadok_o_hlaske_sa_obnovuje_aj_bez_tepu():
-    """Všetky ostatné cesty k `_refresh_dnes_stats` visia na prichádzajúcom
-    tepe. Po výpadku hodiniek by číslo „pred X min" zamrzlo a klamalo
-    donekonečna."""
+    """All the other paths to `_refresh_dnes_stats` hang on incoming heart
+    rate. After a watch dropout the "X min ago" number would freeze and lie
+    forever."""
     assert "_refresh_last_cue" in _telo("app.py", "_tick_session")
 
 
 def test_prestavba_okna_zosuladi_prstenec():
-    """Prestavba (zmena jazyka) postaví ensō nanovo s `_armed=False`, kým
-    `self._cue_armed` si stav drží ďalej. `set_live` to nezachráni — ten
-    príznak zhadzuje len pri prechode True → False."""
+    """A rebuild (language change) builds the ensō anew with `_armed=False`,
+    while `self._cue_armed` keeps holding the state. `set_live` does not
+    save it — it drops that flag only on a True → False transition."""
     telo = _telo("app.py", "_apply_listening_visuals")
     assert "set_armed" in telo and "_cue_armed" in telo
 
 
 # --------------------------------------------------------------------------
-# Prestavba okna: značka do stredu, spínač do pásu
+# Window rebuild: the mark to the centre, the switch into the bar
 # --------------------------------------------------------------------------
 
 def test_znacka_sa_stavia_na_stranke_nie_v_paneli():
-    """Od 2.1 sedí v strede stránky. V paneli mala 68 px a prstenec
-    „natiahnuté" pri tej veľkosti 1,4 px. Od prestavby stredu na Canvas je to
-    `_EnsoHero` (kresba, nie widget) - aby enso plávalo na dojo bez boxu."""
+    """Since 2.1 it sits in the centre of the page. In the panel it had 68 px
+    and the "armed" ring at that size 1.4 px. Since the centre was rebuilt
+    onto a Canvas it is `_EnsoHero` (a drawing, not a widget) - so the
+    enso floats on the dojo without a box."""
     telo = _telo("app.py", "_build_dnes_page")
     assert "_EnsoHero" in telo, "značka sa musí stavať na stránke Dnes"
     assert "ENSO_SIZE" in telo
@@ -828,21 +857,23 @@ def test_znacka_sa_stavia_na_stranke_nie_v_paneli():
 
 
 def test_stred_dnes_je_canvas_bez_boxu():
-    """Enso + text musia plávať na dojo, nie sedieť na tmavom štvorci.
+    """The enso + text must float on the dojo, not sit on a dark square.
 
-    CTk widget nevie byť priehľadný nad fotkou (`fg_color="transparent"` zdedí
-    plnú farbu rodiča), takže akýkoľvek rámec/label nad dojom ostal ako box.
-    Stred sa preto kreslí na `tk.Canvas` (`create_image` pre priehľadné enso,
-    `create_text` pre text). Test stráži, že sa box nevráti."""
+    A CTk widget cannot be transparent over a photo (`fg_color="transparent"`
+    inherits the parent's solid colour), so any frame/label over the dojo
+    stayed as a box. That is why the centre is drawn on a `tk.Canvas`
+    (`create_image` for the transparent enso, `create_text` for text). The
+    test guards that the box does not come back."""
     telo = _telo("app.py", "_build_dnes_page")
     assert "tk.Canvas" in telo and "dnes_canvas" in telo, \
         "stred Dnes sa má kresliť na Canvas"
-    # Do stredu sa už NESMIE vrátiť nepriehľadný rámec vo farbe pozadia -
-    # to bol práve ten „štvorec".
+    # An opaque frame in the background colour must NEVER come back into the
+    # centre - that was exactly the "square".
     assert 'ctk.CTkFrame(stred, fg_color=pal["bg"])' not in telo, \
         "nepriehľadný box v strede je späť"
-    # enso aj dojo sú OBRÁZKY na Canvase (create_image v layoute); v paint
-    # slučke sa už len vymieňajú cez itemconfigure (bez blikania).
+    # the enso and the dojo are both IMAGES on the Canvas (create_image in the
+    # layout); in the paint loop they are only swapped via itemconfigure (no
+    # flicker).
     layout = _telo("app.py", "_layout_dnes_items")
     assert "create_image" in layout, "enso aj dojo sú obrázky na Canvase"
     paint = _telo("app.py", "_paint_dnes_canvas")
@@ -859,53 +890,56 @@ def test_sidebar_uz_znacku_nestavia():
 
 
 def test_alias_sidebar_enso_ostava():
-    """`guided_tour.py` aj oba harnessy hľadajú značku ako `app.sidebar.enso`
-    a hľadajú ju MENOM — pri premenovaní by zlyhali TICHO (bublina sprievodcu
-    by sa len prestala na niečo ukazovať)."""
+    """`guided_tour.py` and both harnesses look up the mark as
+    `app.sidebar.enso` and look it up BY NAME — on a rename they would fail
+    SILENTLY (the tour bubble would just stop pointing at anything)."""
     telo = _telo("app.py", "_build_ui")
     assert "self.sidebar.enso = self.enso" in telo
 
 
 def test_spinac_je_v_pase_a_nie_na_znacke():
-    """Značka prestala byť skryté tlačidlo. Ovládanie má vlastný viditeľný
-    prvok a prepína UŽ LEN on — klik inam do pásu nerobí nič."""
+    """The mark stopped being a hidden button. The control has its own
+    visible element and NOW ONLY it toggles — a click elsewhere in the bar
+    does nothing."""
     src = _zdroj("ui_kit.py")
     i = src.index("class KamaeBar")
     telo = src[i:src.index("\nclass ", i + 1)]
     assert "BTN_X" in telo and "_v_spinaci" in telo
     assert "def _clicked" in telo
-    # klik mimo spínača nesmie prepínať
+    # a click outside the switch must not toggle
     j = telo.index("def _clicked")
     klik = telo[j:telo.index("def ", j + 10)]
     assert "_v_spinaci" in klik, "prepína aj klik mimo spínača"
 
 
 def test_znacka_sa_dokresluje_na_pozadi():
-    """Pri 150 px stojí celá sada 283 ms — a platilo by sa za ňu pri každom
-    štarte aj pri každej zmene témy, proti rozpočtu ~673 ms na tému."""
+    """At 150 px the whole set costs 283 ms — and it would be paid on every
+    start and every theme change, against a budget of ~673 ms per theme."""
     src = _zdroj("ui_shell.py")
     i = src.index("class _EnsoButton")
     telo = src[i:src.index("\nclass ", i + 1)]
     assert "_build_step" in telo and "_build_queue" in telo
     assert "BIG_PX" in telo, "veľká značka sa má kresliť s nižším prevzorkovaním"
-    # oba reťazce sa musia rušiť
+    # both chains must be cancelled
     j = telo.index("def destroy")
     znic = telo[j:telo.index("def ", j + 10)]
     assert "_cancel_build" in znic and "_after_id" in znic
 
 
 def test_pozadie_ma_vsetko_v_jednom_module():
-    """Kto mení fotku, mení `background.py` a nič iné. Fotku stredu stavia
-    `_build_dojo_photo` (dojo/tlmená → PIL → ImageTk pre Canvas)."""
+    """Whoever changes the photo changes `background.py` and nothing else.
+    The centre photo is built by `_build_dojo_photo` (dojo/dimmed → PIL →
+    ImageTk for the Canvas)."""
     telo = _telo("app.py", "_build_dojo_photo")
     assert "background.load" in telo
     assert ".jpg" not in telo and ".png" not in telo
 
 
 def test_stav_sa_da_precitat_aj_mimo_stranky_dnes():
-    """Značka aj dýchajúci pás sú deti stránky Dnes. Bez kontrolky v bočnom
-    paneli by na Histórii, V hre, Zvuku a Nastaveniach nebolo v okne nič,
-    čo povie, či appka počúva — to je strata schopnosti, nie zmena vzhľadu.
+    """Both the mark and the breathing bar are children of the Today page.
+    Without the indicator in the side panel, on History, In-game, Sound and
+    Settings there would be nothing in the window that says whether the
+    app is listening — that is a loss of capability, not a change of look.
     """
     src = _zdroj("ui_shell.py")
     assert "class _StateDot" in src
@@ -913,51 +947,54 @@ def test_stav_sa_da_precitat_aj_mimo_stranky_dnes():
     telo = src[i:src.index("\nclass ", i + 1)]
     assert "_StateDot(" in telo, "kontrolka musí byť v bočnom paneli"
 
-    # a musí sa prepínať spolu so stavom
+    # and it must toggle together with the state
     assert "state_dot" in _telo("app.py", "_apply_listening_visuals")
 
 
 def test_kontrolka_nie_je_druhe_tlacidlo():
-    """Spínač je jeden a je v dýchajúcom páse. Dve miesta, kde sa dá appka
-    spustiť, je presne to, čomu sa prestavba vyhýbala."""
+    """There is one switch and it is in the breathing bar. Two places where
+    the app can be started is exactly what the rebuild avoided."""
     telo = _telo_metody("ui_shell.py", "_StateDot", "__init__")
     assert "on_toggle" not in telo and "Button-1" not in telo
 
 
 def test_stav_je_vyplneny_uz_pri_stavbe():
-    """Text sa inak píše len z `_apply_listening_visuals` a `_set_enso_armed`
-    a ani jedno pri stavbe okna nebeží — po čerstvom štarte stála značka nad
-    prázdnym miestom. Vidno to v logs/gui_screenshots/01_dnes.png."""
+    """Otherwise the text is written only from `_apply_listening_visuals` and
+    `_set_enso_armed`, and neither runs while the window is built - after
+    a fresh start the mark stood above an empty spot. It shows in
+    logs/gui_screenshots/01_dnes.png."""
     telo = _telo("app.py", "_build_dnes_page")
     assert "_refresh_dnes_state_text" in telo
 
 
 def test_pozadie_sa_nekresli_1_5x_vacsie():
-    """DPI: `winfo_*` na Canvase sú už FYZICKÉ pixely. Dojo sa preto stavia 1:1
-    na (w, h) a enso aj fonty sa škálujú `get_widget_scaling` (logické × mierka
-    = fyzické), aby pri 150 % neboli malé. Predtým sa fotka cez `CTkImage(size=)`
-    kreslila 1,5× väčšia a orezala sa."""
+    """DPI: `winfo_*` on the Canvas are already PHYSICAL pixels. That is why
+    the dojo is built 1:1 at (w, h) and the enso and fonts are scaled by
+    `get_widget_scaling` (logical × scale = physical), so they are not
+    small at 150 %. Before, the photo was drawn 1.5× bigger via
+    `CTkImage(size=)` and got cropped."""
     telo = _telo("app.py", "_paint_dnes_canvas")
     assert "get_widget_scaling" in telo
     assert "mierka" in telo
 
 
 # --------------------------------------------------------------------------
-# Prečo sa večer skončil nulou hlášok
+# Why the evening ended with zero cues
 #
-# Prvý skutočný večer (The Finals, 36 min) skončil s nulou hlášok, hoci
-# špička záťaže bola 87 pri prahu 55. Zo súhrnu relácie sa nedalo rozlíšiť,
-# či bolo pravidlo „súvisle 90 s" pritvrdé, alebo či počítadlo súvislosti
-# rozbíjali výpadky tepu. Tieto štyri čísla to rozlíšia bez ukladania krivky.
+# The first real evening (The Finals, 36 min) ended with zero cues, even
+# though peak load was 87 at a threshold of 55. The session summary could
+# not tell whether the "continuously 90 s" rule was too strict, or whether
+# heart-rate dropouts were breaking the continuity counter. These four
+# numbers tell them apart without storing the curve.
 # --------------------------------------------------------------------------
 
 def test_najdlhsi_usek_nad_prahom_sa_meria():
-    """Keď sa nenatiahne, musí byť vidieť, ako blízko k tomu bolo."""
+    """When it does not arm, it must be visible how close it came."""
     t, h = spusti(stress_hold_s=90.0, dip_grace_s=5.0)
-    for _ in range(40):                      # 40 s nad prahom, potom dole
+    for _ in range(40):                      # 40 s above the threshold, then down
         t.note_load(80.0, h.t)
         h.posun(1.0)
-    for _ in range(20):                      # dlhý prepad úsek zruší
+    for _ in range(20):                      # a long dip cancels the stretch
         t.note_load(10.0, h.t)
         h.posun(1.0)
     assert t.armed_count == 0
@@ -968,7 +1005,7 @@ def test_najdlhsi_usek_nad_prahom_sa_meria():
 
 
 def test_vypadok_tepu_sa_odlisi_od_prepadu():
-    """Tá istá nula hlášok, úplne iná príčina — a iné riešenie."""
+    """Same zero cues, a completely different cause — and a different fix."""
     t, h = spusti(stress_hold_s=90.0)
     for _ in range(30):
         t.note_load(80.0, h.t)
@@ -980,13 +1017,13 @@ def test_vypadok_tepu_sa_odlisi_od_prepadu():
 
 
 def test_kratky_prepad_beh_nerozbije():
-    """Tolerancia `dip_grace_s` nesmie počítať nový beh - inak by čísla
-    tvrdili roztrieštenosť, ktorá sa nestala."""
+    """The `dip_grace_s` tolerance must not count a new run - otherwise the
+    numbers would claim a fragmentation that did not happen."""
     t, h = spusti(stress_hold_s=90.0, dip_grace_s=5.0)
     for _ in range(30):
         t.note_load(80.0, h.t)
         h.posun(1.0)
-    for _ in range(3):                       # krátky prepad, v tolerancii
+    for _ in range(3):                       # a short dip, within tolerance
         t.note_load(10.0, h.t)
         h.posun(1.0)
     for _ in range(30):
@@ -994,10 +1031,10 @@ def test_kratky_prepad_beh_nerozbije():
         h.posun(1.0)
     assert t.behov_nad == 1, t.behov_nad
     assert t.zrusenych_prepadom == 0
-    # Jeden úsek (viac než ktorýkoľvek z dvoch kusov po 30 s), ale bez troch
-    # sekúnd prepadu: od 0.2.1 sa čas pod prahom do úseku nepočíta. Predtým
-    # tu stálo `>= 60` a prešlo len vďaka tomu, že nástenné hodiny (62 s)
-    # započítali aj prepad.
+    # One stretch (more than either of the two 30 s pieces), but without the
+    # three seconds of the dip: since 0.2.1 time below the threshold does not
+    # count towards the stretch. Before, this said `>= 60` and passed only
+    # because the wall clock (62 s) also counted the dip.
     assert 58.0 <= t.najdlhsi_nad_s <= 60.0, t.najdlhsi_nad_s
 
 
@@ -1015,8 +1052,9 @@ def test_pocitadla_sa_novou_relaciou_vynuluju():
 
 
 def test_uspesne_natiahnutie_najdlhsi_usek_zaznamena():
-    """Aj keď hláška padne, dĺžka úseku sa musí zapísať - inak by vyšlo, že
-    najdlhší úsek bol nula práve vo večeroch, keď appka fungovala."""
+    """Even when the cue goes off, the stretch length must be recorded -
+    otherwise the longest stretch would come out as zero exactly on the
+    evenings when the app worked."""
     t, h = spusti(stress_hold_s=90.0)
     natiahni(t, h, stress=80.0)
     assert t.armed_count == 1
@@ -1024,10 +1062,11 @@ def test_uspesne_natiahnutie_najdlhsi_usek_zaznamena():
 
 
 # --------------------------------------------------------------------------
-# Veta „prečo som sa neozvala" musí trafiť správnu príčinu
+# The "why didn't I speak up" sentence must hit the right cause
 #
-# Tri veľmi rôzne veci vyzerajú z pohľadu hráča rovnako (ticho) a majú
-# veľmi rôzne riešenia. Zámena by ho poslala opravovať niečo iné.
+# Three very different things look the same from the player's point of
+# view (silence) and have very different fixes. Mixing them up would send
+# them to fix something else.
 # --------------------------------------------------------------------------
 
 def _preco(**summary):
@@ -1036,13 +1075,13 @@ def _preco(**summary):
 
 
 def test_preco_ticho_stare_relacie_nic_netvrdia():
-    """Relácia uložená pred touto zmenou tie čísla nemá - radšej mlčať."""
+    """A session saved before this change lacks those numbers - stay silent."""
     assert _preco(duration_s=1800) == ""
 
 
 def test_preco_ticho_telo_nebolo_hore():
     veta = _preco(above_runs=0, runs_cancelled_gap=0, runs_cancelled_dip=0)
-    # 0.2.2: zataz ma "prah", "hranica" je len tep v BPM
+    # 0.3: load has a "prah" (threshold), "hranica" is only heart rate in BPM
     assert veta and "prah" in veta.lower(), veta
 
 
@@ -1053,8 +1092,9 @@ def test_preco_ticho_bolo_hore_ale_kratko():
 
 
 def test_preco_ticho_vypadky_maju_prednost():
-    """Pri výpadkoch je „najdlhší úsek" nedôveryhodný - je rozsekaný dierami
-    v dátach, nie fyziológiou. Preto sa pýtajú ako prvé."""
+    """With dropouts the "longest stretch" is untrustworthy - it is chopped
+    up by gaps in the data, not by physiology. That is why they are asked
+    first."""
     veta = _preco(above_runs=9, runs_cancelled_gap=7, runs_cancelled_dip=2,
                   longest_above_s=11.0, stress_hold_s=90.0)
     assert "7" in veta, veta
@@ -1062,31 +1102,33 @@ def test_preco_ticho_vypadky_maju_prednost():
 
 
 def test_kolova_hra_sa_natiahne_az_po_uprave():
-    """Prečo sa `stress_hold_s` zmenil z 90 na 45 a tolerancia z 5 na 20.
+    """Why `stress_hold_s` went from 90 to 45 and the tolerance from 5 to 20.
 
-    Vzorec z kolovej strieľačky: telo ide hore, umrieš, respawn, telo na
-    chvíľu klesne, ďalšie kolo. Presne toto sa dialo vo večeri, ktorý
-    skončil nulou hlášok — a presne toto musí appka po úprave zachytiť.
+    The pattern of a round-based shooter: the body goes up, you die,
+    respawn, the body drops for a while, next round. Exactly this happened
+    on the evening that ended with zero cues — and exactly this the app
+    must catch after the change.
     """
     def odohraj(**params):
         t, h = spusti(**params)
-        for _ in range(3):                   # tri kolá
-            for _ in range(50):              # 50 s v boji
+        for _ in range(3):                   # three rounds
+            for _ in range(50):              # 50 s in combat
                 if t.note_load(80.0, h.t):
                     return True
                 h.posun(1.0)
-            for _ in range(12):              # 12 s respawn a pokoj
+            for _ in range(12):              # 12 s of respawn and calm
                 if t.note_load(20.0, h.t):
                     return True
                 h.posun(1.0)
         return False
 
-    # Od 19. 9. sa nepočíta SÚVISLÝ úsek, ale koľko času bolo nad prahom
-    # za posledných `OKNO_NASOBOK * stress_hold_s` sekúnd. Tento vzorec sa
-    # preto natiahne aj so starými parametrami — a to je celý zmysel zmeny:
-    # večer, ktorý skončil nulou hlášok, mal 13 behov nad prahom a najdlhší
-    # 44,1 s pri požadovaných 45,0. Chýbala jedna sekunda z jedného behu,
-    # pritom času nad prahom bolo dosť.
+    # Since 19. 9. it is not a CONTINUOUS stretch that counts, but how much
+    # time was above the threshold in the last `OKNO_NASOBOK * stress_hold_s`
+    # seconds. That is why this pattern arms even with the old parameters —
+    # and that is the whole point of the change: the evening that ended with
+    # zero cues had 13 runs above the threshold and the longest was 44.1 s
+    # against the required 45.0. One second of one run was missing, while
+    # there was plenty of time above the threshold.
     assert odohraj(stress_hold_s=90.0, dip_grace_s=5.0), (
         "kumulatívne okno musí zachytiť aj kolový vzorec s krátkou toleranciou")
     assert odohraj(stress_hold_s=45.0, dip_grace_s=20.0), (
@@ -1094,42 +1136,43 @@ def test_kolova_hra_sa_natiahne_az_po_uprave():
 
 
 def test_pokojny_vecer_sa_nenatiahne_ani_kumulativne():
-    """Poistka k predošlému: kumulatívne okno nesmie naťahovať na čomkoľvek.
+    """Guard for the previous: cumulative window must not arm on just anything.
 
-    Keby stačilo pár sekúnd nad prahom za dlhý čas, appka by sa ozývala aj
-    pri pokojnom hraní — to je presne ten opak, ktorý ju robí otravnou.
+    If a few seconds above the threshold over a long time were enough, the
+    app would speak up even during calm play — that is exactly the
+    opposite that makes it annoying.
     """
     t, h = spusti(stress_threshold=55.0, stress_hold_s=45.0)
     for _ in range(40):
-        for _ in range(5):                   # 5 s krátky špic nad prahom
+        for _ in range(5):                   # a short 5 s spike above the threshold
             assert not t.note_load(60.0, h.t)
             h.posun(1.0)
-        for _ in range(55):                  # 55 s pokoja
+        for _ in range(55):                  # 55 s of calm
             assert not t.note_load(20.0, h.t)
             h.posun(1.0)
 
 
 def test_vypadok_spojenia_sa_nerata_ako_cas_nad_prahom():
-    """Diera v dátach nie je záťaž.
+    """A gap in the data is not load.
 
-    Bez stropu na krok by jeden 20-minútový výpadok spojenia pripísal do
-    okna 20 minút „nad prahom" a appka by sa ozvala hneď po návrate — na
-    základe času, ktorý nikto nemeral.
+    Without a per-step cap, one 20-minute connection dropout would add 20
+    minutes "above the threshold" to the window and the app would speak up
+    right after the return — based on time nobody measured.
     """
     t, h = spusti(stress_threshold=55.0, stress_hold_s=45.0)
     assert not t.note_load(80.0, h.t)
-    h.posun(1200.0)                          # 20 minút ticha zo senzora
+    h.posun(1200.0)                          # 20 minutes of silence from the sensor
     assert not t.note_load(80.0, h.t), "výpadok sa nesmie počítať ako držanie"
 
 
 def test_zapnutie_pocuvania_otvori_novu_relaciu():
-    """Bod 1 zadania z 18. 9.
+    """Point 1 of the spec from 18. 9.
 
-    Relácia bola naviazaná na SENZOR, nie na počúvanie — otvárala sa jedine
-    v `start_heart_rate_monitor`. Odkedy ju `stop_listening` korektne
-    zatvára, po prvom cykle stop/štart nebola otvorená žiadna relácia a
-    nemeralo sa nič. V CSV z 18. 9. to vidno ako štyri krátke relácie
-    namiesto jednej — vznikli len reštartom appky.
+    The session was tied to the SENSOR, not to listening — it was opened
+    only in `start_heart_rate_monitor`. Since `stop_listening` closes it
+    properly, after the first stop/start cycle no session was open and
+    nothing was measured. In the CSV from 18. 9. this shows as four short
+    sessions instead of one — they came about only from app restarts.
     """
     telo = _telo("app.py", "start_listening")
     assert "_hr_session_open" in telo, "start_listening sa musí pýtať na reláciu"
@@ -1137,9 +1180,9 @@ def test_zapnutie_pocuvania_otvori_novu_relaciu():
 
 
 def test_zapnutie_pocuvania_nerestartuje_siet_zbytocne():
-    """Reštart socketu = krátke odpojenie hodiniek, a práve krátke výpadky
-    rozbíjajú počítanie súvislosti (body 2 a 5). Keď príjem už beží, smie sa
-    otvoriť len relácia."""
+    """A socket restart = a short watch disconnect, and it is exactly short
+    dropouts that break the continuity counting (points 2 and 5). When
+    reception is already running, only the session may be opened."""
     telo = _telo("app.py", "start_listening")
     assert "heart_rate_monitor.running" in telo, \
         "start_listening sa musí spýtať, či príjem už beží"
@@ -1148,24 +1191,26 @@ def test_zapnutie_pocuvania_nerestartuje_siet_zbytocne():
 
 
 # ---------------------------------------------------------------------------
-# "Ako casto sa ozvem" - jeden ovladac, ktory hybe styrmi prahmi naraz
+# "How often I speak up" - one control that moves four thresholds at once
 # ---------------------------------------------------------------------------
 
 def test_citlivost_bezne_je_presne_vychodiskove_nastavenie():
-    """"Bezne" nesmie byt vlastna tabulka cisel.
+    """"Bezne" must not be its own table of numbers.
 
-    Keby si viedlo svoje hodnoty, `default_params()` a "bezne" by sa raz
-    rozisli a nikto by nevedel, ktore z nich su cisla zo zadania.
+    If it kept its own values, `default_params()` and "bezne" would drift
+    apart one day and nobody would know which of them are the numbers from
+    the spec.
     """
     assert trigger.params_for(trigger.CITLIVOST_BEZNE) == trigger.default_params()
 
 
 def test_citlivost_vracia_cely_slovnik_nie_len_rozdiel():
-    """Prepnutie spat na "bezne" musi vratit VSETKY cisla.
+    """Switching back to "bezne" must return ALL the numbers.
 
-    Keby `params_for` vracalo len rozdiel a volajuci ho `update`-oval do
-    beziacich parametrov, po ceste "viac" -> "bezne" by v nich ostal
-    stary prah 48 a volba by klamala.
+    If `params_for` returned only the difference and the caller
+    `update`-d it into the running parameters, then after the path "viac"
+    -> "bezne" the old threshold 48 would stay in them and the choice
+    would lie.
     """
     for citlivost in trigger.CITLIVOSTI:
         assert set(trigger.params_for(citlivost)) == set(trigger.default_params())
@@ -1175,20 +1220,21 @@ def test_citlivost_naozaj_meni_frekvenciu_spravnym_smerom():
     menej = trigger.params_for(trigger.CITLIVOST_MENEJ)
     bezne = trigger.params_for(trigger.CITLIVOST_BEZNE)
     viac = trigger.params_for(trigger.CITLIVOST_VIAC)
-    # nizsi prah a kratsie drzanie = ozve sa skor
+    # lower threshold and shorter hold = speaks up sooner
     assert menej["stress_threshold"] > bezne["stress_threshold"] > viac["stress_threshold"]
     assert menej["stress_hold_s"] > bezne["stress_hold_s"] > viac["stress_hold_s"]
-    # kratsi odstup a vyssi strop = ozve sa castejsie
+    # shorter gap and higher cap = speaks up more often
     assert menej["min_gap_s"] > bezne["min_gap_s"] > viac["min_gap_s"]
     assert menej["max_per_hour"] < bezne["max_per_hour"] < viac["max_per_hour"]
 
 
 def test_ziadna_citlivost_nepodlezie_refrakternu_zonu():
-    """TVRDA HRANICA. Odstup musi ostat nad `measure.REFRACTORY_AFTER_S`.
+    """HARD LIMIT. The gap must stay above `measure.REFRACTORY_AFTER_S`.
 
-    Keby klesol pod nu, druha hlaska by pristala do meracieho okna prvej,
-    obe okna by sa zneplatnili a z vecera by neostalo nic na vyhodnotenie.
-    Je to jediny dovod, preco "viac" nejde este vyssie.
+    If it dropped below it, the second cue would land in the measurement
+    window of the first, both windows would be invalidated and nothing
+    would be left of the evening to evaluate. It is the only reason why
+    "viac" does not go even higher.
     """
     import measure
     for citlivost in trigger.CITLIVOSTI:
@@ -1198,18 +1244,18 @@ def test_ziadna_citlivost_nepodlezie_refrakternu_zonu():
 
 
 def test_nezmyselna_citlivost_padne_na_bezne():
-    """Rozbity/stary settings.json nesmie appku nechat bez prahov."""
+    """Broken/old settings.json must not leave the app without thresholds."""
     for nezmysel in ("stredne", "", None, 3):
         assert trigger.params_for(nezmysel) == trigger.default_params()
 
 
 def test_vyvojarska_vrstva_nepodlezie_refrakternu_zonu():
-    """Tvrdá poistka platí aj pre vývojársku vrstvu.
+    """The hard safety net applies to the developer overlay too.
 
-    Je to nástroj na ladenie prahov, nie na obchádzanie hranice, ktorá
-    chráni meranie. Preklep v políčku (24 namiesto 240) by nepokazil jeden
-    večer, ale celý týždeň dát — a v dátach by to vyzeralo ako „hláška
-    nezabrala", nie ako chyba nastavenia.
+    It is a tool for tuning thresholds, not for bypassing the limit that
+    protects the measurement. A typo in a field (24 instead of 240) would
+    not spoil one evening, but a whole week of data — and in the data it
+    would look like "the cue did not work", not like a settings error.
     """
     import inspect
     import app as app_mod
@@ -1219,11 +1265,12 @@ def test_vyvojarska_vrstva_nepodlezie_refrakternu_zonu():
 
 
 def test_vypnutie_vsetkych_hlasok_appku_umlci():
-    """Kto vypol všetky štyri, chcel ticho — a dostal dychanie.
+    """Whoever switched off all four wanted silence — and got breathing.
 
-    `_dalsi_cue_slot` vracal ako zálohu `CUE_SLOT_INDEX` (dychový kruh),
-    takže vypnutie všetkých prepínačov appku neumlčalo. Vypnutie je
-    rozhodnutie hráča a automat ho obchádzať nesmie.
+    `_dalsi_cue_slot` returned `CUE_SLOT_INDEX` (the breathing circle) as a
+    fallback, so switching off all toggles did not silence the app.
+    Switching off is the player's decision and the state machine must not
+    get around it.
     """
     import inspect
     import app as app_mod
@@ -1237,34 +1284,35 @@ def test_vypnutie_vsetkych_hlasok_appku_umlci():
 
 
 # --------------------------------------------------------------------------
-# Výpadok tepu zahodí nazbieraný čas nad prahom (B4)
+# A heart-rate dropout throws away the collected time above the threshold (B4)
 # --------------------------------------------------------------------------
 
 def test_vypadok_tepu_zahodi_nazbierany_cas_nad_prahom():
-    """B4: `suspend` vynuloval `_above_since`, ale nechal `_nad_okno`.
+    """B4: `suspend` reset `_above_since`, but left `_nad_okno`.
 
-    Poistka proti diere v `note_load` sa spustí len keď `_above_since` nie je
-    None — a to práve suspend vynuloval. Bez vyčistenia okna by po výpadku
-    12–40 s stará nazbieraná záťaž prežila a prvá vzorka po návrate by
-    natiahla hlášku na čase, ktorý nikto nemeral.
+    The guard against a gap in `note_load` triggers only when
+    `_above_since` is not None — and that is exactly what suspend reset.
+    Without clearing the window, after a 12–40 s dropout the old collected
+    load would survive and the first sample after the return would arm a
+    cue on time nobody measured.
     """
     t, h = spusti(stress_threshold=50.0, stress_hold_s=30.0)
-    # ~29 s tesne pod hold=30 → ešte sa nenatiahne, ale okno je plné
+    # ~29 s just under hold=30 → it does not arm yet, but the window is full
     for _ in range(29):
         assert t.note_load(80.0, h.t) is None
         h.posun(1.0)
 
-    t.suspend(trigger.A_TEP_VYPADOL, now=h.t)   # appka to volá pri výpadku
-    h.posun(15.0)                               # 15 s bez tepu
-    t.resume(now=h.t)                           # návrat tepu
+    t.suspend(trigger.A_TEP_VYPADOL, now=h.t)   # the app calls this on a dropout
+    h.posun(15.0)                               # 15 s without heart rate
+    t.resume(now=h.t)                           # heart rate returns
 
-    ev = t.note_load(80.0, h.t)                 # prvá vzorka po návrate
+    ev = t.note_load(80.0, h.t)                 # first sample after the return
     assert ev is None, "natiahlo sa z času spred výpadku (B4)"
 
 
 def test_po_vypadku_sa_da_natiahnut_odznova():
-    """Poistka nesmie appku umlčať — po návrate sa dá natiahnuť normálne,
-    len odznova (od nuly), nie zo starého času."""
+    """The guard must not silence the app — after the return it can arm
+    normally, just from scratch (from zero), not from the old time."""
     t, h = spusti(stress_threshold=50.0, stress_hold_s=30.0)
     for _ in range(10):
         t.note_load(80.0, h.t)
@@ -1272,5 +1320,5 @@ def test_po_vypadku_sa_da_natiahnut_odznova():
     t.suspend(trigger.A_TEP_VYPADOL, now=h.t)
     h.posun(20.0)
     t.resume(now=h.t)
-    ev = natiahni(t, h, stress=80.0)            # drž záťaž → musí sa natiahnuť
+    ev = natiahni(t, h, stress=80.0)            # hold the load → it must arm
     assert ev is not None

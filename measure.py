@@ -1,41 +1,44 @@
-"""Meracie okna okolo hlasky - co sa dialo s telom pred nou a po nej.
+"""Measurement windows around a cue - what the body did before and after it.
 
-PRECO TO EXISTUJE
------------------
-Bez merania sa neda povedat, ci hlaska nieco robi. A meria sa to zle
-velmi lahko: hlaska sa spusta prave vtedy, ked je tep hore, a tep sa
-vracia dole aj sam od seba. Ked sa teda porovna "pred" a "po" bez
-kontroly, vyjde "funguje" vzdy - aj keby appka mlcala. Preto sa kazde
-okno zapisuje s ramenom (`arm`), aby sa tiche rameno dalo porovnat s
-hlasnym. Tiche rameno je uz ZIVE (losuje ho `trigger.CueTrigger`): cast
-natiahnuti sa zamerne nedoruci hlasom, len vizualom, a meria sa rovnako -
-inak by "funguje" vyslo vzdy.
+WHY THIS EXISTS
+---------------
+Without measuring you cannot say whether a cue does anything. And it is very
+easy to measure it badly: a cue fires exactly when the heart rate is up, and
+the heart rate also comes back down on its own. So when "before" and "after"
+are compared without a control, the result is "it works" every time - even
+if the app stayed silent. That is why every window is written with an arm
+(`arm`), so the silent arm can be compared with the voiced one. The silent
+arm is already LIVE (drawn by `trigger.CueTrigger`): some armings are
+deliberately not delivered by voice, only visually, and are measured the
+same way - otherwise "it works" would always come out.
 
-TVAR OKNA
----------
+WINDOW SHAPE
+------------
     -60 s          0        +10 s              +70 s        +180 s
-      |----pre----|hlaska|--mrtvy cas--|----post----|--trvacnost--|
+      |----pre----| cue  |--dead time--|----post----|--durability--|
 
-Mrtvy cas +10 s je tam preto, aby sa do "po" nedostal este dobiehajuci
-stav z momentu hlasky - aspon jeden cely dychovy cyklus.
+The +10 s dead time is there so that "after" does not include the state
+still running out from the moment of the cue - at least one whole breathing
+cycle.
 
-CO OKNO ZNEPLATNI
------------------
-  * refraktérna zona - ak v rozsahu -60/+180 s zaznela ina hlaska,
-    nedá sa povedat, ktora z nich co sposobila
-  * diera v datach - senzor vypadol; `HeartStats.clear_live()` vycisti
-    len zivu krivku, `_all` rastie dalej, takze diera NIE JE nicim
-    oznacena a da sa najst jedine z rozdielov casovych znaciek
-  * skratene okno - hlaska padla skor nez 60 s od zaciatku relacie,
-    alebo relacia skoncila skor nez uplynulo +180 s
+WHAT INVALIDATES A WINDOW
+-------------------------
+  * refractory zone - if another cue sounded within -60/+180 s, it is
+    impossible to say which of them caused what
+  * a gap in the data - the sensor dropped out; `HeartStats.clear_live()`
+    clears only the live curve, `_all` keeps growing, so the gap is NOT
+    marked by anything and can only be found from timestamp differences
+  * a shortened window - the cue came less than 60 s after the session
+    start, or the session ended before +180 s passed
 
-Neplatne okno sa ZAPISE, nezahodi - s dovodom v `reasons`. Prve vecery
-bude dolezitejsie vidiet, kolko okien padlo a preco, nez mat cisty
-subor. Filtruje sa az pri analyze (`valid=True`).
+An invalid window is WRITTEN, not thrown away - with the reason in
+`reasons`. In the first evenings it will matter more to see how many windows
+failed and why than to have a clean file. Filtering happens only during
+analysis (`valid=True`).
 
-Modul je cisto datovy: ziadny Tk, ziadne I/O okrem ulozenia na konci,
-rovnako ako `hr_stats.py`. Vsetky vypocty su ciste funkcie nad
-`[(timestamp, hodnota)]`, takze sa daju testovat bez displeja.
+The module is purely data: no Tk, no I/O except saving at the end, the same
+as `hr_stats.py`. All calculations are pure functions over
+`[(timestamp, hodnota)]`, so they can be tested without a display.
 """
 
 import json
@@ -44,67 +47,71 @@ import os
 from paths import nahrad_subor
 
 # --------------------------------------------------------------------------
-# Rozmery okna (sekundy). Vychodiskove hodnoty su z literatury, nie z tela
-# konkretneho hraca - prve vecery sa budu ladit, preto su na jednom mieste.
+# Window dimensions (seconds). The starting values come from the literature,
+# not from a specific player's body - they will be tuned in the first
+# evenings, which is why they are in one place.
 # --------------------------------------------------------------------------
 
 PRE_S = 60.0                 # -60 .. 0
-DEAD_S = 10.0                # 0 .. +10   mrtvy cas (jeden dychovy cyklus)
+DEAD_S = 10.0                # 0 .. +10   dead time (one breathing cycle)
 POST_S = 70.0                # +10 .. +70
-DURABILITY_S = 180.0         # +70 .. +180 (volitelne)
+DURABILITY_S = 180.0         # +70 .. +180 (optional)
 
 REFRACTORY_BEFORE_S = 60.0
 REFRACTORY_AFTER_S = 180.0
 
-# Dlhsia diera medzi vzorkami = vypadok senzora. ROVNAKE CISLO ako
+# A longer gap between samples = sensor dropout. THE SAME NUMBER as
 # `trigger.DIERA_S` (= `heart_rate.HeartRateMonitor.STALE_AFTER_S`, 12 s) -
-# test to strazi. Neimportuje sa: `trigger` importuje `measure`.
+# a test guards it. Not imported: `trigger` imports `measure`.
 #
-# Predtym tu bolo 5 s (ako `hr_stats.MAX_SAMPLE_GAP_S`, co je ale strop
-# KREDITU za jednu medzeru, nie hranica vypadku). Hodinky od 20. 9. posielaju
-# tep po ~2,9 s a jeden strateny paket je medzera ~5,6 s - takze skoro kazde
-# meracie okno dostalo `diera_v_datach`, hoci appka ani spustac to za vypadok
-# nepovazuju a HUD celu dobu ukazoval tep.
+# It used to be 5 s here (like `hr_stats.MAX_SAMPLE_GAP_S`, which however
+# is the cap of CREDIT for one gap, not a dropout limit). Since 20. 9. the
+# watch sends the heart rate every ~2,9 s and one lost packet is a gap of
+# ~5,6 s - so almost every measurement window got `diera_v_datach`,
+# although neither the app nor the trigger considered it a dropout and the
+# HUD showed the heart rate the whole time.
 MAX_GAP_S = 12.0
 
-# Pod tolko milisekund od posledneho vstupu povazujeme hraca za aktivneho.
+# Below this many milliseconds since the last input we consider the player
+# active.
 ACTIVE_IDLE_MS = 1000
 
-# Kategorie hlasok. Su to tie iste styri somaticke vizualy, ktore appka
-# kresli do hry (`hud_paint.render_slot_icon`) a ktore zodpovedaju slotom
-# 0-3. Mena su anglicke a NEPREKLADAJU sa - id kategorie ide do datoveho
-# suboru a musi prezit zmenu jazyka rozhrania, rovnako ako kluce SFX sad.
+# Cue categories. They are the same four somatic visuals that the app draws
+# into the game (`hud_paint.render_slot_icon`) and that correspond to slots
+# 0-3. The names are English and are NOT TRANSLATED - the category id goes
+# into the data file and must survive a change of the UI language, just
+# like the SFX set keys.
 CATEGORIES = ("grounding", "jaw", "release", "breath")
 
 
 def next_slot(available, last=None):
-    """Ktory slot ma zaznniet teraz. Vracia index alebo None.
+    """Which slot should sound now. Returns an index or None.
 
-    PRECO STRIEDANIE
-    ----------------
-    Do 18. 9. hrala appka VZDY jeden pevny slot (dychovy). Ma to jednu
-    silnu vlastnost - vsetky meracie okna su z jednej kategorie, takze sa
-    daju porovnavat bez dalsej premennej - a jednu fatalnu: rovnaka veta
-    stokrat za vecer prestane fungovat. Habituacia je presne to, proti
-    comu cela appka stoji.
+    WHY ROTATION
+    ------------
+    Until 18. 9. the app ALWAYS played one fixed slot (the breathing one).
+    That has one strong property - all measurement windows are from one
+    category, so they can be compared without another variable - and one
+    fatal one: the same sentence a hundred times an evening stops working.
+    Habituation is exactly what the whole app stands against.
 
-    PRECO KOLO-DOKOLA A NIE NAHODA
+    WHY ROUND-ROBIN AND NOT RANDOM
     ------------------------------
-    Nahodny vyber by tu istu kategoriu obcas zopakoval trikrat po sebe a
-    inu by za vecer nepustil vobec. Striedanie v kruhu drzi kategorie
-    ROVNOMERNE zastupene, co je zaroven to, co potrebuje analyza: kazda
-    ma podobny pocet okien.
+    A random choice would sometimes repeat the same category three times
+    in a row and not let another one through at all for a whole evening.
+    Rotating in a circle keeps the categories EVENLY represented, which is
+    also what the analysis needs: each has a similar number of windows.
 
-    CO TO STOJI
-    -----------
-    Okna uz nie su z jednej kategorie, takze do odhadu ucinku pribudne
-    rozptyl medzi kategoriami. Nie je to ale strata: kategoria sa do okna
-    zapisuje (`category_for_slot`), takze faza 8 bude mat data na to, aby
-    ich rozdelila - a zbiera ich od DNES, nie az odvtedy, co sa faza 8
-    otvori.
+    WHAT IT COSTS
+    -------------
+    The windows are no longer from one category, so between-category
+    variance enters the effect estimate. But it is not a loss: the
+    category is written into the window (`category_for_slot`), so phase 8
+    will have the data to split them - and it collects it from TODAY, not
+    only from when phase 8 opens.
 
-    `available` su indexy ZAPNUTYCH slotov. Ked je zapnuty jediny, vrati sa
-    on - opakovaniu sa vtedy vyhnut neda.
+    `available` are the indexes of the ENABLED slots. When only one is
+    enabled, it is returned - repetition cannot be avoided then.
     """
     zoznam = sorted({int(i) for i in (available or [])})
     if not zoznam:
@@ -116,7 +123,7 @@ def next_slot(available, last=None):
 
 
 def category_for_slot(index):
-    """Kategoria pre slot 0-3, alebo None pre cokolvek ine."""
+    """Category for slot 0-3, or None for anything else."""
     try:
         index = int(index)
     except (TypeError, ValueError):
@@ -124,17 +131,21 @@ def category_for_slot(index):
     return CATEGORIES[index] if 0 <= index < len(CATEGORIES) else None
 
 
-# Dovody, preco okno nie je platne.
-# Podiel casu so vstupom z klavesnice/mysi, pod ktorym okno neplati.
+# Reasons why a window is not valid.
+# Share of time with keyboard/mouse input below which the window is not
+# valid.
 #
-# `pre_activity` a `post_activity` sa zapisovali od zaciatku, ale na platnost
-# okna nemali vplyv - a to bola diera. Ked hrac vstane a odide si po kavu,
-# tep mu stupne CHODZOU, nie hrou: appka to vidi ako zataz, ozve sa, a po
-# navrate a sadnuti si tep klesne. Take okno vyzera ako ucinna hlaska,
-# pritom nemeria nic ine nez to, ze si clovek sadol.
+# `pre_activity` and `post_activity` were written from the start, but had no
+# effect on the window's validity - and that was a hole. When the player
+# gets up and goes for a coffee, their heart rate rises from WALKING, not
+# from the game: the app sees it as load, speaks up, and after they come
+# back and sit down the heart rate drops. Such a window looks like an
+# effective cue, while it measures nothing but the fact that the person sat
+# down.
 #
-# 0,25 je zamerne nizko: mikropauza pri stole podiel takmer nezmeni (okna su
-# 60 s pred a 180 s po), kym odchod od PC ho zrazi k nule.
+# 0,25 is deliberately low: a micro-pause at the desk barely changes the
+# share (the windows are 60 s before and 180 s after), while leaving the PC
+# drops it to zero.
 MIN_AKTIVITA = 0.25
 
 R_NEAKTIVNY = "nebol_pri_klavesnici"
@@ -143,33 +154,34 @@ R_GAP = "diera_v_datach"
 R_PRE_SHORT = "skratene_pred"
 R_POST_SHORT = "skratene_po"
 R_NO_DATA = "ziadne_data"
-# Vizuál sa nevykreslil (jediný podnet tichého ramena). Okno by meralo
-# hlášku proti ničomu, tak ho vylúčime (bug B17).
+# The visual was not drawn (the only stimulus of the silent arm). The window
+# would measure the cue against nothing, so we exclude it (bug B17).
 R_NEDORUCENE = "nedorucene"
 
 
 # --------------------------------------------------------------------------
-# Ciste vypocty nad [(timestamp, hodnota)]
+# Pure calculations over [(timestamp, value)]
 # --------------------------------------------------------------------------
 
 def slice_span(series, t0, t1):
-    """Vzorky s casom v <t0, t1) - zaciatok patri dnu, koniec uz nie.
+    """Samples with time in <t0, t1) - the start is inside, the end is not.
 
-    Polootvorene zamerne, z dvoch dovodov:
+    Half-open on purpose, for two reasons:
 
-      * vzorka presne v momente hlasky nepatri ani do "pred", ani do "po" -
-        je to okamih zasahu. Pri pred-okne <-60, 0> by inak natiekla dnu a
-        priemer by tahala prave tym cislom, ktore hlasku vyvolalo,
-      * po-okno konci tam, kde zacina trvacnost (+70 s). Pri uzavretych
-        intervaloch by sa vzorka na hranici zapocitala dvakrat.
+      * a sample exactly at the moment of the cue belongs neither to
+        "before" nor to "after" - it is the moment of intervention. With a
+        pre-window <-60, 0> it would otherwise leak in and pull the mean by
+        exactly the number that triggered the cue,
+      * the post-window ends where durability begins (+70 s). With closed
+        intervals a sample on the boundary would be counted twice.
 
-    Predpoklada rastuce casy.
+    Assumes increasing times.
     """
     return [(ts, v) for ts, v in series if t0 <= ts < t1]
 
 
 def mean_in(series, t0, t1):
-    """Priemer hodnot v intervale, alebo None ked tam nic nie je."""
+    """Mean of the values in the interval, or None when it is empty."""
     values = [v for _, v in slice_span(series, t0, t1)]
     if not values:
         return None
@@ -177,19 +189,23 @@ def mean_in(series, t0, t1):
 
 
 def gaps(series, t0, t1):
-    """(diera na zaciatku, najvacsia diera vnutri, diera na konci).
+    """(gap at the start, largest gap inside, gap at the end).
 
-    Tieto tri veci sa rozlisuju zamerne, lebo znamenaju nieco ine:
+    These three are told apart on purpose, because they mean different
+    things:
 
-      * diera na ZACIATKU pred-okna = relacia zacala az v jeho priebehu,
-        cize okno je SKRATENE (hlaska padla skor nez 60 s od zapnutia),
-      * diera na KONCI po-okna = relacia skoncila skor, tiez skratene,
-      * diera VNUTRI = senzor vypadol; `clear_live()` ju nicim neoznaci,
-        takze sa da najst jedine tu.
+      * a gap at the START of the pre-window = the session began only
+        during it, i.e. the window is SHORTENED (the cue came earlier than
+        60 s after switching on),
+      * a gap at the END of the post-window = the session ended early,
+        also shortened,
+      * a gap INSIDE = the sensor dropped out; `clear_live()` does not
+        mark it in any way, so it can only be found here.
 
-    Keby sa vsetky tri scitali do jedneho cisla, skratene okno by sa
-    hlasilo ako vypadok senzora a v prvych vecerov by sa nedalo rozlisit,
-    ci je chyba v hodinkach alebo len v tom, ze relacia bola kratka.
+    If all three were added up into one number, a shortened window would
+    be reported as a sensor dropout and in the first evenings it would be
+    impossible to tell whether the fault is in the watch or only in the
+    session being short.
     """
     inside = slice_span(series, t0, t1)
     if not inside:
@@ -201,10 +217,11 @@ def gaps(series, t0, t1):
 
 
 def active_share(activity, t0, t1, active_idle_ms=ACTIVE_IDLE_MS):
-    """Podiel vzoriek v intervale, v ktorych bol hrac aktivny (0.0-1.0).
+    """Share of samples in the interval where the player was active (0.0-1.0).
 
-    Je to zamerne hrube: "ako vela toho v tom okne robil", nie co robil.
-    `activity` je [(timestamp, idle_ms)] z `activity.ActivityTracker`.
+    It is deliberately coarse: "how much they were doing in that window",
+    not what they were doing.
+    `activity` is [(timestamp, idle_ms)] from `activity.ActivityTracker`.
     """
     inside = slice_span(activity, t0, t1)
     if not inside:
@@ -215,11 +232,11 @@ def active_share(activity, t0, t1, active_idle_ms=ACTIVE_IDLE_MS):
 
 def refractory_conflict(ts, other_ts,
                         before=REFRACTORY_BEFORE_S, after=REFRACTORY_AFTER_S):
-    """Zaznela v refraktérnej zone tejto hlasky ina hlaska?
+    """Did another cue sound in this cue's refractory zone?
 
-    `other_ts` su casy VSETKYCH hlasok relacie vratane tejto - vlastny
-    cas sa preskakuje porovnanim na rovnost, takze volajuci nemusi nic
-    filtrovat.
+    `other_ts` are the times of ALL cues of the session including this
+    one - its own time is skipped by an equality comparison, so the
+    caller does not have to filter anything.
     """
     for other in other_ts:
         if other == ts:
@@ -230,17 +247,18 @@ def refractory_conflict(ts, other_ts,
 
 
 # --------------------------------------------------------------------------
-# Zostavenie okna
+# Building a window
 # --------------------------------------------------------------------------
 
 def build_window(cue, samples, all_cue_ts, activity=None,
                  session_started=None, game=None):
-    """Jedno meracie okno okolo jednej hlasky.
+    """One measurement window around one cue.
 
-    `cue` je zaznam z `HeartStats.cues`: {ts, category, cue_id, arm, source}.
-    `samples` je [(timestamp, bpm)], `activity` je [(timestamp, idle_ms)].
-    Vracia vzdy dict - aj ked je okno neplatne, aby sa dalo spocitat,
-    kolko okien a preco vypadlo.
+    `cue` is a record from `HeartStats.cues`:
+    {ts, category, cue_id, arm, source}.
+    `samples` is [(timestamp, bpm)], `activity` is [(timestamp, idle_ms)].
+    Always returns a dict - even when the window is invalid, so that it is
+    possible to count how many windows dropped out and why.
     """
     ts = float(cue["ts"])
     reasons = []
@@ -256,46 +274,51 @@ def build_window(cue, samples, all_cue_ts, activity=None,
     if pre_bpm is None and post_bpm is None:
         reasons.append(R_NO_DATA)
     else:
-        # Trvacnost (+70..+180) je volitelna, jej diery okno nezneplatnuju.
+        # Durability (+70..+180) is optional, its gaps do not invalidate the
+        # window.
         pre_start, pre_inner, pre_end = gaps(samples, pre_a, pre_b)
         post_start, post_inner, post_end = gaps(samples, post_a, post_b)
 
         if pre_bpm is None or pre_start > MAX_GAP_S:
-            reasons.append(R_PRE_SHORT)      # relacia zacala az v pred-okne
+            reasons.append(R_PRE_SHORT)      # the session began only in the pre-window
         if post_bpm is None or post_end > MAX_GAP_S:
-            reasons.append(R_POST_SHORT)     # relacia skoncila v po-okne
-        # R_GAP = senzor vypadol UPROSTRED, teda diera obklopena datami.
-        # Prazdna strana nie je diera, ale SKRATENE okno (uz oznacene vyssie).
-        # Bez tejto podmienky dostalo prazdne po-okno okrem spravneho
-        # `skratene_po` aj nepravdivy `diera_v_datach`: `gaps()` vracia pri
-        # prazdnom okne (cely_rozsah, 0, 0), cize `post_start` = cely rozsah.
-        # Pri ladeni to tvrdilo, ze vypadli hodinky, hoci hrac len dohral (B5).
+            reasons.append(R_POST_SHORT)     # the session ended in the post-window
+        # R_GAP = the sensor dropped out IN THE MIDDLE, i.e. a gap surrounded
+        # by data. An empty side is not a gap but a SHORTENED window (already
+        # marked above). Without this condition an empty post-window got,
+        # besides the correct `skratene_po`, also a false `diera_v_datach`: for
+        # an empty window `gaps()` returns (whole range, 0, 0), i.e.
+        # `post_start` = the whole range. While debugging, it claimed the watch
+        # had dropped out, although the player had just finished playing (B5).
         diery = []
         if pre_bpm is not None:
             diery += [pre_inner, pre_end]
         if post_bpm is not None:
             diery += [post_start, post_inner]
         if diery and max(diery) > MAX_GAP_S:
-            reasons.append(R_GAP)            # senzor vypadol uprostred
+            reasons.append(R_GAP)            # the sensor dropped out in the middle
 
     if refractory_conflict(ts, all_cue_ts):
         reasons.append(R_REFRACTORY)
 
-    # Vizuál sa nevykreslil? `is False`, nie `not`: staré záznamy pole
-    # `delivered` nemajú (None = nevieme) a tie sa nesmú spätne zneplatniť —
-    # rovnaké pravidlo ako pri aktivite.
+    # The visual was not drawn? `is False`, not `not`: old records do not have
+    # the `delivered` field (None = we do not know) and those must not be
+    # invalidated retroactively - the same rule as for activity.
     if cue.get("delivered") is False:
         reasons.append(R_NEDORUCENE)
 
-    # Bol hrac vobec pri pocitaci? Nizka aktivita PRED hlaskou znamena, ze
-    # zvyseny tep nepochadzal z hrania; nizka aktivita PO nej znamena, ze
-    # pokles nemeria ucinok hlasky, ale to, ze sa clovek vratil a sadol si.
-    # Okno sa nezahadzuje - zapise sa s dovodom a vypadne z ucinnosti.
+    # Was the player at the computer at all? Low activity BEFORE the cue means
+    # that the raised heart rate did not come from playing; low activity AFTER
+    # it means that the drop does not measure the cue's effect, but the fact
+    # that the person came back and sat down.
+    # The window is not thrown away - it is written with a reason and drops out
+    # of the effectiveness.
     pre_act = active_share(activity or [], pre_a, pre_b)
     post_act = active_share(activity or [], post_a, post_b)
-    # `None` znamena "nevieme" (stara relacia, alebo sa aktivita nesledovala),
-    # nie "bol prec". Neznalost nesmie zneplatnit okno - inak by sa spatne
-    # zahodila cela historia, ktora este aktivitu nezapisovala.
+    # `None` means "we do not know" (an old session, or activity was not
+    # tracked), not "was away". Not knowing must not invalidate the window -
+    # otherwise the whole history that did not record activity yet would be
+    # thrown away retroactively.
     if ((pre_act is not None and pre_act < MIN_AKTIVITA)
             or (post_act is not None and post_act < MIN_AKTIVITA)):
         reasons.append(R_NEAKTIVNY)
@@ -306,9 +329,10 @@ def build_window(cue, samples, all_cue_ts, activity=None,
         "source": cue.get("source", "auto"),
         "category": cue.get("category"),
         "cue_id": cue.get("cue_id"),
-        # ROZNE veci: `arm` je vylosovane rameno (voice/silent), `delivery`
-        # je sposob dorucenia (pause/timeout). Zlucit sa nesmu, ale oboje
-        # musi byt v okne - inak sa prah pauzy z nameraneho neda overit.
+        # DIFFERENT things: `arm` is the drawn arm (voice/silent), `delivery`
+        # is the way of delivery (pause/timeout). They must not be merged, but
+        # both must be in the window - otherwise the pause threshold cannot be
+        # checked against the measurements.
         "delivery": cue.get("delivery"),
         "pre_bpm": _round(pre_bpm),
         "post_bpm": _round(post_bpm),
@@ -320,10 +344,11 @@ def build_window(cue, samples, all_cue_ts, activity=None,
         "valid": not reasons,
         "reasons": reasons,
     }
-    # ZAZNAM O DORUCENI (0.2, rebrik + brana): stupen rebrika, ci naozaj
-    # nieco zaznelo, zataz pri doruceni a jej vrchol od natiahnutia, pasmo
-    # tepu a za kolko sekund po hlaske prislo "teraz nie". Len ked ich
-    # zaznam hlasky ma - starsie zaznamy ich nemaju a okno sa postavi aj tak.
+    # DELIVERY RECORD (0.2, ladder + gate): the ladder rung, whether something
+    # really sounded, the load at delivery and its peak since arming, the
+    # heart-rate zone and how many seconds after the cue "not now" came. Only
+    # when the cue record has them - older records do not and the window is
+    # built anyway.
     for kluc in ("rung", "audible", "load_at", "load_peak", "zone_at",
                  "snooze_after_s"):
         if cue.get(kluc) is not None:
@@ -342,12 +367,12 @@ def _round(value, decimals=1):
 
 def build_windows(cues, samples, load=None, activity=None,
                   session_started=None, game=None):
-    """Meracie okna pre vsetky hlasky jednej relacie.
+    """Measurement windows for all cues of one session.
 
-    Vola sa raz, pri zatvoreni relacie - vtedy uz je `samples` kompletny
-    a netreba nic casovat. Zaroven to znamena, ze okno poslednej hlasky
-    moze byt skratene, ak relacia skoncila skor nez +70 s; take okno sa
-    zapise s dovodom, nezahodi.
+    Called once, when the session closes - by then `samples` is complete
+    and nothing needs timing. It also means that the window of the last
+    cue may be shortened if the session ended earlier than +70 s; such a
+    window is written with a reason, not thrown away.
     """
     cues = sorted(cues, key=lambda c: float(c["ts"]))
     all_ts = [float(c["ts"]) for c in cues]
@@ -362,17 +387,17 @@ def build_windows(cues, samples, load=None, activity=None,
 
 
 # --------------------------------------------------------------------------
-# Ulozenie
+# Saving
 # --------------------------------------------------------------------------
 
-# Pri strope 5 hlasok za hodinu a troch hodinach hrania denne je to
-# ~15 okien denne, cize rok denneho hrania. Jedno okno je ~300 B JSON,
-# 5000 okien teda ~1,5 MB.
+# With a cap of 5 cues per hour and three hours of play a day that is ~15
+# windows a day, i.e. a year of daily play. One window is ~300 B of JSON,
+# so 5000 windows are ~1,5 MB.
 MAX_WINDOWS = 5000
 
 
 def load_windows(path):
-    """Ulozene okna, alebo prazdny zoznam. Nikdy nevyhodi vynimku."""
+    """Saved windows, or an empty list. Never raises an exception."""
     try:
         if not os.path.exists(path):
             return []
@@ -384,16 +409,17 @@ def load_windows(path):
 
 
 def save_windows(path, windows, log=None):
-    """Prida okna do JSON suboru (drzime poslednych MAX_WINDOWS).
+    """Appends windows to the JSON file (we keep the last MAX_WINDOWS).
 
-    Zapisuje sa cez `.tmp` + `paths.nahrad_subor`, rovnako ako
-    `hr_stats.save_session` - pad appky uprostred zapisu tak nemoze
-    nechat na disku polovicny subor a kratky zamok suboru vo Windows
-    (Defender, vyhladavanie) zapis nezhodi; pri neuspechu sa .tmp zmaze.
+    Written via `.tmp` + `paths.nahrad_subor`, the same as
+    `hr_stats.save_session` - so an app crash in the middle of the write
+    cannot leave a half-written file on disk, and a short file lock in
+    Windows (Defender, search indexing) does not break the write; on
+    failure the .tmp is deleted.
 
-    Pri necitatelnom existujucom subore sa RADSEJ NEZAPISE nic, nez aby
-    sa prepisal prazdnym zoznamom: zle prečitany subor nie je dovod
-    zahodit vsetko, co sa dovtedy nameralo.
+    When the existing file is unreadable, it RATHER WRITES NOTHING than
+    overwrite it with an empty list: a badly read file is no reason to
+    throw away everything measured up to then.
     """
     if not windows:
         return False
@@ -419,13 +445,13 @@ def save_windows(path, windows, log=None):
 
 
 # --------------------------------------------------------------------------
-# Prehlad (pouzije az faza 4, ale patri k datam, nie k UI)
+# Overview (only phase 4 will use it, but it belongs to the data, not the UI)
 # --------------------------------------------------------------------------
 
-# Kritické hodnoty Studentovho t pre obojstranny 95% interval, df = n-1.
-# Tabulka a nie `scipy`: `measure.py` je cisto datovy modul a ma sa dat
-# importovat bez tazkych zavislosti (zadanie 2.1b, B2: "bez scipy").
-# Nad 30 stupnov volnosti je rozdiel oproti 1,96 uz pod 4 %.
+# Critical values of Student's t for a two-sided 95% interval, df = n-1.
+# A table and not `scipy`: `measure.py` is a purely data module and must be
+# importable without heavy dependencies (spec 2.1b, B2: "no scipy").
+# Above 30 degrees of freedom the difference from 1,96 is already under 4 %.
 _T95 = {
     1: 12.706, 2: 4.303, 3: 3.182, 4: 2.776, 5: 2.571, 6: 2.447, 7: 2.365,
     8: 2.306, 9: 2.262, 10: 2.228, 11: 2.201, 12: 2.179, 13: 2.160,
@@ -434,14 +460,15 @@ _T95 = {
     26: 2.056, 27: 2.052, 28: 2.048, 29: 2.045, 30: 2.042,
 }
 
-# Pod tolkoto oknami sa cislo NEUKAZUJE. Nie je to vkus: pri troch oknach
-# je interval siroky ako cely rozsah a graf by tvrdil nieco, co v datach
-# nie je. Radsej "potrebujem viac" nez presvedcivo vyzerajuci sum.
+# Below this many windows the number is NOT SHOWN. It is not a matter of
+# taste: with three windows the interval is as wide as the whole range and
+# the chart would claim something that is not in the data. Better "I need
+# more" than convincing-looking noise.
 MIN_OKIEN = 5
 
 
 def _interval95(hodnoty):
-    """(priemer, polsirka 95% intervalu). Polsirka je None, ked sa neda."""
+    """(mean, 95% interval half-width). Half-width is None if impossible."""
     n = len(hodnoty)
     if n == 0:
         return None, None
@@ -456,47 +483,49 @@ def _interval95(hodnoty):
 
 
 def _ma_branu(window):
-    """Vzniklo okno uz s branou hlasky (0.2)? Znacku nesu `params`."""
+    """Window made with the cue gate (0.2)? The marker is in `params`."""
     params = window.get("params")
     return isinstance(params, dict) and bool(params.get("brana"))
 
 
 def by_category(windows, only_valid=True, arm="voice"):
-    """Ucinnost podla KATEGORIE hlasky, nie podla ramena.
+    """Effectiveness by cue CATEGORY, not by arm.
 
-    Odkedy sa kategorie striedaju (`next_slot`), da sa pytat aj "ktora z
-    nich zabera". Toto je vstup pre fazu 8 - a zatial hlavne pre graf v
-    appke, aby hrac videl, na com je.
+    Since the categories rotate (`next_slot`), one can also ask "which of
+    them works". This is the input for phase 8 - and for now mainly for
+    the chart in the app, so the player sees where they stand.
 
-    Pocita sa len z HLASNEHO ramena: tiche okna su referencia pre to, ci
-    hlaska funguje VOBEC, nie pre porovnanie kategorii medzi sebou.
-    Miesat ich by znamenalo porovnavat kategoriu s tichom.
+    Computed only from the VOICED arm: silent windows are the reference
+    for whether a cue works AT ALL, not for comparing categories with each
+    other. Mixing them would mean comparing a category with silence.
 
-    Vracia {kategoria: {"n", "delta_bpm", "ci95", "dost_dat"}}.
-    `delta_bpm` je posun po hlaske: zaporne cislo = tep klesol.
-    `ci95` je POLSIRKA intervalu, alebo None pri jedinom okne.
-    `dost_dat` hovori, ci sa to smie ukazat ako cislo.
+    Returns {category: {"n", "delta_bpm", "ci95", "dost_dat"}}.
+    `delta_bpm` is the shift after the cue: negative = heart rate dropped.
+    `ci95` is the HALF-WIDTH of the interval, or None for a single window.
+    `dost_dat` says whether it may be shown as a number.
 
-    ZAMERNE NEROBI ZAVER. Nevracia "najlepsiu kategoriu" ani poradie -
-    to by z prekryvajucich sa intervalov spravilo rebricek, ktory data
-    neunesu.
+    IT DELIBERATELY DRAWS NO CONCLUSION. It returns no "best category" and
+    no ranking - that would turn overlapping intervals into a leaderboard
+    the data cannot carry.
 
-    CO SA RATA (0.2, rebrik + brana): len hlasky dorucene NA PAUZE (tichy
-    obrazok po `max_wait_s` nie je hlasna hlaska), ktore naozaj ZAZNELI
-    (`audible` False = stupen "obraz", styl bez zvuku, slot bez zvuku;
-    chybajuce pole = starsie okno, vtedy hlasne rameno na pauze zaznelo),
-    a nie z PRACE (tam je hlaska len obrazom). A ked uz existuje okno s
-    branou (`params.brana`), rataju sa LEN take - hlaska od 0.2 chodi az
-    ked zataz nestupa, takze starsie okna by merali nieco ine.
+    WHAT COUNTS (0.2, ladder + gate): only cues delivered AT A PAUSE (a
+    silent picture after `max_wait_s` is not a voiced cue) that really
+    SOUNDED (`audible` False = the "picture" rung, a style without sound,
+    a slot without sound; a missing field = an older window, back then
+    the voiced arm at a pause did sound), and not from WORK (there a cue
+    is only a picture). And once a window with the gate exists
+    (`params.brana`), ONLY those count - since 0.2 a cue comes only when
+    the load is not rising, so older windows would measure something
+    else.
     """
     okna = [w for w in windows or ()
-            # CUDZIE DATA SA DO UCINNOSTI NERATAJU.
+            # OTHER PEOPLE'S DATA DO NOT COUNT TOWARDS EFFECTIVENESS.
             #
-            # `data_io.clean_window` oznacuje importovane zaznamy `imported:
-            # True` a hlavicka toho modulu to vyslovne slubuje - lenze necital
-            # to tu nikto. Kto si naimportoval zalohu od kamarata, videl vo
-            # svojom grafe ucinnosti jeho telo zmiesane so svojim a nemal ako
-            # to zistit.
+            # `data_io.clean_window` marks imported records with `imported:
+            # True` and that module's header explicitly promises it - but
+            # nobody here read it. Whoever imported a backup from a friend saw
+            # in their effectiveness chart the friend's body mixed with their
+            # own and had no way to find out.
             if isinstance(w, dict) and not w.get("imported")]
     if any(_ma_branu(w) for w in okna):
         okna = [w for w in okna if _ma_branu(w)]
@@ -533,15 +562,16 @@ def by_category(windows, only_valid=True, arm="voice"):
 
 
 def summarize(windows, only_valid=True):
-    """Kolko okien je na ktorom ramene a aky je v nich priemerny posun BPM.
+    """Number of windows per arm and the mean BPM shift in them.
 
-    Zamerne NEROBI ziadny zaver - vracia cisla. Rozhodnut, ci je rozdiel
-    nieco viac nez sum, sa da az pri dostatocnom pocte okien (zadanie
-    hovori o 30 na rameno) a s intervalom spolahlivosti.
+    Deliberately draws NO conclusion - returns numbers. Whether the
+    difference is anything more than noise can only be decided with
+    enough windows (the spec talks about 30 per arm) and with a confidence
+    interval.
     """
     out = {}
     for w in windows:
-        # Cudzie okna sem nepatria - viz `by_category`.
+        # Other people's windows do not belong here - see `by_category`.
         if w.get("imported"):
             continue
         if only_valid and not w.get("valid"):

@@ -1,9 +1,9 @@
-"""Prečo appka vzniká - slová autora (24. 9. 2026) na troch miestach.
+"""Why the app exists - the author's words (24. 9. 2026) in three places.
 
-Autor ich potvrdil doslova: „O appke“ (Nastavenia), „Ako to vzniklo“
-(História aj koniec karty v Sprievodcovi) a SOUL.md. Test stráži, aby sa
-tieto tri miesta nerozišli - keď sa veta zmení na jednom mieste, musí sa
-zmeniť všade.
+The author confirmed them word for word: "About" (Settings), "How it came
+about" (History, and the end of the card in the Guide) and SOUL.md. The test
+guards that these three places do not drift apart - when the sentence
+changes in one place, it has to change everywhere.
 """
 import os
 
@@ -25,7 +25,7 @@ def test_o_appke_ma_vetu_autora_v_sk_aj_en():
 
 
 def test_o_appke_ma_odsek_vo_vsetkych_jazykoch_na_tom_istom_mieste():
-    """Štvrtý odsek zo siedmich - hneď za „z obyčajnej osobnej potreby“."""
+    """4th of 7 paragraphs - right after "z obyčajnej osobnej potreby"."""
     for jazyk in i18n.LANGUAGES:
         odseky = i18n.tr_lang(jazyk, "about.body").split("\n\n")
         assert len(odseky) == 7, jazyk

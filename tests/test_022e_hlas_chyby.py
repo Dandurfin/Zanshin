@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
-"""Chyby prirodzeneho hlasu (0.2.2, davka 4): "skontroluj internet" len ked
-naozaj nejde spojenie; odmietnutie Microsoftom (HTTP 401/403/429, odmietnuty
-handshake) ma inu radu a ostatne vseobecnu vetu. Dennik povie, ako to skusit
-znova, a v Nastaveniach -> Zvuk je "Skusit znova" - pocas sledovania sa na
-siet aj tak nejde. Ziadna siet, vlastne triedy vynimiek."""
+"""Natural voice errors (0.3, batch 4): "check the internet" only when the
+connection really fails; a refusal by Microsoft (HTTP 401/403/429, a
+refused handshake) has different advice, and the rest a generic sentence.
+The journal says how to try again, and Settings -> Sound has "Try again" -
+no network is used while watching anyway. No network, own exception
+classes."""
 import socket
 import threading
 import types
@@ -140,7 +141,7 @@ def test_odmietnutie_povie_skus_neskor_alebo_windows(monkeypatch):
     _zlyha(a, (EDGE_CHYBA_ODMIETNUTE, WSServerHandshakeError(403)))
     assert a.stavy[-1] == tr("edge.partial_refused", ok=0, total=3)
     assert a.edge_retry_btn.zabalene == "pack"
-    # stranka, ktoru hrac naozaj vidi: Nastavenia → Zvuk (0.2.2 davka 4b)
+    # the page the player really sees: Settings → Sound (0.3 batch 4b)
     assert a.denn == [tr("log.edge_failed_refused",
                          page=tr("nav.nastavenia") + " → " + tr("nav.nastavenia_tabs.zvuk"),
                          retry=tr("common.retry"), cmd=tr("common.prepare_voices"))]

@@ -1,15 +1,18 @@
 # -*- coding: utf-8 -*-
-"""Hlas k jazyku rozhrania (0.2, faza jazykov).
+"""Voice to match the interface language (0.2, languages phase).
 
-Bulharsky Windows od 0.2 startuje po bulharsky a predvolene hlasky slotov su
-cyrilikou („Опора“, „Челюст“…), no hlas ostaval anglicky (Sonia) - ten ich
-pravdepodobne nevyslovi. Japoncina mala navrh hlasu len pri prepnuti jazyka,
-nie pri prvom starte. Teraz jazyky s inym pismom nez latinka (ja/zh/ru/bg)
-dostanu hlas svojho jazyka pri prvom starte aj pri prepnuti - ale len kym
-ma hrac predvoleny hlas. Hlas, ktory si vybral sam, sa nemeni.
+Since 0.2 a Bulgarian Windows starts in Bulgarian and the default slot cues
+are in Cyrillic („Опора“, „Челюст“…), but the voice stayed English
+(Sonia) - it probably cannot pronounce them. Japanese had a voice
+suggestion only on a language switch, not on the first start. Now
+languages with a script other than Latin (ja/zh/ru/bg) get a voice of
+their language on the first start and on a switch - but only while the
+player has the default voice. A voice they picked themselves is not
+changed.
 
-0.2.1d: pri prepnuti jazyka len ked su hlasky aktivneho profilu naozaj v
-novom jazyku (prepnutie ich neprelozi) - tests/test_021d_hlas_podla_hlasok.py.
+0.2.1d: on a language switch only when the cues of the active profile are
+really in the new language (the switch does not translate them) -
+tests/test_021d_hlas_podla_hlasok.py.
 """
 import json
 import os
@@ -28,7 +31,7 @@ from settings_model import (DEFAULT_EDGE_VOICE, EDGE_FALLBACK_VOICES,  # noqa: E
 
 
 def test_navrhy_su_zo_zoznamu_hlasov_a_zenske():
-    """Appka o sebe hovori v zenskom rode - navrhnuty hlas tiez."""
+    """The app speaks of itself in the feminine - the suggested voice too."""
     rod = {kod: r for kod, _, r in EDGE_FALLBACK_VOICES}
     for jazyk, hlas in VOICE_HINTS.items():
         assert jazyk in i18n.LANGUAGES
@@ -37,10 +40,11 @@ def test_navrhy_su_zo_zoznamu_hlasov_a_zenske():
 
 
 def test_navrh_maju_presne_jazyky_s_neanglickymi_slovami():
-    """Do 0.2.1 len jazyky mimo latinky (Sonia by ich nevyslovila). Od 0.2.2
-    kazdy jazyk, ktoreho vstavane slova nie su anglicke - es/de/fr/pt Sonia
-    cita anglickou vyslovnostou (tests/test_022c_prvy_vecer_hlas.py).
-    Sk/cs maju vstavane slova anglicke, takze navrh nemaju."""
+    """Until 0.2.1 only languages outside Latin script (Sonia would not
+    pronounce them). Since 0.3 every language whose built-in words are not
+    English - Sonia reads es/de/fr/pt with an English pronunciation
+    (tests/test_022c_prvy_vecer_hlas.py). Sk/cs have English built-in
+    words, so they have no suggestion."""
     def slova(jazyk):
         return [i18n.STRINGS[f"slot.default.{k}"][jazyk]
                 for k in ("grounding", "jaw", "release", "breath")]
@@ -62,10 +66,11 @@ def test_vlastny_hlas_hraca_ostava():
 
 
 def test_prepnutie_jazyka_pouziva_navrh():
-    """Staticky (bez Tk): prepinac jazyka ide cez `suggested_voice` - od
-    0.2.1d cez `_hlas_k_hlaskam`, ktory navrh pusti len ked su hlasky
-    aktivneho profilu v novom jazyku (tests/test_021d_hlas_podla_hlasok.py).
-    Priame `suggested_voice(code, ...)` podla jazyka rozhrania je prec."""
+    """Static (no Tk): the language switch goes through `suggested_voice` -
+    since 0.2.1d through `_hlas_k_hlaskam`, which lets the suggestion
+    through only when the cues of the active profile are in the new
+    language (tests/test_021d_hlas_podla_hlasok.py). The direct
+    `suggested_voice(code, ...)` by interface language is gone."""
     blok = zdroj_metody("on_lang_switch")
     assert "self._hlas_k_hlaskam(self.slot_dicts())" in blok
     assert "suggested_voice(" not in blok
@@ -78,8 +83,8 @@ def start(tmp_path, monkeypatch):
     import app as app_mod
     import app_prefs
     cesta = str(tmp_path / "dandurf_settings.json")
-    # `load_settings` byva v mixine app_prefs (PrefsMixin) a cita
-    # SETTINGS_PATH zo svojho modulu - presmerovat ho treba tam.
+    # `load_settings` lives in the app_prefs mixin (PrefsMixin) and reads
+    # SETTINGS_PATH from its own module - it has to be redirected there.
     monkeypatch.setattr(app_prefs, "SETTINGS_PATH", cesta)
     povodny = i18n._lang["code"]
 

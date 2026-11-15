@@ -1,38 +1,40 @@
-"""Ovladac (Xbox aj PlayStation) ako druhy zdroj informacie o aktivite.
+"""Controller (Xbox and PlayStation) as a second source of activity info.
 
-Od fazy 3 uz NIC NESPUSTA. Hlasi len "hrac prave hra" - popri
-`GetLastInputInfo` (activity.py), ktory ovladac na tomto Windowse vidi tiez
-(MERANIE_GAMEPAD.md), ale je to jeden pocitac. Z listenera odchadza iba
-aktivita (`on_button("activity")`) a meno pripojeneho zariadenia do dennika.
-Ktore tlacidlo, pacicka ci spust to bola, NEODCHADZA nikam (SAFETY.md);
-vnutri sa drzi len to, co je PRAVE drzane, a pri pusteni sa to zahodi.
+Since phase 3 it TRIGGERS NOTHING any more. It only reports "the player is
+playing right now" - alongside `GetLastInputInfo` (activity.py), which on
+this Windows sees the controller too (MERANIE_GAMEPAD.md), but it is one
+computer. Only the activity (`on_button("activity")`) and the name of the
+connected device, for the journal, leave the listener. Which button, stick
+or trigger it was goes NOWHERE (SAFETY.md); inside, only what is held RIGHT
+NOW is kept, and it is dropped on release.
 
-JOY*, NIE CONTROLLER* (odmeral zadavatel na G7 Pro, pygame-ce 2.5.8 /
-SDL 2.32.10): pygame posiela LEN udalosti JOY* (JOYAXISMOTION,
-JOYBUTTONDOWN/UP, JOYHATMOTION). CONTROLLER* udalosti SDL posiela len pre
-zariadenie otvorene ako SDL_GameController - a listener ho otvara ako
-joystick. Povodna verzia pocuvala len CONTROLLER*, takze bola hlucha:
-hranie na ovladaci nevidela ako aktivitu nikdy. CONTROLLER* ostava
-obsluzene, keby ich nejake zariadenie predsa poslalo.
+JOY*, NOT CONTROLLER* (measured by the requester on a G7 Pro, pygame-ce
+2.5.8 / SDL 2.32.10): pygame sends ONLY JOY* events (JOYAXISMOTION,
+JOYBUTTONDOWN/UP, JOYHATMOTION). SDL sends CONTROLLER* events only for a
+device opened as an SDL_GameController - and the listener opens it as a
+joystick. The original version listened only to CONTROLLER*, so it was
+deaf: it never saw playing on the controller as activity. CONTROLLER* stays
+handled, in case some device does send them after all.
 
-HODNOTY OSI
-  * JOY: float -1..1. pygame deli SDL Sint16 cislom 32768 - overene na
-    virtualnom SDL joysticku: 20000 -> 0.61, -32768 -> -1.0.
-  * CONTROLLER: int -32768..32767, spuste 0..32767 (dokumentacia
-    pygame._sdl2.controller) - tu sa delia 32767.
-  * SPUSTE V JOYSTICK API KLUDUJU NA -1.0, nie na 0 (XInput, RawInput aj
-    HIDAPI ich davaju ako plnu os). Ktora os je spust, sa NEHADA z poradia -
-    to sa lisi podla backendu (XInput a2/a5, RawInput a4/a5) - ale povie to
-    SDL mapovanie ovladaca, to iste, z ktoreho SDL sklada CONTROLLER*
-    udalosti. Spust v kludovej polohe teda NIE JE aktivita.
+AXIS VALUES
+  * JOY: float -1..1. pygame divides the SDL Sint16 by 32768 - verified on
+    a virtual SDL joystick: 20000 -> 0.61, -32768 -> -1.0.
+  * CONTROLLER: int -32768..32767, triggers 0..32767 (documentation of
+    pygame._sdl2.controller) - divided by 32767 here.
+  * IN THE JOYSTICK API, TRIGGERS REST AT -1.0, not at 0 (XInput, RawInput
+    and HIDAPI all give them as a full axis). Which axis is a trigger is NOT
+    GUESSED from the order - that differs by backend (XInput a2/a5,
+    RawInput a4/a5) - but the SDL controller mapping tells it, the same one
+    SDL builds the CONTROLLER* events from. So a trigger at rest is NOT
+    activity.
 
-MRTVE ZONY = nativne XInput: lava pacicka 7849/32767, prava 8689/32767
-(kruhovo, ako v ukazke Microsoftu k XInputGetState), spust 30/255 zdvihu.
-Pod nimi je to sum stojaceho ovladaca - G7 Pro s vlastnou mrtvou zonou 0
-posielal v kludovej polohe ~3000 JOYAXISMOTION za sekundu.
+DEAD ZONES = native XInput: left stick 7849/32767, right 8689/32767
+(circular, as in Microsoft's XInputGetState sample), trigger 30/255 of
+travel. Below them it is the noise of an idle controller - a G7 Pro with
+its own dead zone of 0 sent ~3000 JOYAXISMOTION per second at rest.
 
-Beh je v samostatnom vlakne s vlastnou udalostnou sluckou (SDL_VIDEODRIVER
-"dummy", takze sa neotvara ziadne okno).
+It runs in a separate thread with its own event loop (SDL_VIDEODRIVER
+"dummy", so no window is opened).
 """
 
 import math
@@ -56,40 +58,45 @@ except Exception:
     GAMEPAD_AVAILABLE = False
 
 try:
-    # SDL mapovanie ovladaca - z neho sa vie, ktora os joysticku je pacicka
-    # a ktora spust. Bez neho (stary pygame) sa osi sleduju opatrnejsie.
+    # The SDL controller mapping - it tells which joystick axis is a stick
+    # and which a trigger. Without it (old pygame) the axes are watched
+    # more cautiously.
     from pygame._sdl2 import controller as _sdl_controller
 except Exception:
     _sdl_controller = None
 
-# Nativne mrtve zony XInput (XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE,
-# ..._RIGHT_THUMB_DEADZONE, XINPUT_GAMEPAD_TRIGGER_THRESHOLD). Pod nimi je
-# vychylka len klud/sum stojaceho ovladaca, nad nimi hrac naozaj hybe.
-# Drzana pacicka/spust nad nimi sa rata ako aktivita - inak by mierenie
-# vyzeralo ako pauza a hlaska by padla uprostred boja.
+# Native XInput dead zones (XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE,
+# ..._RIGHT_THUMB_DEADZONE, XINPUT_GAMEPAD_TRIGGER_THRESHOLD). Below them
+# the deflection is only the rest/noise of an idle controller; above them
+# the player is really moving. A stick/trigger held above them counts as
+# activity - otherwise aiming would look like a pause and a cue would
+# land in the middle of a fight.
 LEFT_STICK_DEADZONE = 7849 / 32767.0
 RIGHT_STICK_DEADZONE = 8689 / 32767.0
 TRIGGER_DEADZONE = 30 / 255.0
-# Os, ktorej ulohu SDL nepozna (zariadenie bez mapovania - volant, knipel):
-# nevie sa, kde ma klud, takze aktivita je POHYB o viac nez vacsia z mrtvych
-# zon, nie poloha. Drzana poloha takej osi sa preto nepotvrdzuje - radsej to
-# nez os, ktora by svojou kludovou polohou hlasila aktivitu navzdy.
+# An axis whose role SDL does not know (a device without a mapping - a
+# wheel, a flight stick): where it rests is unknown, so activity is
+# MOVEMENT by more than the larger of the dead zones, not position. A held
+# position of such an axis is therefore not reasserted - better that than
+# an axis that would report activity forever from its rest position.
 UNKNOWN_AXIS_STEP = RIGHT_STICK_DEADZONE
-# Ako casto sa potvrdi drzany vstup - hlboko pod prahom pauzy 2,5 s.
+# How often a held input is reasserted - far below the 2.5 s pause threshold.
 REASSERT_S = 0.2
-# Jedine, co z listenera o vstupe odchadza.
+# The only thing about input that leaves the listener.
 ACTIVITY = "activity"
 
 _STICK_ROLES = ("lx", "ly", "rx", "ry")
 _TRIGGER_ROLES = ("lt", "rt")
-# Obratena plna os spuste ('a3~', PS3 cez DirectInput): klud +1.0, stlacena
-# -1.0. Hodnota sa otoci a dalej je to obycajna spust.
+# An inverted full trigger axis ('a3~', PS3 via DirectInput): rest +1.0,
+# pressed -1.0. The value is flipped, and from then on it is an ordinary
+# trigger.
 _INVERTED = "~"
 _INVERTED_TRIGGER_ROLES = tuple(r + _INVERTED for r in _TRIGGER_ROLES)
-# Spust na POLOVICI osi: '+a4' = stlacenie ide do plusu, '-a4' do minusu
-# (klud moze byt v strede aj na opacnom konci osi). DirectInput mava obe
-# spuste na jednej osi s kludom v strede ('+a2' aj '-a2') - to je `half`
-# a stlacenie je vychylka na hociktoru stranu.
+# A trigger on HALF an axis: '+a4' = pressing goes positive, '-a4'
+# negative (rest may be in the middle or at the opposite end of the axis).
+# DirectInput often has both triggers on one axis with rest in the middle
+# ('+a2' and '-a2') - that is `half`, and a press is a deflection to
+# either side.
 _HALF_TRIGGER = "half"
 _HALF_ROLES = (_HALF_TRIGGER, _HALF_TRIGGER + "+", _HALF_TRIGGER + "-")
 _MAPPING_ROLES = {"leftx": "lx", "lefty": "ly", "rightx": "rx",
@@ -109,16 +116,17 @@ if GAMEPAD_AVAILABLE:
 
 
 def axis_roles(mapping):
-    """SDL mapovanie ovladaca -> {index osi joysticku: uloha}.
+    """SDL controller mapping -> {joystick axis index: role}.
 
-    `mapping` je slovnik z `Controller.get_mapping()`; G7 Pro zadavatela ma
-    {'leftx': 'a0', 'lefty': 'a1', 'rightx': 'a2', 'righty': 'a3',
-    'lefttrigger': 'a4', 'righttrigger': 'a5', ...}. Zapis je SDL-ovsky:
-    '+a4' / '-a4' je polovica osi (uloha `half+` / `half-`), 'a3~' obratena
-    os (uloha `lt~` / `rt~`). Dve spuste na jednej osi (DirectInput '+a2' a
-    '-a2') su `half` s kludom v strede. Co sa precitat neda alebo si
-    odporuje, vynecha sa - os bez ulohy sa sleduje opatrnejsie
-    (`UNKNOWN_AXIS_STEP`), aby ziadna kludova poloha nebola aktivita navzdy.
+    `mapping` is the dict from `Controller.get_mapping()`; the requester's
+    G7 Pro has {'leftx': 'a0', 'lefty': 'a1', 'rightx': 'a2', 'righty': 'a3',
+    'lefttrigger': 'a4', 'righttrigger': 'a5', ...}. The notation is SDL's:
+    '+a4' / '-a4' is half an axis (role `half+` / `half-`), 'a3~' an
+    inverted axis (role `lt~` / `rt~`). Two triggers on one axis
+    (DirectInput '+a2' and '-a2') are `half` with rest in the middle.
+    Whatever cannot be read or contradicts itself is skipped - an axis
+    without a role is watched more cautiously (`UNKNOWN_AXIS_STEP`), so
+    that no rest position is activity forever.
     """
     claims = {}
     for key, role in _MAPPING_ROLES.items():
@@ -128,7 +136,7 @@ def axis_roles(mapping):
         half, axis, inverted = m.group(1), int(m.group(2)), m.group(3)
         if role in _TRIGGER_ROLES:
             if half and inverted:
-                continue            # obratena polovica osi - klud sa nevie
+                continue            # inverted half axis - rest unknown
             if half:
                 role = _HALF_TRIGGER + half
             elif inverted:
@@ -139,12 +147,12 @@ def axis_roles(mapping):
         if len(found) == 1:
             roles[axis] = found[0]
         elif not any(r in _STICK_ROLES for r in found):
-            roles[axis] = _HALF_TRIGGER     # viac spusti na jednej osi
+            roles[axis] = _HALF_TRIGGER     # several triggers on one axis
     return roles
 
 
 def _axis_roles_for(index):
-    """Ulohy osi zariadenia `index` zo SDL mapovania; {} ked ho SDL nepozna."""
+    """Device `index`'s axis roles (SDL mapping); {} if SDL doesn't know it."""
     if _sdl_controller is None:
         return {}
     try:
@@ -152,9 +160,9 @@ def _axis_roles_for(index):
             _sdl_controller.init()
         if not _sdl_controller.is_controller(index):
             return {}
-        # Otvara sa len na precitanie mapovania a hned sa zatvara: otvoreny
-        # SDL_GameController by popri JOY* posielal aj CONTROLLER* a kazdy
-        # vstup by prisiel zbytocne dvakrat.
+        # Opened only to read the mapping and closed right away: an open
+        # SDL_GameController would send CONTROLLER* alongside JOY*, and every
+        # input would needlessly arrive twice.
         ctl = _sdl_controller.Controller(index)
         try:
             mapping = ctl.get_mapping()
@@ -168,9 +176,9 @@ def _axis_roles_for(index):
 
 
 class GamepadListener:
-    """Vlastne vlakno, ktore pri aktivite na ovladaci zavola
-    `on_button("activity")` - pri stlaceni/vychyleni hned, pri drzani
-    kazdych `REASSERT_S`. Nic ine o vstupe nevracia."""
+    """Its own thread that calls `on_button("activity")` on controller
+    activity - right away on a press/deflection, every `REASSERT_S` while
+    held. It returns nothing else about the input."""
 
     def __init__(self, on_button, on_status=None):
         self.on_button = on_button
@@ -181,15 +189,16 @@ class GamepadListener:
         self._reset_state()
 
     def _reset_state(self):
-        self._roles = {}                  # instance_id -> {os: uloha}
-        # PRAVE drzane/vychylene prvky: (instance_id, zdroj, druh, index).
-        # Len aby drzany vstup nevyzeral ako pauza - nikam neodchadza a pri
-        # pusteni (alebo odpojeni zariadenia) sa zahodi.
+        self._roles = {}                  # instance_id -> {axis: role}
+        # Elements held/deflected RIGHT NOW: (instance_id, source, kind,
+        # index). Only so that a held input does not look like a pause - it
+        # goes nowhere and is dropped on release (or when the device
+        # disconnects).
         self._held = set()
-        self._sticks = {}                 # (iid, zdroj, "l"/"r") -> [x, y]
-        self._trigger_rest = {}           # (iid, os) -> najnizsia videna hodnota
-        self._anchors = {}                # (iid, os) -> kotva osi bez ulohy
-        self._last_activity_poll = 0.0    # skrtenie re-assertu aktivity
+        self._sticks = {}                 # (iid, source, "l"/"r") -> [x, y]
+        self._trigger_rest = {}           # (iid, axis) -> lowest value seen
+        self._anchors = {}                # (iid, axis) -> anchor of an axis without a role
+        self._last_activity_poll = 0.0    # throttling of the activity re-assert
 
     @property
     def available(self):
@@ -233,8 +242,9 @@ class GamepadListener:
                 for event in pygame.event.get():
                     self._handle(event)
             except Exception:
-                # Chyba v spracovani udalosti by inak ticho zabila vsetok
-                # vstup z ovladaca. Zalogujeme raz, nech to slucka nezaplavi.
+                # An error in event handling would otherwise silently kill all
+                # input from the controller. We log it once, so it does not
+                # flood the loop.
                 if not getattr(self, "_loop_warned", False):
                     self._loop_warned = True
                     log.exception("gamepad: spracovanie udalosti zlyhalo "
@@ -248,19 +258,20 @@ class GamepadListener:
             except Exception:
                 pass
         self._devices.clear()
-        # Nic nesmie ostat "drzane" do dalsieho zapnutia pocuvania.
+        # Nothing may stay "held" until listening is turned on next time.
         self._reset_state()
 
     def _activity(self):
         self.on_button(ACTIVITY)
 
     def _reassert_activity(self, now=None):
-        """Drzane tlacidlo ani stojaca vychylena pacicka NEgeneruju nove
-        udalosti, takze bez tohto by hrac drziaci mierenie/beh vyzeral ako
-        necinny (pause_s rastie) a ARMED spustac by sa ozval uprostred boja -
-        presny opak zameru "ozvi sa v pauze". Kazdych `REASSERT_S` (hlboko pod
-        prahom pauzy 2.5 s) potvrdime aktivitu, kym nieco drzi alebo je
-        pacicka/spust za mrtvou zonou."""
+        """A held button or a deflected stick held still DOES NOT generate
+        new events, so without this a player holding aim/sprint would look
+        idle (pause_s grows) and an ARMED trigger would speak up mid-fight -
+        the exact opposite of the intent "speak up during a pause". Every
+        `REASSERT_S` (far below the 2.5 s pause threshold) we reassert
+        activity while something is held or a stick/trigger is beyond the
+        dead zone."""
         now = time.time() if now is None else now
         if now - self._last_activity_poll < REASSERT_S:
             return
@@ -270,31 +281,34 @@ class GamepadListener:
 
     def _open(self, index):
         try:
-            # pygame 2 zariadenie otvara uz tu (`init()` je od 2.4 zastarane).
+            # pygame 2 opens the device right here (`init()` is
+            # deprecated since 2.4).
             joy = pygame.joystick.Joystick(index)
             iid = joy.get_instance_id()
             if iid in self._devices:
-                # Uz otvorene: pri starte ho otvori slucka aj JOYDEVICEADDED.
+                # Already open: at start both the loop and
+                # JOYDEVICEADDED open it.
                 return
             self._devices[iid] = joy
             self._roles[iid] = _axis_roles_for(index)
             self._notify(f"connected:{joy.get_name()}")
         except Exception:
-            # Ovladac sa nepodarilo otvorit - hrac by inak nevedel, preco mu
-            # appka gamepad "nevidi". Otvaranie je zriedkave, staci warning.
+            # The controller could not be opened - otherwise the player would
+            # not know why the app does not "see" the gamepad. Opening is
+            # rare, a warning is enough.
             log.warning("gamepad: index %s sa nepodarilo otvorit", index, exc_info=True)
 
     def _forget(self, iid):
-        """Zariadenie odislo: zahod vsetko, co od neho bolo drzane. Inak by
-        tlacidlo drzane v momente odpojenia ostalo "drzane" navzdy a appka
-        by uz nikdy nevidela pauzu."""
+        """The device went away: drop everything that was held from it.
+        Otherwise a button held at the moment of unplugging would stay
+        "held" forever and the app would never see a pause again."""
         self._held = {k for k in self._held if k[0] != iid}
         for store in (self._sticks, self._trigger_rest, self._anchors):
             for key in [k for k in store if k[0] == iid]:
                 del store[key]
 
     def _set_held(self, key, on):
-        """Prvok presiel za mrtvu zonu (aktivita hned) alebo sa vratil."""
+        """An element crossed the dead zone (activity at once) or came back."""
         if on:
             if key not in self._held:
                 self._held.add(key)
@@ -303,7 +317,7 @@ class GamepadListener:
             self._held.discard(key)
 
     def _stick(self, iid, src, role, value):
-        """Pacicka kruhovo, ako v ukazke XInput: velkost vychylky (x, y)."""
+        """Stick, circular as in the XInput sample: (x, y) deflection size."""
         side = role[0]
         xy = self._sticks.setdefault((iid, src, side), [0.0, 0.0])
         xy[0 if role[1] == "x" else 1] = value
@@ -317,16 +331,17 @@ class GamepadListener:
         elif role in _TRIGGER_ROLES or role in _INVERTED_TRIGGER_ROLES:
             if role in _INVERTED_TRIGGER_ROLES:
                 value = -value
-            # Plna os: klud -1.0, stlacena +1.0, zdvih je teda (v - klud) / 2.
-            # Klud = najnizsia videna hodnota; prva udalost osi nesie jej
-            # povodnu hodnotu (SDL ju posle pred prvym pohybom). Keby spust
-            # niekde kludovala inde nez na -1, nebude aspon "stlacena" navzdy.
+            # Full axis: rest -1.0, pressed +1.0, so the travel is
+            # (v - rest) / 2. Rest = the lowest value seen; the first event
+            # of the axis carries its initial value (SDL sends it before the
+            # first movement). If a trigger rested somewhere other than -1,
+            # at least it will not be "pressed" forever.
             rest = min(value, self._trigger_rest.get((iid, axis), value))
             self._trigger_rest[(iid, axis)] = rest
             self._set_held((iid, "joy", "t", axis),
                            (value - rest) / 2.0 > TRIGGER_DEADZONE)
         elif role in _HALF_ROLES:
-            # Zdvih je vychylka na stranu stlacenia; pri `half` na hociktoru.
+            # Travel = deflection to the press side; with `half`, either side.
             if role.endswith("+"):
                 travel = value
             elif role.endswith("-"):

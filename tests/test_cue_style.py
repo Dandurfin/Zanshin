@@ -1,16 +1,18 @@
 # -*- coding: utf-8 -*-
-"""Štýl hlášky (0.2): otázka v onboardingu a riadok v Nastaveniach.
+"""Cue style (0.2): a question in onboarding and a row in Settings.
 
-Rozhodnutia zadávateľa, ktoré tieto testy strážia:
-  * otázka „Keď ťa hra poriadne vytočí, ako chceš, aby sa appka ozvala?“
-    so štyrmi rovnocennými odpoveďami, nič predvybrané,
-  * „Neviem, nech si to appka zistí sama“ = hlas (rebrík ide dole po prvej
-    výhrade),
-  * settings["cue_style"] je "voice" | "sound" | "visual", chýbajúci = hlas,
-  * doručenie: hlas = zvuk aj slová; zvuk = zvuk slotu a obrázok, žiadne
-    TTS; obrázok = len obrázok. Práca je len obrázok vždy.
-  * riadok „Ako sa ozývam“ v Nastaveniach: appka môže ísť sama tichšie,
-    hlasnejšie než toto nikdy - ani v práve bežiacej relácii.
+The requester's decisions that these tests guard:
+  * the question „Keď ťa hra poriadne vytočí, ako chceš, aby sa appka ozvala?“
+    (When a game really winds you up, how do you want the app to speak up?)
+    with four equal answers, nothing preselected,
+  * „Neviem, nech si to appka zistí sama“ (I don't know, let the app find
+    out by itself) = voice (the ladder goes down after the first objection),
+  * settings["cue_style"] is "voice" | "sound" | "visual", missing = voice,
+  * delivery: voice = sound and words; sound = the slot's sound and the
+    picture, no TTS; picture = picture only. Work is always picture only.
+  * the row „Ako sa ozývam“ (How I speak up) in Settings: the app may go
+    quieter by itself, never louder than this - not even in the session that
+    is running right now.
 """
 import ast
 import json
@@ -37,7 +39,7 @@ def _read(meno):
 
 
 def _funkcia(subor, meno, trieda=None):
-    # "app.py" = cela appka: app.py aj mixiny DandurfApp v app_*.py
+    # "app.py" = the whole app: app.py and the DandurfApp mixins in app_*.py
     koren = strom_appky() if subor == "app.py" else ast.parse(_read(subor))
     if trieda:
         koren = next(u for u in ast.walk(koren)
@@ -49,7 +51,7 @@ def _funkcia(subor, meno, trieda=None):
 
 
 # --------------------------------------------------------------------------
-# Nastavenia: normalizacia a migracia
+# Settings: normalisation and migration
 # --------------------------------------------------------------------------
 
 @pytest.fixture
@@ -57,8 +59,8 @@ def nastavenia(tmp_path, monkeypatch):
     import app as app_mod
     import app_prefs
     cesta = str(tmp_path / "dandurf_settings.json")
-    # `load_settings` byva v mixine app_prefs (PrefsMixin) a cita
-    # SETTINGS_PATH zo svojho modulu - presmerovat ho treba tam.
+    # `load_settings` lives in the app_prefs mixin (PrefsMixin) and reads
+    # SETTINGS_PATH from its own module - it has to be redirected there.
     monkeypatch.setattr(app_prefs, "SETTINGS_PATH", cesta)
     povodny = i18n._lang["code"]
 
@@ -76,7 +78,7 @@ def test_prvy_start_je_hlas(nastavenia):
 
 
 def test_migracia_bez_kluca_je_hlas(nastavenia):
-    """Nastavenia zo starsej verzie styl nemaju - hrac ostava na hlase."""
+    """Older-version settings have no style - the player stays on voice."""
     d = nastavenia({"lang": "sk", "theme": "zen"})
     assert d["cue_style"] == "voice" and d["first_run"] is False
 
@@ -100,11 +102,11 @@ def test_styly_idu_od_najhlasnejsieho():
 
 
 # --------------------------------------------------------------------------
-# Dorucenie podla stylu (skutocne metody app.py na atrape)
+# Delivery by style (the real app.py methods on a dummy)
 # --------------------------------------------------------------------------
 
 class _Vlakno:
-    """Synchronne `threading.Thread` - aby sa dalo overit, co sa spustilo."""
+    """Synchronous `threading.Thread` - so we can check what was started."""
 
     def __init__(self, target, args=(), kwargs=None, daemon=None):
         self._t, self._a, self._k = target, args, kwargs or {}
@@ -114,15 +116,15 @@ class _Vlakno:
 
 
 def _relacia_so_stylom(monkeypatch, styl, svet="play"):
-    """Otvori relaciu ako `_open_hr_session` (stupen + hlas automatu) a
-    doruci jednu hlasku z hlasneho ramena. Vrati (stupen, spustene _emit,
-    vykreslene piktogramy, zaznam hlasky)."""
+    """Opens a session like `_open_hr_session` (rung + state-machine voice) and
+    delivers one cue from the loud arm. Returns (rung, fired _emit calls,
+    drawn pictograms, cue record)."""
     import app as app_mod
     import app_today
     D = app_mod.DandurfApp
     monkeypatch.setattr(app_mod, "threading", types.SimpleNamespace(Thread=_Vlakno))
-    # `_fire_somatic_cue` byva v mixine app_today (TodayMixin) a cita
-    # `threading` zo svojho modulu - synchronne vlakno treba aj tam.
+    # `_fire_somatic_cue` lives in the app_today mixin (TodayMixin) and reads
+    # `threading` from its own module - the synchronous thread goes there too.
     monkeypatch.setattr(app_today, "threading", types.SimpleNamespace(Thread=_Vlakno))
     spustene, vykreslene = [], []
     slot = types.SimpleNamespace(index=1, text_value="Teeth")
@@ -136,7 +138,7 @@ def _relacia_so_stylom(monkeypatch, styl, svet="play"):
         _dalsi_cue_slot=lambda: 1, _slot_zaznie=lambda s, bez_slov=False: True,
         _emit=lambda s, bez_slov=False: spustene.append(bez_slov))
     D._urci_stupen_hlasky(a)
-    # rovnaka podmienka ako `open_session(voice=...)` v `_open_hr_session`
+    # the same condition as `open_session(voice=...)` in `_open_hr_session`
     hlas = svet != "work" and a._cue_rung == rebrik.HLAS
     ev = {"typ": trigger.E_DELIVER, "ts": 1200.0, "arm": "voice",
           "delivery": "pause", "hlas": hlas, "load": 61.0,
@@ -173,18 +175,18 @@ def test_praca_je_len_obrazok_pri_kazdom_style(monkeypatch, styl):
 
 
 def test_styl_je_vrchol_rebrika_nikdy_nie_hlasnejsie():
-    """Obrazok ako styl: ani tri ciste relacie s hlaskou nevratia hlas."""
+    """Picture as style: three clean cue sessions do not restore the voice."""
     ciste = [{"started": 1_789_000_000.0 + i * 3600.0, "duration_s": 1800.0,
               "auto_triggers": 1} for i in range(6)]
     assert rebrik.stupen(ciste, styl="visual")["stupen"] == rebrik.OBRAZ
     assert rebrik.stupen(ciste, styl="sound")["stupen"] == rebrik.HLAS
-    # a po vyhrade ide aj "neviem" (= hlas) hned o stupen nizsie
+    # and after an objection even "neviem" (= voice) drops a rung right away
     vyhrada = [dict(ciste[0], cue_verdict="disruptive")]
     assert rebrik.stupen(vyhrada, styl="voice")["stupen"] == rebrik.OBRAZ
 
 
 # --------------------------------------------------------------------------
-# Zmena stylu: tichsi plati hned, hlasnejsi od dalsej relacie
+# Style change: quieter applies at once, louder from the next session
 # --------------------------------------------------------------------------
 
 def _beziaca(styl, stupen=rebrik.HLAS, svet="play"):
@@ -214,7 +216,7 @@ def test_hlasnejsi_styl_pocka_na_dalsiu_relaciu():
     D._nastav_styl_hlasky(a, "voice")
     assert a.cue_style == "voice", "ulozi sa a plati od dalsej relacie"
     assert (a._cue_style_rel, a._cue_rung, a.cue_trigger.voice) == ("visual", "visual", False)
-    # pri otvoreni dalsej relacie sa uz rata s novym stylom
+    # when the next session opens, the new style is already used
     a._history_sessions = lambda: []
     D._urci_stupen_hlasky(a)
     assert (a._cue_style_rel, a._cue_rung) == ("voice", "voice")
@@ -232,7 +234,7 @@ def test_zmena_stylu_nezrusi_pauzu_ani_nepokazi_nezmysel():
 
 
 # --------------------------------------------------------------------------
-# Onboarding: krok 5 ulozi volbu
+# Onboarding: step 5 saves the choice
 # --------------------------------------------------------------------------
 
 def test_onboarding_ma_styri_schvalene_odpovede_bez_predvolby():
@@ -240,8 +242,9 @@ def test_onboarding_ma_styri_schvalene_odpovede_bez_predvolby():
     W = ui_dialogs.OnboardingWizard
     assert [v for v, _k in W.CUE_VOLBY] == ["voice", "sound", "visual", "unsure"]
     sk = [i18n.STRINGS[k]["sk"] for _v, k in W.CUE_VOLBY]
-    # 0.2.2: "Neviem" uz nesluby rezim "nech si to appka zisti", ktory
-    # neexistuje - uklada sa ako hlas a rebrik sa stisi sam (audit UX).
+    # 0.3: "Neviem" no longer promises a "let the app find out" mode, which
+    # does not exist - it is saved as voice and the ladder quiets down by
+    # itself (UX audit).
     assert sk == ["Pokojne aj hlasom", "Radšej len zvuk a obrázok",
                   "Len obrázok, nič nehovor",
                   "Neviem — začni hlasom a stíš sa, keď budeš prekážať"]
@@ -249,7 +252,7 @@ def test_onboarding_ma_styri_schvalene_odpovede_bez_predvolby():
         "Keď ťa hra poriadne vytočí, ako chceš, aby sa appka ozvala?")
     assert i18n.STRINGS["ob.cue.title"]["en"] == (
         "When a game really winds you up, how do you want the app to speak up?")
-    # nic nie je predvybrane a vsetky styri tlacidla su rovnako velke
+    # nothing is preselected and all four buttons are the same size
     init = ast.unparse(_funkcia("ui_dialogs.py", "__init__", "OnboardingWizard"))
     assert "self.cue_style = None" in init and "self._cue_volba = None" in init
     krok = _funkcia("ui_dialogs.py", "_step5", "OnboardingWizard")
@@ -259,7 +262,7 @@ def test_onboarding_ma_styri_schvalene_odpovede_bez_predvolby():
     kw = {k.arg: ast.unparse(k.value) for k in tlacidla[0].keywords}
     assert kw["width"] == "460" and kw["height"] == "46"
     assert "for volba, kluc in self.CUE_VOLBY" in ast.unparse(krok)
-    # ziadna predvolba ani "odporucane" (telo bez docstringu)
+    # no default and no "recommended" (the body without the docstring)
     telo = ast.unparse(ast.Module(body=krok.body[1:], type_ignores=[]))
     for zakazane in ("odporu", "recommend", "self._cue_volba =", "self.cue_style ="):
         assert zakazane not in telo, zakazane
@@ -288,7 +291,7 @@ def test_app_prevezme_styl_z_onboardingu():
     assert a.cue_style == "sound", "bez odpovede ostava, co bolo"
     D._prevezmi_styl_z_onboardingu(a, types.SimpleNamespace(cue_style="visual"))
     assert a.cue_style == "visual"
-    # prvy start aj opakovany onboarding; pri opakovanom pred ulozenim
+    # first start and repeated onboarding; with the repeated one before saving
     src = zdroj_appky()
     assert src.count("self._prevezmi_styl_z_onboardingu(wizard)") == 2
     znova = ast.unparse(_funkcia("app.py", "replay_onboarding"))
@@ -297,8 +300,9 @@ def test_app_prevezme_styl_z_onboardingu():
 
 
 def test_preskocit_uvod_neprekoci_otazku():
-    """"Preskočiť" na krokoch 1-2 ide na krok s hodinkami (0.2.2) - nie na
-    voľbu sveta, ktorá ho obišla. Svet a otázka (krok 5) prídu po ňom."""
+    """"Preskočiť" (Skip) on steps 1-2 goes to the watch step (0.3) - not to
+    the world choice, which skipped it. The world and the question (step 5)
+    come after it."""
     import ui_dialogs
     W = ui_dialogs.OnboardingWizard
     assert W.STEP_COUNT == 5 and W.KROK_HODINKY == 2
@@ -310,7 +314,7 @@ def test_preskocit_uvod_neprekoci_otazku():
 
 
 # --------------------------------------------------------------------------
-# Nastavenia -> Zvuk: riadok "Ako sa ozyvam"
+# Settings -> Sound: the "Ako sa ozyvam" (How I speak up) row
 # --------------------------------------------------------------------------
 
 def test_riadok_v_nastaveniach_meni_styl_a_uklada():
@@ -321,9 +325,10 @@ def test_riadok_v_nastaveniach_meni_styl_a_uklada():
     a = _beziaca("voice")
     a._nastav_styl_hlasky = lambda s: D._nastav_styl_hlasky(a, s)
     a.save_settings = lambda: ulozene.append(a.cue_style)
-    # styl rozhoduje, ci sa Edge hlasky pripravuju (`_hlasky_hovoria`)
+    # the style decides whether Edge cues get prepared (`_hlasky_hovoria`)
     a.schedule_pregenerate = lambda *_: pripravy.append(a.cue_style)
-    # 0.2.2: riadok ma vlastne mena stylov (cue_style.*), nie odpovede z uvodu
+    # 0.3: the row has its own style names (cue_style.*), not the answers from
+    # the introduction
     assert D._cue_style_label("sound") == i18n.tr("cue_style.sound")
     assert D._cue_style_label(None) == i18n.tr("cue_style.voice")
     assert D._cue_style_labels(a) == [i18n.tr("cue_style.voice"), i18n.tr("cue_style.sound"),
@@ -339,8 +344,8 @@ def test_riadok_v_nastaveniach_meni_styl_a_uklada():
     assert "tr('settings.cue_style')" in stranka
     assert "tr('settings.cue_style_sub')" in stranka
     assert "command=self._on_cue_style_label" in stranka
-    # 0.2.2 davka 4: uz nie vlastny panel nad hlasom, ale PRVY riadok panela
-    # Hlasitost (audit UX: karta pre jednu vetu)
+    # 0.3 batch 4: no longer its own panel above the voice, but the FIRST row
+    # of the Volume panel (UX audit: a card for one sentence)
     hlasitost = stranka.index("settings.audio_volume_title")
     assert hlasitost < stranka.index("settings.cue_style") < stranka.index("settings.volume'")
 
@@ -352,8 +357,9 @@ def test_texty_su_vo_vsetkych_jazykoch_a_hovoria_pravdu():
                  "cue_style.voice", "cue_style.sound", "cue_style.visual"):
         assert set(i18n.STRINGS[kluc]) == set(i18n.LANGUAGES), kluc
     sub = i18n.STRINGS["settings.cue_style_sub"]
-    # appka o sebe v zenskom rode; tichsie sama, hlasnejsie nikdy; praca obraz
-    # (0.2.2: jedno slovo "obrazok" pre to, co sa ukaze v hre)
+    # the app speaks of itself in the feminine; quieter by itself, louder
+    # never; work is picture (0.3: one word "obrazok" (picture) for what shows
+    # in game)
     assert "stíšim sa aj sama" in sub["sk"] and "nikdy" in sub["sk"]
     assert "V práci" in sub["sk"] and "obrázkom" in sub["sk"]
     assert "never louder" in sub["en"] and "At work" in sub["en"]
@@ -362,9 +368,10 @@ def test_texty_su_vo_vsetkych_jazykoch_a_hovoria_pravdu():
 
 
 def test_onboarding_povie_co_posiela_prirodzeny_hlas():
-    """Pod otázkou na štýl hlášky stojí tichý riadok o online hlase: texty
-    hlášok (nikdy tep) idú do Microsoftu, hlas z Windows neposiela nič - a
-    kde sa prepína (karta Nastavení tak, ako sa v danom jazyku naozaj volá)."""
+    """Under the cue-style question there is a quiet line about the online
+    voice: the cue texts (never the heart rate) go to Microsoft, the Windows
+    voice sends nothing - and where to switch it (the Settings tab as it is
+    really called in the given language)."""
     zaznam = i18n.STRINGS["ob.cue.online_note"]
     assert set(zaznam) == set(i18n.LANGUAGES)
     for jazyk in i18n.LANGUAGES:
@@ -376,11 +383,11 @@ def test_onboarding_povie_co_posiela_prirodzeny_hlas():
     assert "(nikdy nie tep)" in zaznam["sk"] and "Hlas z Windows neposiela nič" in zaznam["sk"]
     assert "(never your heart rate)" in zaznam["en"]
     assert "The Windows voice sends nothing" in zaznam["en"]
-    # nie „…, um ihn … umzuwandeln“ - podmetom by bol text sám
+    # not „…, um ihn … umzuwandeln“ - the subject would be the text itself
     assert "und wird dort in Sprache umgewandelt" in zaznam["de"]
     krok = ast.unparse(_funkcia("ui_dialogs.py", "_step5", "OnboardingWizard"))
     assert "tr('ob.cue.online_note')" in krok
-    # tichý štýl ako riadok nad ním, a až pod odpoveďami
+    # the quiet style as a row above it, and only below the answers
     assert krok.index("tr('ob.cue.note')") < krok.index("tr('ob.cue.online_note')")
     riadok = krok[krok.index("tr('ob.cue.online_note')"):]
     assert "ui_kit.ui(11)" in riadok and "pal['text_faint']" in riadok

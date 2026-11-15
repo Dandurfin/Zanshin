@@ -1,22 +1,24 @@
 # -*- coding: utf-8 -*-
-"""Dokumenty po davke 4b (0.2.2) hovoria to, co robi kod.
+"""The documents after batch 4b (0.3) say what the code does.
 
-  * README "You need" a uvod (`ob.step1.need`) hovoria to iste: chytre
-    hodinky, ich appka v telefone, ktora posiela tep do PC, a ta ista
-    domaca siet (Wi-Fi),
-  * PRIVACY: cakajuca relacia sa doplni pri dalsom starte ALEBO hned po
-    dalsom uspesnom ulozeni a subor sa potom zmaze; necitatelny sa nezmaze,
-    odlozi sa ako `.corrupt-<cas>`. Zoznam lokalnych suborov sedi s kodom
-    (`data_io.MAZATELNE`, nastavenia a ich zaloha, cache hlasu, logy),
-  * SAFETY a HOW-IT-WORKS: stitky "(VPN/virtualna)" a "(hotspot)", externy
-    prepinac Hyper-V,
-  * HOW-IT-WORKS a CHANGELOG: datumy v jazyku appky, "1 h 15 min" od hodiny,
-    dotaznik pri ukonceni z listy a pri vypnuti Windows, "phone connected",
-    nemecke Strg/Umschalt,
-  * DEVELOPMENT: tests/conftest.py presmeruje data a log testov.
+  * README "You need" and the introduction (`ob.step1.need`) say the same
+    thing: a smartwatch, its app on the phone that sends the heart rate to
+    the PC, and the same home network (Wi-Fi),
+  * PRIVACY: a pending session is added on the next start OR right after
+    the next successful save, and the file is then deleted; an unreadable
+    one is not deleted, it is set aside as `.corrupt-<cas>`. The list of
+    local files matches the code (`data_io.MAZATELNE`, settings and their
+    backup, voice cache, logs),
+  * SAFETY and HOW-IT-WORKS: the labels "(VPN/virtual)" and "(hotspot)",
+    the external Hyper-V switch,
+  * HOW-IT-WORKS and CHANGELOG: dates in the app's language, "1 h 15 min"
+    from one hour on, the questionnaire on quitting from the tray and on
+    Windows shutdown, "phone connected", German Strg/Umschalt,
+  * DEVELOPMENT: tests/conftest.py redirects the tests' data and log.
 
-Zamerne sa nepinuju cele odstavce - len nazvy z UI, cisla a tvary z kodu a
-vety, ktore po zmene kodu prestanu platit. Data su vymyslene.
+Deliberately, whole paragraphs are not pinned - only names from the UI,
+numbers and forms from the code, and sentences that stop being true when
+the code changes. The data is made up.
 """
 import os
 import re
@@ -62,7 +64,7 @@ def _sk(kluc):
 
 
 def _lokalne():
-    """PRIVACY: cast o lokalnych suboroch (pred sietou)."""
+    """PRIVACY: the part about local files (before the network part)."""
     p = _read("PRIVACY.md")
     return _plain_text(p[:p.index("## The few things that can use the network")])
 
@@ -73,12 +75,12 @@ def _davka4():
     return _plain_text(s022[s022.index("### Fewer dead ends"):])
 
 
-# 12. novembra 2026 o 20:05 miestneho casu - priklad z dokumentov
+# 12 November 2026 at 20:05 local time - the example from the documents
 _PRIKLAD = time.mktime((2026, 11, 12, 20, 5, 0, 0, 0, -1))
 
 
 # --------------------------------------------------------------------------
-# README "You need" == uvod, krok 1
+# README "You need" == introduction, step 1
 # --------------------------------------------------------------------------
 
 def test_readme_you_need_hovori_to_iste_co_uvod():
@@ -91,16 +93,16 @@ def test_readme_you_need_hovori_to_iste_co_uvod():
                   "the phone and the PC on the same home network (Wi‑Fi)"):
         assert fraza in potrebujes, fraza
         assert fraza in uvod, fraza
-    # testovana cesta a Windows su len v README (uvod uz bezi na Windows)
+    # tested path + Windows only in README (the intro already runs on Windows)
     assert "Windows 10 untested" in potrebujes
     assert "*HeartRateOnStream for OBS*" in potrebujes
-    # stara veta "phone or watch app" ani hrudny pas sa nevracaju
+    # the old "phone or watch app" sentence and the chest strap stay gone
     assert "phone or watch app" not in potrebujes
     assert "chest" not in uvod.lower()
 
 
 # --------------------------------------------------------------------------
-# PRIVACY: cakajuca relacia a uplny zoznam lokalnych suborov
+# PRIVACY: pending session and the complete list of local files
 # --------------------------------------------------------------------------
 
 def _relacia(started):
@@ -113,20 +115,20 @@ def test_privacy_cakajuca_relacia_presne(tmp_path):
     assert ("Zanshin adds them to your history at the next start, or right "
             "after the next session that saves, and then deletes the file") in lokalne
     assert "`%s.corrupt-<time>`" % hr_stats.CAKAJUCA_MENO in lokalne
-    # kod: doplnenie pri starte aj po uspesnom ulozeni (nie pri vypinani)
+    # code: added at start and after a successful save (not on shutdown)
     assert '_ak_vies(self, "_dopln_cakajuce_relacie")' in zdroj_metody(
         "_obnov_rozpracovanu_relaciu")
     zatvor = zdroj_appky()
     assert re.search(r"if not pri_vypnuti:\s*\n\s*_ak_vies\(self, "
                      r"\"_dopln_cakajuce_relacie\"\)", zatvor)
-    # spravanie: doplnena -> subor zmizne
+    # behaviour: added -> the file disappears
     cesta = str(tmp_path / "hr_sessions.json")
     teraz = time.time()
     assert hr_stats.zapis_cakajucu(cesta, _relacia(teraz - 7200))
     assert os.path.exists(hr_stats.cesta_cakajucej(cesta))
     assert len(hr_stats.obnov_cakajuce(cesta, now=teraz)) == 1
     assert not os.path.exists(hr_stats.cesta_cakajucej(cesta))
-    # necitatelny sa nezmaze - odlozi sa ako .corrupt-<cas>
+    # an unreadable one is not deleted - it is set aside as .corrupt-<cas>
     with open(hr_stats.cesta_cakajucej(cesta), "w", encoding="utf-8") as fh:
         fh.write("{pokazene")
     assert hr_stats.obnov_cakajuce(cesta, now=teraz) == []
@@ -147,22 +149,22 @@ def test_privacy_kontrolny_bod_a_pokazena_historia():
 
 def test_privacy_zoznam_suborov_sedi_s_kodom():
     lokalne = _lokalne()
-    # vsetko, co "Zmazat historiu" maze, je v zozname menom
+    # everything "Delete history" deletes is in the list by name
     for _kluc, meno in data_io.MAZATELNE:
         assert "`%s`" % meno in lokalne, meno
-    # nastavenia, ich zaloha a odlozeny pokazeny subor (app_prefs)
+    # settings, their backup and the set-aside broken file (app_prefs)
     prefs = zdroj_suboru("app_prefs.py")
     assert 'bak = cesta + ".bak"' in prefs
     assert '"%s.corrupt-%s" % (cesta, znacka)' in prefs
     assert "`dandurf_settings.json.bak`" in lokalne
     assert "`dandurf_settings.json.corrupt-<date>-<time>`" in lokalne
-    # zalohy pred importom (data_io)
+    # pre-import backups (data_io)
     assert '"%s.pred-importom-%s.bak" % (cesta, znacka)' in zdroj_suboru("data_io.py")
     assert "`<file>.pred-importom-<time>.bak`" in lokalne
-    # pripraveny hlas a nahravky v audio/
+    # prepared voice and recordings in audio/
     assert ("data.delete.tts", os.path.join("audio", "tts_cache")) in data_io.MAZATELNE_PRIECINKY
     assert "`audio/tts_cache`" in lokalne and "`audio/`" in lokalne
-    # logy (logging_setup) - mena suborov, nie cesta (conftest ju presmeruje)
+    # logs (logging_setup) - file names, not the path (conftest redirects it)
     assert os.path.basename(logging_setup.APP_LOG_PATH) == "app.log"
     assert os.path.basename(logging_setup.CRASH_LOG_PATH) == "crash.log"
     assert 'LOG_DIR = os.path.join(DATA_DIR, "logs")' in zdroj_suboru("logging_setup.py")
@@ -180,7 +182,7 @@ def test_privacy_ukazat_ip_je_tlacidlo_v_navode():
 
 
 # --------------------------------------------------------------------------
-# SAFETY a HOW-IT-WORKS: stitky adries
+# SAFETY and HOW-IT-WORKS: address labels
 # --------------------------------------------------------------------------
 
 def test_safety_a_how_it_works_stitky_adries():
@@ -188,15 +190,15 @@ def test_safety_a_how_it_works_stitky_adries():
     assert "„%s“" % _sk("hr.ip_virtual") in s
     assert "„%s“" % _sk("hr.ip_hotspot") in s
     assert "UDP socket sa len „pripojí“, nič sa neodošle" in s
-    assert 'sock.connect(("10.255.255.255", 1))     # UDP connect = ziadny paket' in (
+    assert 'sock.connect(("10.255.255.255", 1))     # UDP connect = no packet' in (
         zdroj_suboru("netinfo.py"))
     a = _plain(AKO)
     sekcia = a[a.index("## Which address the pairing guide shows"):]
     assert "*%s*" % _en("hr.ip_virtual") in sekcia
     assert "*%s*" % _en("hr.ip_hotspot") in sekcia
     assert "Hyper-V external switch" in sekcia
-    # kod: hotspot ma vlastny druh, externy prepinac sa pocita ako fyzicky,
-    # WSL / Default Switch / Docker nie
+    # code: the hotspot has its own kind, an external switch counts as
+    # physical, WSL / Default Switch / Docker do not
     assert netinfo.druh_adaptera("Local Area Connection* 10",
                                  "Microsoft Wi-Fi Direct Virtual Adapter #2") == netinfo.HOTSPOT
     assert netinfo._je_externy_prepinac("vEthernet (LAN)", "Hyper-V Virtual Ethernet Adapter")
@@ -207,7 +209,7 @@ def test_safety_a_how_it_works_stitky_adries():
 
 
 # --------------------------------------------------------------------------
-# HOW-IT-WORKS a CHANGELOG: datumy, cas nad hranicou, dotaznik, texty
+# HOW-IT-WORKS and CHANGELOG: dates, time over the limit, questionnaire, texts
 # --------------------------------------------------------------------------
 
 def _hm_en(seconds):
@@ -220,7 +222,7 @@ def test_datumy_a_cas_ako_v_kode():
     assert (en, sk) == ("12 Nov 2026", "12. 11. 2026")
     assert _hm_en(4500) == "1 h 15 min"
     assert ui_kit.DLZKA_OD_S == 3600 and _hm_en(3599) == "59:59"
-    # nazov exportu ostava ISO
+    # the export name stays ISO
     assert 'time.strftime("zanshin-relacie-%Y-%m-%d.csv")' in zdroj_suboru("app_history.py")
     for meno, text in ((AKO, _plain(AKO)), (ZMENY, _davka4())):
         assert "*%s* in English, *%s* in Slovak" % (en, sk) in text, meno
@@ -244,16 +246,16 @@ def test_texty_z_davky_4b_su_v_changelogu():
     for kluc in ("dnes.hr_connected", "settings.hr_status_waiting", "hr.ip_hotspot",
                  "nav.vhre_work_short", "ob.step3.pair_now", "hr.ip_show"):
         assert "*%s*" % _en(kluc) in d4, kluc
-    # nemecke mena klaves
+    # German key names
     assert hotkey.format_combo("ctrl+shift+f12", lang="de") == "Strg + Umschalt + F12"
     assert "*Strg* and *Umschalt*" in d4 and "*Strg* and *Umschalt*" in _plain(AKO)
-    # pravidlo ulozenia relacie v logu = `hr_stats.je_ulozitelna`
+    # session save rule in the log = `hr_stats.je_ulozitelna`
     assert "at least a minute and have at least 10 readings" in _en("log.hr_session_no_data")
     assert "at least a minute and at least 10 heart-rate readings" in d4
     assert hr_stats.je_ulozitelna({"duration_s": 60.0, "samples": 10})
     assert not hr_stats.je_ulozitelna({"duration_s": 60.0, "samples": 9})
-    # HOW-IT-WORKS: "phone connected" ked tep chodi, "waiting for watch" ked
-    # je telefon pripojeny bez tepu
+    # HOW-IT-WORKS: "phone connected" when heart rate is coming in, "waiting
+    # for watch" when the phone is connected without heart rate
     a = _plain(AKO)
     for kluc in ("dnes.hr_connected", "dnes.hr_waiting", "settings.hr_status_waiting"):
         assert "*%s*" % _en(kluc) in a, kluc

@@ -1,17 +1,20 @@
 # -*- coding: utf-8 -*-
-"""Bezpečnosť dát hráča (0.2): import, mazanie, staré kópie po migrácii,
-odinštalovanie.
+"""Safety of the player's data (0.2): import, deletion, old copies after the
+migration, uninstall.
 
-  * import hlási, koľko zo súboru NAOZAJ pribudlo, pred zápisom odloží
-    oba súbory 1:1 a NAHRADIŤ ide až na druhý klik,
-  * importované (cudzie) relácie neposúvajú dávkovanie tichých hlášok,
-  * „Zmazať históriu“ zmaže aj kópie, ktoré v starých priečinkoch nechala
-    migrácia - a zmazaná história sa už nevráti spoza .exe,
-  * odinštalovanie sa pýta aj na históriu tepu a pri „Nie“ zmaže aj staré
-    priečinky.
+  * import reports how many were REALLY added from the file, before writing
+    it sets both files aside 1:1, and REPLACE happens only on the second
+    click,
+  * imported (someone else's) sessions do not shift the dosing of silent
+    cues,
+  * „Zmazať históriu“ (Delete history) also deletes the copies the migration
+    left in the old folders - and deleted history no longer comes back from
+    beside the .exe,
+  * uninstall also asks about the heart-rate history and on „Nie“ (No) also
+    deletes the old folders.
 
-Bez Tk: `data_io`/`paths` sú čisto dátové, z `app.py` len metóda na atrape
-a zdrojový text.
+No Tk: `data_io`/`paths` are purely data, from `app.py` only a method on a
+dummy and the source text.
 """
 import json
 import os
@@ -47,13 +50,13 @@ def okno(ts=1000.0, **kw):
 
 
 # --------------------------------------------------------------------------
-# Import - počty, záloha, zápis
+# Import - counts, backup, write
 # --------------------------------------------------------------------------
 
 def test_hlasi_sa_len_to_co_naozaj_pribudlo():
-    """Po zlúčení s 200 vlastnými reláciami hlásenie tvrdilo „importované:
-    205“, hoci zo súboru pribudlo 5. Duplikát ani to, čo odreže strop
-    histórie, sa nepočíta."""
+    """After merging with 200 of the player's own sessions, the report claimed
+    „imported: 205“, although 5 were added from the file. Neither a
+    duplicate nor what the history cap cuts off is counted."""
     moje_s = [relacia(started=float(i)) for i in range(1, 201)]
     moje_w = [okno(ts=float(i)) for i in range(1, 51)]
     cudzie_s = [relacia(started=float(i), imported=True) for i in (5, 1000, 1001)]
@@ -79,8 +82,9 @@ def test_nahradit_zapise_len_obsah_suboru():
 
 
 def test_zaloha_pred_importom_je_kopia_1_na_1(tmp_path):
-    """Predošlá záloha bola vo formáte exportu (load_sessions ju nevedel
-    načítať) a meracie okná sa pri NAHRADIŤ prepísali bez zálohy vôbec."""
+    """The previous backup was in the export format (load_sessions could not
+    read it) and on REPLACE the measurement windows were overwritten with no
+    backup at all."""
     rel = tmp_path / "hr_sessions.json"
     okn = tmp_path / "hr_windows.json"
     rel.write_text(json.dumps([relacia()]), encoding="utf-8")
@@ -119,8 +123,9 @@ def test_vlastne_vynecha_importovane():
 
 
 def test_tiche_hlasky_ratame_len_z_vlastnych_relacii():
-    """Import 15+ relácií od kamaráta nesmie ukončiť fázu, v ktorej tiché
-    rameno mlčí častejšie (1/4) - cudzie telo sa nepočíta."""
+    """Importing 15+ sessions from a friend must not end the phase in which
+    the silent arm stays quiet more often (1/4) - someone else's body does
+    not count."""
     import app as app_mod
     cudzie = [relacia(started=float(i), imported=True) for i in range(20)]
     atrapa = types.SimpleNamespace(_dev_silent_share=None,
@@ -132,9 +137,10 @@ def test_tiche_hlasky_ratame_len_z_vlastnych_relacii():
 
 
 def test_import_nema_natvrdo_ano_nie_a_nahradit_je_na_dva_kliky():
-    """Systémový askyesnocancel mal „= Áno / = Nie“ natvrdo po slovensky a
-    tlačidlá v jazyku Windowsu. NAHRADIŤ bolo na „Nie“ bez potvrdenia."""
-    # import = dialog (`import_all_json`) + zapis vysledku (`_zapis_import`)
+    """The system askyesnocancel had „= Áno / = Nie“ hard-coded in Slovak and
+    the buttons in the Windows language. REPLACE was on „Nie“ (No) without
+    confirmation."""
+    # import = dialog (`import_all_json`) + result write (`_zapis_import`)
     imp = zdroj_metody("import_all_json") + "\n" + zdroj_metody("_zapis_import")
     assert "messagebox.askyesnocancel(" not in imp and "= Áno" not in imp
     assert "ImportDataDialog(" in imp
@@ -147,7 +153,7 @@ def test_import_nema_natvrdo_ano_nie_a_nahradit_je_na_dva_kliky():
     for kluc in ("data.import.merge", "data.import.replace", "common.cancel",
                  "data.import.replace_confirm", "data.import.replace_yes"):
         assert kluc in dlg, kluc
-    # NAHRADIŤ z prvého kroku ešte nič nezapisuje - len druhý krok
+    # REPLACE from the first step writes nothing yet - only the second does
     prvy = dlg[dlg.index("def _choose"):dlg.index("def _confirm_replace")]
     assert '"replace"' not in prvy
 
@@ -168,7 +174,7 @@ def test_text_o_oznaceni_menuje_co_sa_vyraduje():
 
 
 # --------------------------------------------------------------------------
-# Mazanie - staré kópie po migrácii (paths.legacy_data_dirs)
+# Deletion - old copies after the migration (paths.legacy_data_dirs)
 # --------------------------------------------------------------------------
 
 def _stary_priecinok(koren):
@@ -185,8 +191,9 @@ def _stary_priecinok(koren):
 
 
 def test_zmazat_historiu_zmaze_aj_kopie_v_starych_priecinkoch(tmp_path):
-    """Migrácia pri premenovaní appky dáta KOPÍROVALA, takže v starom
-    priečinku ostala druhá kópia histórie tepu. „Zmazať“ ju nesmie nechať."""
+    """The migration when the app was renamed COPIED the data, so a second copy
+    of the heart-rate history stayed in the old folder. „Zmazať“ (Delete)
+    must not leave it."""
     ciel = tmp_path / "Zanshin"
     ciel.mkdir()
     (ciel / "hr_sessions.json").write_text("[]", encoding="utf-8")
@@ -217,7 +224,7 @@ def test_dialog_mazania_spomenie_stare_kopie_menom_priecinka(tmp_path):
     assert len(stare) == 1, "jeden riadok na priečinok, nie zoznam súborov"
     assert stare[0]["params"] == {"folder": "Zanshin DojoSync"}
     assert stare[0]["bytes"] > 0
-    # bez starých priečinkov je plán rovnaký ako doteraz
+    # without old folders the plan is the same as before
     assert all(r["label"] != "data.delete.legacy"
                for r in data_io.plan_riadky(data_io.delete_plan(str(ciel))))
     assert "{folder}" in i18n.STRINGS["data.delete.legacy"]["sk"]
@@ -249,9 +256,10 @@ def _zmrazena_appka(monkeypatch, tmp_path):
 
 
 def test_zmazana_historia_sa_nevrati_z_kopie_vedla_exe(monkeypatch, tmp_path):
-    """Kópia od .exe bežala pri KAŽDOM štarte a dopĺňala, čo v cieli chýba -
-    zmazaná história sa pri ďalšom spustení vrátila. Migruje sa len pri
-    prvom štarte (v cieli ešte nie sú nastavenia)."""
+    """The copy from beside the .exe ran on EVERY start and filled in what was
+    missing in the target - deleted history came back on the next launch.
+    Migration happens only on the first start (there are no settings in the
+    target yet)."""
     paths, appdata, exe_dir = _zmrazena_appka(monkeypatch, tmp_path)
     (exe_dir / "hr_sessions.json").write_text("[1]", encoding="utf-8")
     ciel = appdata / "Zanshin"
@@ -291,7 +299,7 @@ def test_stare_priecinky_najde_len_zabalena_appka(monkeypatch, tmp_path):
 
 
 # --------------------------------------------------------------------------
-# Odinštalovanie (Dandurf.iss)
+# Uninstall (Dandurf.iss)
 # --------------------------------------------------------------------------
 
 def _iss():

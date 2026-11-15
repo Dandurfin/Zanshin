@@ -1,20 +1,25 @@
 # -*- coding: utf-8 -*-
-"""Brána hlášky (0.2, stress-gate): hlas až po vrchole, nikdy nad hranicou.
+"""Cue gate (0.2, stress-gate): voice only after the peak, never over limit.
 
-Hláška sa predtým po natiahnutí prestala pozerať na telo. Prehovorila na
-prvej 2,5 s pauze, aj keď záťaž ešte stúpala (často hneď po smrti v hre), a
-nad nameranou hranicou vysokého tepu rovnako nahlas. Keď do 90 s pauza
-neprišla, ukázala obrázok aj uprostred boja.
+Previously, once armed, the cue stopped looking at the body. It spoke on
+the first 2.5 s pause even while the load was still rising (often right
+after a death in the game), and just as loudly above the measured
+high-heart-rate limit. When no pause came within 90 s, it showed the
+picture even in the middle of a fight.
 
-Teraz ide hláška (hlas aj jej zvuk) len na pauze, a len keď:
-  * pásmo tepu je známe a nie je kritické (`HeartStats.known_zone`),
-  * záťaž už nestúpa (posledná hodnota vs. spred 15 s, nanajvýš +1),
-  * appka smie (`can_fire`).
-Tichý obrázok po 90 s ostáva, ale za tou istou bránou; inak sa natiahnutie
-zruší s dôvodom. Pokoj hlášku NEruší.
+Now the cue (voice and its sound) goes only on a pause, and only when:
+  * the heart-rate zone is known and is not critical
+    (`HeartStats.known_zone`),
+  * the load is no longer rising (the last value vs. the one from 15 s
+    before, at most +1),
+  * the app is allowed to (`can_fire`).
+The silent picture after 90 s remains, but behind the same gate;
+otherwise the arming is cancelled with a reason. Calm does NOT cancel the
+cue.
 
-Testy idú realistickou kadenciou: vzorka tepu každé 3 s, tik 4x za sekundu,
-pauza v hre trvá, kým hráč nič nestlačí (nie je to jeden tik).
+The tests use a realistic cadence: a heart-rate sample every 3 s, a tick
+4x per second, a pause in the game lasts as long as the player presses
+nothing (it is not a single tick).
 """
 import ast
 import os
@@ -42,7 +47,7 @@ class Hodiny:
 
 
 class Hra:
-    """Automat + hodiny + stav pauzy, ako ich kŕmi appka."""
+    """State machine + clock + pause state, as the app feeds them."""
 
     TIK_S = 0.25
 
@@ -55,8 +60,9 @@ class Hra:
         self.udalosti = []
 
     def krok(self, zataz, zona="high", pauza=False, dt=3.0, nevieme=False):
-        """Jedna vzorka tepu a tiky počas `dt`. `pauza=True` = hráč práve
-        nič nestláča (pauza začne alebo pokračuje). Vráti nové udalosti."""
+        """One heart-rate sample and the ticks during `dt`. `pauza=True` = the
+        player is pressing nothing right now (a pause starts or
+        continues). Returns the new events."""
         nove = []
         ev = self.t.note_load(zataz, self.h.t, zona=zona)
         if ev:
@@ -91,16 +97,16 @@ def _typu(udalosti, typ):
 
 
 # --------------------------------------------------------------------------
-# Hlas až po vrchole
+# Voice only after the peak
 # --------------------------------------------------------------------------
 
 def test_stupajuca_zataz_a_pauza_po_smrti_nehovori():
-    """Najčastejší prípad: záťaž ide hore, hráč umrie, death cam = pauza."""
+    """Most common case: load goes up, the player dies, death cam = pause."""
     g = Hra()
     g.natiahni(75.0)
     evs = []
-    for i in range(6):                          # stúpa 80 -> 100
-        evs += g.krok(80.0 + i * 4, pauza=i >= 3)   # od 4. vzorky pauza 9 s
+    for i in range(6):                          # rises 80 -> 100
+        evs += g.krok(80.0 + i * 4, pauza=i >= 3)   # from the 4th sample a 9 s pause
     assert not _typu(evs, trigger.E_DELIVER), "hlas počas stúpania"
     assert g.t.state == trigger.ARMED, "čaká sa ďalej, nezruší sa"
     assert g.t._preskocene[trigger.P_STUPA] == 1, "jedna pauza, jeden záznam"
@@ -110,10 +116,10 @@ def test_stupajuca_zataz_a_pauza_po_smrti_nehovori():
 def test_po_vrchole_na_pauze_jedna_hlasna_hlaska():
     g = Hra()
     g.natiahni(75.0)
-    for i in range(6):                          # vrchol 75 -> 100
+    for i in range(6):                          # peak 75 -> 100
         g.krok(75.0 + i * 5)
     evs = []
-    for i in range(8):                          # klesá 99 -> 71, potom pauza
+    for i in range(8):                          # falls 99 -> 71, then a pause
         evs += g.krok(99.0 - i * 4, pauza=i >= 6)
     d = _typu(evs, trigger.E_DELIVER)
     assert len(d) == 1
@@ -124,8 +130,8 @@ def test_po_vrchole_na_pauze_jedna_hlasna_hlaska():
 
 
 def test_pokoj_hlasku_nerusi():
-    """Žiadne zrušenie v pokoji: pokojné telo si hlášku so stresom nespojí
-    a zrušenie by len ubralo hlášky tým, čo ich majú málo."""
+    """No cancelling at rest: a calm body will not link the cue with stress,
+    and cancelling would only take cues away from those who get few."""
     g = Hra()
     g.natiahni(70.0)
     evs = []
@@ -138,14 +144,14 @@ def test_pokoj_hlasku_nerusi():
 
 
 # --------------------------------------------------------------------------
-# Nad hranicou vysokého tepu mlčí
+# Above the high-heart-rate limit it stays silent
 # --------------------------------------------------------------------------
 
 def test_kriticke_pasmo_s_pauzami_mlci():
     g = Hra()
     g.natiahni(90.0, zona="critical")
     evs = []
-    for i in range(20):                         # klesá, ale tep je stále hore
+    for i in range(20):                         # falling, but heart rate is still up
         evs += g.krok(95.0 - i, zona="critical", pauza=i % 2 == 1)
     assert not _typu(evs, trigger.E_DELIVER)
     assert g.t._preskocene[trigger.P_KRITICKE] >= 5
@@ -155,7 +161,7 @@ def test_kriticke_cele_cakanie_zrusi_s_dovodom():
     g = Hra()
     g.natiahni(90.0, zona="critical")
     evs = []
-    for i in range(40):                         # 120 s kritického plata
+    for i in range(40):                         # 120 s of a critical plateau
         evs += g.krok(90.0, zona="critical", pauza=i % 3 == 2)
     assert not _typu(evs, trigger.E_DELIVER), "ani obrázok nad hranicou"
     ab = _typu(evs, trigger.E_ABORT)
@@ -167,14 +173,14 @@ def test_kriticke_cele_cakanie_zrusi_s_dovodom():
 
 
 # --------------------------------------------------------------------------
-# Bez pauzy: tichý obrázok po 90 s, ale len cez bránu
+# No pause: silent picture after 90 s, but only through the gate
 # --------------------------------------------------------------------------
 
 def test_bez_pauzy_klesajuca_nekriticka_jeden_obrazok_po_90_s():
     g = Hra()
     g.natiahni(85.0)
     evs = []
-    for i in range(40):                         # 120 s, hráč nepustí vstup
+    for i in range(40):                         # 120 s, the player does not let go of input
         evs += g.krok(85.0 - i * 0.5)
     d = _typu(evs, trigger.E_DELIVER)
     assert len(d) == 1, "jeden obrázok, nie viac"
@@ -200,7 +206,7 @@ def test_bez_pauzy_pri_stupajucej_zatazi_zrusi():
     g = Hra()
     g.natiahni(70.0)
     evs = []
-    for i in range(40):                         # stále stúpa
+    for i in range(40):                         # still rising
         evs += g.krok(70.0 + i)
     assert not _typu(evs, trigger.E_DELIVER), "obrázok uprostred stúpania"
     ab = _typu(evs, trigger.E_ABORT)
@@ -208,7 +214,7 @@ def test_bez_pauzy_pri_stupajucej_zatazi_zrusi():
 
 
 def test_ked_brana_pusti_ale_appka_nesmie_je_to_nedalo_sa():
-    """Odstup/snooze/chôdza (`can_fire`) nie je telo - vlastný dôvod."""
+    """Spacing/snooze/walking (`can_fire`) is not the body - its own reason."""
     g = Hra()
     g.natiahni(80.0)
     h, t = g.h, g.t
@@ -226,12 +232,12 @@ def test_ked_brana_pusti_ale_appka_nesmie_je_to_nedalo_sa():
 
 
 # --------------------------------------------------------------------------
-# Neznáme pásmo = žiadny hlas
+# Unknown zone = no voice
 # --------------------------------------------------------------------------
 
 def test_nezname_pasmo_nehovori():
-    """Volajúci, ktorý pásmo nepošle (alebo ho appka nepozná), dostane ticho,
-    nie hlas nad hranicou."""
+    """A caller that does not send the zone (or the app does not know it)
+    gets silence, not a voice above the limit."""
     g = Hra()
     g.natiahni(80.0, zona=None)
     evs = []
@@ -261,29 +267,29 @@ def test_neznama_pauza_nikdy_hlas():
 
 
 # --------------------------------------------------------------------------
-# Počítadlo páuz
+# Pause counter
 # --------------------------------------------------------------------------
 
 def test_pause_episodes_pocita_prechody_do_pauzy():
     h = Hodiny()
     t = trigger.CueTrigger(rng=random.Random(1), clock=h)
     t.open_session(silent_share=0.0)
-    for p in (0.0, 1.0, 2.4, 2.5, 3.0, 9.0, 0.0,   # 1. pauza (od 2,5 s)
-              3.0, 3.25,                            # 2. pauza
-              None, 2.6,                            # nevieme ju preruší, 3.
+    for p in (0.0, 1.0, 2.4, 2.5, 3.0, 9.0, 0.0,   # 1st pause (from 2.5 s)
+              3.0, 3.25,                            # 2nd pause
+              None, 2.6,                            # unknown breaks it, 3rd
               0.0, 0.0):
         h.t += 0.25
         t.tick(pause_s=p, now=h.t)
     assert t.pause_episodes == 3
 
-    # ráta sa v každom stave, aj počas snooze
+    # it counts in every state, even during snooze
     t.suspend(trigger.A_SNOOZE, now=h.t)
     for p in (0.0, 3.0, 0.0):
         h.t += 0.25
         t.tick(pause_s=p, now=h.t)
     assert t.pause_episodes == 4
 
-    # a nová relácia začína od nuly
+    # and a new session starts from zero
     t.open_session(silent_share=0.0)
     assert t.pause_episodes == 0
     assert t.zadrzane == {r: 0 for r in trigger.ZADRZANE}
@@ -300,7 +306,7 @@ def test_snooze_ani_koniec_relacie_sa_neratajú_ako_zadrzane():
 
 
 # --------------------------------------------------------------------------
-# Tiché rameno, strop a odstup
+# Silent arm, cap and spacing
 # --------------------------------------------------------------------------
 
 def test_tiche_rameno_ma_tu_istu_branu():
@@ -319,7 +325,7 @@ def test_tiche_rameno_ma_tu_istu_branu():
 
 
 def test_strop_a_odstup_platia_dalej():
-    """Dve hodiny nekritického plata s pauzou každých 30 s."""
+    """Two hours of a non-critical plateau with a pause every 30 s."""
     g = Hra()
     rnd = random.Random(3)
     for i in range(2 * 1200):
@@ -334,7 +340,7 @@ def test_strop_a_odstup_platia_dalej():
 
 
 # --------------------------------------------------------------------------
-# Appka: pásmo tepu, nie pásmo záťaže
+# App: heart-rate zone, not load zone
 # --------------------------------------------------------------------------
 
 def _zdroj(meno):
@@ -343,7 +349,7 @@ def _zdroj(meno):
 
 
 def _telo(meno_suboru, meno_funkcie):
-    # "app.py" = cela appka: app.py aj mixiny DandurfApp v app_*.py
+    # "app.py" = the whole app: app.py and the DandurfApp mixins in app_*.py
     if meno_suboru == "app.py":
         strom = strom_appky()
     else:
@@ -363,14 +369,14 @@ def test_apply_hr_bpm_posiela_pasmo_tepu():
     assert "zona=self.hr_stats.known_zone" in telo, \
         "spúšťač musí dostať pásmo tepu, inak brána nepustí nič"
     assert "zone_for" not in telo, "pásma záťaže by umlčali priveľa"
-    # simulácia kŕmi bránu rovnako ako appka
+    # the simulation feeds the gate the same way as the app
     assert "zona=stats.known_zone" in _telo("simulate.py", "odsimuluj")
 
 
 def test_suhrn_relacie_nesie_pauzy_a_zadrzane():
-    # Suhrn sklada `_suhrn_relacie` (0.2.2 - zatvorenie aj kontrolny bod).
+    # `_suhrn_relacie` builds the summary (0.3 - closing and checkpoint).
     telo = _telo("app.py", "_suhrn_relacie")
-    # `ast.unparse` píše reťazce v apostrofoch
+    # `ast.unparse` writes strings in single quotes
     assert "summary['pause_episodes'] = self.cue_trigger.pause_episodes" in telo
     assert "summary['cues_withheld'] = dict(self.cue_trigger.zadrzane)" in telo
 
@@ -385,26 +391,26 @@ def _stats(critical=109, bpm=95, n=160, t=1000.0):
 
 
 def test_known_zone_je_zone_of_bpm_ked_ho_appka_pozna():
-    # spúšťač hr_stats neimportuje - reťazec musí sedieť
+    # the trigger does not import hr_stats - the string has to match
     assert trigger.ZONA_KRITICKA == hr_stats.ZONE_CRITICAL
     st, _ = _stats(bpm=95)
     assert st.known_zone == st.zone == hr_stats.ZONE_RAISED
     st, _ = _stats(bpm=112)
     assert st.known_zone == hr_stats.ZONE_CRITICAL
-    # záťaž pri 95 BPM je „vysoká" podľa starých pásiem - brána ju nesmie brať
+    # load at 95 BPM is "high" by the old zones - the gate must not use it
     st, _ = _stats(bpm=95)
     assert hr_stats.zone_for(st.stress) != st.known_zone
 
 
 def test_known_zone_je_none_ked_ho_appka_nepozna():
     st = hr_stats.HeartStats(critical_bpm=109)
-    assert st.known_zone is None                # bez tepu
+    assert st.known_zone is None                # no heart rate
     st.add(80, ts=1000.0)
     assert st.is_calibrating and st.known_zone is None
     assert st.zone == hr_stats.ZONE_CALM, "obrazovka si pomôže pokojom, brána nie"
     st, t = _stats(bpm=112)
     st.clear_live()
-    assert st.known_zone is None                # tep vypadol
+    assert st.known_zone is None                # heart rate dropped out
     st.add(112, ts=t)
     assert st.is_settling and st.known_zone is None
     for _ in range(5):
@@ -414,7 +420,7 @@ def test_known_zone_je_none_ked_ho_appka_nepozna():
 
 
 # --------------------------------------------------------------------------
-# Meracie okno: stratený paket nie je diera v dátach
+# Measurement window: a lost packet is not a gap in the data
 # --------------------------------------------------------------------------
 
 def test_meracie_okno_ma_tu_istu_hranicu_vypadku_ako_spustac():
@@ -428,7 +434,7 @@ def _ridke(start, koniec, krok=2.9, strata_kazdy=4, diera=None):
         if not (diera and diera[0] <= t <= diera[1]):
             out.append((t, 90.0))
         i += 1
-        t += krok * 2 if i % strata_kazdy == 0 else krok   # stratený paket
+        t += krok * 2 if i % strata_kazdy == 0 else krok   # lost packet
     return out
 
 
@@ -451,7 +457,7 @@ def test_skutocny_vypadok_okno_stale_zneplatni():
 
 
 # --------------------------------------------------------------------------
-# Veta po relácii bez hlášky
+# The sentence after a session without a cue
 # --------------------------------------------------------------------------
 
 def _preco(**summary):
@@ -467,7 +473,7 @@ def test_ziadna_pauza_za_vecer_povie_o_gyre():
     veta = _preco(**ZAKLAD, pause_episodes=0)
     assert veta == i18n.tr("session.end.none_nopause")
     assert "gyro" in veta
-    # platí aj v pracovnom svete, kde hlas nie je vôbec - veta ho nesľubuje
+    # also true in the Work world (no voice there): the sentence promises none
     assert "hlas" not in i18n.STRINGS["session.end.none_nopause"]["sk"]
     assert "voice" not in i18n.STRINGS["session.end.none_nopause"]["en"]
 
@@ -497,7 +503,7 @@ def test_zadrzane_branou_povie_ze_mlcala_sama():
 
 
 def test_nedalo_sa_samo_vetu_o_tepe_netvrdi():
-    """`nedalo_sa` je odstup/snooze/chôdza, nie tep - veta o tepe by klamala."""
+    """`nedalo_sa` = spacing/snooze/walking, not HR; an HR line would lie."""
     veta = _preco(**ZAKLAD, pause_episodes=12,
                   cues_withheld={"bez_pauzy": 0, "nevhodna_chvila": 0,
                                  "nedalo_sa": 3})
@@ -511,7 +517,7 @@ def test_rozbity_suhrn_nezhodi_dotaznik():
 
 
 # --------------------------------------------------------------------------
-# Texty sľubujú len to, čo kód robí
+# The texts promise only what the code does
 # --------------------------------------------------------------------------
 
 def test_texty_o_nacasovani_uz_nesluboju_najblizsiu_prestavku():

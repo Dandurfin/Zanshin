@@ -1,16 +1,19 @@
 # -*- coding: utf-8 -*-
-"""Nalezy skeptika UX po davke 4 (0.2.2) - co bolo vidno az na snimkach.
+"""UX skeptic's findings after batch 4 (0.3) - visible only in screenshots.
 
-  * Okno parovania s VPN: stitok "(VPN/virtualny)" na konci velkeho riadku
-    adresy (mono 20) sa nezmestil - orezal sa a vytlacil tlacidlo "Ukazat
-    IP", takze adresa sa nedala odkryt. Teraz je stitok vlastny riadok pod
-    adresou a tlacidlo dostava miesto v rade ako prve.
-  * Tabulka relacii v Historii pisala dlzku "84:54" (vyzera ako cas), kym
-    detail tej istej relacie nad nou "1 h 24 min".
-  * Veta o zlyhanej priprave hlasu bola v `danger` (~3,7:1 na `surface`),
-    hoci drobny text ma mat `danger_text` (>= 4,5:1, pravidlo v theme.py).
+  * Pairing window with a VPN: the "(VPN/virtual)" tag at the end of the big
+    address line (mono 20) did not fit - it got clipped and pushed out the
+    "Show IP" button, so the address could not be revealed. Now the tag is
+    its own line below the address and the button gets its place in the
+    row first.
+  * The sessions table in History wrote the length as "84:54" (looks like a
+    time of day), while the detail of the same session above it said
+    "1 h 24 min".
+  * The sentence about a failed voice preparation was in `danger` (~3.7:1
+    on `surface`), although small text should use `danger_text` (>= 4.5:1,
+    the rule in theme.py).
 
-Synteticke adresy z dokumentacnych rozsahov, ziadna siet.
+Synthetic addresses from documentation ranges, no network.
 """
 import os
 import sys
@@ -58,7 +61,7 @@ def _kontrast(a, b):
 
 
 # --------------------------------------------------------------------------
-# Okno parovania: stitok VPN a "Ukazat IP"
+# Pairing window: the VPN tag and "Show IP"
 # --------------------------------------------------------------------------
 
 @pytest.mark.parametrize("jazyk", ["sk", "de", "ja"])
@@ -72,7 +75,7 @@ def test_parovanie_s_vpn_ukaze_stitok_aj_tlacidlo(monkeypatch, jazyk):
     vpn = "192.0.2.50"
     monkeypatch.setattr(netinfo, "local_ip_candidates", lambda *a, **k: [vpn])
     monkeypatch.setattr(netinfo, "virtualne_adresy", lambda *a, **k: {vpn})
-    # okno je pod schovanym rootom nenamapovane - grab by zlyhal
+    # the window is unmapped under the hidden root - a grab would fail
     monkeypatch.setattr(ctk.CTkToplevel, "grab_set", lambda self: None)
     app = types.SimpleNamespace(
         pal=theme.tokens(theme.ZEN), root=root, set_typing=lambda _v: None,
@@ -81,10 +84,12 @@ def test_parovanie_s_vpn_ukaze_stitok_aj_tlacidlo(monkeypatch, jazyk):
     try:
         dlg = ui_dialogs.WatchPairingDialog(app)
         stitok = i18n.tr("hr.ip_virtual")
-        # velky riadok nesie len adresu a port - stitok by sa v nom orezal
+        # the big line carries only the address and port - the tag would get
+        # clipped in it
         assert dlg.ip_label.cget("text") == netinfo.pairing_address(vpn, 4455, False)
         assert stitok not in dlg.ip_label.cget("text")
-        # stitok je vlastny riadok HNED pod adresou, veta o skrytej adrese za nim
+        # the tag is its own line RIGHT below the address, the hidden-address
+        # sentence after it
         assert dlg.ip_virtual_label is not None
         assert dlg.ip_virtual_label.cget("text") == stitok
         rad = dlg.ip_label.master
@@ -93,9 +98,9 @@ def test_parovanie_s_vpn_ukaze_stitok_aj_tlacidlo(monkeypatch, jazyk):
         i = poradie.index(str(rad))
         assert poradie[i + 1] == str(dlg.ip_virtual_label)
         assert poradie[i + 2] == str(dlg.ip_hidden_label), "veta o skrytej adrese"
-        # "Ukazat IP" dostava miesto v rade PRVE - nic ho uz nevytlaci
+        # "Show IP" gets its place in the row FIRST - nothing pushes it out now
         assert [str(w) for w in rad.pack_slaves()][0] == str(dlg.ip_toggle)
-        # odkrytie adresy: stale bez stitku v riadku
+        # revealing the address: still no tag in the line
         app.show_ip = True
         dlg._render_ips()
         assert dlg.ip_label.cget("text") == netinfo.pairing_address(vpn, 4455, True)
@@ -122,7 +127,8 @@ def test_parovanie_bez_vpn_nema_stitok(monkeypatch, sk):
         dlg = ui_dialogs.WatchPairingDialog(app)
         assert dlg.ip_virtual_label is None, "fyzicka adresa stitok nema"
         assert dlg.ip_label.cget("text") == "198.51.100.7   :   4455"
-        # virtualna je v riadku "dalsie adresy" - ten sa zalamuje, tam stitok ostava
+        # the virtual one is in the "other addresses" line - that one wraps, so
+        # the tag stays there
         assert i18n.tr("hr.ip_virtual") in dlg.other_ips_label.cget("text")
         dlg.close()
     finally:
@@ -130,7 +136,7 @@ def test_parovanie_bez_vpn_nema_stitok(monkeypatch, sk):
 
 
 # --------------------------------------------------------------------------
-# Historia: dlzka v tabulke ako v detaile
+# History: length in the table as in the detail
 # --------------------------------------------------------------------------
 
 def test_tabulka_relacii_pise_dlzku_ako_detail(sk):
@@ -140,13 +146,13 @@ def test_tabulka_relacii_pise_dlzku_ako_detail(sk):
     tabulka = zdroj[zdroj.index("cols = ((\"col_date\""):zdroj.index("bunky = [row]")]
     assert 'self._fmt_dlzka(dlzka) if dlzka else "-"' in tabulka
     assert 'self._fmt_minutes(s.get("duration_s"))' not in tabulka
-    # ta ista relacia: tabulka aj detail "1 h 24 min", kratka "45 min"
+    # the same session: table and detail "1 h 24 min", a short one "45 min"
     assert D._fmt_dlzka(5094.0) == "1 h 24 min"
     assert D._fmt_dlzka(2700.0) == "45 min"
 
 
 # --------------------------------------------------------------------------
-# Zvuk: veta o zlyhanej priprave hlasu je citatelna
+# Sound: the failed voice preparation sentence is readable
 # --------------------------------------------------------------------------
 
 @pytest.mark.parametrize("tema", [theme.ZEN, theme.MODERN])

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-"""Kontrola prekladov: chybajuce kluce, chybajuce jazyky, nezhodne
-placeholdery, doslovne \\uXXXX v texte, a kolko retazcov ostava len
-anglicky (na dopreklad)."""
+"""Translation check: missing keys, missing languages, mismatched
+placeholders, literal \\uXXXX in the text, and how many strings remain
+English only (still to translate)."""
 import re, sys
 sys.path.insert(0, ".")
 import i18n
@@ -12,23 +12,24 @@ S = i18n.STRINGS
 def placeholders(text):
     return set(re.findall(r"\{(\w+)\}", str(text)))
 
-# Doslovne lomitko + "u2019" v HODNOTE namiesto znaku ’: v zdroji bolo
-# zdvojene lomitko, takze okno ukazovalo "THIS PC" + lomitko + "u2019S"
-# (hr.pair_this_pc, opravene v 0.2.2).
-# Ziadny iny test to nechytil - text je neprazdny a placeholdery sedia.
+# A literal backslash + "u2019" in the VALUE instead of the character ’:
+# the source had a doubled backslash, so the window showed "THIS PC" +
+# backslash + "u2019S" (hr.pair_this_pc, fixed in 0.3).
+# No other test caught it - the text is non-empty and the placeholders
+# match.
 _ESCAPE = re.compile(r"\\u[0-9a-fA-F]{4}")
 
 
 def literal_escapes(text):
-    """Vsetky doslovne `\\uXXXX` v texte (prazdny zoznam = v poriadku)."""
+    """All literal `\\uXXXX` in the text (empty list = OK)."""
     return _ESCAPE.findall(str(text))
 
 
-missing_lang = {}          # kluc -> [chybajuce jazyky]
-ph_mismatch = []           # (kluc, jazyk, ocakavane, najdene)
-english_fallback = {}      # jazyk -> pocet retazcov zhodnych s EN (pravdepodobne nepreloz.)
+missing_lang = {}          # key -> [missing languages]
+ph_mismatch = []           # (key, language, expected, found)
+english_fallback = {}      # language -> number of strings equal to EN (likely untranslated)
 empty = []
-escapes = []               # (kluc, jazyk, najdene) - doslovne \uXXXX namiesto znaku
+escapes = []               # (key, language, found) - literal \uXXXX instead of a char
 
 for key, entry in S.items():
     if "sk" not in entry:
@@ -46,7 +47,7 @@ for key, entry in S.items():
         if literal_escapes(val):
             escapes.append((key, lang, literal_escapes(val)))
 
-# kolko retazcov je v danom jazyku doslovne rovnakych ako anglictina
+# how many strings in the given language are literally the same as English
 for lang in LANGS:
     if lang in ("en",):
         continue

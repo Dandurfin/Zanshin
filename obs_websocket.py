@@ -1,10 +1,10 @@
-"""Minimalny server protokolu obs-websocket v5 - len tolko, kolko treba,
-aby si appka na hodinkach myslela, ze sa rozprava s OBS.
+"""Minimal obs-websocket v5 protocol server - only as much as it takes for
+the smartwatch app to think it is talking to OBS.
 
-Preco to vobec existuje: "HeartRateOnStream for OBS" tep NIKAM neposiela.
-Sprava sa ako klient, ktory sa pripoji k OBS a zapisuje tep do textoveho
-zdroja poziadavkou `SetInputSettings`. Zachytena komunikacia z realnych
-hodiniek vyzera takto:
+Why this exists at all: "HeartRateOnStream for OBS" does not send the heart
+rate ANYWHERE. It behaves as a client that connects to OBS and writes the
+heart rate into a text source with a `SetInputSettings` request. Captured
+traffic from a real watch looks like this:
 
     ->  {"op":0,"d":{"obsWebSocketVersion":"5.5.0","rpcVersion":1}}
     <-  {"op":1,"d":{"rpcVersion":1,"eventSubscriptions":132}}
@@ -13,25 +13,29 @@ hodiniek vyzera takto:
     <-  {"op":6,"d":{"requestType":"SetInputSettings","requestData":
          {"inputName":"Tep","inputSettings":{"text":"63","read_from_file":false}}}}
 
-Posledny riadok je cely nas zaujem - v `inputSettings.text` je BPM.
+The last line is all we care about - `inputSettings.text` holds the BPM.
 
-Predstierame teda OBS s jedinou scenou a NIEKOLKYMI textovymi zdrojmi. Nazvy
-su zamerne konstantne (nie prelozene) - hrac si zdroj v telefone vyberie raz a
-jeho volba musi platit aj po prepnuti jazyka appky.
+So we pretend to be an OBS with a single scene and SEVERAL text sources. The
+names are deliberately constant (not translated) - the player picks the
+source on the phone once, and that choice must still hold after the app
+language is switched.
 
-PRECO VIAC ZDROJOV A PRECO SA MENO ZDROJA POSIELA DALEJ
-Premiova verzia appky na hodinkach vie posielat aj kroky a rychlost, lenze
-kazdu metriku pise do SAMOSTATNEHO textoveho zdroja - a do kazdeho posle len
-hole cislo. Na drote potom vidno striedavo "86" a "1045" bez akejkolvek
-menovky. 19. 9. 2026 to takto realne chodilo a jediny dovod, preco z toho
-nevznikla dalsia pokazena relacia, bol ten, ze 1045 je mimo vierohodneho
-rozsahu tepu. Rano, pri 140 nachodenych krokoch, by uz appka citala 140 BPM.
+WHY SEVERAL SOURCES AND WHY THE SOURCE NAME IS PASSED ON
+The premium version of the watch app can also send steps and speed, but it
+writes each metric to a SEPARATE text source - and sends only a bare number
+to each one. On the wire you then see "86" and "1045" alternating without
+any label. On 19. 9. 2026 this really happened, and the only reason it did
+not produce another broken session was that 1045 is outside the plausible
+heart-rate range. In the morning, at 140 steps walked, the app would already
+have read 140 BPM.
 
-Jedina informacia, ktora tie cisla rozlisuje, je `inputName` v poziadavke.
-Preto sa `on_text` vola s menom zdroja a preto tu zdroje su tri: aby si ich
-hrac v telefone mal odkial vybrat.
+The only information that tells those numbers apart is `inputName` in the
+request. That is why `on_text` is called with the source name, and why there
+are three sources here: so the player has something to choose from on the
+phone.
 
-Ziadna externa kniznica - WebSocket handshake aj ramce su par riadkov stdlib.
+No external library - the WebSocket handshake and the frames are a few lines
+of stdlib.
 """
 
 import base64
@@ -45,7 +49,7 @@ import logging_setup
 
 log = logging_setup.get_logger("obs")
 
-# Konstanta z RFC 6455 - pripaja sa ku klucu klienta pred zahashovanim.
+# Constant from RFC 6455 - appended to the client's key before hashing.
 _WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
 _OP_TEXT = 0x1
@@ -54,61 +58,67 @@ _OP_CLOSE = 0x8
 _OP_PING = 0x9
 _OP_PONG = 0xA
 
-# Predstierana scena a textovy zdroj, ktore uvidi hrac v telefone.
+# The pretend scene and text source the player sees on the phone.
 SCENE_NAME = "Zanshin"
 SCENE_UUID = "7a6e5d4c-3b2a-4190-8f7e-6d5c4b3a2910"
 INPUT_NAME = "Tep"
 INPUT_UUID = "1f2e3d4c-5b6a-4798-9807-1a2b3c4d5e6f"
 INPUT_KIND = "text_gdiplus_v3"
 
-# Zdroje, ktore hrac uvidi v telefone. Tep je povinny, zvysok je bonus pre
-# premiovu verziu appky na hodinkach. Mena su naschval jednoduche a bez
-# diakritiky - hrac ich vidi v cudzej appke, ktora slovencinu nepozna.
+# Sources the player sees on the phone. Heart rate is required, the rest is a
+# bonus for the premium version of the watch app. The names are deliberately
+# simple and without diacritics - the player sees them in someone else's app
+# that does not know Slovak.
 ZDROJE = (
     (INPUT_NAME, INPUT_UUID),
     ("Kroky", "2f3e4d5c-6b7a-4891-9018-2b3c4d5e6f70"),
     ("Rychlost", "3f4e5d6c-7b8a-4902-9129-3c4d5e6f7081"),
 )
 
-# CASOVE LIMITY SPOJENIA (0.2.1).
+# CONNECTION TIMEOUTS (0.2.1).
 #
-# Doteraz ziadne neboli. Kto otvoril TCP spojenie a nic neposlal, drzal jedno
-# zo 16 miest (`heart_rate._MAX_LIVE_SOCKETS`) navzdy - skener portov, alebo
-# telefon, ktory odisiel z Wi-Fi bez rozlucenia (spojenie na nasej strane
-# potom visi polootvorene a ziadny paket ho uz nezavrie). Styrnast takych a
-# skutocny telefon (appka, ktora posiela tep z hodiniek) sa uz nepripojil.
+# Until now there were none. Anyone who opened a TCP connection and sent
+# nothing held one of the 16 slots (`heart_rate._MAX_LIVE_SOCKETS`) forever -
+# a port scanner, or a phone that left the Wi-Fi without saying goodbye (the
+# connection on our side then hangs half-open and no packet will ever close
+# it). Fourteen of those and the real phone (the app that sends the heart
+# rate from the watch) could no longer connect.
 #
-# Handshake: skutocny klient posle HTTP upgrade hned po pripojeni. 10 s je
-# CELKOVY limit (nie na jeden `recv`), aj pomala Wi-Fi to zvladne s rezervou.
+# Handshake: a real client sends the HTTP upgrade right after connecting.
+# 10 s is the TOTAL limit (not per `recv`); even slow Wi-Fi manages it with
+# room to spare.
 HANDSHAKE_TIMEOUT_S = 10.0
-# Po handshake: appka v telefone pise kazdych ~1 az ~3 s. Az po NECINNOST_S
-# uplneho ticha posleme ping - kazda WebSocket kniznica nan podla RFC 6455
-# odpovie SAMA, takze zivy, len tichy telefon (hodinky v pauze merania)
-# spojenie NESTRATI. Az
-# ked nepride nic ani za dalsich NECINNOST_S, spojenie je mrtve a zavrie sa
-# ako kazde ine odpojenie. Mrtve spojenie tak zmizne najneskor za 2 minuty.
+# After the handshake: the phone app writes every ~1 to ~3 s. Only after
+# NECINNOST_S of complete silence do we send a ping - per RFC 6455 every
+# WebSocket library answers it ON ITS OWN, so a live but quiet phone (the
+# watch with measuring paused) does NOT LOSE the connection. Only
+# when nothing arrives for another NECINNOST_S is the connection dead, and it
+# is closed like any other disconnect. So a dead connection disappears within
+# 2 minutes at the latest.
 #
-# Preco nie kratsie: falosne "telefon odpojeny" (a s nim zahodeny odpocet v
-# spustaci) je horsie nez minuta cakania na uvolnenie miesta. Tep aj tak
-# vypadok hlasi sam po 12 s (`HeartRateMonitor.STALE_AFTER_S`), tento limit
-# sluzi len na upratanie socketu, nie na detekciu vypadku.
+# Why not shorter: a false "phone disconnected" (and with it a discarded
+# countdown in the trigger) is worse than a minute of waiting for a slot to
+# free up. The heart rate reports an outage on its own after 12 s anyway
+# (`HeartRateMonitor.STALE_AFTER_S`); this limit only serves to clean up the
+# socket, not to detect an outage.
 NECINNOST_S = 60.0
 
-# Najvacsi ramec, ktory prijmeme. Skutocne spravy maju stovky bajtov (zapis
-# tepu ~150 B, davka niekolkych poziadaviek par kB) - 64 kB je vyse
-# stonasobok zapisu tepu, aj davke nechava viac nez desatnasobnu rezervu, a
-# je to rovnaky strop ako pre HTTP hlavicku v `handshake`.
-# Doteraz to bol 1 MB: megabajt pamate a CPU na kazdy nafuknuty ramec od
-# hocikoho v LAN, pritom ziadna skutocna sprava sa k tomu ani nepriblizi.
+# The largest frame we accept. Real messages are hundreds of bytes (a heart
+# rate write ~150 B, a batch of several requests a few kB) - 64 kB is over a
+# hundred times a heart rate write, leaves even a batch more than tenfold
+# headroom, and it is the same cap as for the HTTP header in `handshake`.
+# Until now it was 1 MB: a megabyte of memory and CPU for every inflated
+# frame from anyone on the LAN, while no real message comes anywhere near it.
 _MAX_RAMEC = 64 * 1024
 
-# Ramec sa nezacal: vyprsal limit socketu medzi ramcami. NIE je to koniec
-# spojenia - viz `NECINNOST_S`. Platny opcode je 0..15, takze sa nepomyli.
+# No frame started: the socket timeout expired between frames. It is NOT the
+# end of the connection - see `NECINNOST_S`. A valid opcode is 0..15, so it
+# cannot be mistaken for one.
 TICHO = -1
 
 
 # --------------------------------------------------------------------------
-# WebSocket vrstva
+# WebSocket layer
 # --------------------------------------------------------------------------
 
 def _recv_exact(conn, count):
@@ -122,11 +132,11 @@ def _recv_exact(conn, count):
 
 
 def handshake(conn):
-    """Dokonci HTTP upgrade na WebSocket. True ak sa to podarilo.
+    """Completes the HTTP upgrade to WebSocket. True if it succeeded.
 
-    Cely handshake musi stihnut HANDSHAKE_TIMEOUT_S - limit sa pred kazdym
-    `recv` skrati o uz minuty cas, inak by ho klient posielajuci po bajte
-    natahoval donekonecna."""
+    The whole handshake must fit within HANDSHAKE_TIMEOUT_S - before every
+    `recv` the limit is cut by the time already spent, otherwise a client
+    sending one byte at a time could stretch it out forever."""
     koniec = time.monotonic() + HANDSHAKE_TIMEOUT_S
     raw = b""
     while b"\r\n\r\n" not in raw:
@@ -136,12 +146,12 @@ def handshake(conn):
         try:
             conn.settimeout(zostava)
             chunk = conn.recv(4096)
-        except OSError:                   # vratane vyprsania limitu
+        except OSError:                   # including a timeout
             return False
         if not chunk:
             return False
         raw += chunk
-        if len(raw) > 65536:              # nikto rozumny neposle vacsiu hlavicku
+        if len(raw) > 65536:              # no sane client sends a bigger header
             return False
 
     headers = {}
@@ -162,12 +172,12 @@ def handshake(conn):
                 f"Sec-WebSocket-Accept: {accept}\r\n")
     requested = headers.get("sec-websocket-protocol")
     if requested:
-        # Vyberieme LEN subprotokol, ktory vieme citat - JSON. Doteraz sa
-        # echoval PRVY ponuknuty; ked klient ponukol "obswebsocket.msgpack,
-        # obswebsocket.json", dohodli sme sa na msgpacku a klient potom
-        # posielal binarne ramce, ktore parser (len JSON) nevie precitat -
-        # "pripojene, ticho" bez jedinej chyby (B31). Ak JSON neponukol,
-        # nevyberieme nic a nechame to na klienta.
+        # We pick ONLY the subprotocol we can read - JSON. Until now the
+        # FIRST one offered was echoed; when the client offered
+        # "obswebsocket.msgpack, obswebsocket.json", we agreed on msgpack
+        # and the client then sent binary frames that the parser (JSON only)
+        # cannot read - "connected, silence" without a single error (B31).
+        # If it did not offer JSON, we pick nothing and leave it to the client.
         ponuka = [p.strip() for p in requested.split(",")]
         vybrany = next((p for p in ponuka if "json" in p.lower()), None)
         if vybrany:
@@ -177,11 +187,12 @@ def handshake(conn):
 
 
 def _odmaskuj(payload, mask):
-    """XOR s opakovanou 4-bajtovou maskou (RFC 6455, 5.3) naraz, cez cele
-    cislo. Doteraz sa to robilo po bajte v Pythone: pri starom strope 1 MB
-    ~40 ms CPU (a GIL, ktory potrebuje aj GUI vlakno) na KAZDY ramec, takze
-    hocico v LAN posielajuce ramec za ramcom zamestnalo appku. Cez cele
-    cislo je to vyse 10x rychlejsie, a strop je navyse 16x nizsi."""
+    """XOR with the repeated 4-byte mask (RFC 6455, 5.3) all at once, via one
+    integer. Until now it was done byte by byte in Python: with the old 1 MB
+    cap that was ~40 ms of CPU (and the GIL, which the GUI thread also needs)
+    for EVERY frame, so anything on the LAN sending frame after frame kept
+    the app busy. Via an integer it is over 10x faster, and on top of that
+    the cap is 16x lower."""
     n = len(payload)
     if not n:
         return b""
@@ -191,12 +202,13 @@ def _odmaskuj(payload, mask):
 
 
 def read_frame(conn):
-    """(opcode, payload) alebo (None, None) ked spojenie skoncilo.
+    """(opcode, payload), or (None, None) when the connection has ended.
 
-    `(TICHO, None)`, ked medzi ramcami vyprsal limit socketu a neprisiel ani
-    bajt - spojenie moze byt zive, len tiche (viz `NECINNOST_S`). Prvy bajt
-    sa preto cita zvlast: keby limit vyprsal po jednom z dvoch bajtov
-    hlavicky, ten jeden by sa stratil a zvysok spojenia by sa cital posunuty.
+    `(TICHO, None)` when the socket timeout expired between frames and not a
+    single byte arrived - the connection may be alive, just quiet (see
+    `NECINNOST_S`). That is why the first byte is read separately: if the
+    timeout expired after one of the two header bytes, that one byte would be
+    lost and the rest of the connection would be read shifted.
     """
     try:
         first = _recv_exact(conn, 1)[0]
@@ -218,8 +230,9 @@ def read_frame(conn):
         mask = _recv_exact(conn, 4) if masked else None
         payload = _recv_exact(conn, length) if length else b""
     except (ConnectionError, OSError):
-        # Vratane vyprsania limitu UPROSTRED ramca: rozumny klient sa v
-        # polovici ramca na minutu nezasekne, takze spojenie konci.
+        # Including a timeout IN THE MIDDLE of a frame: a sane client does
+        # not get stuck halfway through a frame for a minute, so the
+        # connection ends.
         return None, None
     if mask:
         payload = _odmaskuj(payload, mask)
@@ -242,34 +255,35 @@ def send_frame(conn, payload, opcode=_OP_TEXT):
 # obs-websocket v5
 # --------------------------------------------------------------------------
 
-# Opkody, ktore sa smu ticho ignorovat, lebo na ne odpoved nepatri.
-# Cokolvek ine sa zapise do dennika - viz vetva `op 8` nizsie.
+# Opcodes that may be silently ignored, because no reply belongs to them.
+# Anything else is written to the journal - see the `op 8` branch below.
 _TICHE_OP = frozenset((0, 2, 5, 7, 9))
 
-# STROPY NA TO, CO SI KLIENT V JEDNOM SPOJENI ZVOLI (0.2.1).
+# CAPS ON WHAT THE CLIENT CAN CHOOSE IN ONE CONNECTION (0.2.1).
 #
-# Kazde `inputName` z poziadavky sa pridalo do zoznamu zdrojov bez limitu, a
-# kazda odpoved na GetInputList/GetSceneItemList posielala cely zoznam - klient
-# posielajuci stale nove mena tak nafukoval pamat aj kazdu dalsiu odpoved.
-# Skutocna appka pise do niekolkych zdrojov (tep, kroky, rychlost, obcas ten
-# isty dvakrat); 32 mien je rezerva aj pre hraca, ktory si ich pomenuje sam.
-# Meno dlhsie nez 256 znakov si v OBS nikto nedava. Co sa nezmesti, sa len
-# NEZAPAMATA: zapis s takym menom ide dalej normalne, meno sa len neobjavi
-# v zozname zdrojov.
+# Every `inputName` from a request was added to the list of sources without a
+# limit, and every reply to GetInputList/GetSceneItemList sent the whole list
+# - so a client sending ever new names inflated both the memory and every
+# following reply. The real app writes to a few sources (heart rate, steps,
+# speed, sometimes the same one twice); 32 names leave room even for a player
+# who names them themselves. Nobody gives a name longer than 256 characters in
+# OBS. Whatever does not fit is just NOT REMEMBERED: a write with such a name
+# goes on normally, the name just does not appear in the list of sources.
 _MAX_VLASTNYCH = 32
 _MAX_DLZKA_MENA = 256
-# Neznamych druhov poziadaviek a opkodov sa do dennika zapise najviac tolko za
-# spojenie, a z kazdeho len prvych 80 znakov. `requestType` si voli klient -
-# doteraz mohol jednym ramcom zapisat do dennika megabajt a stale novymi
-# druhmi ho zaplavit (dennik rotuje po 1 MB, takze by vytlacil vsetko uzitocne).
+# At most this many unknown kinds of requests and opcodes are written to the
+# journal per connection, and only the first 80 characters of each. The client
+# chooses `requestType` - until now it could write a megabyte into the journal
+# with one frame and flood it with ever new kinds (the journal rotates at 1 MB,
+# so it would push out everything useful).
 _MAX_NEPOZNANYCH = 16
 _MAX_ZNAKOV_DO_DENNIKA = 80
 
 
 def _do_dennika(hodnota):
-    """Klientom zvolena hodnota skratena pre dennik (`%s`, nie `%r`)."""
+    """Client-chosen value shortened for the journal (`%s`, not `%r`)."""
     if isinstance(hodnota, str):
-        # repr celeho megabajtu netreba, staci o znak viac nez sa zapise
+        # no need to repr a whole megabyte, one char past the cut is enough
         hodnota = hodnota[:_MAX_ZNAKOV_DO_DENNIKA + 1]
     text = repr(hodnota)
     if len(text) > _MAX_ZNAKOV_DO_DENNIKA:
@@ -278,15 +292,16 @@ def _do_dennika(hodnota):
 
 
 def _odbav(data, on_text, vlastne, nepoznane, zapis_ok=True):
-    """Jedna poziadavka (samostatna aj z davky) -> telo odpovede.
+    """One request (standalone or from a batch) -> the reply body.
 
-    Vydelene z `serve_connection` prave preto, aby davka (`op 8`) chodila
-    ROVNAKOU cestou ako samostatna poziadavka a nemohla sa rozist.
+    Split out of `serve_connection` precisely so that a batch (`op 8`) goes
+    the SAME way as a standalone request and the two cannot drift apart.
 
-    `zapis_ok=False` znamena, ze klient sa este NEIDENTIFIKOVAL (op 1). Vtedy
-    sa citania odbavia normalne, ale ZAPIS tepu sa odmietne: bez toho by
-    hocico v LAN, co dokonci WS handshake, mohlo poslat lubovolne "BPM" a
-    zapisalo by sa ako realny tep (bug B6).
+    `zapis_ok=False` means the client has NOT IDENTIFIED itself yet (op 1).
+    Then reads are handled normally, but a heart rate WRITE is refused:
+    without that, anything on the LAN that completes the WS handshake could
+    send an arbitrary "BPM" and it would be recorded as a real heart rate
+    (bug B6).
     """
     request_type = data.get("requestType", "")
     request_data = data.get("requestData")
@@ -295,7 +310,7 @@ def _odbav(data, on_text, vlastne, nepoznane, zapis_ok=True):
     meno = request_data.get("inputName")
     if (isinstance(meno, str) and meno and len(meno) <= _MAX_DLZKA_MENA
             and len(vlastne) < _MAX_VLASTNYCH):
-        vlastne.add(meno)              # nech ho GetInputList uz pozna
+        vlastne.add(meno)              # so GetInputList knows it from now on
     if request_type == "SetInputSettings":
         zdroj, text = _extract_write(request_data, vlastne)
         if text is not None and zapis_ok:
@@ -305,11 +320,11 @@ def _odbav(data, on_text, vlastne, nepoznane, zapis_ok=True):
             log.warning("OBS: zápis tepu pred Identify odmietnutý")
     elif (request_type not in _ZNAME and request_type not in nepoznane
           and len(nepoznane) < _MAX_NEPOZNANYCH):
-        # NEZNAMA POZIADAVKA DO DENNIKA, kazdy druh raz za spojenie.
+        # UNKNOWN REQUEST INTO THE JOURNAL, each kind once per connection.
         #
-        # Prazdna odpoved je pre niektore appky rovnako zla ako ziadna:
-        # cakaju na konkretne pole, nedockaju sa a po 10 sekundach hlasia
-        # "timeout". Bez tohto zapisu sa neda zistit, na com.
+        # An empty reply is as bad as none for some apps: they wait for a
+        # specific field, never get it and after 10 seconds report
+        # "timeout". Without this entry there is no way to find out on what.
         nepoznane.add(request_type)
         log.info("OBS: neznama poziadavka %s - odpovedam prazdnym objektom",
                  _do_dennika(request_type))
@@ -321,8 +336,8 @@ def _odbav(data, on_text, vlastne, nepoznane, zapis_ok=True):
     }
 
 
-# Poziadavky, na ktore vieme odpovedat zmysluplne. Cokolvek mimo tohto
-# zoznamu dostane prazdny objekt a zapise sa do dennika.
+# Requests we can answer meaningfully. Anything outside this list gets an
+# empty object and is written to the journal.
 _ZNAME = frozenset((
     "GetVersion", "GetCurrentProgramScene", "GetSceneList", "GetInputList",
     "GetInputKindList", "GetSceneItemList", "GetInputSettings",
@@ -332,18 +347,19 @@ _ZNAME = frozenset((
 
 
 def _uuid_pre(meno):
-    """Stabilne UUID odvodene od mena zdroja.
+    """A stable UUID derived from the source name.
 
-    Realny OBS ho ma z vlastnej databazy, my ho nemame kde vziat - ale klient
-    ho casto posle spat v dalsej poziadavke a musi sediet. Odvodenie z mena
-    zaruci, ze to iste meno dostane to iste UUID aj po restarte appky.
+    Real OBS has it from its own database, we have nowhere to take it from -
+    but the client often sends it back in the next request and it has to
+    match. Deriving it from the name guarantees that the same name gets the
+    same UUID even after the app restarts.
     """
     h = hashlib.md5(meno.encode("utf-8")).hexdigest()
     return "%s-%s-4%s-8%s-%s" % (h[0:8], h[8:12], h[13:16], h[17:20], h[20:32])
 
 
 def _zoznam_zdrojov(extra=()):
-    """Nase tri zdroje plus tie, ktore si klient v tomto spojeni vypytal."""
+    """Our three sources plus those the client asked for in this connection."""
     zoznam = [(meno, uuid) for meno, uuid in ZDROJE]
     mena = set(meno for meno, _ in zoznam)
     for meno in sorted(extra):
@@ -354,8 +370,8 @@ def _zoznam_zdrojov(extra=()):
 
 
 def _response_data(request_type, extra=(), request_data=None):
-    """Vierohodne odpovede predstieraneho OBS. Ak niektoru vynechame alebo
-    posleme prazdnu, klient spojenie zavrie a zacne sa znova pripajat."""
+    """Plausible replies of the pretend OBS. If we leave one out or send it
+    empty, the client closes the connection and starts reconnecting."""
     zoznam = _zoznam_zdrojov(extra)
     if request_type == "GetVersion":
         return {"obsVersion": "30.2.3", "obsWebSocketVersion": "5.5.0",
@@ -400,9 +416,9 @@ def _response_data(request_type, extra=(), request_data=None):
     if request_type == "GetStudioModeEnabled":
         return {"studioModeEnabled": False}
     if request_type in ("CreateInput", "CreateSceneItem"):
-        # Klient si smie zdroj vyrobit. Realny OBS vrati jeho UUID a cislo
-        # polozky v scene; bez oboch niektore appky cakaju na odpoved do
-        # vyprsania limitu a potom hlasia, ze prijimac neexistuje.
+        # The client may create a source. Real OBS returns its UUID and the
+        # item number in the scene; without both, some apps wait for the reply
+        # until the timeout and then report that the receiver does not exist.
         meno = (request_data or {}).get("inputName") or ""
         mapa = dict(zoznam)
         uuid = mapa.get(meno) or _uuid_pre(meno)
@@ -413,13 +429,14 @@ def _response_data(request_type, extra=(), request_data=None):
 
 
 def _meno_z_uuid(uuid, extra=()):
-    """Meno zdroja podla `inputUuid`, alebo None.
+    """Source name for an `inputUuid`, or None.
 
-    obs-websocket v5 dovoluje adresovat zdroj aj cez `inputUuid` namiesto
-    mena. UUID sme rozdavali sami (fixne v `ZDROJE`, klientom vyrobene cez
-    `_uuid_pre`), takze ich vieme zmapovat spat na meno. Bez toho by write
-    adresovany cez UUID nemal meno, `metrika_zdroja(None)` by vratila None a
-    hole cislo z krokov by sa citalo ako tep (B7).
+    obs-websocket v5 also allows addressing a source by `inputUuid` instead of
+    the name. We handed out the UUIDs ourselves (fixed in `ZDROJE`, the ones
+    created by the client via `_uuid_pre`), so we can map them back to a
+    name. Without that, a write addressed by UUID would have no name,
+    `metrika_zdroja(None)` would return None and a bare number from the steps
+    would be read as heart rate (B7).
     """
     if not uuid:
         return None
@@ -433,12 +450,13 @@ def _meno_z_uuid(uuid, extra=()):
 
 
 def _extract_write(request_data, vlastne=()):
-    """Jeden zapis do textoveho zdroja: `(meno zdroja, text)`.
+    """One write into a text source: `(source name, text)`.
 
-    Meno je tu rovnako dolezite ako text. Appka na hodinkach pise kazdu
-    metriku do ineho zdroja a posiela HOLE CISLO - `86` a `1045` sa bez mena
-    zdroja nedaju rozlisit a tep by sa cital z poctu krokov. Ked klient
-    adresuje zdroj cez `inputUuid` namiesto mena, meno dohladame (B7).
+    The name matters here as much as the text. The watch app writes each
+    metric into a different source and sends a BARE NUMBER - `86` and `1045`
+    cannot be told apart without the source name, and the heart rate would be
+    read from the step count. When the client addresses the source by
+    `inputUuid` instead of the name, we look the name up (B7).
     """
     if not isinstance(request_data, dict):
         return None, None
@@ -455,46 +473,49 @@ def _extract_write(request_data, vlastne=()):
 
 
 def serve_connection(conn, on_text, should_stop, on_connected=None):
-    """Odbavi jedno spojenie klienta obs-websocket.
+    """Handles one obs-websocket client connection.
 
-    `on_text(text, meno_zdroja)` sa zavola pri kazdom zapise do textoveho
-    zdroja. Meno moze byt `None`, ked ho klient neposlal.
-    `on_connected()` hned po uspesnom handshake - vdaka tomu vie UI
-    rozlisit "este sa nikto nepripojil" od "telefon je pripojeny, ale tep
-    nechodi", co su uplne ine problemy.
-    `should_stop()` sa pyta medzi ramcami, ci uz mame skoncit.
+    `on_text(text, meno_zdroja)` is called on every write into a text
+    source. The name can be `None` when the client did not send it.
+    `on_connected()` right after a successful handshake - thanks to that
+    the UI can tell "nobody has connected yet" from "the phone is
+    connected, but the heart rate is not coming", which are completely
+    different problems.
+    `should_stop()` is asked between frames whether we should stop yet.
 
-    Casove limity socketu si nastavuje sama (viz `HANDSHAKE_TIMEOUT_S` a
-    `NECINNOST_S`); `stop()` prijimaca socket aj tak zavrie hned a citanie sa
-    tym odblokuje okamzite, nie az po limite."""
+    It sets the socket timeouts itself (see `HANDSHAKE_TIMEOUT_S` and
+    `NECINNOST_S`); the receiver's `stop()` closes the socket right away
+    anyway, which unblocks the read immediately, not only after the limit."""
     if not handshake(conn):
         return
     conn.settimeout(NECINNOST_S)
     if on_connected is not None:
         on_connected()
 
-    # Hello BEZ objektu "authentication" = server nechce heslo. Hrac tak
-    # nemusi v telefone nic dalsie vyplnat.
+    # Hello WITHOUT the "authentication" object = the server wants no password.
+    # So the player does not have to fill in anything else on the phone.
     send_frame(conn, json.dumps({
         "op": 0, "d": {"obsWebSocketVersion": "5.5.0", "rpcVersion": 1}}).encode())
 
-    # Zdroje, ktore si klient v tomto spojeni vypytal alebo vyrobil, a druhy
-    # poziadaviek, na ktore sme uz upozornili - aby dennik nezaplavil klient,
-    # ktory sa pyta na to iste dvakrat za sekundu.
+    # Sources the client asked for or created in this connection, and the kinds
+    # of requests we have already warned about - so that the journal is not
+    # flooded by a client that asks for the same thing twice a second.
     vlastne = set()
     nepoznane = set()
-    # Klient sa musí najprv identifikovať (op 1), než príjmeme zápis tepu.
-    # Skutocna appka v telefone to robi (protokol to vyzaduje); toto len zavrie dvere
-    # pred čímkoľvek v LAN, čo by chcelo zapísať tep bez identifikácie (B6).
+    # The client must identify itself first (op 1) before we accept a heart rate
+    # write. The real phone app does this (the protocol requires it); this only
+    # shuts the door on anything on the LAN that would want to write a heart rate
+    # without identifying (B6).
     identified = False
-    # Po prvom tichu sme poslali ping a cakame na cokolvek (pong, tep...).
+    # After the first silence we sent a ping and wait for anything (pong, heart
+    # rate...).
     ping_poslany = False
 
     while not should_stop():
         opcode, payload = read_frame(conn)
         if opcode == TICHO:
             if ping_poslany or should_stop():
-                return                  # ani na ping nic - spojenie je mrtve
+                return                  # nothing even to the ping - the connection is dead
             ping_poslany = True
             send_frame(conn, b"", opcode=_OP_PING)
             continue
@@ -527,14 +548,14 @@ def serve_connection(conn, on_text, should_stop, on_connected=None):
                                      zapis_ok=identified),
             }).encode())
         elif op == 8:                                 # RequestBatch
-            # BEZ TEJTO VETVY KLIENT CAKAL DO VYPRSANIA LIMITU.
+            # WITHOUT THIS BRANCH THE CLIENT WAITED UNTIL THE TIMEOUT.
             #
-            # Appka na hodinkach, ktora posiela viac metrik, ich zvykne
-            # poslat NARAZ ako davku. Davka doteraz prepadla cez cely
-            # if/elif retazec: ziadna odpoved, ziadny zapis do dennika - a
-            # klient po desiatich sekundach hlasil, ze prijimac neexistuje.
-            # Ani zapis o neznamej poziadavke to nechytil, lebo ten je
-            # vnutri vetvy `op == 6`, kam sa davka nikdy nedostala.
+            # A watch app that sends several metrics tends to send them
+            # AT ONCE as a batch. Until now the batch fell through the whole
+            # if/elif chain: no reply, no journal entry - and after ten
+            # seconds the client reported that the receiver does not exist.
+            # Not even the unknown-request entry caught it, because that one
+            # is inside the `op == 6` branch, which the batch never reached.
             requests = data.get("requests")
             vysledky = [_odbav(r, on_text, vlastne, nepoznane,
                                zapis_ok=identified)
@@ -544,8 +565,8 @@ def serve_connection(conn, on_text, should_stop, on_connected=None):
                 "op": 9, "d": {"requestId": data.get("requestId"),
                                "results": vysledky}}).encode())
         elif op not in _TICHE_OP and op not in nepoznane:
-            # Vsetko ostatne aspon do dennika - prave ticho okolo `op 8`
-            # stalo tri dni hladania.
+            # Everything else at least into the journal - exactly the silence
+            # around `op 8` cost three days of searching.
             if len(nepoznane) < _MAX_NEPOZNANYCH:
                 nepoznane.add(op)
                 log.info("OBS: neznamy op %s - neodpovedam", _do_dennika(op))

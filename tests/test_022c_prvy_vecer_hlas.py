@@ -1,19 +1,25 @@
 # -*- coding: utf-8 -*-
-"""Prvy vecer hovori prirodzenym hlasom (0.2.2).
+"""The first evening speaks with the natural voice (0.3).
 
-Audit: po uvode appka zacala sledovat o 250 ms. Lenze kym sleduje, na
-Microsoft nechodi ani kvoli priprave hlasok (`pregenerate`), takze sa
-priprava hned zastavila a prvy vecer - ten, podla ktoreho sa appka posudzuje -
-hovoril vacsinou hlasom z Windows. Hraci de/fr/es/pt navyse dostali britsku
-Soniu, hoci ich vstavane slova su v ich jazyku. Strazi sa:
+Audit: after the introduction the app started watching after 250 ms. But
+while it is watching, it does not go to Microsoft even for cue preparation
+(`pregenerate`), so the preparation stopped right away and the first
+evening - the one the app is judged by - spoke mostly with the Windows
+voice. Players in de/fr/es/pt also got the British Sonia, even though
+their built-in words are in their language. Guarded:
 
-  * prvy start zacne sledovat az ked su hlasky v cache, najviac po 15 s,
-  * kym caka, stav na Dnes povie "Pripravujem hlas" (nie "Zastavene, klikni"),
-  * hrac ani hra (auto-profil) nedostanu druhy start navyse,
-  * VOICE_HINTS ma es/de/fr/pt - pribalene, zenske - a plati pravidlo z
-    0.2.1d: hlas ide za slovami hlasok, nie za jazykom menu.
+  * the first start begins watching only once the cues are in the cache,
+    at most after 15 s,
+  * while it waits, the status on Today says "Preparing the voice" (not
+    "Stopped, click"),
+  * neither the player nor the game (auto-profile) get an extra second
+    start,
+  * VOICE_HINTS has es/de/fr/pt - bundled, female - and the rule from
+    0.2.1d holds: the voice follows the words of the cues, not the menu
+    language.
 
-Bez Tk: `root.after` je atrapa, ktora ulohu spusti, az ked ju test pusti.
+Without Tk: `root.after` is a dummy that runs the task only when the test
+lets it.
 """
 import json
 import os
@@ -42,7 +48,7 @@ def _nic(*_a, **_k):
 
 
 class _Root:
-    """`root.after` bez Tk: uloha sa spusti, az ked ju test pusti."""
+    """`root.after` without Tk: the task runs only when the test lets it."""
 
     def __init__(self):
         self.ulohy = {}
@@ -58,7 +64,7 @@ class _Root:
         self.ulohy.pop(uid, None)
 
     def pusti(self):
-        """Spusti vsetko, co prave caka (nie to, co pritom pribudne)."""
+        """Runs all that is waiting now (not what gets added meanwhile)."""
         cakajuce = list(self.ulohy.items())
         self.ulohy.clear()
         for _uid, (_ms, fn) in cakajuce:
@@ -81,8 +87,8 @@ def edge(monkeypatch):
 
 def _appka(prace=(("Grounded", DEFAULT_EDGE_VOICE),
                   ("Breathe", DEFAULT_EDGE_VOICE))):
-    """Ozajstne metody prveho startu a `start_listening` na DandurfApp bez
-    Tk. Priprava hlasok je atrapa: `pregen_jobs` + cache."""
+    """Real first-start methods and `start_listening` on DandurfApp without
+    Tk. Cue preparation is a dummy: `pregen_jobs` + cache."""
     import app as app_mod
     a = app_mod.DandurfApp.__new__(app_mod.DandurfApp)
     a.root = _Root()
@@ -97,7 +103,7 @@ def _appka(prace=(("Grounded", DEFAULT_EDGE_VOICE),
     a._prvy_start_do = 0.0
     a.pasy = []
     a._refresh_kamae_state_text = lambda: a.pasy.append(a._prvy_start_caka)
-    # to, co `start_listening` potrebuje (bez hodiniek, bez ovladaca)
+    # what `start_listening` needs (no watch, no controller)
     a.overlay_manager = types.SimpleNamespace(stop_all_tests=lambda: False)
     a.gamepad = types.SimpleNamespace(available=False, start=_nic)
     a.activity = types.SimpleNamespace(set_gamepad_watched=_nic)
@@ -115,7 +121,7 @@ def _priprav_vsetko(a):
 
 
 # --------------------------------------------------------------------------
-# Kedy je hlas pripraveny
+# When the voice is ready
 # --------------------------------------------------------------------------
 
 def test_hlas_z_windows_alebo_bez_edge_necaka(monkeypatch):
@@ -138,14 +144,14 @@ def test_hlas_pripraveny_az_ked_su_vsetky_hlasky_v_cache(edge):
 
 
 def test_nic_na_pripravu_je_pripravene(edge):
-    """Styl bez slov, Praca, vsetky hlasky vypnute: `pregen_jobs` je
-    prazdne a niet na co cakat."""
+    """Style without words, Work, all cues off: `pregen_jobs` is empty and
+    there is nothing to wait for."""
     a = _appka(prace=())
     assert a._hlas_pripraveny() is True
 
 
 # --------------------------------------------------------------------------
-# Prvy start
+# First start
 # --------------------------------------------------------------------------
 
 def test_hotovy_hlas_zacne_sledovat_hned_ako_doteraz(edge):
@@ -183,7 +189,7 @@ def test_po_priprave_zacne_sledovat_sama(edge):
 
 
 def test_nikdy_necaka_navzdy(edge):
-    """Bez siete sa priprava nedokonci - po PRVY_START_MAX_S aj tak zacne."""
+    """Offline, preparation won't finish - it starts after PRVY_START_MAX_S."""
     import app as app_mod
     assert 0 < app_mod.DandurfApp.PRVY_START_MAX_S <= 15
     a = _appka()
@@ -198,10 +204,10 @@ def test_nikdy_necaka_navzdy(edge):
 
 
 def test_klik_hraca_pocas_cakania_nedostane_druhy_start(edge):
-    """Hrac da ▶ a hned ■ - cakanie uz nesmie o chvilu zapnut sledovanie."""
+    """Player hits ▶ then ■ - the wait must not turn watching on later."""
     a = _appka()
     a._zacni_sledovat_po_priprave_hlasu()
-    a.start_listening()                       # skutocny ▶
+    a.start_listening()                       # a real ▶
     assert a._prvy_start_caka is False
     assert a.root.ulohy == {}, "cakajuca uloha je zrusena"
     a.listening = False                       # ■
@@ -211,7 +217,7 @@ def test_klik_hraca_pocas_cakania_nedostane_druhy_start(edge):
 
 
 def test_hra_spustila_sledovanie_cakanie_skonci_bez_druheho_startu(edge):
-    """Auto-profil zapne sledovanie pri starte hry - krok to len zisti."""
+    """Auto-profile starts watching at game start - the step just notes it."""
     a = _appka()
     a._zacni_sledovat_po_priprave_hlasu()
     starty = []
@@ -225,7 +231,7 @@ def test_hra_spustila_sledovanie_cakanie_skonci_bez_druheho_startu(edge):
 def test_start_listening_rusi_cakanie_prveho_startu():
     telo = zdroj_metody("start_listening")
     assert "self._zrus_cakanie_prveho_startu()" in telo
-    # az za `if self.listening: return` - beziace sledovanie nic nemeni
+    # only after `if self.listening: return` - running watching changes nothing
     assert (telo.index("if self.listening:\n            return")
             < telo.index("_zrus_cakanie_prveho_startu"))
 
@@ -234,13 +240,13 @@ def test_init_prveho_startu_caka_na_pripravu_spustenu_pred_nim():
     init = zdroj_metody("__init__")
     assert "self.root.after(250, self.start_listening)" not in init
     assert "self._zacni_sledovat_po_priprave_hlasu()" in init
-    # priprava (`_load_edge_voices` -> `pregenerate`) sa spusta SKOR
+    # preparation (`_load_edge_voices` -> `pregenerate`) is started EARLIER
     assert (init.index("self._load_edge_voices()")
             < init.index("self._zacni_sledovat_po_priprave_hlasu()"))
 
 
 # --------------------------------------------------------------------------
-# Stav na Dnes
+# Status on Today
 # --------------------------------------------------------------------------
 
 def test_stav_pocas_cakania_je_priprava_hlasu_nie_zastavene():
@@ -251,7 +257,7 @@ def test_stav_pocas_cakania_je_priprava_hlasu_nie_zastavene():
         i18n.tr("kamae.voice_prep"), i18n.tr("kamae.voice_prep_sub"))
     a._prvy_start_caka = False
     assert app_mod.DandurfApp._kamae_state_text(a) == ("stop", "klikni")
-    # stara atrapa bez atributu (ine testy) = ako doteraz
+    # old dummy without the attribute (other tests) = as before
     b = types.SimpleNamespace(listening=False,
                               _kamae_zastavene=lambda: ("stop", ""))
     assert app_mod.DandurfApp._kamae_state_text(b) == ("stop", "")
@@ -264,15 +270,15 @@ def test_texty_cakania_vo_vsetkych_jazykoch_a_slovniku():
             assert zaznam.get(jazyk, "").strip(), (kluc, jazyk)
     assert i18n.STRINGS["kamae.voice_prep"]["sk"] == "Pripravujem hlas"
     veta = i18n.STRINGS["kamae.voice_prep_sub"]["sk"]
-    # hlavny vypinac = "sledovat", appka hovori v zenskom rode
+    # main switch = "sledovat" (watch), the app speaks in the feminine
     assert "sledovať" in veta and "sama" in veta
     assert "počúva" not in veta
-    # bez vyzvy klikat: klik by pripravu zastavil
+    # no call to click: a click would stop the preparation
     assert "tlačidl" not in veta and "▶" not in veta
 
 
 # --------------------------------------------------------------------------
-# VOICE_HINTS pre es/de/fr/pt
+# VOICE_HINTS for es/de/fr/pt
 # --------------------------------------------------------------------------
 
 def _sloty(jazyk):
@@ -295,8 +301,9 @@ def test_nove_navrhy_su_pribalene_a_zenske():
 
 @pytest.mark.parametrize("jazyk", sorted(NOVE_NAVRHY))
 def test_vstavane_slova_su_naozaj_v_tom_jazyku(jazyk):
-    """Podmienka navrhu (0.2.1d): keby jazyk dostal anglicke slova, navrh by
-    vratil presne tu chybu - cudzi hlas by cital "Grounded"."""
+    """Suggestion condition (0.2.1d): if a language got English words, the
+    suggestion would bring back exactly that bug - a foreign voice would
+    read "Grounded"."""
     assert jazyky_hlasok(_sloty(jazyk)) == {jazyk}
     assert jazyk not in jazyky_hlasok(_sloty("en"))
 
@@ -333,8 +340,9 @@ def test_prvy_start_dostane_hlas_svojich_slov(start, locale, jazyk):
 
 
 def test_ulozeny_sonia_po_aktualizacii_ostava(start, tmp_path):
-    """Existujuca instalacia s predvolenym hlasom sa pri starte nemeni -
-    navrh pride az pri novom profile alebo prepnuti jazyka."""
+    """An existing installation with the default voice does not change at
+    start - the suggestion comes only with a new profile or a language
+    switch."""
     import app_prefs
     with open(app_prefs.SETTINGS_PATH, "w", encoding="utf-8") as fh:
         json.dump({"lang": "de", "theme": "zen",
@@ -364,7 +372,7 @@ def _prepinac(monkeypatch, lang, hlas, sloty):
 
 @pytest.mark.parametrize("jazyk", sorted(NOVE_NAVRHY))
 def test_prepnutie_s_anglickymi_slovami_necha_soniu(monkeypatch, jazyk):
-    """Pravidlo z 0.2.1: hlas ide za slovami, nie za menu."""
+    """Rule from 0.2.1: the voice follows the words, not the menu."""
     from app_spolocne import LANG_NATIVE_LABELS
     povodny = i18n._lang["code"]
     try:

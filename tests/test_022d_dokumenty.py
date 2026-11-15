@@ -1,31 +1,35 @@
 # -*- coding: utf-8 -*-
-"""README a dokumenty po davke 0.2.2d (audit, cast 1 "README a dokumentacia").
+"""README and docs after batch 0.3d (audit, part 1 "README and documentation").
 
-Audit: zaciatok README bol pravnicky text, instalacia prisla po 2 273
-slovach, Troubleshooting, Uninstall ani systemove poziadavky neboli, polovica
-README bola pre vyvojarov a testy ho zamykali v dlzke. Teraz:
+Audit: the start of the README was legalese, installation came after 2 273
+words, there was no Troubleshooting, Uninstall or system requirements, half
+the README was for developers and the tests locked it in length. Now:
 
-  * README: uvod -> Quick start -> Install -> parovanie -> poziadavky ->
-    co appka robi -> sukromie -> Troubleshooting -> Uninstall -> Known
-    issues -> licencia; vyvojarske casti su v DEVELOPMENT.md, presne
-    pravidla v docs/HOW-IT-WORKS.md, porovnanie s inymi v docs/PRIOR_ART.md,
-  * kazdy relativny odkaz v dokumentoch vedie na subor, ktory existuje, a
-    kotvy v README na nadpisy, ktore existuju,
-  * nazvy ovladacov v dokumentoch su presne tie z anglickeho UI po
-    premenovani (watching, cue, Voice source, ...) a stare nazvy sa do
-    dokumentov pre hraca nevracaju (v KNOWN_ISSUES ostavaju len ako historia),
-  * cisla a mena v Quick start, Troubleshooting a Uninstall su z kodu
-    (hry auto-profilu, hlavny vypinac, skratka "teraz nie", meno pravidla
-    vo firewalle),
-  * KNOWN_ISSUES zacina tym, co este nefunguje, a 0.2.2 ma bod o novych
-    nazvoch; SAFETY.md zacina anglickym zhrnutim.
+  * README: introduction -> Quick start -> Install -> pairing ->
+    requirements -> what the app does -> privacy -> Troubleshooting ->
+    Uninstall -> Known issues -> licence; the developer parts are in
+    DEVELOPMENT.md, the exact rules in docs/HOW-IT-WORKS.md, the
+    comparison with others in docs/PRIOR_ART.md,
+  * every relative link in the documents leads to a file that exists, and
+    anchors in the README to headings that exist,
+  * the names of controls in the documents are exactly those of the
+    English UI after the renaming (watching, cue, Voice source, ...) and
+    the old names do not return to the player documents (in KNOWN_ISSUES
+    they stay only as history),
+  * the numbers and names in Quick start, Troubleshooting and Uninstall
+    come from the code (auto-profile games, the main switch, the "not now"
+    shortcut, the firewall rule name),
+  * KNOWN_ISSUES starts with what does not work yet, and 0.3 has an item
+    about the new names; SAFETY.md starts with an English summary.
 
-Davka 4 (0.2.2): hlavny vypinac je tlacidlo "▶ Start watching" (dock.start),
-nie ikona v pase "Main switch"; historia verzii je v CHANGELOG.md, nie v
-KNOWN_ISSUES.md - straze isli za vetami.
+Batch 4 (0.3): the main switch is the button "▶ Start watching"
+(dock.start), not the "Main switch" icon in the bar; the version history is
+in CHANGELOG.md, not in KNOWN_ISSUES.md - the guards followed the
+sentences.
 
-Zamerne sa nepinuju cele odstavce - len nazvy z UI, cisla z kodu, poradie
-sekcii a vety, ktore uz nesmu byt pravda.
+Whole paragraphs are deliberately not pinned - only names from the UI,
+numbers from the code, the order of sections and sentences that must no
+longer be true.
 """
 import os
 import re
@@ -71,7 +75,7 @@ def _sekcia(text, nadpis):
 
 
 # --------------------------------------------------------------------------
-# README: poradie, dlzka po instalaciu, vyvojarske casti prec
+# README: order, length up to the install, developer parts gone
 # --------------------------------------------------------------------------
 
 def test_readme_ma_poradie_z_auditu():
@@ -85,10 +89,10 @@ def test_readme_ma_poradie_z_auditu():
 
 
 def test_readme_quick_start_hned_po_uvode():
-    """Kto otvori README, dostane do par stoviek slov, co appka je, co
-    potrebuje a ako zacat - nie 2 273 slov vyhrad."""
+    """Whoever opens the README gets, within a few hundred words, what the app
+    is, what it needs and how to start - not 2 273 words of disclaimers."""
     readme = _read("README.md")
-    # 0.2.2d: ~410 slov po Quick start, ~570 po Install (do 0.2.2d 2 273)
+    # 0.3d: ~410 words to Quick start, ~570 to Install (until 0.3d 2 273)
     pred = readme[:readme.index("\n## Quick start")]
     assert len(pred.split()) < 500, len(pred.split())
     pred_instalaciou = readme[:readme.index("\n## Install")]
@@ -111,20 +115,21 @@ def test_vyvojarske_casti_su_v_development_md():
                    "Project structure"):
         assert nadpis in vyvoj, nadpis
     assert "How the main window is split" in _nadpisy(_read("DEVELOPMENT.md"), "### ")
-    # "In one line" ostava v README, tabulka projektov je v docs/PRIOR_ART.md
+    # "In one line" stays in the README, the project table is in
+    # docs/PRIOR_ART.md
     assert "Cardia" in _read("docs/PRIOR_ART.md")
     assert "Zanshin is the only one I could find" in _plain(_read("README.md"))
 
 
 # --------------------------------------------------------------------------
-# Odkazy a kotvy
+# Links and anchors
 # --------------------------------------------------------------------------
 
 _ODKAZ = re.compile(r"\]\(([^)\s]+)\)")
 
 
 def _slug(nadpis):
-    """Kotva nadpisu tak, ako ju robi GitHub (pre nase nadpisy staci)."""
+    """A heading's anchor as GitHub makes it (enough for our headings)."""
     s = re.sub(r"[^\w\- ]", "", nadpis.lower())
     return s.replace(" ", "-")
 
@@ -137,7 +142,7 @@ def test_relativne_odkazy_vedu_na_existujuce_subory():
                 continue
             cesta, _, kotva = ciel.partition("#")
             assert os.path.exists(os.path.join(priecinok, cesta)), (meno, ciel)
-            # kotva do ineho dokumentu musi tiez viest na nadpis
+            # an anchor into another document must also lead to a heading
             if kotva and cesta.endswith(".md"):
                 with open(os.path.join(priecinok, cesta), encoding="utf-8-sig") as fh:
                     nadpisy = [r.lstrip("#").strip() for r in fh.read().splitlines()
@@ -165,7 +170,7 @@ def test_readme_odkazuje_na_vsetky_dokumenty():
 
 
 # --------------------------------------------------------------------------
-# Nazvy z UI: nove su v dokumentoch, stare sa nevracaju
+# Names from the UI: new ones are in the documents, old ones do not return
 # --------------------------------------------------------------------------
 
 def _bez_medzier(text):
@@ -174,10 +179,10 @@ def _bez_medzier(text):
 
 def test_readme_menuje_ovladace_ako_appka():
     r = _plain(_read("README.md"))
-    # Hlavny vypinac na Dnes je od davky 4 (0.2.2) jedno tlacidlo s textom
-    # dock.start / dock.stop (`_texty_pasu`) - tie iste slova ako v liste
-    # (tray.start) so znackou ▶. Pas s nadpisom "Main switch"
-    # (kamae.bar_title) je prec, README ho uz menovat nesmie.
+    # Since batch 4 (0.3) the main switch on Today is a single button with
+    # the text dock.start / dock.stop (`_texty_pasu`) - the same words as in
+    # the tray (tray.start) with the ▶ mark. The bar with the "Main switch"
+    # heading (kamae.bar_title) is gone, the README must not name it anymore.
     assert 'tr("dock.start")' in zdroj_appky() and 'tr("dock.stop")' in zdroj_appky()
     assert "kamae.bar_title" not in i18n.STRINGS
     assert _en("dock.start") == "▶ " + _en("tray.start")
@@ -190,7 +195,7 @@ def test_readme_menuje_ovladace_ako_appka():
     assert "*%s*" % _en("data.title") in r                          # Your data
     assert "**%s**" % _en("data.export.btn") in r                   # Export history (JSON)
     assert "*%s*" % _en("settings.hr_enable_switch") in r
-    # styri pripomienky menom, ako ich ukazuje stranka V hre
+    # the four cues by name, as the In-game page shows them
     mena = ", ".join(_en("overlay.slot.%d" % i) for i in range(3))
     assert "%s, %s" % (mena, _en("overlay.slot.3")) in r
 
@@ -238,8 +243,8 @@ def test_stare_nazvy_sa_do_dokumentov_pre_hraca_nevracaju():
     safety = _read("SAFETY.md")
     for stare in STARE_SK:
         assert stare not in safety, stare
-    # stare nazvy UI su naozaj prec aj z appky - inak by dokument klamal
-    # opacnym smerom
+    # the old UI names are really gone from the app too - otherwise the
+    # document would lie in the opposite direction
     hodnoty = {v.get("en") for v in i18n.STRINGS.values()}
     for stare in ("Listen for heart rate from the watch", "Voice comes from",
                   "Spoken lines", "In-game HR", "Prepare voice lines"):
@@ -247,7 +252,7 @@ def test_stare_nazvy_sa_do_dokumentov_pre_hraca_nevracaju():
 
 
 def test_privacy_a_readme_hovoria_v_prvej_osobe():
-    """Projekt robi jeden clovek (audit): nie "we" / "ours"."""
+    """The project is made by one person (audit): not "we" / "ours"."""
     for meno in ("README.md", "PRIVACY.md", "docs/HOW-IT-WORKS.md"):
         najdene = re.findall(r"\b(we|We|our|ours|Our)\b", _read(meno))
         assert not najdene, (meno, najdene)
@@ -255,7 +260,7 @@ def test_privacy_a_readme_hovoria_v_prvej_osobe():
 
 
 # --------------------------------------------------------------------------
-# Quick start, Troubleshooting, Uninstall: fakty z kodu
+# Quick start, Troubleshooting, Uninstall: facts from the code
 # --------------------------------------------------------------------------
 
 def test_quick_start_hry_a_lista_ako_v_kode():
@@ -264,11 +269,11 @@ def test_quick_start_hry_a_lista_ako_v_kode():
     assert hry == ["Apex Legends", "CS2", "Call of Duty", "Valorant"]
     qs = _plain(_sekcia(_read("README.md"), "Quick start"))
     assert "Apex Legends, Call of Duty, CS2 or Valorant" in qs
-    # × appku len schova - az po prvom vysvetleni (`on_close`)
+    # × only hides the app - only after the first explanation (`on_close`)
     zavri = zdroj_suboru("app.py")
     assert "tray_close_explained" in zavri and "self.minimize_to_tray()" in zavri
     assert "^ arrow" in _en("tray.close_first") and "^ arrow" in qs
-    # sledovanie sa samo spusti len pri prvom starte (po priprave hlasu)
+    # watching starts on its own only at first start (after voice preparation)
     assert re.search(r'if settings\["first_run"\]:\s*(?:#[^\n]*\s*)*'
                      r'self\._zacni_sledovat_po_priprave_hlasu\(\)', zavri)
     assert "On the very first start" in qs
@@ -280,14 +285,16 @@ def test_troubleshooting_skratka_a_cisla_z_kodu():
     assert DEFAULT_SNOOZE_HOTKEY == "ctrl+alt+z"
     assert hotkey.format_combo(DEFAULT_SNOOZE_HOTKEY).replace(" ", "") == "Ctrl+Alt+Z"
     assert "Ctrl+Alt+Z" in t
-    # Od 0.2.2 (davka 4) sa skratka vybera v Nastavenia -> Vseobecne; rucna
-    # uprava suboru ostava v README pre 0.2.1 ZIP (ten volbu nema).
+    # Since 0.3 (batch 4) the shortcut is picked in Settings -> General;
+    # editing the file by hand stays in the README for the 0.2.1 ZIP (that
+    # one does not have the option).
     assert "Settings → %s → *%s*" % (_en("nav.nastavenia_tabs.vseobecne"),
                                      _en("settings.snooze_hotkey")) in t
     assert "*%s*" % _en("settings.snooze_hotkey_none") in t
     assert 'tr("settings.snooze_hotkey")' in zdroj_suboru("app_prefs.py")
     assert "In the 0.2.1 ZIP" in t
-    # navrhnuta nahrada je platna kombinacia a "" skratku vypne
+    # the suggested replacement is a valid combination and "" switches the
+    # shortcut off
     m = re.search(r'for example `"([^"]+)"`', t)
     assert m and hotkey.is_valid(m.group(1)), m
     assert '`""` to switch the shortcut off' in t
@@ -296,7 +303,7 @@ def test_troubleshooting_skratka_a_cisla_z_kodu():
     assert "`\"snooze_hotkey\"`" in t
     assert SNOOZE_HOTKEY_MINUTES == 30
     assert "no cues for 30 minutes" in _plain(_read("README.md"))
-    # robot = hlas z Windows; priprava az po zastaveni
+    # robot = the Windows voice; preparation only after stopping
     assert "when you stop watching" in _en("edge.after_game")
     assert "Zanshin prepares it once you stop watching" in t
 
@@ -311,12 +318,12 @@ def test_uninstall_meno_vo_firewalle_ako_vo_version_info():
 
 
 # --------------------------------------------------------------------------
-# KNOWN_ISSUES a SAFETY
+# KNOWN_ISSUES and SAFETY
 # --------------------------------------------------------------------------
 
 def test_known_issues_zacina_tym_co_este_nefunguje():
-    """Od davky 4 je historia verzii v CHANGELOG.md; KNOWN_ISSUES ma len
-    otvorene veci, ako pomoct a odkaz na CHANGELOG (audit, cast 1)."""
+    """Since batch 4 the version history is in CHANGELOG.md; KNOWN_ISSUES has
+    only open items, how to help and a link to CHANGELOG (audit, part 1)."""
     k = _read("KNOWN_ISSUES.md")
     poradie = ["## Still open", "## How to help", "## What changed in each version"]
     indexy = [k.index("\n" + n) for n in poradie]
@@ -340,16 +347,18 @@ def test_known_issues_022_menuje_nove_nazvy():
     for kluc in ("tray.start", "tray.stop", "settings.hr_enable_switch",
                  "nav.spustace", "settings.audio_voice_title", "settings.engine",
                  "overlay.dialog_title", "overlay.test", "hud.quick_label",
-                 # metric.hrpi.title, nie dnes.stat_hrpi: ten appka nekresli
-                 # nikde (karta HRPI z Dnes odisla), nazov ukazuje Historia
+                 # metric.hrpi.title, not dnes.stat_hrpi: the app draws
+                 # that one nowhere (the HRPI card left Today), the name
+                 # is shown by History
                  "pack.zen", "pack.modern", "metric.hrpi.title"):
         assert "*%s*" % _en(kluc) in sekcia, kluc
-    # veta po relacii: bez tichych len pocet, s tichymi aj kolko
+    # the sentence after a session: without silent ones just the count,
+    # with silent ones also how many
     assert "{silent}" not in _en("session.end.cues")
     assert "{silent}" in _en("session.end.cues_silent")
     assert "with none silent the line just counts the cues" in sekcia
     assert "about one cue in four" in _en("ob.cue.note")
-    # bodka stavu: duty kruzok, nie cervena
+    # status dot: a hollow ring, not red
     assert "Hollow ring" in _en("sidebar.state_tip")
     assert "a hollow ring when it's stopped" in sekcia
 
@@ -360,6 +369,6 @@ def test_safety_zacina_anglickym_zhrnutim():
     anglicky = s[:s.index("## Krátka odpoveď")]
     slovensky = _sekcia(s, "Čo appka nerobí")
     riadky = lambda t: [r for r in t.splitlines() if r.startswith("| ") and "---" not in r]
-    assert len(riadky(anglicky)) == len(riadky(slovensky)) == 9    # hlavicka + 8
+    assert len(riadky(anglicky)) == len(riadky(slovensky)) == 9    # header + 8
     assert "Ctrl+Alt+Z" in anglicky
     assert "**Anti-cheat in short.**" in anglicky

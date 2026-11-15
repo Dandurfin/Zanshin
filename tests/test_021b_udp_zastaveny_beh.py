@@ -1,13 +1,14 @@
 # -*- coding: utf-8 -*-
-"""Zastaveny beh UDP port neberie a nic nehlasi (0.2.1, BUG 3 - kontrola).
+"""A stopped run takes no UDP port and reports nothing (0.2.1, BUG 3 - check).
 
-`_serve` spusta UDP vlakno az po `_notify("connecting")`, ktore v appke ide
-cez `ui_call` - a to z cudzieho vlakna caka na GUI. Medzitym moze byt beh
-zastaveny a novy uz otvara ten isty port. Keby stary beh port este chytil,
-novy by dostal "UDP port drzi iny program" (hoci ho na chvilu drzal Zanshin
-sam) a UDP/OSC by v novom behu ostalo mrtve bez opakovania. A keby naopak
-stary beh na obsadeny port narazil, zapisal by do app.log varovanie za beh,
-ktory uz neexistuje.
+`_serve` starts the UDP thread only after `_notify("connecting")`, which in
+the app goes via `ui_call` - and that waits for the GUI from a foreign
+thread. Meanwhile the run may be stopped and a new one may already be
+opening the same port. If the old run still grabbed the port, the new one
+would get "UDP port drzi iny program" (another program holds the UDP port),
+although Zanshin itself held it briefly, and UDP/OSC would stay dead in the
+new run with no retry. And conversely, if the old run hit a taken port, it
+would write a warning to app.log for a run that no longer exists.
 """
 import errno
 import os
@@ -37,7 +38,7 @@ class _SpyLog:
 
 def _monitor(monkeypatch):
     spy = _SpyLog()
-    monkeypatch.setattr(heart_rate, "log", spy)   # `_udp_loop` byva tu
+    monkeypatch.setattr(heart_rate, "log", spy)   # `_udp_loop` lives here
     stavy = []
     mon = heart_rate.HeartRateMonitor(
         on_bpm=lambda *_a: None,
@@ -55,15 +56,15 @@ def test_zastaveny_beh_udp_port_vobec_neotvara(monkeypatch):
 
     mon._bind = _bind
     run = heart_rate._Run(1)
-    run.shutdown()                  # beh zastaveny skor, nez sa vlakno rozbehlo
+    run.shutdown()                  # run stopped before the thread got going
     mon._udp_loop(HOST, 4455, run)
     assert vazby == []
     assert stavy == [] and spy.varovania == []
 
 
 def test_beh_zastaveny_pocas_vazby_nehlasi_nic(monkeypatch):
-    """Zastavenie tesne pred zlyhanim vazby: port drzal uz novy beh, takze
-    to nie je chyba, o ktorej treba komukolvek hovorit."""
+    """Stopped right before the bind fails: the new run already held the
+    port, so it is not an error anybody needs to be told about."""
     mon, stavy, spy = _monitor(monkeypatch)
     run = heart_rate._Run(1)
 
@@ -77,7 +78,7 @@ def test_beh_zastaveny_pocas_vazby_nehlasi_nic(monkeypatch):
 
 
 def test_bezici_beh_obsadeny_port_stale_nahlasi(monkeypatch):
-    """Poistka proti prilis sirokej podmienke vyssie: zivy beh sa nahlasi."""
+    """Safeguard against a too broad condition above: a live run reports."""
     mon, stavy, spy = _monitor(monkeypatch)
     run = heart_rate._Run(3)
 

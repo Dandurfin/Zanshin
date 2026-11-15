@@ -1,18 +1,19 @@
 # -*- coding: utf-8 -*-
-"""Rebrík hlášky (0.2): appka sa sama stíši, keď hláška prekáža.
+"""Cue ladder (0.2): the app turns itself down when a cue gets in the way.
 
-    hlas -> obraz -> pauza
+    voice -> picture -> pause
 
-Rozhodnutia zadávateľa, ktoré tieto testy strážia:
-  * žiadny stupeň „zvuk“ ani meraný strop - styl „sound“ je stupeň hlasu so
-    stlmenými slovami, nie samostatný stupeň,
-  * vrchol dáva svet (práca = len obraz, B3-worlds) a štýl hráča
-    (`cue_style`); rebrík ide len POD vrchol,
-  * dole o stupeň za reláciu: verdikt „rušila“ / „rozhodila ma“ pri relácii
-    s hláškou, alebo „teraz nie“ do 60 s po hláške - ten len keď relácia
-    potom ešte bežala aspoň 120 s a verdikt nie je „sadla“,
-  * hore po 3 reláciách s hláškou bez signálu, pauza 3 relácie >= 300 s
-    alebo do verdiktu „áno, mala“, potom obraz.
+The client's decisions these tests guard:
+  * no "sound" step and no measured cap - the "sound" style is the voice
+    step with muted words, not a separate step,
+  * the top is given by the world (work = picture only, B3-worlds) and
+    the player's style (`cue_style`); the ladder goes only BELOW the top,
+  * one step down per session: the verdict "it disrupted" / "it wound me
+    up" for a session with a cue, or "not now" within 60 s after a cue -
+    the latter only when the session then ran for at least 120 s more and
+    the verdict is not "it landed",
+  * up after 3 sessions with a cue without a signal, pause 3 sessions
+    >= 300 s or until the verdict "yes, it should have", then picture.
 """
 import ast
 import os
@@ -35,7 +36,7 @@ KOREN = os.path.join(os.path.dirname(__file__), "..")
 
 
 def rel(i, **kw):
-    """Relácia `i` (poradie podľa `started`): 30 min, jedna hláška."""
+    """Session `i` (order by `started`): 30 min, one cue."""
     s = {"started": 1_789_000_000.0 + i * 3600.0, "duration_s": 1800.0,
          "auto_triggers": 1}
     s.update(kw)
@@ -47,7 +48,7 @@ def stav(relacie, svet="play", styl=None):
 
 
 # --------------------------------------------------------------------------
-# Rebrík - čistá funkcia
+# The ladder - a pure function
 # --------------------------------------------------------------------------
 
 def test_nova_historia_je_na_vrchole():
@@ -70,8 +71,8 @@ def test_rozhodila_ma_ide_o_stupen_nizsie():
 
 
 def test_verdikt_bez_hlasky_sa_nerata():
-    """„Rušila“ pri relácii, v ktorej žiadna hláška neprišla, nehovorí nič
-    o hláške."""
+    """The verdict "it disrupted" for a session with no cue says nothing
+    about the cue."""
     assert stav([rel(0, auto_triggers=0, cue_verdict="disruptive")])["stupen"] \
         == rebrik.HLAS
 
@@ -82,16 +83,18 @@ def test_snooze_po_hlaske_a_hralo_sa_dalej_ide_nizsie():
 
 
 def test_snooze_a_sadla_nie_je_signal():
-    """„Sadla“ a hneď „teraz nie“ = skôr „končím“ než „prekážala“."""
+    """Verdict "it landed" and right away "not now" = more "I'm done" than
+    "it got in the way"."""
     s = stav([rel(0, snooze_after_cue_s=20.0, snooze_then_s=600.0,
                   cue_verdict="landed")])
     assert s["stupen"] == rebrik.HLAS
 
 
 def test_snooze_a_relacia_skoncila_do_120_s_nie_je_signal():
-    """Zadávateľ nevie, či Ctrl+Alt+Z nemyslí „končím“ - bez pokračovania
-    relácie sa to neráta. (Od 24. 9. `_start_snooze` reláciu nezatvára, takže
-    signál naozaj môže padnúť - celá cesta je v tests/test_teraz_nie.py.)"""
+    """The client cannot tell whether Ctrl+Alt+Z means "I'm done" - without
+    the session continuing it does not count. (Since 24. 9. `_start_snooze`
+    does not close the session, so the signal really can fall - the whole
+    path is in tests/test_teraz_nie.py.)"""
     for potom in (0.0, 119.9, None):
         s = stav([rel(0, snooze_after_cue_s=20.0, snooze_then_s=potom)])
         assert s["stupen"] == rebrik.HLAS, potom
@@ -113,7 +116,7 @@ def test_pauza_trva_tri_relacie_aspon_5_minut_potom_obraz():
     s = stav(zaklad)
     assert s["stupen"] == rebrik.PAUZA and s["zostava"] == rebrik.PAUZA_RELACII
     ticho = [rel(2 + i, auto_triggers=0) for i in range(2)]
-    # kratka relacia sa do pauzy nerata
+    # a short session does not count towards the pause
     kratka = [rel(4, auto_triggers=0, duration_s=200.0)]
     s = stav(zaklad + ticho + kratka)
     assert s["stupen"] == rebrik.PAUZA and s["zostava"] == 1
@@ -132,7 +135,7 @@ def test_navrat_pomaly_tri_relacie_s_hlaskou_bez_vyhrad():
     zaklad = [rel(0, cue_verdict="disruptive")]
     ciste = [rel(1), rel(2, auto_triggers=0), rel(3, cue_verdict="unneeded")]
     s = stav(zaklad + ciste)
-    # relacia bez hlasky sa nerata ani nerusi
+    # a session without a cue neither counts nor cancels
     assert s["stupen"] == rebrik.OBRAZ and s["zostava"] == 1
     s = stav(zaklad + ciste + [rel(4)])
     assert (s["stupen"], s["dovod"]) == (rebrik.HLAS, rebrik.D_NAVRAT)
@@ -172,11 +175,13 @@ def test_importovane_relacie_sa_nerataju():
 
 
 def test_peciatka_najstarsej_relacie_prezije_orezanie():
-    """Po `MAX_SESSIONS` staré záznamy odídu - hlas sa nesmie vrátiť len
-    preto. Pečiatka platí, len keď bola pod VLASTNÝM vrcholom."""
+    """After `MAX_SESSIONS` old records leave - the voice must not come back
+    just because of that. The stamp applies only when it was below its
+    OWN top."""
     s = stav([rel(0, cue_rung="pause", cue_style="voice", auto_triggers=0)])
     assert s["stupen"] == rebrik.PAUZA
-    # kto mal styl "obraz" a prepol na hlas, nema ostat na obraze
+    # whoever had the "picture" style and switched to voice must not stay
+    # on picture
     s = stav([rel(0, cue_rung="visual", cue_style="visual")])
     assert s["stupen"] == rebrik.HLAS
     s = stav([rel(0, cue_rung="visual", cue_style="voice", auto_triggers=0)])
@@ -190,7 +195,7 @@ def test_pokazene_zaznamy_nezhodia_rebrik():
 
 
 def test_realne_agregaty_z_testovania_ostanu_na_vrchole():
-    """9 relácií, jedna „áno, mala“ (review stress-cue): hra = hlas."""
+    """9 sessions, 1 "yes, it should have" (review stress-cue): play=voice."""
     relacie = [rel(i, auto_triggers=(1 if i == 3 else 0)) for i in range(8)]
     relacie.append(rel(8, auto_triggers=0, cue_verdict="missed"))
     assert stav(relacie)["stupen"] == rebrik.HLAS
@@ -198,7 +203,7 @@ def test_realne_agregaty_z_testovania_ostanu_na_vrchole():
 
 
 # --------------------------------------------------------------------------
-# Automat: pauza = nenatiahne sa, diagnostika beží
+# State machine: pause = does not arm, diagnostics run
 # --------------------------------------------------------------------------
 
 def test_pauza_sa_nenatiahne_ale_diagnostika_bezi():
@@ -211,7 +216,7 @@ def test_pauza_sa_nenatiahne_ale_diagnostika_bezi():
         if ev:
             udalosti.append(ev)
     assert not udalosti and t.armed_count == 0
-    # ako pri plnej hodine: pocitanie sa zacina odznova, nic sa nezahodi
+    # as with a full hour: counting starts over, nothing is thrown away
     assert t.behov_nad >= 1
     assert t.najdlhsi_nad_s >= t.params["stress_hold_s"]
 
@@ -223,7 +228,7 @@ def test_predvolene_parametre_nesu_branu_a_zapnute_hlasky():
 
 
 # --------------------------------------------------------------------------
-# Verdikt „rozhodila ma“
+# The verdict "it wound me up"
 # --------------------------------------------------------------------------
 
 def test_verdikt_rozhodila_ma(tmp_path):
@@ -247,7 +252,7 @@ def test_dotaznik_ponuka_styri_verdikty_po_hlaske():
 
 
 # --------------------------------------------------------------------------
-# Záznam o doručení a graf účinnosti
+# Delivery record and the effectiveness chart
 # --------------------------------------------------------------------------
 
 def test_hlaska_nesie_zaznam_o_doruceni_az_do_okna():
@@ -262,7 +267,7 @@ def test_hlaska_nesie_zaznam_o_doruceni_az_do_okna():
     assert (okno["rung"], okno["audible"], okno["load_at"], okno["load_peak"],
             okno["zone_at"], okno["snooze_after_s"]) == \
         ("visual", False, 61.0, 74.0, "high", 12.5)
-    # stary zaznam bez tych poli sa postavi a nic si nevymysli
+    # an old record without those fields gets built and makes nothing up
     hs.note_trigger(ts=1500.0, auto=True, category="jaw")
     stare = measure.build_window(hs.cues[-1], [], [1500.0])
     assert not {"rung", "audible", "load_at", "snooze_after_s"} & set(stare)
@@ -292,7 +297,7 @@ def test_graf_po_brane_nezlucuje_stare_okna():
     nove = [_okno(params={"brana": "po_vrchole"}, post_bpm=97.0)]
     vysledok = measure.by_category(stare + nove)["breath"]
     assert vysledok["n"] == 1 and vysledok["delta_bpm"] == -3.0
-    # ani importovane okno s branou neprepne vlastne data
+    # not even an imported window with a gate switches your own data
     cudzie = [_okno(params={"brana": "po_vrchole"}, imported=True)]
     assert measure.by_category(stare + cudzie)["breath"]["n"] == 6
 
@@ -302,8 +307,9 @@ def test_veta_pod_grafom_je_poctiva():
         veta = i18n.STRINGS["history.effect_hint"][jazyk]
         assert ("aj sám" in veta) if jazyk == "sk" else ("on its own" in veta)
     assert "nie je dôkaz" in i18n.STRINGS["history.effect_hint"]["sk"]
-    # stare znenie neprezilo v ziadnom jazyku: jediny `_tr7` riadok je novy
-    # preklad z jazykovej fazy 0.2 (ziadny starsi pod nim)
+    # the old wording did not survive in any language: the only `_tr7` line
+    # is the new translation from the 0.2 languages phase (no older one
+    # below it)
     assert _zdroj("i18n.py").count("_tr7('history.effect_hint'") == 1
     for jazyk in i18n.LANGUAGES:
         if jazyk not in ("sk", "en"):
@@ -312,7 +318,7 @@ def test_veta_pod_grafom_je_poctiva():
 
 
 # --------------------------------------------------------------------------
-# História: jedna tichá veta pod vrcholom
+# History: one quiet sentence below the top
 # --------------------------------------------------------------------------
 
 def _veta(stav_rebrika):
@@ -333,7 +339,7 @@ def test_veta_v_historii_len_pod_vrcholom_a_s_dovodom():
         pauza = _veta(stav([rel(0, cue_verdict="disruptive"),
                             rel(1, cue_verdict="disruptive")]))
         assert "vypnuté" in pauza and "áno, mala" in pauza
-        # bez dovodu (peciatka) ziadne dvojite medzery
+        # without a reason (stamp) no double spaces
         bez = _veta(stav([rel(0, cue_rung="visual", cue_style="voice",
                               auto_triggers=0)]))
         assert bez and "  " not in bez
@@ -345,12 +351,12 @@ def test_kazdy_dovod_pod_vrcholom_ma_vetu():
     for dovod in rebrik.DOVODY_POD_VRCHOLOM:
         kluc = f"history.rebrik.why.{dovod}"
         assert kluc in i18n.STRINGS, kluc
-    # appka o sebe v zenskom rode
+    # the app speaks of itself in the feminine
     assert "som sa mala" in i18n.STRINGS["history.rebrik.why.missed"]["sk"]
 
 
 # --------------------------------------------------------------------------
-# Pauza nesmie klamať inde
+# The pause must not lie elsewhere
 # --------------------------------------------------------------------------
 
 def test_pauza_v_dotazniku_a_postrehoch():
@@ -369,7 +375,7 @@ def test_pauza_v_dotazniku_a_postrehoch():
 
 
 # --------------------------------------------------------------------------
-# app.py (neimportovatelne bez okna - kontrola zdroja)
+# app.py (not importable without a window - source check)
 # --------------------------------------------------------------------------
 
 def _zdroj(meno):
@@ -378,7 +384,7 @@ def _zdroj(meno):
 
 
 def _funkcia(meno_suboru, meno):
-    # "app.py" = cela appka: app.py aj mixiny DandurfApp v app_*.py
+    # "app.py" = the whole app: app.py and the DandurfApp mixins in app_*.py
     strom = strom_appky() if meno_suboru == "app.py" else ast.parse(_zdroj(meno_suboru))
     for uzol in ast.walk(strom):
         if isinstance(uzol, ast.FunctionDef) and uzol.name == meno:
@@ -391,8 +397,9 @@ def _volania(uzol):
 
 
 def test_pod_stupnom_hlasu_nezaznie_ziadne_tts():
-    """`_emit` sa v `_fire_somatic_cue` spúšťa JEDINE vo vetve, ktorá
-    vyžaduje `hlas` aj stupeň hlasu - pod ním ide hláška len obrazom."""
+    """`_emit` is triggered in `_fire_somatic_cue` ONLY in the branch that
+    requires both `hlas` and the voice step - below it the cue goes as a
+    picture only."""
     fn = _funkcia("app.py", "_fire_somatic_cue")
     vetvy = [u for u in ast.walk(fn) if isinstance(u, ast.If)
              and "self._emit" in ast.unparse(u)
@@ -413,15 +420,16 @@ def test_bez_slov_nezaznie_tts_ani_nahravka():
     volania = _volania(vetva)
     assert not [v for v in volania if "speak" in v or "voice" in v], volania
     assert isinstance(vetva.body[-1], ast.Return), "bez slov musi skoncit tu"
-    # a je to PRED ostatnymi vetvami
+    # and it is BEFORE the other branches
     assert fn.body.index(vetva) < min(
         fn.body.index(u) for u in fn.body if isinstance(u, ast.If)
         and "MODE_COMBO" in ast.unparse(u.test))
 
 
 def test_snooze_sa_zapise_a_relaciu_nezatvara():
-    """24. 9.: „teraz nie“ len stíši hlášky - relácia beží ďalej, inak by
-    `snooze_then_s` bolo vždy ~0 a signál rebríka by nepadol nikdy."""
+    """24. 9.: "not now" only silences cues - the session keeps running,
+    otherwise `snooze_then_s` would always be ~0 and the ladder signal
+    would never fall."""
     fn = _funkcia("app.py", "_start_snooze")
     telo = ast.unparse(fn)
     assert telo.index("self._zapis_snooze_po_hlaske(") < telo.index(
@@ -438,17 +446,17 @@ def test_relacia_nesie_stupen_styl_a_snooze():
         "self.cue_trigger.open_session(")
     assert "self.cue_trigger.params['cues_enabled'] = False" in otvor
     assert "self._cue_rung == rebrik.HLAS" in otvor
-    # stupen sa pocita z relacii TOHO sveta, ktory B3 opecatil
+    # the step is computed from the sessions of THE world that B3 stamped
     urci = ast.unparse(_funkcia("app.py", "_urci_stupen_hlasky"))
     assert "hr_stats.sessions_in_world(" in urci and "_session_world" in urci
-    # Suhrn sklada `_suhrn_relacie` (0.2.2, aj pre kontrolny bod relacie);
-    # `_close_hr_session` ho ma zostaveny pred ulozenim.
+    # The summary is put together by `_suhrn_relacie` (0.3, also for the
+    # session checkpoint); `_close_hr_session` has it assembled before saving.
     suhrn = ast.unparse(_funkcia("app.py", "_suhrn_relacie"))
     for kluc in ("cue_rung", "cue_style", "snooze_after_cue_s", "snooze_then_s"):
         assert f"summary['{kluc}']" in suhrn, kluc
     zatvor = ast.unparse(_funkcia("app.py", "_close_hr_session"))
     assert zatvor.index("self._suhrn_relacie()") < zatvor.index("hr_stats.save_session(")
-    # okno nesie parametre (a v nich branu)
+    # the window carries the parameters (and the gate in them)
     assert "w['params'] = params" in ast.unparse(
         _funkcia("app.py", "_save_measure_windows"))
 
@@ -461,11 +469,11 @@ def test_styl_hlasky_sa_cita_aj_uklada():
 
 
 # --------------------------------------------------------------------------
-# app.py na atrape (skutocne metody, bez okna)
+# app.py on a dummy (real methods, no window)
 # --------------------------------------------------------------------------
 
 class _Vlakno:
-    """Synchronne `threading.Thread` - aby sa dalo overit, co sa spustilo."""
+    """Synchronous `threading.Thread` - so we can check what was started."""
 
     def __init__(self, target, args=(), kwargs=None, daemon=None):
         self._t, self._a, self._k = target, args, kwargs or {}
@@ -478,8 +486,9 @@ def _dorucenie(monkeypatch, stupen, styl="voice", hlas=True):
     import app as app_mod
     import app_today
     monkeypatch.setattr(app_mod, "threading", types.SimpleNamespace(Thread=_Vlakno))
-    # `_fire_somatic_cue` byva v mixine app_today (TodayMixin) a cita
-    # `threading` zo svojho modulu - synchronne vlakno treba aj tam.
+    # `_fire_somatic_cue` lives in the app_today mixin (TodayMixin) and reads
+    # `threading` from its own module - the synchronous thread is needed
+    # there too.
     monkeypatch.setattr(app_today, "threading", types.SimpleNamespace(Thread=_Vlakno))
     spustene = []
     slot = types.SimpleNamespace(index=1, text_value="Teeth")
@@ -499,7 +508,7 @@ def _dorucenie(monkeypatch, stupen, styl="voice", hlas=True):
 
 
 def test_dorucenie_pod_stupnom_hlasu_nic_neprehra(monkeypatch):
-    # aj keby udalost tvrdila `hlas` (druha poistka)
+    # even if the event claimed `hlas` (second safeguard)
     cue, spustene = _dorucenie(monkeypatch, rebrik.OBRAZ, hlas=True)
     assert spustene == []
     assert (cue["rung"], cue["audible"]) == ("visual", False)
@@ -516,7 +525,7 @@ def test_dorucenie_na_stupni_hlasu_a_styl_zvuk_stlmi_slova(monkeypatch):
 
 
 def _emit_atrapa(tmp_path, sfx=True):
-    """Atrapa pre `_emit` / `_slot_zaznie`. `sfx=False` = zvuk slotu chyba."""
+    """Dummy for `_emit` / `_slot_zaznie`. `sfx=False` = no slot sound."""
     import app as app_mod
     cesta = tmp_path / ("thud.wav" if sfx else "chyba.wav")
     if sfx:
@@ -540,12 +549,12 @@ def test_bez_slov_hra_len_zvuk_slotu(tmp_path):
                                      voice_path="")
         D._emit(a, slot, bez_slov=True)
     assert len(hrane) == 2 and hovorene == [], "bez slov nesmie zaznet TTS"
-    # bez suboru sa TTS nezjavi ani ako zaloha
+    # without a file TTS does not show up even as a fallback
     D, a, hrane, hovorene = _emit_atrapa(tmp_path, sfx=False)
     D._emit(a, types.SimpleNamespace(index=0, mode=MODE_SFX, text_value="Teeth",
                                      voice_path=""), bez_slov=True)
     assert hrane == [] and hovorene == []
-    # bez `bez_slov` sa kombinacia sprava ako doteraz (zvuk aj slova)
+    # without `bez_slov` the combination behaves as before (sound and words)
     D, a, hrane, hovorene = _emit_atrapa(tmp_path)
     D._emit(a, types.SimpleNamespace(index=0, mode=MODE_COMBO, text_value="Teeth",
                                      voice_path=""))
@@ -648,11 +657,13 @@ def test_dnes_na_pauze_nesluby_hlasku():
 
 
 def test_vety_rebrika_hovoria_jazykom_appky():
-    """Review: veta o stíšení pomenúva to, čo hráč v appke vidí („stíšenie“,
-    Ctrl+Alt+Z), nie interný názov „teraz nie“, ktorý appka nikde neukazuje.
-    A appka nežiada, aby jej niekto chýbal - SK hovorí o hláškach ako EN."""
+    """Review: the snooze sentence names what the player sees in the app
+    („stíšenie“ - snoozing, Ctrl+Alt+Z), not the internal name „teraz nie“,
+    which the app shows nowhere. And the app does not ask anyone to miss
+    it - SK talks about cues like EN."""
     snooze = i18n.STRINGS["history.rebrik.why.snooze"]
-    # 0.2.2 (davka 4): bez rodu hraca - "som bola stisena", nie "si ma stisil"
+    # 0.3 (batch 4): no player gender - "som bola stisena" (I was
+    # silenced), not "si ma stisil" (you silenced me, masculine)
     assert "stíšená" in snooze["sk"] and "teraz nie" not in snooze["sk"]
     assert "stíšil" not in snooze["sk"]
     assert "snoozed" in snooze["en"] and "not now" not in snooze["en"]

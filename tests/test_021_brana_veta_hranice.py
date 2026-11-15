@@ -1,17 +1,21 @@
 # -*- coding: utf-8 -*-
-"""Veta o hranici vysokeho tepu v nastaveniach (0.2.1, zaverecna brana).
+"""The sentence about the high heart rate limit in settings (0.2.1,
+final gate).
 
-`hr_stats.dynamicky_kriticky` sa od 0.2.1 uci len z relacii dlhych aspon
-5 minut (`je_dost_dlha`). `app._kriticky_popis` ale dalej ratal KAZDU cistu
-hernu relaciu - po troch kratkych relaciach (parovanie hodiniek) nastavenia
-tvrdili "spocitane z 3 tvojich hernych relacii", kym v skutocnosti platila
-zaloha 110. Presne ten druh vety, ktory SOUL.md povazuje za chybu.
+Since 0.2.1 `hr_stats.dynamicky_kriticky` learns only from sessions at least
+5 minutes long (`je_dost_dlha`). But `app._kriticky_popis` still counted
+EVERY clean play session - after three short sessions (pairing the watch)
+settings claimed "computed from 3 of your play sessions", while in fact the
+fallback of 110 applied. Exactly the kind of sentence SOUL.md considers a
+bug.
 
-To iste pravidlo musi platit aj pre `_prah_z_relacii` v `_open_hr_session`
-(pocet do vety o prahu zataze): `float(duration_s)` priamo tam pri
-pokazenom cisle vyhodil vynimku a `except` zahodil aj dlhodobu zakladnu.
+The same rule must also apply to `_prah_z_relacii` in `_open_hr_session`
+(the count for the sentence about the load threshold): `float(duration_s)`
+right there raised an exception on a broken number, and the `except` threw
+away the long-term baseline too.
 
-Bez Tk - skutocne metody `DandurfApp` na malej atrape (ako test_worlds.py).
+Without Tk - the real `DandurfApp` methods on a small dummy (like
+test_worlds.py).
 """
 import math
 import os
@@ -40,8 +44,8 @@ def sk():
 
 
 def _relacia(minut, **kw):
-    """Cista herna relacia s plynulou krivkou (kadencia 1 s, najviac
-    `CURVE_POINTS` bodov) - `je_podozriva` ju necha tak."""
+    """A clean play session with a smooth curve (1 s cadence, at most
+    `CURVE_POINTS` points) - `je_podozriva` leaves it alone."""
     trvanie = minut * 60.0
     bodov = min(hr_stats.CURVE_POINTS, int(trvanie))
     s = {"started": 1.7e9, "duration_s": trvanie, "baseline_bpm": 70.0,
@@ -58,8 +62,9 @@ def _popis(relacie):
 
 
 def test_tri_kratke_relacie_netvrdia_vypocitanu_hranicu(sk):
-    """Tri 4-minutove relacie maju spolu 720 bodov krivky (nad
-    `KRITICKY_MIN_BODOV`), no hranica sa z nich neuci - veta to musi vediet."""
+    """Three 4-minute sessions have 720 curve points together (above
+    `KRITICKY_MIN_BODOV`), but the limit does not learn from them - the
+    sentence has to know that."""
     kratke = [_relacia(4) for _ in range(3)]
     assert sum(len(r["curve"]) for r in kratke) >= hr_stats.KRITICKY_MIN_BODOV
     assert hr_stats.dynamicky_kriticky(kratke) == hr_stats.KRITICKY_ZALOHA
@@ -76,8 +81,8 @@ def test_kratke_relacie_sa_nerataju_do_troch_potrebnych(sk):
 
 
 def test_tri_dlhe_relacie_vetu_prepnu_na_vypocitanu(sk):
-    """Predpoklad testov vyssie: s tromi relaciami po 5 minut sa veta naozaj
-    prepne - inak by nemerali nic."""
+    """Premise of the tests above: with three 5-minute sessions the sentence
+    really does switch - otherwise they would measure nothing."""
     dlhe = [_relacia(5) for _ in range(3)]
     assert hr_stats.dynamicky_kriticky(dlhe) != hr_stats.KRITICKY_ZALOHA
     assert _popis(dlhe + [_relacia(2)]) == i18n.tr(
@@ -89,8 +94,9 @@ class _Stop(Exception):
 
 
 def _otvor(historia):
-    """Spusti skutocny `_open_hr_session` po cast s ucenim hranic. Atrapa
-    `hud.configure` ho zastavi hned za blokom try/except, ktory nas zaujima."""
+    """Runs the real `_open_hr_session` up to the part that learns the
+    limits. The `hud.configure` dummy stops it right after the try/except
+    block we care about."""
     def _stop(**_kw):
         raise _Stop()
     a = types.SimpleNamespace(
@@ -104,8 +110,9 @@ def _otvor(historia):
 
 
 def test_pocet_do_vety_o_prahu_rata_tym_istym_pravidlom():
-    """Pokazene `duration_s` (text, nekonecno) sa neuci a ani nezhodi vypocet:
-    pocet sedi s `je_dost_dlha` a dlhodoba zakladna prezije."""
+    """A broken `duration_s` (text, infinity) is not learned from and does
+    not break the computation: the count matches `je_dost_dlha` and the
+    long-term baseline survives."""
     historia = [_relacia(20) for _ in range(3)]
     historia += [_relacia(20, duration_s="dlho"),
                  _relacia(20, duration_s=float("inf")),

@@ -1,18 +1,20 @@
 # -*- coding: utf-8 -*-
-"""Dokumenty o tlacidle "Aktualizovat hlas" (0.2.2) hovoria to, co robi kod.
+"""The documents about the "Update voice" button (0.3) say what the code does.
 
-Rozhodnutie autora (15. 11. 2026): hrac si novsi edge-tts stiahne sam, len
-na klik, nikdy samo a nikdy pocas sledovania. Je to prvy raz, co Zanshin
-stahuje a spusta kod - PRIVACY.md a SAFETY.md to musia povedat poctivo:
-co ide na siet (PyPI, files.pythonhosted.org, jedno skusobne slovo
-Microsoftu), co ostane na disku (voice_lib), ako sa to zmaze, co sa
-kontroluje a pred cim to nechrani.
+The author's decision (15. 11. 2026): the player downloads a newer edge-tts
+themselves, only on a click, never by itself and never while watching. It is
+the first time Zanshin downloads and runs code - PRIVACY.md and SAFETY.md
+have to say so honestly: what goes to the network (PyPI,
+files.pythonhosted.org, one test word to Microsoft), what stays on disk
+(voice_lib), how to delete it, what is checked and what it does not protect
+against.
 
-Tento test drzi pri dokumentoch mena a cisla z `hlas_kniznica.py`, texty
-tlacidiel z i18n a poradie krokov v kode, aby veta "najprv PyPI, az potom
-slovo" alebo "pri instalacii sa nic nespusta" neprestala platit potichu.
-Na siet nejde nic - kod sa len cita (zdroj, ast), jedine spravanie je
-`nacitaj_pri_starte` nad prazdnym priecinkom v tmp_path.
+This test keeps the documents in line with the names and numbers from
+`hlas_kniznica.py`, the button texts from i18n and the order of the steps
+in the code, so that a sentence like "first PyPI, only then the word" or
+"nothing is run during installation" does not stop being true silently.
+Nothing goes to the network - the code is only read (source, ast), the only
+behaviour is `nacitaj_pri_starte` over an empty folder in tmp_path.
 """
 import ast
 import os
@@ -62,7 +64,7 @@ def _sekcia(text, nadpis, uroven="## "):
 
 
 def _funkcia(meno):
-    """Zdroj funkcie z hlas_kniznica.py (cez ast, bez spustenia)."""
+    """Function source from hlas_kniznica.py (via ast, without running it)."""
     src = _read("hlas_kniznica.py")
     for uzol in ast.walk(ast.parse(src)):
         if isinstance(uzol, ast.FunctionDef) and uzol.name == meno:
@@ -75,7 +77,7 @@ def _hostitel(url):
 
 
 def _bod_privacy():
-    """PRIVACY, bod "Update voice" v zozname toho, co ide na siet."""
+    """PRIVACY, the "Update voice" item in the list of what goes online."""
     p = _read("PRIVACY.md")
     siet = p[p.index("## The few things that can use the network"):]
     zaciatok = siet.index("\n2. **%s" % _en("edge.update.btn"))
@@ -94,7 +96,7 @@ def _safety_en():
 
 
 # --------------------------------------------------------------------------
-# Mena z UI
+# Names from the UI
 # --------------------------------------------------------------------------
 
 def test_tlacidlo_a_odkaz_sa_volaju_ako_v_appke():
@@ -104,7 +106,8 @@ def test_tlacidlo_a_odkaz_sa_volaju_ako_v_appke():
         assert "**%s**" % tlacidlo in _read(meno), meno
     assert "**%s**" % _sk("edge.update.btn") in _read("SAFETY.md")
     assert "**%s**" % tlacidlo in _safety_en()
-    # odkaz na nove vydanie: chip s "↗ " a ta ista adresa ako v kode
+    # link to the new release: a chip with "↗ " and the same address as in the
+    # code
     odkaz = "↗ " + _en("edge.update.releases_btn")
     assert '"↗ " + tr("edge.update.releases_btn")' in zdroj_suboru("app.py")
     for meno in ("README.md", AKO, ZMENY):
@@ -113,7 +116,7 @@ def test_tlacidlo_a_odkaz_sa_volaju_ako_v_appke():
     assert hk.RELEASES_URL in _read("README.md")
     assert "webbrowser.open(hlas_kniznica.RELEASES_URL)" in zdroj_metody(
         "otvor_vydania_zanshinu")
-    # vety zo stavu pod Zdrojom hlasu, ktore HOW-IT-WORKS cituje
+    # sentences from the status under Voice source that HOW-IT-WORKS quotes
     ako = _plain(AKO)
     assert "*%s*" % _en("edge.update.after_watching") in ako
     assert "*the voice is up to date*" in ako
@@ -121,8 +124,8 @@ def test_tlacidlo_a_odkaz_sa_volaju_ako_v_appke():
 
 
 def test_tlacidlo_len_pri_prirodzenom_hlase_a_v_palete():
-    """Dokumenty: pod Zdrojom hlasu, len pri prirodzenom hlase, aj v Ctrl+K
-    (ktora najprv prejde na Nastavenia -> Zvuk)."""
+    """Documents: under Voice source, only with the natural voice, also in
+    Ctrl+K (which first goes to Settings -> Sound)."""
     assert "ENGINE_EDGE" in zdroj_metody("_obnov_aktualizaciu_hlasu")
     paleta = zdroj_suboru("app_controls.py")
     assert 'tr("edge.update.btn")' in paleta and 'self.sidebar._select("zvuk")' in paleta
@@ -136,19 +139,20 @@ def test_tlacidlo_len_pri_prirodzenom_hlase_a_v_palete():
 
 
 # --------------------------------------------------------------------------
-# PRIVACY: kedy, co ide von, co ostane, ako to zmazat
+# PRIVACY: when, what goes out, what stays, how to delete it
 # --------------------------------------------------------------------------
 
 def test_privacy_len_na_klik_a_nikdy_pocas_sledovania():
     p = _bod_privacy()
     assert "only when you click it" in p
     assert "Never by itself, not at start-up, and **never while Zanshin is watching**" in p
-    # klik pocas sledovania na siet nejde - kontrola je PRED volanim jadra
+    # a click while watching does not go to the network - the check is BEFORE
+    # the core call
     klik = zdroj_metody("aktualizuj_hlas")
     assert klik.index('getattr(self, "listening", False)') < klik.index(
         "hlas_kniznica.aktualizuj(")
     assert 'tr("edge.update.after_watching")' in klik
-    # ... a jadro sa pyta `abort` pred kazdym krokom, ktory ide na siet
+    # ... and the core asks `abort` before every step that goes to the network
     jadro = _funkcia("_aktualizuj")
     assert jadro.index("_skontroluj_abort(abort)") < jadro.index("stiahni_zoznam_vydani()")
     assert jadro.index("_skontroluj_abort(abort)\n        wheel") < jadro.index(
@@ -156,7 +160,7 @@ def test_privacy_len_na_klik_a_nikdy_pocas_sledovania():
     over = _funkcia("_vyskusaj_a_aktivuj")
     assert over.index("_skontroluj_abort(abort)") < over.index("skusobne_slovo(")
     assert "it stops before its next step that uses the network, and nothing changes" in p
-    # PRIVACY uz netvrdi, ze appka nic neaktualizuje
+    # PRIVACY no longer claims that the app updates nothing
     cela = _plain("PRIVACY.md")
     assert "no update-checker" not in cela
     assert "Zanshin never checks for a new version of itself" in cela
@@ -168,29 +172,29 @@ def test_privacy_co_ide_von_menuje_hostitelov_a_slovo_z_kodu():
     assert hk._PYPI_HOSTITELIA == {"pypi.org"}
     assert hk._SUBORY_HOSTITELIA == {"files.pythonhosted.org"}
     assert "`pypi.org`" in p and "`files.pythonhosted.org`" in p
-    # User-Agent: len meno appky, bez verzie
+    # User-Agent: just the app name, no version
     assert hk.USER_AGENT == "Zanshin"
     assert "name only the app (`%s`, no version) and nothing about you" % hk.USER_AGENT in p
     assert '"User-Agent": USER_AGENT' in _read("hlas_kniznica.py")
-    # skusobne slovo: pevny text a hlas, nikdy text pripomienky
+    # test word: fixed text and voice, never the text of a cue
     assert hk.TEST_TEXT == "Zanshin" and hk.TEST_HLAS == "en-GB-SoniaNeural"
     assert 'one fixed test word, **"%s"**' % hk.TEST_TEXT in p
     assert "(voice `%s`)" % hk.TEST_HLAS in p
     assert "Never the wording of your cues" in p
     assert "_syntetizuj(modul, TEST_TEXT, hlas or TEST_HLAS" in _funkcia("skusobne_slovo")
     assert "hlas_kniznica.aktualizuj(cache=cache, abort=zrus)" in zdroj_metody("aktualizuj_hlas")
-    # subor so slovom sa zmaze vzdy (finally)
+    # the file with the word is always deleted (finally)
     slovo = _funkcia("skusobne_slovo")
     assert "finally:" in slovo and slovo.index("finally:") < slovo.index("os.remove(cesta)")
     assert "The sound file is deleted right away." in p
-    # bez novsej verzie slovo overi tu aktualnu; bez PyPI nejde nic dalsie
+    # no newer version: the word checks the current one; no PyPI, nothing else
     assert "or with the current one if there was nothing newer" in p
     assert hk.aktualizuj.__defaults__[-1] is True          # over_aktualnu
     jadro = _funkcia("_aktualizuj")
     assert jadro.index("stiahni_zoznam_vydani()") < jadro.index("skusobne_slovo(")
     assert jadro.index("stiahni_zoznam_vydani()") < jadro.index("stiahni_wheel(")
     assert "If PyPI can't be reached, nothing else is sent." in p
-    # HTTPS s certifikatmi z certifi
+    # HTTPS with certificates from certifi
     assert "certifi.where()" in _funkcia("_otvor")
     assert "The requests to PyPI go over HTTPS." in p
 
@@ -205,40 +209,40 @@ def test_privacy_co_ostane_na_disku_a_ako_to_zmazat(tmp_path, monkeypatch):
     assert "only if its test word worked" in p
     over = _funkcia("_vyskusaj_a_aktivuj")
     assert over.index("skusobne_slovo(") < over.index("_zapis_manifest(")
-    assert "shutil.rmtree(priecinok" in over          # nepresiel = prec
-    # docasne subory kazdeho pokusu a starsia verzia po uspechu idu prec
+    assert "shutil.rmtree(priecinok" in over          # did not pass = gone
+    # each attempt's temp files and the older version after success go away
     assert "The temporary files of each attempt are deleted" in p
     assert "_uprac_tmp()" in _funkcia("_aktualizuj")
     assert "and so is an older downloaded version once the new one works" in p
     assert over.index("_aktivuj(") < over.index("_uprac_stare(")
-    # jeden riadok do app.log na pokus, bez ciest
+    # one line to app.log per attempt, without paths
     assert "Each attempt writes one line to `logs/app.log`" in p
     assert "_zaloguj(vysledok)" in _funkcia("aktualizuj")
-    # pri starte len novsia nez pribalena
+    # at start only if newer than the bundled one
     assert "as long as it's newer than the one built into Zanshin" in p
     assert "je_novsia(verzia, pribalena)" in _funkcia("nacitaj_pri_starte")
-    # zmazany priecinok = pribalena verzia (spravanie, nie len text)
+    # deleted folder = bundled version (behaviour, not just text)
     monkeypatch.setattr(hk, "KNIZNICA_DIR", str(tmp_path / "voice_lib"))
     assert hk.nacitaj_pri_starte(pribalena="7.3.1") is None
     assert ("quit Zanshin and delete the `voice_lib` folder; at the next start "
             "Zanshin uses its built-in version again") in p
-    # "Zmazat historiu" ho nemaze
+    # "Zmazat historiu" (Delete history) does not delete it
     vsetko = [c for _k, c in data_io.MAZATELNE] + [c for _k, c in data_io.MAZATELNE_PRIECINKY]
     assert not any("voice_lib" in c for c in vsetko)
     assert "*%s* doesn't touch it" % _en("data.delete.btn") in p
-    # velkost: radovo 100 KB (.py subory pribaleneho edge-tts)
+    # size: on the order of 100 KB (the .py files of the bundled edge-tts)
     assert "about 100 KB" in p
     edge = __import__("edge_tts")
     priecinok = os.path.dirname(edge.__file__)
     spolu = sum(os.path.getsize(os.path.join(priecinok, f)) for f in os.listdir(priecinok)
                 if f.endswith(".py") or f == "py.typed")
     assert 30 * 1024 < spolu < 300 * 1024, spolu
-    # git ho ignoruje (zo zdrojakov lezi vedla main.py)
+    # git ignores it (when running from source it lies next to main.py)
     assert "voice_lib/" in _read(".gitignore").splitlines()
 
 
 # --------------------------------------------------------------------------
-# SAFETY: co sa kontroluje a pred cim to nechrani
+# SAFETY: what is checked and what it does not protect against
 # --------------------------------------------------------------------------
 
 def test_safety_anglicke_zhrnutie_hovori_o_stiahnutom_kode():
@@ -249,7 +253,7 @@ def test_safety_anglicke_zhrnutie_hovori_o_stiahnutom_kode():
     assert "`pypi.org`" in en and "`files.pythonhosted.org`" in en
     assert "SHA-256" in en and "test word" in en
     assert "with your normal user rights" in en
-    # poctive obmedzenie
+    # an honest limitation
     assert ("if the `edge-tts` project or PyPI itself were compromised, a "
             "malicious version would pass all of it") in en
     assert "No administrator rights, nothing injected, and none of it touches the game" in en
@@ -258,7 +262,8 @@ def test_safety_anglicke_zhrnutie_hovori_o_stiahnutom_kode():
 def test_safety_slovenska_cast_sedi_s_kodom():
     s = _read("SAFETY.md")
     sk = _safety_sk()
-    # odkaz z "Kratkej odpovede" vedie na nadpis (kotva ako na GitHube)
+    # the link from "Kratka odpoved" (Short answer) leads to the heading
+    # (anchor as on GitHub)
     nadpis = [r[3:] for r in s.splitlines() if r.startswith("## Stiahnutý kód")]
     assert len(nadpis) == 1
     kotva = re.sub(r"[^\w\- ]", "", nadpis[0].lower()).replace(" ", "-")
@@ -266,34 +271,34 @@ def test_safety_slovenska_cast_sedi_s_kodom():
     assert "](#%s)" % kotva in kratka
     assert "**%s**" % _sk("edge.update.btn") in sk
     assert "`hlas_kniznica.py`" in sk
-    # len na klik a nikdy pocas sledovania
+    # only on a click and never while watching
     assert "len na klik. Nikdy samo, nikdy pri štarte a nikdy počas sledovania" in sk
-    # 1. HTTPS + presni hostitelia aj po presmerovani
+    # 1. HTTPS + exact hosts, also after a redirect
     assert "`pypi.org`" in sk and "`files.pythonhosted.org`" in sk
     assert "aj po každom presmerovaní" in sk
     assert "_over_url(newurl, self.hostitelia)" in _read("hlas_kniznica.py")
-    # 2. velkost a sha256 z PyPI, strop 2 MB
+    # 2. size and sha256 from PyPI, a 2 MB cap
     assert hk.WHEEL_STROP_B == 2 * 1024 * 1024 and "väčší než 2 MB" in sk
     wheel = _funkcia("stiahni_wheel")
     assert "sha256" in wheel and 'kandidat.get("velkost")' in wheel
-    # 3. na disk len edge_tts/*.py (+ py.typed), nic spustitelne
+    # 3. only edge_tts/*.py (+ py.typed) to disk, nothing executable
     assert "`edge_tts/*.py`" in sk and "`py.typed`" in sk
     rozbal = _funkcia("rozbal_wheel")
     assert 'casti[1] == "py.typed" or _je_modul_py(casti[1])' in rozbal
     assert ".pth" in hk._SPUSTITELNE_PRIPONY and ".pyd" in hk._SPUSTITELNE_PRIPONY
     assert "Pri inštalácii sa nespustí nič" in sk
-    # 4. kod sa len cita (ast)
+    # 4. the code is only read (ast)
     assert "ast.parse(" in _funkcia("skontroluj_kod") and "modul `ast`" in sk
-    # 5. zavislosti uz musia byt v appke; nic dalsie sa nestahuje
+    # 5. dependencies must already be in the app; nothing else is downloaded
     assert "Nič ďalšie sa nesťahuje" in sk
     assert "skontroluj_zavislosti(" in _funkcia("skontroluj_metadata")
-    # 6. az potom kod bezi; ostane len so skusobnym slovom
+    # 6. only then does the code run; it stays only with the test word
     assert "**vtedy už beží**" in sk and "nie ako administrátor" in sk
     assert "jedno skúšobné slovo „%s“" % hk.TEST_TEXT in sk
-    # pri starte: sha256 kazdeho suboru, bez bytecode
+    # at start: sha256 of every file, no bytecode
     assert "_over_subory(priecinok, hashe)" in _funkcia("nacitaj_pri_starte")
     assert "set_data" in _read("hlas_kniznica.py") and "bytecode (`__pycache__`)" in sk
-    # pred cim to nechrani - poctivo
+    # what it does not protect against - honestly
     nechrani = sk[sk.index("**Pred čím to nechráni:**"):]
     assert "škodlivá verzia by prešla všetkými kontrolami" in nechrani
     assert "Odtlačok SHA-256 pochádza tiež z PyPI" in nechrani
@@ -345,7 +350,7 @@ def test_known_issues_hranice_tlacidla():
     otvorene = _plain_text(_sekcia(k, "Still open"))
     assert "***Update voice* can't fix everything**" in otvorene
     assert "[SAFETY.md](SAFETY.md)" in otvorene
-    # odmietnute pre chybajucu zavislost -> "treba novsi Zanshin"
+    # rejected for a missing dependency -> "a newer Zanshin is needed"
     assert hk.STAV_NEKOMPATIBILNY == "incompatible"
     assert "needs a newer Zanshin" in _en("edge.update.incompatible")
     assert "otherwise it says a newer Zanshin is needed" in otvorene
@@ -353,22 +358,23 @@ def test_known_issues_hranice_tlacidla():
 
 def test_how_it_works_aktualizacia_hlasu():
     ako = _plain_text(_sekcia(_read(AKO), "Updating the natural voice"))
-    # finalna verzia, ziadna predbezna ani stiahnuta (yanked)
+    # a final version, nothing pre-release or withdrawn (yanked)
     assert "picks the newest final one (no pre-release, nothing withdrawn)" in ako
     assert 'not f.get("yanked")' in _funkcia("vyber_kandidata")
     assert 'one test word, "%s", through Microsoft' % hk.TEST_TEXT in ako
-    # pri neuspechu nic nove, odkaz len tam, kde pomoze az novy Zanshin
+    # on failure nothing new, the link only where only a new Zanshin helps
     import app_audio
     odkazy = {stav for stav, (_s, _l, _ok, odkaz) in app_audio._VYSLEDKY_AKTUALIZACIE.items()
               if odkaz}
     assert odkazy == {hk.STAV_STALE_ODMIETNUTY, hk.STAV_NEKOMPATIBILNY}
     assert "Microsoft refuses even the newest version, or the update needs a newer Zanshin" in ako
-    # pocas aktualizacie priprava caka; po uspechu sa pripravia chybajuce
+    # during the update, voice preparation waits; after success the missing
+    # ones get prepared
     assert "_aktualizacia_hlasu_bezi" in zdroj_metody("pregenerate")
     assert "Preparing asked for in the meantime waits for the result." in ako
     assert "self.pregenerate(force=True)" in zdroj_metody("_aktualizacia_hlasu_hotova")
     assert "cues still missing their natural voice are prepared right after" in ako
-    # pokazena stiahnuta pri starte: pribalena + app.log, dalej sa neskusa
+    # a broken downloaded one at start: bundled + app.log, not tried again
     assert "oznac_pokazenu(dovod)" in _funkcia("nacitaj_pri_starte")
     assert 'manifest.get("broken")' in _funkcia("nacitaj_pri_starte")
     assert "doesn't try the downloaded one again until **Update voice** replaces it" in ako
@@ -385,20 +391,21 @@ def test_development_tabulka_priecinok_a_spec():
     zdroj = _plain_text(_sekcia(vyvoj, "Run from source"))
     assert "`voice_lib\\` next to `main.py` (git ignores that folder" in zdroj
     assert "`%APPDATA%\\Zanshin\\voice_lib`" in zdroj
-    # zoznam zavislosti v spec == zoznam v DEVELOPMENT
+    # the dependency list in the spec == the list in DEVELOPMENT
     spec = _read("Dandurf.spec")
     m = re.search(r"_EDGE_ZAVISLOSTI = \(([^)]*)\)", spec)
     baliky = re.findall(r"'([\w.]+)'", m.group(1))
     build = _plain_text(_sekcia(vyvoj, "What build.bat does"))
     for balik in baliky:
-        if balik == "attr":          # modul balika attrs
+        if balik == "attr":          # module of the attrs package
             continue
         assert balik in build, balik
     assert "copy_metadata('typing_extensions')" in spec and "typing_extensions" in build
     assert "'aiohttp.pytest_plugin'" in spec
     assert "without aiohttp's test modules (they would pull in pytest)" in build
     assert "I estimate under 2 MB more, but haven't measured it." in build
-    # testy na siet nejdu - autouse fixture nahradi siet aj skusobne slovo
+    # tests do not go to the network - an autouse fixture replaces the network
+    # and the test word
     testy = _plain_text(_sekcia(vyvoj, "Tests"))
     assert "No test goes to the network." in testy
     for subor in ("test_022h_hlas_kniznica.py", "test_022h_aktualizuj_hlas.py"):
@@ -409,21 +416,21 @@ def test_development_tabulka_priecinok_a_spec():
 
 
 # --------------------------------------------------------------------------
-# Poctive vety, ktore by mutacia inak presla (overenie dokumentov)
+# Honest sentences that a mutation would otherwise get past (document checks)
 # --------------------------------------------------------------------------
 
 def test_poctive_vety_o_tlacidle_drzia_vo_vsetkych_dokumentoch():
-    """Kazda veta tu je sluba o tom, kedy tlacidlo ide na siet, co si necha
-    a pred cim nechrani. Bez tohto testu ju slo vyhodit alebo obratit
-    (napr. "keeps it only if that worked" -> "keeps it") a vsetky dokumentove
-    testy presli."""
+    """Every sentence here is a promise about when the button goes to the
+    network, what it keeps and what it does not protect against. Without
+    this test it could be dropped or reversed (e.g. "keeps it only if that
+    worked" -> "keeps it") and all the document tests passed."""
     over = _funkcia("_vyskusaj_a_aktivuj")
-    # necha sa len to, co povedalo skusobne slovo (manifest az po nom)
+    # only what the test word confirmed is kept (the manifest only after it)
     assert over.index("skusobne_slovo(") < over.index("_zapis_manifest(")
-    # abort sa pyta len PRED krokom: ziadost, ktora uz leti, dobehne
+    # abort is asked only BEFORE a step: a request already in flight finishes
     assert "abort" not in _funkcia("_http_get") and "abort" not in _funkcia("skusobne_slovo")
 
-    # PRIVACY: priprava hlasok hned po uspechu je dalsie "kedy" pre texty
+    # PRIVACY: cue preparation right after success is another "when" for texts
     assert ("and from 0.3 right after **Update voice** worked, if a cue's line "
             "is still missing") in _plain("PRIVACY.md")
     assert "self.pregenerate(force=True)" in zdroj_metody("_aktualizacia_hlasu_hotova")
@@ -432,8 +439,8 @@ def test_poctive_vety_o_tlacidle_drzia_vo_vsetkych_dokumentoch():
             "next step that uses the network, and nothing changes") in p
     assert "and what that can't protect you from, is in [`SAFETY.md`](SAFETY.md)" in p
 
-    # SAFETY po anglicky: dovod obmedzenia, najnovsia verzia, bez podpisu,
-    # vlastny build, a co sa deje pri kazdom starte
+    # SAFETY in English: the reason for the limitation, the newest version, no
+    # signature, own build, and what happens on every start
     en = _safety_en()
     assert "Never by itself and never while Zanshin is watching: only your click starts a download." in en
     assert "because the fingerprint comes from PyPI too" in en
@@ -449,7 +456,7 @@ def test_poctive_vety_o_tlacidle_drzia_vo_vsetkych_dokumentoch():
     assert "_over_subory(priecinok, hashe)" in start and "je_novsia(verzia, pribalena)" in start
     assert "hlas_kniznica.nacitaj_pri_starte()" in _read("audio_engine.py")
 
-    # SAFETY po slovensky
+    # SAFETY in Slovak
     sk = _safety_sk()
     assert ("Pred každým krokom, ktorý ide na sieť, sa appka pozrie, či sa medzitým "
             "nezačalo sledovať; ak áno, skončí a nič nezmení.") in sk
@@ -465,7 +472,7 @@ def test_poctive_vety_o_tlacidle_drzia_vo_vsetkych_dokumentoch():
             "by zmenil aj manifest") in sk
     assert "nič sa nevkladá do hry ani do iného procesu" in sk
 
-    # README: necha si ho len, ked funguje; v Sukromi aj hranica kontrol
+    # README: keeps it only if it works; Privacy also has the limit of checks
     readme = _read("README.md")
     bod = _plain_text(_sekcia(readme, "Troubleshooting"))
     assert "tests it with one word and keeps it only if it works" in bod
@@ -488,20 +495,21 @@ def test_poctive_vety_o_tlacidle_drzia_vo_vsetkych_dokumentoch():
 
 
 def test_safety_priznava_zavislost_bez_zistenej_verzie(monkeypatch):
-    """Bod 5: zavislost, ktorej verzia sa zistit neda, appka PREPUSTI (len
-    ju zapise do app.log) - dokument nesmie tvrdit, ze verzia sa overi vzdy.
-    A znacka py.typed sa zapise s hocijakym obsahom - "prazdna" nie je
-    kontrola, takze to dokument netvrdi."""
+    """Point 5: a dependency whose version cannot be found out is LET THROUGH
+    by the app (it only writes it to app.log) - the document must not claim
+    that the version is always verified. And the py.typed marker is written
+    with any content at all - "empty" is not a check, so the document does
+    not claim it."""
     sk = _safety_sk()
     assert ("Keď sa verzia niektorej z nich zistiť nedá, appka ju pustí ďalej, "
             "zapíše to do `app.log` a rozhodne až import a skúšobné slovo.") in sk
     assert "neoverene.append(dist)" in _funkcia("skontroluj_zavislosti")
     assert '"verzia bez overenia: "' in _funkcia("_aktualizuj")
     assert "_zaloguj(vysledok)" in _funkcia("aktualizuj")
-    # spravanie: importovatelny balik bez zistitelnej verzie neblokuje
+    # behaviour: an importable package with no known version does not block
     monkeypatch.setattr(hk, "_najdi_modul", lambda dist: "nejaky_modul")
     monkeypatch.setattr(hk, "_verzia_balika", lambda dist, modul: None)
     assert hk.skontroluj_zavislosti(["nejaky-balik>=1.0"]) == ([], ["nejaky-balik"])
-    # py.typed: rozbal_wheel neskuma obsah, dokument nehovori "prazdna"
+    # py.typed: rozbal_wheel ignores the content, the doc does not say "empty"
     assert 'casti[1] == "py.typed"' in _funkcia("rozbal_wheel")
     assert "prázdna značka" not in sk and "značka `py.typed`" in sk

@@ -1,15 +1,16 @@
 # -*- coding: utf-8 -*-
-"""Stropy na to, co si klient na porte 4455 voli sam (0.2.1).
+"""Caps on what a client on port 4455 chooses by itself (0.2.1).
 
-Port je v LAN bez hesla (zamerne - hrac v telefone nic nevyplna). O to viac
-nesmie platit, ze hocico v LAN urci, kolko pamate, CPU a riadkov denniku
-appka minie:
+The port is on the LAN without a password (deliberately - the player fills
+in nothing on the phone). All the more it must not be true that anything on
+the LAN decides how much memory, CPU and journal lines the app spends:
 
-  * mena zdrojov (`inputName`) sa pamatali bez limitu a kazda odpoved na
-    GetInputList/GetSceneItemList ich posielala vsetky,
-  * odmaskovanie ramca islo po bajte v Pythone, pri ramcoch do 1 MB,
-  * klientom zvoleny `requestType` isiel do denniku cely (`%r`),
-  * prvych 40 surovych sprav z hodiniek islo do denniku pri kazdom behu.
+  * source names (`inputName`) were remembered without a limit and every
+    reply to GetInputList/GetSceneItemList sent all of them,
+  * unmasking a frame went byte by byte in Python, for frames up to 1 MB,
+  * the client-chosen `requestType` went to the journal in full (`%r`),
+  * the first 40 raw messages from the watch went to the journal on every
+    run.
 """
 import logging
 import os
@@ -25,7 +26,7 @@ import obs_websocket  # noqa: E402
 
 
 def _odmaskuj_po_bajte(payload, mask):
-    """Povodna (pomala) implementacia - referencia spravnosti."""
+    """The original (slow) implementation - a reference for correctness."""
     return bytes(b ^ mask[i % 4] for i, b in enumerate(payload))
 
 
@@ -42,8 +43,8 @@ def _ramec(payload, opcode=0x1, mask=None):
 
 
 def _precitaj(data, timeout=5.0):
-    """`read_frame` nad skutocnym socketom; data posiela druhe vlakno, lebo
-    64 kB sa do bufferu socketu nemusi zmestit naraz."""
+    """`read_frame` over a real socket; a second thread sends the data,
+    because 64 kB may not fit into the socket buffer at once."""
     server, druhy = socket.socketpair()
     server.settimeout(timeout)
     posielac = threading.Thread(target=lambda: _posli_ticho(druhy, data),
@@ -60,11 +61,11 @@ def _posli_ticho(sock, data):
     try:
         sock.sendall(data)
     except OSError:
-        pass                    # server ramec odmietol a zavrel - to je v poriadku
+        pass                    # the server rejected the frame and closed - that is fine
 
 
 # ---------------------------------------------------------------------------
-# odmaskovanie ramca
+# frame unmasking
 # ---------------------------------------------------------------------------
 
 def test_rychle_odmaskovanie_dava_to_iste_co_povodne():
@@ -77,9 +78,9 @@ def test_rychle_odmaskovanie_dava_to_iste_co_povodne():
 
 
 def test_odmaskovanie_zachova_uvodne_nuly():
-    """Cez cele cislo by sa uvodne nulove bajty lahko stratili."""
+    """Via a whole integer, leading zero bytes could easily get lost."""
     mask = b"\x01\x02\x03\x04"
-    payload = b"\x01\x02\x03\x04" * 3 + b"AB"      # prve bajty vyjdu nulove
+    payload = b"\x01\x02\x03\x04" * 3 + b"AB"      # the first bytes come out as zero
     von = obs_websocket._odmaskuj(payload, mask)
     assert len(von) == len(payload)
     assert von == _odmaskuj_po_bajte(payload, mask)
@@ -87,13 +88,13 @@ def test_odmaskovanie_zachova_uvodne_nuly():
 
 
 def test_read_frame_vsetky_tri_kodovania_dlzky():
-    for n in (5, 300, obs_websocket._MAX_RAMEC):   # 7-bit, 16-bit, 64-bit dlzka
+    for n in (5, 300, obs_websocket._MAX_RAMEC):   # 7-bit, 16-bit, 64-bit length
         payload = os.urandom(n)
         assert _precitaj(_ramec(payload)) == (0x1, payload), n
 
 
 def test_ramec_nad_strop_sa_odmietne():
-    """Skutocne spravy maju stovky bajtov; 1 MB strop bol len miesto na DoS."""
+    """Real messages are hundreds of bytes; 1 MB cap was just room for DoS."""
     assert obs_websocket._MAX_RAMEC <= 64 * 1024
     velky = os.urandom(obs_websocket._MAX_RAMEC + 1)
     assert _precitaj(_ramec(velky)) == (None, None)
@@ -104,7 +105,7 @@ def test_ticho_medzi_ramcami_nie_je_koniec_spojenia():
     try:
         server.settimeout(0.1)
         assert obs_websocket.read_frame(server) == (obs_websocket.TICHO, None)
-        # a spojenie je stale v poriadku - dalsi ramec sa precita cely
+        # and the connection is still fine - the next frame is read in full
         druhy.sendall(_ramec(b"ahoj"))
         server.settimeout(5.0)
         assert obs_websocket.read_frame(server) == (0x1, b"ahoj")
@@ -114,10 +115,10 @@ def test_ticho_medzi_ramcami_nie_je_koniec_spojenia():
 
 
 def test_limit_uprostred_ramca_ukonci_spojenie_bez_vynimky():
-    """Doteraz by vynimka z polovice ramca vyletela az do `heart_rate`."""
+    """Before, an exception mid-frame flew all the way up to `heart_rate`."""
     server, druhy = socket.socketpair()
     try:
-        druhy.sendall(_ramec(b"x" * 50)[:10])        # hlavicka + kus tela
+        druhy.sendall(_ramec(b"x" * 50)[:10])        # header + a piece of the body
         server.settimeout(0.2)
         assert obs_websocket.read_frame(server) == (None, None)
     finally:
@@ -126,7 +127,7 @@ def test_limit_uprostred_ramca_ukonci_spojenie_bez_vynimky():
 
 
 # ---------------------------------------------------------------------------
-# mena zdrojov
+# source names
 # ---------------------------------------------------------------------------
 
 def _poziadavka(typ, meno=None, text=None):
@@ -153,7 +154,7 @@ def test_mena_zdrojov_od_klienta_maju_strop():
 
 
 def test_prve_mena_sa_stale_pamataju():
-    """Strop nesmie rozbit to, kvoli comu sa mena pamataju."""
+    """The cap must not break the reason why names are remembered."""
     vlastne = set()
     obs_websocket._odbav(_poziadavka("CreateInput", "speed"),
                          lambda t, z: None, vlastne, set())
@@ -164,8 +165,9 @@ def test_prve_mena_sa_stale_pamataju():
 
 
 def test_zapis_s_nezapamatanym_menom_ide_dalej():
-    """Co sa do zoznamu nezmesti, sa len nezapamata - tep ide dalej aj s
-    menom zdroja, bez ktoreho by sa kroky citali ako tep."""
+    """What does not fit into the list is just not remembered - the heart
+    rate goes on, still with the source name, without which steps would be
+    read as heart rate."""
     vlastne = set("plne%d" % i for i in range(obs_websocket._MAX_VLASTNYCH))
     zapisy = []
     obs_websocket._odbav(_poziadavka("SetInputSettings", "Tep navyse", "70"),
@@ -183,8 +185,9 @@ def test_prilis_dlhe_meno_sa_nezapamata():
 
 
 def test_beh_si_nepamata_neobmedzene_vela_mien_zdrojov():
-    """`note_source` rozhoduje len "jeden, alebo viac" - viac nez dve mena
-    netreba. Doteraz rastla mnozina do restartu senzora s kazdym menom."""
+    """`note_source` decides only "one, or more" - more than two names are
+    not needed. Until now the set grew with every name until the sensor
+    restarted."""
     r = heart_rate._Run(1)
     assert r.note_source("Tep") is True
     assert r.note_source("Tep") is True
@@ -194,7 +197,7 @@ def test_beh_si_nepamata_neobmedzene_vela_mien_zdrojov():
 
 
 # ---------------------------------------------------------------------------
-# dennik
+# journal
 # ---------------------------------------------------------------------------
 
 def _riadky(caplog, logger):
@@ -235,8 +238,8 @@ def test_skratenie_pre_dennik():
 
 
 def test_surovych_sprav_z_hodiniek_ide_do_denniku_len_par(caplog):
-    """Je to na zistenie, co hodinky pri parovani posielaju - nie zaznam
-    tepu. 40 surovych hodnot pri kazdom spusteni bolo privela."""
+    """It is for finding out what the watch sends while pairing - not a
+    heart-rate record. 40 raw values on every start was too many."""
     caplog.set_level(logging.INFO, logger="zanshin")
     mon = heart_rate.HeartRateMonitor(on_bpm=lambda bpm, gen: None)
     run = heart_rate._Run(1)

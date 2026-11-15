@@ -1,24 +1,27 @@
 # -*- coding: utf-8 -*-
-"""0.2.1: Microsoftu idú len texty hlášok, ktoré prirodzený hlas naozaj povie.
+"""0.2.1: Microsoft gets only the cue texts the natural voice will really say.
 
-Dve chyby v príprave Edge hlasu (`pregen_jobs` / `pregenerate`, app_audio.py):
+Two bugs in the Edge voice preparation (`pregen_jobs` / `pregenerate`,
+app_audio.py):
 
-  1. Na syntézu sa posielali texty VŠETKÝCH slotov s hlasom - aj vypnutej
-     hlášky (`_dalsi_cue_slot` ju v hre preskakuje), hlášky s vlastnou
-     nahrávkou (`_speak_text` prehrá nahrávku, nie TTS) a slotu navyše
-     z 0.1 (index 4+, „+ Pridať spúšťač“ - appka ho sama nespúšťa).
-     Teraz len `_slot_na_pripravu`: zapnutá kategória s hlasom, s textom
-     a bez platnej nahrávky. Zapnutie hlášky (`SlotCard.on_enabled_change`)
-     a zmazanie nahrávky prípravu spustia znova - tak ako iné zmeny, vrátane
-     „nič nové počas počúvania“, štýlu hlas a sveta Hra.
+  1. The texts of ALL slots with voice were sent for synthesis - also a
+     switched-off cue (`_dalsi_cue_slot` skips it in game), cues with
+     their own recording (`_speak_text` plays the recording, not TTS) and
+     the extra slot from 0.1 (index 4+, "+ Pridať spúšťač" - the app does
+     not fire it by itself). Now only `_slot_na_pripravu`: an enabled
+     category with voice, with text and without a valid recording.
+     Enabling a cue (`SlotCard.on_enabled_change`) and deleting a
+     recording start the preparation again - like the other changes,
+     including "nothing new while listening", the voice style and the
+     Play world.
 
-  2. Prepnutie na hlas z Windows (`on_engine_change`) nezvýšilo
-     `_pregen_seq`, takže rozbehnutá príprava poslala Microsoftu aj zvyšok.
-     To isté pri prepnutí na štýl bez slov / do Práce / pri vypnutí všetkých
-     hlášok: `pregenerate` s prázdnym zoznamom `seq` nezvýšil vôbec.
-     Teraz každá zmena, ktorá prípravu plánuje, starú prípravu HNEĎ zastaví
-     (`_zrus_rozbehnutu_pripravu`); hláška, ktorá už letí, dobehne - rovnako
-     ako keď sa zapne počúvanie.
+  2. Switching to the Windows voice (`on_engine_change`) did not increase
+     `_pregen_seq`, so a running preparation sent the rest to Microsoft
+     too. The same when switching to the style without words / to Work /
+     when turning off all cues: `pregenerate` with an empty list did not
+     increase `seq` at all. Now every change that schedules preparation
+     stops the old preparation AT ONCE (`_zrus_rozbehnutu_pripravu`); a
+     cue already in flight finishes - just as when listening is turned on.
 """
 import os
 import sys
@@ -58,16 +61,17 @@ class _Root:
         pass
 
     def spusti(self):
-        """Spustí naplánované úlohy (odklad `schedule_pregenerate`)."""
+        """Runs the scheduled tasks (the `schedule_pregenerate` delay)."""
         ulohy, self.ulohy = self.ulohy, []
         for _ms, fn in ulohy:
             fn()
 
 
 def _atrapa(monkeypatch, slots, pocuva=False, styl="voice", svet="play"):
-    """Atrapa s ozajstnou prípravou (`pregenerate`, `schedule_pregenerate`,
-    `pregen_jobs`, `on_engine_change`...). Vlákno sa nespúšťa, len zapíše
-    (`a.vlakna`); cache si pamätá, čo sa „poslalo“ (`a.posielane`)."""
+    """A fake with the real preparation (`pregenerate`,
+    `schedule_pregenerate`, `pregen_jobs`, `on_engine_change`...). The
+    thread is not started, only recorded (`a.vlakna`); the cache remembers
+    what was "sent" (`a.posielane`)."""
     import audio_engine
     app_mod = _app()
     import app_audio
@@ -81,13 +85,13 @@ def _atrapa(monkeypatch, slots, pocuva=False, styl="voice", svet="play"):
         pal={"success": "g", "warn": "y", "danger": "r", "text_dim": "d"},
         stavy=[], posielane=[], hotove=set(), vlakna=[], ui=[], logy=[],
         hovorene=[], root=_Root(),
-        # obrazky v hre zapnute (predvolene) - hlaska s vypnutym obrazkom
-        # sa nepripravuje, to strazi test_021c_pregen_obrazok.py
+        # in-game pictures on (default) - a cue with its picture off is not
+        # prepared, that is guarded by test_021c_pregen_obrazok.py
         overlay_configs=[{"enabled": True} for _ in range(4)])
 
     def ensure(text, voice, rate, abort=None):
         if text in a.hotove:
-            return "hotova.mp3"             # z cache - na siet nejde
+            return "hotova.mp3"             # from the cache - does not go to the network
         a.posielane.append(text)
         a.hotove.add(text)
         return "hotova.mp3"
@@ -108,7 +112,8 @@ def _atrapa(monkeypatch, slots, pocuva=False, styl="voice", svet="play"):
                  "_slot_voice_clip", "_hlasky_hovoria", "_ma_obrazok_v_hre",
                  "_zrus_rozbehnutu_pripravu", "on_engine_change"):
         setattr(a, meno, types.MethodType(getattr(D, meno), a))
-    # `pregenerate` číta `threading` z modulu app_audio (docstring modulu)
+    # `pregenerate` reads `threading` from the app_audio module (module
+    # docstring)
     monkeypatch.setattr(app_audio.threading, "Thread",
                         lambda *x, **k: a.vlakna.append(k) or types.SimpleNamespace(
                             start=lambda: None))
@@ -116,7 +121,7 @@ def _atrapa(monkeypatch, slots, pocuva=False, styl="voice", svet="play"):
 
 
 def _dobehni(a):
-    """Spustí telo posledného vlákna prípravy na mieste (bez vlákna)."""
+    """Runs the body of the last preparation thread in place (no thread)."""
     a.vlakna[-1]["target"]()
 
 
@@ -127,7 +132,7 @@ def _prepni_na_windows(a):
 
 
 # --------------------------------------------------------------------------
-# 1. Čo sa pripravuje
+# 1. What gets prepared
 # --------------------------------------------------------------------------
 
 def test_pripravuju_sa_len_hlasky_ktore_edge_v_hre_povie(monkeypatch, tmp_path):
@@ -135,14 +140,14 @@ def test_pripravuju_sa_len_hlasky_ktore_edge_v_hre_povie(monkeypatch, tmp_path):
     nahravka.write_bytes(b"RIFF")
     a = _atrapa(monkeypatch, [
         _slot(0, "Breathe", MODE_COMBO),
-        _slot(1, "Jaw", enabled=False),                       # vypnutá
-        _slot(2, "Release", voice_path=str(nahravka)),       # vlastná nahrávka
+        _slot(1, "Jaw", enabled=False),                       # switched off
+        _slot(2, "Release", voice_path=str(nahravka)),       # own recording
         _slot(3, "Ground", voice_path=str(tmp_path / "zmazana.wav")),
-        _slot(4, "Stary spustac z 0.1"),                      # slot navyše
+        _slot(4, "Stary spustac z 0.1"),                      # extra slot
         _slot(5, "Druhy z 0.1", MODE_COMBO, enabled=False),
     ])
-    # Nahrávka, ktorej súbor zmizol, sa neprehrá (`_slot_voice_clip`) -
-    # hlášku povie TTS, takže sa pripraviť musí.
+    # A recording whose file has disappeared is not played (`_slot_voice_clip`)
+    # - TTS says the cue, so it must be prepared.
     assert a.pregen_jobs() == [("Breathe", HLAS), ("Ground", HLAS)]
 
     a.pregenerate()
@@ -166,11 +171,11 @@ def test_vsetky_vypnute_nic_neposle_ani_nezacne(monkeypatch):
 
 
 # --------------------------------------------------------------------------
-# 1b. Zapnutie hlášky / zmazanie nahrávky prípravu spustí znova
+# 1b. Enabling a cue / deleting a recording starts the preparation again
 # --------------------------------------------------------------------------
 
 def _zapni(a, slot, zapnut=True):
-    """Prepínač na karte hlášky - ozajstný `SlotCard.on_enabled_change`."""
+    """Switch on the cue card - the real `SlotCard.on_enabled_change`."""
     import ui_dialogs
     slot.app = a
     slot.enabled_var = types.SimpleNamespace(get=lambda: zapnut)
@@ -219,7 +224,7 @@ def test_zapnutie_v_style_bez_slov_ani_v_praci_nic_neposle(monkeypatch):
 
 
 def test_zmazanie_nahravky_hlasku_pripravi(monkeypatch, tmp_path):
-    """Z nahrávky späť na hlas - ozajstné `clear_voice` / `_commit_voice`."""
+    """Recording back to voice - the real `clear_voice` / `_commit_voice`."""
     import ui_dialogs
     nahravka = tmp_path / "voice_abc.wav"
     nahravka.write_bytes(b"RIFF")
@@ -239,8 +244,9 @@ def test_zmazanie_nahravky_hlasku_pripravi(monkeypatch, tmp_path):
 
 
 def test_test_vypnutej_alebo_starej_hlasky_zaznie_cez_windows(monkeypatch):
-    """Tlačidlo Test na hláške, ktorá sa nepripravuje: zaznie hlas z Windows,
-    nič sa nepripravuje a denník nesľubuje prípravu, ktorá nepríde."""
+    """The Test button on a cue that is not prepared: the Windows voice
+    sounds, nothing is prepared and the journal does not promise a
+    preparation that will not come."""
     D = _app().DandurfApp
     for pocuva in (False, True):
         for slot in (_slot(0, "Jaw", enabled=False), _slot(4, "Stary z 0.1")):
@@ -250,7 +256,7 @@ def test_test_vypnutej_alebo_starej_hlasky_zaznie_cez_windows(monkeypatch):
             assert a._pregen_po_hre is False
             assert a.hovorene == [(slot.text_value, "sapi")]
 
-    # Zapnutá kategória, ktorá ešte nie je pripravená, sa pripraví ako doteraz.
+    # An enabled category that is not prepared yet is prepared as before.
     slot = _slot(0, "Breathe")
     a = _atrapa(monkeypatch, [slot])
     D._speak_text(a, "Breathe", slot)
@@ -259,7 +265,7 @@ def test_test_vypnutej_alebo_starej_hlasky_zaznie_cez_windows(monkeypatch):
 
 
 # --------------------------------------------------------------------------
-# 2. Prepnutie na hlas z Windows zastaví zvyšok rozbehnutej prípravy
+# 2. Switching to the Windows voice stops the rest of a running preparation
 # --------------------------------------------------------------------------
 
 def _tri():
@@ -272,7 +278,7 @@ def test_prepnutie_na_windows_uprostred_pripravy_zvysok_neposle(monkeypatch):
     def posli(text, voice, rate, abort=None):
         a.posielane.append(text)
         if len(a.posielane) == 1:
-            _prepni_na_windows(a)          # hráč prepne počas prvej hlášky
+            _prepni_na_windows(a)          # the player switches during the first cue
         return "hotova.mp3"
 
     a.edge_cache.ensure = posli
@@ -285,8 +291,8 @@ def test_prepnutie_na_windows_uprostred_pripravy_zvysok_neposle(monkeypatch):
 
 
 def test_hlaska_cakajuca_na_zamku_sa_po_prepnuti_vzda(monkeypatch):
-    """`abort` (pýta sa po získaní zámku, tesne pred odoslaním) vráti True,
-    keď sa medzitým prepol hlas na Windows."""
+    """`abort` (asks after getting the lock, right before sending) returns
+    True when the voice has meanwhile been switched to Windows."""
     a = _atrapa(monkeypatch, _tri())
     odpovede = []
 
@@ -294,7 +300,7 @@ def test_hlaska_cakajuca_na_zamku_sa_po_prepnuti_vzda(monkeypatch):
         if text == "Breathe":
             a.posielane.append(text)
             return "hotova.mp3"
-        _prepni_na_windows(a)              # kým čakala na zámku
+        _prepni_na_windows(a)              # while it was waiting on the lock
         odpovede.append(abort())
         return None
 
@@ -307,8 +313,9 @@ def test_hlaska_cakajuca_na_zamku_sa_po_prepnuti_vzda(monkeypatch):
 
 
 def test_prepnutie_na_windows_so_skutocnou_cache_a_vlaknom(monkeypatch, tmp_path):
-    """Ozajstný `EdgeTTSCache` a ozajstné vlákno; namiesto Microsoftu atrapa
-    `edge_tts.Communicate`. Hláška, ktorá letí, dobehne - ďalšia sa nezačne."""
+    """Real `EdgeTTSCache` and a real thread; instead of Microsoft a fake
+    `edge_tts.Communicate`. A cue in flight finishes - the next one does
+    not start."""
     import asyncio
     import audio_engine
     realne_vlakno = threading.Thread
@@ -337,7 +344,7 @@ def test_prepnutie_na_windows_so_skutocnou_cache_a_vlaknom(monkeypatch, tmp_path
     vlakno = realne_vlakno(target=a.vlakna[0]["target"])
     vlakno.start()
     assert leti.wait(5)
-    _prepni_na_windows(a)                  # uprostred prvej hlášky
+    _prepni_na_windows(a)                  # in the middle of the first cue
     pusti.set()
     vlakno.join(5)
     assert not vlakno.is_alive()
@@ -370,18 +377,18 @@ def test_navrat_na_prirodzeny_hlas_dopripravi_zvysok(monkeypatch):
 
 
 # --------------------------------------------------------------------------
-# 2b. Ostatné zmeny, po ktorých hláška nezaznie, zastavia prípravu tiež
+# 2b. Other changes after which a cue will not sound stop the preparation too
 # --------------------------------------------------------------------------
 
 def _styl_bez_slov(a):
-    """Ozajstné `_on_cue_style_label` (Nastavenia -> Zvuk)."""
+    """The real `_on_cue_style_label` (Settings -> Sound)."""
     D = _app().DandurfApp
     a._nastav_styl_hlasky = lambda styl: setattr(a, "cue_style", styl)
     D._on_cue_style_label(a, i18n.tr("cue_style.sound"))
 
 
 def _do_prace(a):
-    # `set_world` nakoniec volá `schedule_pregenerate(200)` (test_worlds.py)
+    # `set_world` finally calls `schedule_pregenerate(200)` (test_worlds.py)
     a.world = "work"
     a.schedule_pregenerate(200)
 
@@ -391,9 +398,9 @@ def _vypni_jaw(a):
 
 
 def _nahravka_na_jaw(a):
-    """Vlastná nahrávka pre Jaw - `_commit_voice` ako po nahratí."""
+    """Own recording for Jaw - `_commit_voice` as after recording."""
     import ui_dialogs
-    a.slots[1].voice_path = __file__        # existujúci súbor
+    a.slots[1].voice_path = __file__        # an existing file
     D = ui_dialogs.SlotSettingsDialog
     dialog = types.SimpleNamespace(
         slot=a.slots[1], app=a, _voice_clip_text=lambda: "",
@@ -402,8 +409,9 @@ def _nahravka_na_jaw(a):
 
 
 def test_zmena_uprostred_pripravy_zastavi_zvysok_hned(monkeypatch):
-    """Po zmene, ktorá hlášku umlčí, nezačne ďalšia požiadavka ani počas
-    odkladu `schedule_pregenerate` - stará príprava končí hneď."""
+    """After a change that silences the cue, no next request starts, not
+    even during the `schedule_pregenerate` delay - the old preparation
+    ends at once."""
     for zmena, potom in ((_styl_bez_slov, []), (_do_prace, []),
                          (_vypni_jaw, ["Release"]),
                          (_nahravka_na_jaw, ["Release"])):
@@ -415,14 +423,14 @@ def test_zmena_uprostred_pripravy_zastavi_zvysok_hned(monkeypatch):
             a.posielane.append(text)
             a.hotove.add(text)
             if len(a.posielane) == 1:
-                zmena(a)                   # počas prvej hlášky
+                zmena(a)                   # during the first cue
             return "hotova.mp3"
 
         a.edge_cache.ensure = posli
         a.pregenerate()
         _dobehni(a)
         assert a.posielane == ["Breathe"], zmena.__name__
-        # Naplánovaná príprava si zistí, čo ešte smie a chýba.
+        # The scheduled run checks what is still allowed and still missing.
         vlakna = len(a.vlakna)
         a.root.spusti()
         if len(a.vlakna) > vlakna:
@@ -432,8 +440,9 @@ def test_zmena_uprostred_pripravy_zastavi_zvysok_hned(monkeypatch):
 
 
 def test_prazdna_priprava_zastavi_rozbehnutu(monkeypatch):
-    """`pregenerate`, ktorý zistí, že netreba nič (napr. po prepnutí štýlu
-    cez inú cestu než `schedule_pregenerate`), starú prípravu tiež zastaví."""
+    """A `pregenerate` that finds nothing is needed (e.g. after switching the
+    style via a path other than `schedule_pregenerate`) also stops the old
+    preparation."""
     a = _atrapa(monkeypatch, _tri())
 
     def posli(text, voice, rate, abort=None):
@@ -451,8 +460,8 @@ def test_prazdna_priprava_zastavi_rozbehnutu(monkeypatch):
 
 
 def test_windows_hlas_neplanuje_nic_ale_zastavi(monkeypatch):
-    """`schedule_pregenerate` pri hlase z Windows nič nenaplánuje - no
-    prípravu, ktorá by ešte bežala, zastaví aj tak."""
+    """`schedule_pregenerate` schedules nothing with the Windows voice - but
+    it still stops a preparation that might be running."""
     a = _atrapa(monkeypatch, _tri())
     a.engine = ENGINE_SAPI
     seq = a._pregen_seq

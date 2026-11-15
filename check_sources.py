@@ -1,24 +1,27 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Overi, ci URL zdrojov (studii) v Sprievodcovi este ziju.
+"""Checks whether the source (study) URLs in the Guide are still alive.
 
-Preco to je samostatny skript
+Why this is a separate script
 -----------------------------
-Odkazy na studie starnu - casopis presunie clanok, DOI sa zmeni, stranka
-zhasne. Mrtvy odkaz v casti "veda za appkou" podkopava presne to, co ma
-budovat: doveryhodnost. Tento skript prejde vsetky URL z guide_content.py,
-skusi ich otvorit a nahlasi, ktore uz nevedu na 200 OK.
+Links to studies age - a journal moves an article, a DOI changes, a page goes
+dark. A dead link in the "science behind the app" part undermines exactly what
+it is meant to build: credibility. This script goes through all URLs from
+guide_content.py, tries to open them and reports which ones no longer lead to
+200 OK.
 
-NEBEZI automaticky pri builde (potrebuje siet, a build ma byt offline). Spusti
-ho rucne raz za cas, alebo pred vydanim:
+It does NOT run automatically during the build (it needs the network, and the
+build is meant to be offline). Run it by hand once in a while, or before a
+release:
 
     python check_sources.py
 
-Navratovy kod 0 = vsetky odkazy ziju, 1 = aspon jeden je mrtvy/presmerovany
-inam. Timeout na odkaz je 8 s; ked nemas siet, skript to povie a skonci
-neutralne (nie ako chyba v odkazoch). Offline = ziaden server neodpovedal
-a VSETKY odkazy zlyhali uz na sieti (DNS, nedosiahnutelna siet, timeout) -
-vtedy sa neskontrolovalo nic a zoznam "mrtvych" by bol vymysleny.
+Exit code 0 = all links are alive, 1 = at least one is dead/redirected
+elsewhere. The timeout per link is 8 s; when you have no network, the script
+says so and ends neutrally (not as an error in the links). Offline = no server
+answered and ALL links already failed on the network (DNS, unreachable network,
+timeout) - then nothing was checked and the list of "dead" ones would be made
+up.
 """
 
 import errno
@@ -44,19 +47,20 @@ HEADERS = {"User-Agent": UA,
            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
            "Accept-Language": "en-US,en;q=0.9"}
 
-# HTTP 403 od Cloudflare/WAF NIE JE mrtvy odkaz - server len odmieta roboty
-# (ACM, WHOOP, sportspsychology.org: v prehliadaci sa otvoria, skript
-# dostane "challenge"). Mrtva stranka vracia 404/410 alebo DNS zlyha.
-# Takéto odkazy hlasime zvlast ("blokuje roboty - over rucne") a nepocitame
-# ich ako chybu, inak by skript padal na kazdom vedeckom vydavatelstve.
+# HTTP 403 from Cloudflare/WAF IS NOT a dead link - the server only refuses
+# robots (ACM, WHOOP, sportspsychology.org: they open in a browser, the script
+# gets a "challenge"). A dead page returns 404/410 or DNS fails. We report such
+# links separately ("blocks robots - check by hand") and do not count them as
+# an error, otherwise the script would fail on every scientific publisher.
 BOT_BLOCKED = "bot-blocked"
 
 
-# Chyby, pri ktorych poziadavka k serveru vobec nedosla - nie su odpovedou
-# servera, takze samy o sebe nehovoria, ci odkaz zije. Do 0.2.1 skript poznal
-# len linuxovy text "Name or service not known"; na Windows bez internetu
-# (getaddrinfo -> WinError 11001) preto hlasil KAZDY odkaz ako mrtvy.
-# Winsock kody: 11001 WSAHOST_NOT_FOUND ("getaddrinfo failed"), 11002
+# Errors where the request never reached the server - they are not an answer
+# from the server, so on their own they do not say whether the link is alive.
+# Until 0.2.1 the script only knew the Linux text "Name or service not known";
+# on Windows without internet (getaddrinfo -> WinError 11001) it therefore
+# reported EVERY link as dead.
+# Winsock codes: 11001 WSAHOST_NOT_FOUND ("getaddrinfo failed"), 11002
 # WSATRY_AGAIN, 10051 WSAENETUNREACH, 10065 WSAEHOSTUNREACH.
 _WIN_NET_ERRORS = {11001, 11002, 10051, 10065}
 _NET_ERRNOS = {errno.ENETUNREACH, errno.EHOSTUNREACH, errno.ENETDOWN}
@@ -66,16 +70,16 @@ _NET_TEXTS = ("getaddrinfo failed", "name or service not known",
 
 
 class NetworkError(ConnectionError):
-    """Poziadavka nedosla k serveru (DNS, smerovanie, timeout)."""
+    """The request did not reach the server (DNS, routing, timeout)."""
 
 
 def is_network_error(exc):
-    """True, ak `exc` (aj zabalena v URLError) znamena "k serveru som sa
-    nedostal", nie "server odpovedal chybou"."""
+    """True if `exc` (also wrapped in URLError) means "I could not reach the
+    server", not "the server answered with an error"."""
     if isinstance(exc, urllib.error.URLError) and not isinstance(
             exc, urllib.error.HTTPError):
         exc = exc.reason
-    # socket.timeout je od Pythonu 3.10 len iny nazov pre TimeoutError
+    # since Python 3.10 socket.timeout is just another name for TimeoutError
     if isinstance(exc, (socket.gaierror, socket.timeout, TimeoutError)):
         return True
     if isinstance(exc, OSError):
@@ -88,13 +92,14 @@ def is_network_error(exc):
 
 
 def check(url):
-    """Vrati (ok, kod_alebo_chyba). HEAD najprv (setri prenos), pri 405/501
-    skusi GET - niektore servery HEAD odmietaju, hoci stranka existuje.
-    Pri 403 vrati (True, BOT_BLOCKED) - stranka zije, ale robota nepusti.
+    """Returns (ok, code_or_error). HEAD first (saves transfer), on 405/501
+    tries GET - some servers refuse HEAD although the page exists. On 403
+    returns (True, BOT_BLOCKED) - the page is alive, but does not let the robot
+    in.
 
-    Ked sa uz HEAD k serveru nedostane (`is_network_error`), vyhodi
-    NetworkError: o odkaze to nic nehovori, rozhodne az `main` podla toho,
-    ci odpovedal aspon jeden iny server."""
+    When HEAD already cannot reach the server (`is_network_error`), it raises
+    NetworkError: that says nothing about the link, `main` decides later based
+    on whether at least one other server answered."""
     for method in ("HEAD", "GET"):
         req = urllib.request.Request(url, method=method, headers=HEADERS)
         try:
@@ -102,14 +107,14 @@ def check(url):
                 return True, resp.status
         except urllib.error.HTTPError as exc:
             if exc.code in (403, 405, 501) and method == "HEAD":
-                continue                      # skus GET
+                continue                      # try GET
             if exc.code in (403, 429, 503):
                 return True, BOT_BLOCKED
             return False, f"HTTP {exc.code}"
         except Exception as exc:
             reason = getattr(exc, "reason", exc)
-            # GET ide len po HTTP odpovedi na HEAD - server je teda
-            # dosiahnutelny a zlyhanie GET je vlastnost odkazu.
+            # GET only runs after an HTTP answer to HEAD - so the server is
+            # reachable and a GET failure is a property of the link.
             if method == "HEAD" and is_network_error(exc):
                 raise NetworkError(str(reason)) from exc
             return False, str(reason)
@@ -118,20 +123,22 @@ def check(url):
 
 def main():
     print(f"Kontrolujem {len(PHILOSOPHY_SOURCES)} zdrojov...\n")
-    i18n.set_lang("en")   # popisky v anglictine pre citatelny vystup
+    i18n.set_lang("en")   # English labels for readable output
     dead = []
     blocked = []
-    unreachable = []      # (key, url, chyba) - k serveru sa nedoslo
-    # Kolko odkazov nepadlo uz na sieti: server odpovedal HTTP kodom, alebo
-    # sa ozval a zlyhalo to inak (SSL, odmietnute spojenie) - siet teda ide.
+    unreachable = []      # (key, url, error) - the server was not reached
+    # How many links did not already fail on the network: the server answered
+    # with an HTTP code, or it responded and failed otherwise (SSL, refused
+    # connection) - so the network works.
     answered = 0
     for key, url in PHILOSOPHY_SOURCES:
         label = i18n.tr(key)
         try:
             ok, info = check(url)
         except NetworkError as exc:
-            # Este nevieme, ci je mrtvy odkaz alebo cela siet - rozhodne sa
-            # az na konci, preto ine oznacenie nez PAD.
+            # We do not know yet whether it is a dead link or the whole
+            # network - it is decided only at the end, hence a different mark
+            # than PAD.
             unreachable.append((key, url, str(exc)))
             print(f"  NET [{exc}]  {label}")
             print(f"        {url}")
@@ -147,14 +154,14 @@ def main():
             dead.append((key, url, info))
 
     if unreachable and not answered:
-        # Ani jeden server neodpovedal a vsetko padlo na sieti: nie si
-        # online. Hlasit to ako mrtve odkazy by bola nepravda.
+        # Not a single server answered and everything failed on the network:
+        # you are not online. Reporting it as dead links would be untrue.
         print("\n  !!  Nie si online - ani jeden odkaz sa nedal otvorit "
               "(sietova chyba), nic som neskontroloval.")
         print("Spusti znova, ked budes online.")
         sys.exit(0)
-    # Aspon jeden server odpovedal, siet teda ide - odkaz, ku ktoremu sa
-    # nedalo dostat (neexistujuca domena, timeout), je naozaj nedostupny.
+    # At least one server answered, so the network works - a link that could
+    # not be reached (non-existent domain, timeout) really is unavailable.
     dead.extend(unreachable)
 
     print()

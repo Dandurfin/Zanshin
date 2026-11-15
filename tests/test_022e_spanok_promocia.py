@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
-"""Uspanie PC rozdeli relaciu (0.2.2 davka 4) - kontrola skeptika: relacia
-uzavreta po spanku sa nesmie stat promociou.
+"""Putting the PC to sleep splits the session (0.3 batch 4) - skeptic's
+check: a session closed after sleep must not become a graduation.
 
-Promocia ("plny Zanshin") sa spusti RAZ - trvaly priznak sa hned ulozi a jej
-jedinu spravu nesie dotaznik (`summary["zen_graduation"]`). Po spanku sa
-dotaznik neotvara (hrac pri tom nebol), takze by sprava prepadla navzdy.
-Rovnake pravidlo uz plati pri vypinani Windows: promocia sa vyhodnoti az po
-dalsej relacii. Vlozene hodiny, synteticky tep."""
+The graduation ("full Zanshin") fires ONCE - a permanent flag is saved right
+away and its only message is carried by the questionnaire
+(`summary["zen_graduation"]`). After sleep the questionnaire does not open
+(the player was not there), so the message would be lost forever. The same
+rule already applies when Windows shuts down: the graduation is evaluated
+only after the next session. Injected clock, synthetic heart rate."""
 import test_022b_data_vypnutie as vypnutie
 
 

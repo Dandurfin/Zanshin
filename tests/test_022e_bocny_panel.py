@@ -1,15 +1,17 @@
 # -*- coding: utf-8 -*-
-"""Bocny panel a bodka stavu po davke 4 auditu UX (0.2.2).
+"""The side panel and the status dot after batch 4 of the UX audit (0.3).
 
-Strazi sa:
-  * Nastavenia a lupa (Ctrl+K) su v JEDNEJ skupine pod "V hre" - nic uz
-    nesedi na spodku panela, kam sa na nizkej obrazovke nedalo dostat,
-  * hodinky a lupa maju kratky viditelny popisok a vsetky popisky sa
-    zmestia do sirky panela vo vsetkych 11 jazykoch,
-  * zvyraznena je skutocna stranka (aj karta Nastaveni),
-  * bodka stavu ma stvrty stav "sleduje, ale tep vypadol" (trojuholnik v
-    `danger_text`), ktory ju odlisi od jantaroveho prstenca "teraz nie",
-  * vo svete Praca sa "V hre" vola "Obrazovka".
+Guarded:
+  * Settings and the magnifier (Ctrl+K) are in ONE group below "In-game" -
+    nothing sits at the bottom of the panel any more, which could not be
+    reached on a low screen,
+  * the watch and the magnifier have a short visible label, and all labels
+    fit the panel's width in all 11 languages,
+  * the real page is highlighted (the Settings tab too),
+  * the status dot has a fourth state "watching, but the heart rate dropped
+    out" (a triangle in `danger_text`) that sets it apart from the amber
+    "not now" ring,
+  * in the Work world "V hre" (In-game) is called "Obrazovka" (Screen).
 """
 import os
 import sys
@@ -56,7 +58,7 @@ def _tk_root():
 
 
 # --------------------------------------------------------------------------
-# Texty
+# Texts
 # --------------------------------------------------------------------------
 
 def test_nove_popisky_su_vo_vsetkych_jazykoch():
@@ -67,13 +69,13 @@ def test_nove_popisky_su_vo_vsetkych_jazykoch():
     for kluc in ("nav.watch", "nav.search", "nav.vhre_work_short", "nav.vhre_work"):
         for jazyk in JAZYKY:
             assert i18n.STRINGS[kluc][jazyk].strip(), (kluc, jazyk)
-        # nie je to skopirovana anglictina
+        # it is not copied English
         assert i18n.STRINGS[kluc]["de"] != i18n.STRINGS[kluc]["en"], kluc
 
 
 def test_tip_bodky_opisuje_vsetky_styri_stavy():
-    """Plna bodka, trojuholnik, bodka v kruzku, prazdny kruzok - kazdy jazyk
-    musi menovat trojuholnik (vypadok tepu) a ▶ (ako appku spustit)."""
+    """Solid dot, triangle, dot in a ring, empty ring - every language must
+    name the triangle (heart-rate dropout) and ▶ (how to start the app)."""
     trojuholnik = {"sk": "Trojuholník", "en": "Triangle", "ja": "三角", "zh": "三角形",
                    "ru": "Треугольник", "es": "Triángulo", "de": "Dreieck",
                    "fr": "Triangle", "pt": "Triângulo", "cs": "Trojúhelník",
@@ -88,7 +90,7 @@ def test_tip_bodky_opisuje_vsetky_styri_stavy():
 
 
 # --------------------------------------------------------------------------
-# Sirka popiskov
+# Label width
 # --------------------------------------------------------------------------
 
 def test_popisky_sa_zmestia_do_panela_vo_vsetkych_jazykoch():
@@ -98,7 +100,7 @@ def test_popisky_sa_zmestia_do_panela_vo_vsetkych_jazykoch():
     root = _tk_root()
     povodny = i18n._lang["code"]
     try:
-        miesto = ui_shell.Sidebar.WIDTH - 2 * 8       # rad ma padx=8 z oboch stran
+        miesto = ui_shell.Sidebar.WIDTH - 2 * 8       # the row has padx=8 on both sides
         for jazyk in JAZYKY:
             i18n.set_lang(jazyk)
             rodina, velkost = ui_kit.ui(10)[:2]
@@ -113,7 +115,7 @@ def test_popisky_sa_zmestia_do_panela_vo_vsetkych_jazykoch():
 
 
 # --------------------------------------------------------------------------
-# Poradie a zvyraznenie (Tk)
+# Order and highlighting (Tk)
 # --------------------------------------------------------------------------
 
 def _postav_panel(root, labels=None):
@@ -142,14 +144,14 @@ def test_nastavenia_a_lupa_su_v_jednej_skupine_pod_v_hre():
             panel.rows["dnes"], panel.rows["historia"], panel.rows["vhre"],
             panel.rows["nastavenia"], panel.cmdk_btn, panel.pair_btn)]
         assert indexy == sorted(indexy), "Dnes, Historia, V hre, Nastavenia, Hladat, Hodinky"
-        # Nic nie je prilepene na spodok panela (tam sa na nizkej obrazovke
-        # nedalo dostat).
+        # Nothing is stuck to the bottom of the panel (it could not be reached
+        # there on a low screen).
         for widget in poradie:
             assert widget.pack_info().get("side") != "bottom", widget
-        # popisky pod lupou a hodinkami
+        # the labels below the magnifier and the watch
         assert panel.cmdk_btn.label.cget("text") == "Hľadať"
         assert panel.pair_btn.caption.cget("text") == "Hodinky"
-        # lupa otvara paletu, nenaviguje
+        # the magnifier opens the palette, does not navigate
         panel.cmdk_btn._clicked()
         assert navigovane[-1] == "PALETA"
         assert "hladat" not in panel.rows
@@ -177,19 +179,19 @@ def test_popisok_v_hre_sa_da_prepisat_bez_prestavby():
         panel, _ = _postav_panel(root)
         panel.set_label("vhre", "Obrazovka")
         assert panel.rows["vhre"].label.cget("text") == "Obrazovka"
-        assert panel.rows["vhre"].text == "Obrazovka"      # aj bublina
-        panel.set_label("neexistuje", "x")                  # nespadne
+        assert panel.rows["vhre"].text == "Obrazovka"      # the bubble too
+        panel.set_label("neexistuje", "x")                  # does not crash
     finally:
         root.destroy()
 
 
 # --------------------------------------------------------------------------
-# Bodka stavu: stvrty stav
+# Status dot: the fourth state
 # --------------------------------------------------------------------------
 
 def _typy(bodka):
-    """[(druh polozky, farba)] - farba je vypln, a ked ziadna nie je
-    (duty kruzok, prstenec), tak obrys."""
+    """[(item kind, colour)] - the colour is the fill, and when there is
+    none (hollow ring, ring), the outline."""
     c = bodka.canvas
     vysledok = []
     for polozka in c.find_all():
@@ -206,13 +208,14 @@ def test_bodka_vypadok_je_trojuholnik_v_danger_text(tema):
         pal = theme.tokens(tema)
         bodka = ui_shell._StateDot(root, pal, tip="ZAKLAD")
         bodka.pack()
-        # zastavena: duty kruzok
+        # stopped: hollow ring
         assert _typy(bodka) == [("oval", pal["text_faint"])]
         bodka.set_live(True)
         assert _typy(bodka) == [("oval", pal["success"])]
         bodka.set_lost(True)
         assert _typy(bodka) == [("polygon", pal["danger_text"])]
-        # vypadok ma prednost aj pred "teraz nie" (to si hrac zapol sam)
+        # a dropout takes precedence even over "not now" (the player turned
+        # that on)
         bodka.set_snoozed(True, tip="do 21:45")
         assert _typy(bodka) == [("polygon", pal["danger_text"])]
         assert bodka._aktualny_tip() == "ZAKLAD"
@@ -220,14 +223,15 @@ def test_bodka_vypadok_je_trojuholnik_v_danger_text(tema):
         typy = _typy(bodka)
         assert [t for t, _f in typy] == ["oval", "oval"], "prstenec + bodka"
         assert bodka._aktualny_tip() == "do 21:45"
-        # zastavenej appke vypadok neukazuje (nesleduje, nema co vypadnut)
+        # a stopped app shows no dropout (not watching, nothing to drop out)
         bodka.set_snoozed(False)
         bodka.set_lost(True)
         bodka.set_live(False)
         assert _typy(bodka) == [("oval", pal["text_faint"])]
-        # trojuholnik je citatelny v oboch temach (>= 3:1 na pozadi panela)
+        # the triangle is readable in both themes (>= 3:1 on the panel
+        # background)
         assert _kontrast(pal["danger_text"], pal["bg"]) >= 3.0
-        # a lisi sa od jantaroveho "teraz nie"
+        # and differs from the amber "not now"
         assert pal["danger_text"].lower() != pal["warn"].lower()
     finally:
         root.destroy()
@@ -257,8 +261,8 @@ class _Bodka:
 
 @pytest.mark.parametrize("pocuva, prijem, vypadol, cakam", [
     (True, True, True, True),
-    (False, True, True, False),      # zastavena appka
-    (True, False, True, False),      # prijem vypnuty - to nie je vypadok
+    (False, True, True, False),      # stopped app
+    (True, False, True, False),      # receiving switched off - that is not a dropout
     (True, True, False, False),
 ])
 def test_appka_posiela_bodke_vypadok(pocuva, prijem, vypadol, cakam):
@@ -272,8 +276,8 @@ def test_appka_posiela_bodke_vypadok(pocuva, prijem, vypadol, cakam):
 
 
 def test_bodka_sa_obnovi_pri_kazdej_zmene_stavu_tepu():
-    """`_refresh_kamae_state_text` vola kazda zmena stavu tepu aj sledovania
-    - a ten prekresli aj bodku."""
+    """`_refresh_kamae_state_text` is called by every change of the
+    heart-rate state and of watching - and it redraws the dot too."""
     assert "_refresh_state_dot" in zdroj_metody("_refresh_kamae_state_text")
     for metoda in ("_apply_hr_status", "_apply_hr_bpm", "stop_heart_rate_monitor",
                    "_apply_listening_visuals"):
@@ -281,7 +285,8 @@ def test_bodka_sa_obnovi_pri_kazdej_zmene_stavu_tepu():
 
 
 def test_vypadok_pozna_appka_uz_davno():
-    """Bodka nic nove nemeria - cita `_hr_lost` z `_zaznamenaj_vypadok`."""
+    """The dot measures nothing new - it reads `_hr_lost` from
+    `_zaznamenaj_vypadok`."""
     telo = zdroj_metody("_zaznamenaj_vypadok")
     assert "self._hr_lost = True" in telo
     assert "self._hr_lost = False" in zdroj_metody("_tep_je_spat")
@@ -289,7 +294,7 @@ def test_vypadok_pozna_appka_uz_davno():
 
 
 # --------------------------------------------------------------------------
-# Svet Praca: "Obrazovka"
+# The Work world: "Obrazovka" (Screen)
 # --------------------------------------------------------------------------
 
 def test_v_hre_sa_vo_svete_praca_vola_obrazovka(sk):

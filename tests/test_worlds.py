@@ -1,19 +1,21 @@
 # -*- coding: utf-8 -*-
-"""Dva svety, jedno telo (0.2, B3-worlds).
+"""Two worlds, one body (0.2, B3-worlds).
 
-Hra a praca maju oddelenu historiu, postrehy aj vzhlad (Sumi / Aizome).
-Rozhodnutia zadavatela, ktore tieto testy strazia:
+Play and work have separate history, insights and look (Sumi / Aizome).
+The product owner's decisions that these tests guard:
 
-  (a) v PRACI ide hlaska len obrazom - bez hlasu a bez zvuku,
-  (b) kriticky tep a prah zataze sa rataju LEN z hernych relacii;
-      dlhodoba pokojova zakladna ostava zo vsetkych (telo je jedno),
-  (c) svet relacie sa pecati pri jej OTVORENI (`world`); prepinac uprostred
-      relacie ju neprestitkuje a `activity` je dalej len odpoved hraca,
-  (d) Hra = Sumi, Praca = Aizome; stara tema bez sveta -> Hra.
+  (a) at WORK a cue is only a picture - no voice and no sound,
+  (b) the critical heart rate and the load threshold are computed ONLY
+      from play sessions; the long-term resting baseline stays from all of
+      them (there is one body),
+  (c) a session's world is sealed when it OPENS (`world`); a switch in the
+      middle of the session does not re-label it and `activity` is still
+      only the player's answer,
+  (d) Play = Sumi, Work = Aizome; an old theme without a world -> Play.
 
-Vacsina testov bezi bez Tk - skutocne metody `DandurfApp` na malej atrape
-(rovnako ako test_widgets_history.py). Jediny Tk test (lista) sa preskoci,
-ked sa okno vytvorit neda.
+Most tests run without Tk - real `DandurfApp` methods on a small fake (the
+same as test_widgets_history.py). The only Tk test (title bar) is skipped
+when the window cannot be created.
 """
 import json
 import os
@@ -31,7 +33,7 @@ import hr_stats  # noqa: E402
 import i18n  # noqa: E402
 import theme  # noqa: E402
 import trigger  # noqa: E402
-# Metody `DandurfApp` ako text - aj ked byvaju v mixinoch app_*.py.
+# `DandurfApp` methods as text - even when they live in the app_*.py mixins.
 from _zdroj_appky import zdroj_appky, zdroj_metody  # noqa: E402
 
 
@@ -54,20 +56,22 @@ def sk():
 
 
 # --------------------------------------------------------------------------
-# Do ktoreho sveta relacia patri
+# Which world a session belongs to
 # --------------------------------------------------------------------------
 
 def test_svet_relacie_odpoved_hraca_vyhrava_nad_pecatou():
     assert hr_stats.session_world({"world": "work"}) == "work"
     assert hr_stats.session_world({"world": "play"}) == "play"
-    # Hrac v dotazniku povedal inak nez prepinac -> plati jeho slovo.
+    # The player said otherwise in the questionnaire than the switch -> their
+    # word applies.
     assert hr_stats.session_world({"world": "work", "activity": "play"}) == "play"
     assert hr_stats.session_world({"world": "play", "activity": "work"}) == "work"
 
 
 def test_relacia_bez_stitku_patri_hre_pevnym_pravidlom():
-    """Stare relacie (bez `world`, preskoceny dotaznik) idu natrvalo do Hry -
-    nie podla "hlavneho sveta", inak by sa pri jeho zmene presuvali."""
+    """Old sessions (no `world`, skipped questionnaire) go permanently to
+    Play - not by the "main world", otherwise they would move whenever it
+    changed."""
     for zla in ({}, {"activity": None}, {"world": None}, {"activity": 5},
                 {"world": "x"}, {"activity": ["work"]}, {"world": {"a": 1}}):
         assert hr_stats.session_world(zla) == "play", zla
@@ -82,7 +86,7 @@ def test_relacie_sveta_rozdeli_zoznam_a_zahodi_nezmysly():
     vsetko = [hra, praca, "nezmysel", None, oprava]
     assert hr_stats.sessions_in_world(vsetko, "play") == [hra, oprava]
     assert hr_stats.sessions_in_world(vsetko, "work") == [praca]
-    # neznamy svet = Hra, rovnako ako pri relacii
+    # unknown world = Play, the same as for a session
     assert hr_stats.sessions_in_world(vsetko, "nieco") == [hra, oprava]
     assert hr_stats.sessions_in_world(None, "play") == []
 
@@ -92,13 +96,13 @@ def test_tema_patri_svetu():
     assert theme.theme_world(theme.ZEN) == "play"
     assert theme.theme_world(theme.MODERN) == "work"
     assert theme.theme_world("nieco") == "play"
-    # kluce svetov su tie iste ako v datach relacie
+    # the world keys are the same as in the session data
     assert set(theme.WORLD_THEME) == set(hr_stats.ACTIVITY_KINDS)
     assert hr_stats.WORLD_DEFAULT == "play"
 
 
 # --------------------------------------------------------------------------
-# (b) Algoritmus: zakladna spolocna, kriticky tep a prah len z hry
+# (b) Algorithm: shared baseline, critical heart rate and threshold from play
 # --------------------------------------------------------------------------
 
 def _hracia(zaklad, started, n=400, world=None, baseline=70):
@@ -113,15 +117,18 @@ def _hracia(zaklad, started, n=400, world=None, baseline=70):
 
 def test_pracovna_relacia_neposunie_kriticky_tep_hry():
     hra = [_hracia(85, 1000 + i) for i in range(4)]
-    # Pracovne relacie tu maju nizsi pokoj - zakladna zo vsetkeho to ma vidiet.
+    # Work sessions here have a lower resting rate - the baseline from
+    # everything must see it.
     praca = [_hracia(125, 2000 + i, world="work", baseline=62) for i in range(3)]
     vsetko = hra + praca
     herna = hr_stats.sessions_in_world(vsetko, "play")
     assert herna == hra
     assert hr_stats.dynamicky_kriticky(herna) == hr_stats.dynamicky_kriticky(hra)
-    # Predpoklad testu: zmiesane by to naozaj posunulo (inak by nic nemeral).
+    # Test premise: mixing would really shift it (otherwise it would measure
+    # nothing).
     assert hr_stats.dynamicky_kriticky(vsetko) > hr_stats.dynamicky_kriticky(hra)
-    # Zakladna ide zo vsetkeho - telo je jedno - a praca ju tu posunie.
+    # The baseline comes from everything - there is one body - and work shifts
+    # it here.
     assert hr_stats.dlhodoba_zakladna(vsetko) < hr_stats.dlhodoba_zakladna(hra)
 
 
@@ -134,8 +141,8 @@ def test_otvorenie_relacie_rata_kriticky_a_prah_z_hry_zakladnu_zo_vsetkeho():
     assert "hr_stats.dynamicky_kriticky(\n                herna," in telo
     assert "hr_stats.dynamicky_prah_zataze(\n                herna," in telo
     assert "hr_stats.ciste_relacie(herna)" in telo, "pocet do vety o prahu"
-    # tiche rameno (kalibracia) ostava zo vsetkych svetov - len bez
-    # importovanych relacii (cudzie telo neposuva fazu 1/4 -> 1/10)
+    # the silent arm (calibration) stays from all worlds - only without
+    # imported sessions (someone else's body does not move phase 1/4 -> 1/10)
     assert "len(data_io.vlastne(self._history_sessions()))" in zdroj_metody(
         "_silent_share_for_next_session")
 
@@ -147,13 +154,13 @@ def test_veta_o_hranici_pocita_len_herne_relacie(sk):
     a = types.SimpleNamespace(hr_critical_bpm=110, ALGORITMUS_SVET="play",
                               _history_sessions=lambda: hra + praca)
     veta = D._kriticky_popis(a)
-    # 2 herne z 3 potrebnych -> este 1; pracovne sa nerataju
+    # 2 play sessions out of the 3 needed -> 1 more; work ones do not count
     assert veta == i18n.tr("settings.hr_critical_learning", bpm=110, treba=1)
     assert "herných" in veta
 
 
 # --------------------------------------------------------------------------
-# (a) Praca = len obraz
+# (a) Work = picture only
 # --------------------------------------------------------------------------
 
 def _doruc(voice):
@@ -164,9 +171,9 @@ def _doruc(voice):
             return self.t
     h = Hodiny()
     t = trigger.CueTrigger(rng=random.Random(1), clock=h)
-    t.open_session(silent_share=0.0, voice=voice)   # vzdy hlasne rameno
+    t.open_session(silent_share=0.0, voice=voice)   # always the voiced arm
     for _ in range(400):
-        ev = t.note_load(80.0, h.t, zona="high")   # brana (0.2) pusti
+        ev = t.note_load(80.0, h.t, zona="high")   # the gate (0.2) lets it through
         h.t += 1.0
         if ev and ev["typ"] == trigger.E_ARMED:
             h.t += 5.0
@@ -196,24 +203,24 @@ def test_hlas_sa_urcuje_pri_otvoreni_a_plati_celu_relaciu():
 
 
 # --------------------------------------------------------------------------
-# (c) Svet sa pecati pri otvoreni, `activity` ostava odpovedou hraca
+# (c) The world is sealed on opening, `activity` stays the player's answer
 # --------------------------------------------------------------------------
 
 def test_svet_sa_pecati_pri_otvoreni_a_uklada_pri_zatvoreni():
     otvor = zdroj_metody("_open_hr_session")
     assert "self._session_world = self.world" in otvor
-    # pecat musi byt az PO zatvoreni predoslej relacie
+    # the seal must come only AFTER the previous session is closed
     assert otvor.index("self._close_hr_session()") < otvor.index(
         "self._session_world = self.world")
-    # Suhrn sklada `_suhrn_relacie` (0.2.2 - zatvorenie aj kontrolny bod);
-    # `_close_hr_session` ho ma zostaveny pred ulozenim.
+    # The summary is built by `_suhrn_relacie` (0.3 - closing and checkpoint);
+    # `_close_hr_session` has it built before saving.
     suhrn = zdroj_metody("_suhrn_relacie")
     zatvor = zdroj_metody("_close_hr_session")
     assert 'summary["world"] = getattr(self, "_session_world"' in suhrn
     assert zatvor.index("self._suhrn_relacie()") < zatvor.index("hr_stats.save_session(")
     for telo in (suhrn, zatvor):
         assert 'summary["activity"]' not in telo, "stroj nesmie pisat odpoved hraca"
-    # meracie okna nesu svet priamo
+    # measurement windows carry the world directly
     assert 'w["world"] = svet' in zdroj_metody("_save_measure_windows")
 
 
@@ -227,13 +234,14 @@ def _suhrn(**kw):
 def test_dotaznik_bez_kliku_necha_pecat_a_klik_ju_prebije(tmp_path):
     cesta = str(tmp_path / "hr_sessions.json")
     assert hr_stats.save_session(cesta, _suhrn())
-    # Ulozit bez kliku na hral/pracoval: `activity` ostava prazdne.
+    # Saving without a click on played/worked: `activity` stays empty.
     assert hr_stats.attach_context(cesta, 1_700_000_000.5, ["call"], activity=None)
     ulozena = hr_stats.load_sessions(cesta)[0]
     assert "activity" not in ulozena
     assert ulozena["world"] == "work"
     assert hr_stats.session_world(ulozena) == "work"
-    # Hrac klikol "Hral som" -> odpoved sa ulozi, pecat ostava (provenancia).
+    # The player clicked "Hral som" (I was playing) -> the answer is saved,
+    # the seal stays (provenance).
     assert hr_stats.attach_context(cesta, 1_700_000_000.5, [], activity="play")
     ulozena = hr_stats.load_sessions(cesta)[0]
     assert ulozena["activity"] == "play"
@@ -247,10 +255,11 @@ def test_dotaznik_zvyrazni_svet_ale_neulozi_ho_bez_kliku():
     assert "self.activity = None" in trieda
     assert "self._svet = hr_stats.session_world(summary)" in trieda
     assert "self._paint_activity(self._svet)" in trieda
-    # klik je odpoved; `confirm` posiela len `self.activity`
+    # the click is the answer; `confirm` sends only `self.activity`
     assert "self.activity = kind" in trieda
     assert "activity=self.activity" in trieda
-    # pracovna relacia nema v titulku "Hral si" ani vetu o tichom ramene
+    # a work session has neither "Hral si" (You played) in the title nor the
+    # sentence about the silent arm
     assert '"session.end.title_work" if self._svet == "work"' in trieda
     assert 'tr("session.end.cues_work", n=cues)' in trieda
 
@@ -263,7 +272,7 @@ def test_oprava_sveta_v_dotazniku_prepocita_postrehy():
 
 
 # --------------------------------------------------------------------------
-# Prepnutie sveta
+# World switching
 # --------------------------------------------------------------------------
 
 class _Seg:
@@ -293,7 +302,7 @@ def _atrapa_sveta(svet="play"):
     a._refresh_history_page = lambda: a.volania.append(("historia",))
     a._refresh_dnes_stats = lambda: a.volania.append(("dnes",))
     a.run_hr_analysis = lambda *_: a.volania.append(("analyza",))
-    # v Praci hlaska nehovori - priprava Edge hlasok sa prepocita
+    # in Work a cue does not speak - the Edge cue preparation is recomputed
     a.schedule_pregenerate = lambda *_: a.volania.append(("pregen", a.world))
     a._build_ui = lambda: a.volania.append(("PRESTAVBA",))
     a._world_label = D._world_label
@@ -329,7 +338,7 @@ def test_ten_isty_svet_nic_neprekresluje(sk):
     a.set_world("work")
     assert not [v for v in a.volania if v[0] in ("tema", "analyza", "historia")]
     assert a.world_switch.value == "Práca"
-    # nezmysel = Hra
+    # nonsense = Play
     a.set_world("nieco")
     assert a.world == "play"
 
@@ -345,7 +354,7 @@ def test_oba_prepinace_volaju_set_world_a_tema_uz_nie_je_volba():
     lista = shell[shell.index("class TitleBar"):shell.index("def enable_frameless")]
     assert "self.world_switch = ctk.CTkSegmentedButton(" in lista
     assert "def set_world(self, label)" in lista
-    # bublina na segmentoch (CTkSegmentedButton.bind nevie)
+    # a tooltip on the segments (CTkSegmentedButton.bind cannot do it)
     assert "_HoverTip(segment, lambda: world_tip, below=True)" in lista
 
 
@@ -357,7 +366,7 @@ def test_harness_prepina_svet_nie_temu():
 
 
 # --------------------------------------------------------------------------
-# Pohlady filtrovane svetom, export a algoritmus nie
+# Views filtered by world, export and algorithm not
 # --------------------------------------------------------------------------
 
 def test_pohlady_citaju_svet_export_vsetko():
@@ -384,7 +393,7 @@ def test_karta_tyzdna_rata_len_svoj_svet(sk):
 
 
 # --------------------------------------------------------------------------
-# Postrehy za jeden svet + opakovanie po prepnuti
+# Insights per world + retry after switching
 # --------------------------------------------------------------------------
 
 def test_postrehy_si_pamataju_svet(tmp_path):
@@ -394,7 +403,7 @@ def test_postrehy_si_pamataju_svet(tmp_path):
     assert ulozene["world"] == "work"
     assert ulozene["insights"] == [{"key": "steady"}]
     assert hr_insights.load_insights(str(tmp_path / "nie.json"))["world"] is None
-    # bez sveta (stary tvar) -> kluc chyba, load da None
+    # without a world (old form) -> the key is missing, load gives None
     assert hr_insights.save_insights(cesta, [])
     with open(cesta, encoding="utf-8") as fh:
         assert "world" not in json.load(fh)
@@ -403,7 +412,7 @@ def test_postrehy_si_pamataju_svet(tmp_path):
 def test_pri_starte_sa_postrehy_ineho_sveta_neukazu():
     src = zdroj_appky()
     assert 'if _stored.get("world") != self.world:' in src
-    # oboje je v `__init__` - poradie sa meria v nom
+    # both are in `__init__` - the order is measured in it
     init = zdroj_metody("__init__")
     assert init.index("self.world = settings[\"world\"]") < init.index(
         'if _stored.get("world") != self.world:')
@@ -455,16 +464,18 @@ def test_vysledok_za_spravny_svet_sa_ukaze():
 
 
 def test_odmietnuta_analyza_sa_nestrati():
-    """Prepnutie sveta pocas bezucej analyzy: nova sa odmietne (vlakno zije),
-    ale zapise sa - a spusti sa, az ked vlakno naozaj dobehne."""
+    """Switching the world during a running analysis: the new one is rejected
+    (the thread is alive), but recorded - and started only once the thread
+    really finishes."""
     a, D = _atrapa_analyzy("play", zive=True)
-    D.run_hr_analysis(a)                       # vlakno zije -> odmietnute
+    D.run_hr_analysis(a)                       # thread alive -> rejected
     assert a._hr_analysis_rerun is True
-    # vysledok stareho behu pride este ZVNUTRA vlakna (ui_call) - zije
+    # the old run's result still comes from INSIDE the thread (ui_call) - it is
+    # alive
     a._apply_hr_insights([{"key": "steady"}], "play")
     assert a.spustene == [], "kym vlakno zije, nova analyza by sa odmietla"
     assert len(a.root.naplanovane) == 1
-    # druha poziadavka nenaplanuje druhe cakanie
+    # a second request does not schedule a second wait
     a._naplanuj_analyzu()
     assert len(a.root.naplanovane) == 1
     a._hr_analysis_thread.zive = False
@@ -482,7 +493,7 @@ def test_analyza_rata_len_svoj_svet_a_uklada_ho():
 
 
 # --------------------------------------------------------------------------
-# (d) Nastavenia: svet, migracia, tema ide za svetom
+# (d) Settings: world, migration, the theme follows the world
 # --------------------------------------------------------------------------
 
 @pytest.fixture
@@ -490,8 +501,8 @@ def nastavenia(tmp_path, monkeypatch):
     import app as app_mod
     import app_prefs
     cesta = str(tmp_path / "dandurf_settings.json")
-    # `load_settings` byva v mixine app_prefs (PrefsMixin) a cita
-    # SETTINGS_PATH zo svojho modulu - presmerovat ho treba tam.
+    # `load_settings` lives in the app_prefs mixin (PrefsMixin) and reads
+    # SETTINGS_PATH from its own module - it has to be redirected there.
     monkeypatch.setattr(app_prefs, "SETTINGS_PATH", cesta)
     povodny = i18n._lang["code"]
 
@@ -511,8 +522,9 @@ def test_prvy_start_je_v_hre(nastavenia):
 
 
 def test_migracia_aizome_bez_sveta_ide_do_hry(nastavenia):
-    """Stary hrac s Aizome: svet sa z temy NEODVODZUJE (hranie by sa mu
-    zacalo ratat ako praca) - ide do Hry a tema ide za svetom."""
+    """An old player with Aizome: the world is NOT DERIVED from the theme
+    (their playing would start counting as work) - it goes to Play and the
+    theme follows the world."""
     d = nastavenia({"lang": "sk", "theme": "modern"})
     assert d["world"] == "play"
     assert d["theme"] == theme.ZEN
@@ -533,7 +545,7 @@ def test_svet_sa_uklada_aj_s_temou():
 
 
 # --------------------------------------------------------------------------
-# Onboarding: krok 4 vybera hlavny svet
+# Onboarding: step 4 picks the main world
 # --------------------------------------------------------------------------
 
 def test_onboarding_vybera_hlavny_svet():
@@ -544,12 +556,12 @@ def test_onboarding_vybera_hlavny_svet():
     src = zdroj_appky()
     assert src.count("theme_mod.theme_world(wizard.choice)") == 2, \
         "prvy start aj opakovany onboarding"
-    # test zvuku hra vzdy zvuky hry - v praci zvuk nie je
+    # the sound test always plays the game sounds - at work there is no sound
     assert 'pack = theme_mod.WORLD_THEME["play"]' in ud
 
 
 # --------------------------------------------------------------------------
-# Texty
+# Texts
 # --------------------------------------------------------------------------
 
 NOVE_KLUCE = ("world.play", "world.work", "world.tip", "settings.world",
@@ -562,21 +574,24 @@ NOVE_KLUCE = ("world.play", "world.work", "world.tip", "settings.world",
 
 
 def _jeden_tr7(src, kluc):
-    """Najviac jeden `_tr7` riadok na kluc - stary preklad nemoze potichu
-    prezit pod novym (jazykova faza 0.2 pisala preklady z noveho SK)."""
+    """At most one `_tr7` line per key - an old translation cannot quietly
+    survive under a new one (the 0.2 language phase wrote translations from
+    the new SK)."""
     return src.count(f"_tr7('{kluc}'") <= 1
 
 
 def test_nove_texty_maju_vsetkych_jedenast_jazykov():
     for kluc in NOVE_KLUCE:
         assert set(i18n.STRINGS[kluc]) == set(i18n.LANGUAGES), kluc
-        # zmenene znenie preložila jazyková fáza 0.2 - vlastný text v ja
+        # the changed wording was translated by the 0.2 language phase - its
+        # own text in ja
         assert i18n.STRINGS[kluc]["ja"] != i18n.STRINGS[kluc]["en"], kluc
 
 
 def test_svet_hry_nesluboval_hlas_pri_kazdej_hlaske():
-    """Asi desatina hlášok naschvál mlčí a hláška bez pauzy je len obrazom -
-    „s hlasom aj obrazom" sľubovalo viac, než appka robí."""
+    """About a tenth of cues are silent on purpose and a cue without a pause is
+    only a picture - "s hlasom aj obrazom" (with voice and picture) promised
+    more than the app does."""
     zaznam = i18n.STRINGS["ob.world.play.desc"]
     assert "väčšinou s hlasom" in zaznam["sk"]
     assert "mostly with voice" in zaznam["en"]
@@ -590,12 +605,13 @@ def test_stare_znenia_zmizli_zo_vsetkych_jazykov():
     assert "'settings.theme_sub'" not in src and "'settings.theme'" not in src
     assert "Vyber vzhľad a vstúp" not in src
     assert _jeden_tr7(src, "ob.step4.title") and _jeden_tr7(src, "ob.step4.body")
-    # hranica a prah hovoria o hernych relaciach
+    # the limit and the threshold talk about play sessions
     for kluc in ("settings.hr_critical_computed", "settings.hr_critical_learning",
                  "cue_rate.computed", "cue_rate.learning"):
         assert "herných" in i18n.STRINGS[kluc]["sk"], kluc
         assert "play sessions" in i18n.STRINGS[kluc]["en"], kluc
-    # postrehy sa rataju zo sveta, nie "z celej historie" (v ziadnom jazyku)
+    # insights are computed from the world, not "from the whole history" (in
+    # any language)
     assert _jeden_tr7(src, "history.insights_note")
     assert "celej histórie" not in i18n.STRINGS["history.insights_note"]["sk"]
     assert "tohto sveta" in i18n.STRINGS["history.insights_note"]["sk"]
@@ -603,9 +619,10 @@ def test_stare_znenia_zmizli_zo_vsetkych_jazykov():
 
 
 def test_historia_priznava_spolocny_graf_hlasok(sk):
-    """Stranka s napisom "Svet: Praca" nesmie mlcky ukazovat herne hlasky:
-    graf "Ktora hlaska zabera" rata od rebrika hlasky (0.2) len hlasky z hry,
-    ktore zazneli (v praci je hlaska len obrazom) - veta to povie."""
+    """A page labelled "World: Work" must not silently show play cues: since
+    the cue ladder (0.2) the "Ktora hlaska zabera" (Which cue works) chart
+    counts only play cues that sounded (at work a cue is only a picture) -
+    the sentence says so."""
     veta = i18n.tr("history.world_note", world=i18n.tr("world.work"),
                    chart=i18n.tr("history.effect_title"))
     assert i18n.tr("history.effect_title") in veta
@@ -619,10 +636,11 @@ def test_historia_priznava_spolocny_graf_hlasok(sk):
 
 
 def test_karty_filtrovane_svetom_to_hovoria():
-    """Karty "Relacie tento tyzden" a "Citene a merane" ratuju len aktualny
-    svet (integracia B3-worlds x widgets-history). Ich vysvetlenie to musi
-    povedat a stare znenie ("odohral", "posledna relacia" bez sveta) nesmie
-    prezit v ziadnom jazyku."""
+    """The "Sessions this week" and "Felt and measured" cards count only the
+    current world (B3-worlds x widgets-history integration). Their
+    explanation must say so, and the old wording ("odohral" (played),
+    "posledna relacia" (last session) without a world) must not survive in
+    any language."""
     src = _read("i18n.py")
     for kluc in ("metric.week.short", "metric.week.more"):
         assert _jeden_tr7(src, kluc), kluc
@@ -632,18 +650,19 @@ def test_karty_filtrovane_svetom_to_hovoria():
     assert "Hra alebo Práca" in i18n.STRINGS["metric.week.more"]["sk"]
     assert "tohto sveta" in i18n.STRINGS["metric.felt_vs_measured.more"]["sk"]
     assert "this world" in i18n.STRINGS["metric.felt_vs_measured.more"]["en"]
-    # a kod naozaj filtruje - inak by veta klamala opacnym smerom
+    # and the code really filters - otherwise the sentence would lie the other
+    # way round
     telo = zdroj_metody("_dashboard_stat_value")
     assert telo.count("sessions_in_world(") >= 2
 
 
 def test_texty_o_praci_hovoria_pravdu():
-    """V praci hlaska nema hlas ani zvuk - kazde miesto, ktore svet opisuje,
-    to musi povedat (a nic nesluboval navyse)."""
+    """At work a cue has no voice and no sound - every place that describes
+    the world must say so (and promise nothing extra)."""
     for kluc in ("world.tip", "settings.world_sub", "ob.world.work.desc",
                  "session.end.cues_work"):
         sk = i18n.STRINGS[kluc]["sk"]
-        # 0.2.2: jedno slovo "obrazok" pre to, co sa ukaze v hre
+        # 0.3: one word "obrazok" for what is shown in the game
         assert "obrázkom" in sk, kluc
         assert "obrazom" not in sk, kluc
     assert "Práca" == i18n.STRINGS["world.work"]["sk"]
@@ -651,7 +670,7 @@ def test_texty_o_praci_hovoria_pravdu():
 
 
 # --------------------------------------------------------------------------
-# Lista: skutocny Tk (preskoci sa, ked sa okno vytvorit neda)
+# Title bar: real Tk (skipped when the window cannot be created)
 # --------------------------------------------------------------------------
 
 def test_lista_ma_prepinac_sveta_s_bublinou():
@@ -675,9 +694,9 @@ def test_lista_ma_prepinac_sveta_s_bublinou():
         lista.set_world("Práca")
         assert lista.world_switch.get() == "Práca"
         assert klik == [], "set_world nesmie volat on_world (inak slucka)"
-        # bez on_world sa prepinac nestavia vobec
+        # without on_world the switch is not built at all
         holá = ui_shell.TitleBar(root, root_window=root, pal=theme.tokens(theme.ZEN))
         assert holá.world_switch is None
-        holá.set_world("Hra")          # nesmie spadnut
+        holá.set_world("Hra")          # must not crash
     finally:
         root.destroy()

@@ -1,16 +1,18 @@
 # -*- coding: utf-8 -*-
-"""0.2.1: priprava Edge hlasok po kontrole opravy "len co zaznie".
+"""0.2.1: preparing the Edge cues after reviewing the "only what will
+actually play" fix.
 
-  1. Novy profil (`create_profile`) meni aktivne hlasky rovnako ako
-     prepnutie profilu - no pripravu nespustal. Rozbehnuta priprava
-     predosleho profilu tak poslala Microsoftu aj zvysok hlasok, ktore uz
-     k aktivnemu profilu nepatria, a zapnute hlasky noveho profilu sa
-     nepripravili (v hre zazneli hlasom z Windows).
+  1. A new profile (`create_profile`) changes the active cues just like
+     switching profiles does - but it did not start the preparation. So
+     the running preparation of the previous profile also sent Microsoft
+     the rest of the cues that no longer belong to the active profile, and
+     the enabled cues of the new profile were not prepared (in game they
+     played in the Windows voice).
 
-  2. Poistka proti prilis prisnemu filtru (`_slot_na_pripravu`): kazda
-     hlaska, ktoru v hre moze vybrat striedanie kategorii
-     (`_dalsi_cue_slot`) a povie ju TTS, sa pripravuje - oprava nesmie
-     vyradit hlasku, ktora v hre naozaj zaznie.
+  2. A safeguard against a too strict filter (`_slot_na_pripravu`): every
+     cue that the category rotation (`_dalsi_cue_slot`) can pick in game
+     and that TTS speaks gets prepared - the fix must not drop a cue that
+     will really play in game.
 """
 import os
 import sys
@@ -48,8 +50,9 @@ class _Root:
 
 
 def _atrapa(monkeypatch, slots):
-    """Ozajstne `pregenerate` / `schedule_pregenerate` / `pregen_jobs` /
-    `create_profile`; vlakno sa len zapise a spusti sa rucne (`_dobehni`)."""
+    """The real `pregenerate` / `schedule_pregenerate` / `pregen_jobs` /
+    `create_profile`; the thread is only recorded and run by hand
+    (`_dobehni`)."""
     import app as app_mod
     import app_audio
     import audio_engine
@@ -63,8 +66,8 @@ def _atrapa(monkeypatch, slots):
         stavy=[], posielane=[], hotove=set(), vlakna=[], root=_Root(),
         profiles=[{"name": "Default", "slots": []}],
         active_profile_name="Default",
-        # obrazky v hre zapnute (predvolene) - `_slot_na_pripravu` aj
-        # `_dalsi_cue_slot` sa na ne pytaju
+        # in-game pictures on (default) - both `_slot_na_pripravu` and
+        # `_dalsi_cue_slot` ask about them
         overlay_configs=[{"enabled": True} for _ in range(4)])
     a.edge_cache = types.SimpleNamespace(
         has=lambda text, voice, rate: text in a.hotove)
@@ -75,10 +78,10 @@ def _atrapa(monkeypatch, slots):
     a._prune_cache = lambda *_x: None
     a._sync_active_profile_slots = lambda: None
     a.refresh_profile_switch = lambda: None
-    # Hlas k slovam noveho profilu (0.2.1d) tu nehra rolu - overuje ho
-    # tests/test_021d_hlas_podla_hlasok.py.
+    # The voice for the new profile's words (0.2.1d) plays no role here -
+    # tests/test_021d_hlas_podla_hlasok.py checks it.
     a._hlas_k_hlaskam = lambda slots: False
-    # `rebuild_slots` stavia karty z dict-ov profilu; tu staci ich obsah
+    # `rebuild_slots` builds cards from profile dicts; their content will do
     a.rebuild_slots = lambda data: setattr(a, "slots", [
         _slot(i, d["text"], d["mode"], d["enabled"], d["voice_path"])
         for i, d in enumerate(data)])
@@ -107,7 +110,7 @@ def test_novy_profil_zastavi_pripravu_stareho_a_pripravi_svoj(monkeypatch):
         a.posielane.append(text)
         a.hotove.add(text)
         if len(a.posielane) == 1:
-            a.create_profile("Novy")       # hrac zalozi profil pocas pripravy
+            a.create_profile("Novy")       # the player creates a profile mid-preparation
         return "hotova.mp3"
 
     a.edge_cache.ensure = posli

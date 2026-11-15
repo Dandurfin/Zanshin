@@ -1,19 +1,21 @@
 # -*- coding: utf-8 -*-
-"""Vygeneruje `preklad_TODO.csv` - zoznam retazcov, ktore cakaju na dopreklad.
+"""Generates `preklad_TODO.csv` - a list of strings waiting to be translated.
 
-Kriterium (rovnake ako v `check_before_run.py`, sekcia 2): retazec je "na
-dopreklad", ak niektory z NELATINKOVYCH jazykov (ja/zh/ru/bg) ostal doslovne
-rovnaky ako `en` - to uz naozaj nemoze byt preklad, len anglicky fallback.
+Criterion (the same as in `check_before_run.py`, section 2): a string "needs
+translating" if any of the NON-LATIN-SCRIPT languages (ja/zh/ru/bg) stayed
+literally the same as `en` - that really cannot be a translation, only the
+English fallback.
 
-POZOR NA PORUVNANIE S `de`: to bolo povodne kriterium a po doprelozeni
-hlasilo tri retazce navzdy, lebo nemecke "Timing" a "normal" su zhodou
-okolnosti rovnake slova ako anglicke. Latinkove jazyky sa s anglictinou
-legitimne trafia; japoncina, cinstina, rustina ani bulharcina nie.
+WATCH OUT FOR COMPARING WITH `de`: that was the original criterion, and after
+the translations were finished it reported three strings forever, because
+the German "Timing" and "normal" happen to be the same words as the English
+ones. Latin-script languages legitimately coincide with English; Japanese,
+Chinese, Russian and Bulgarian do not.
 
-POZN: doteraz sa CSV robilo rucne/ad hoc, takze po kazdom zmazani kluca
-(napr. po odstraneni minimalistickeho rezimu) v nom ostavali riadky pre
-kluce, ktore uz v i18n.py neexistovali. Tento skript je preto jediny
-spravny sposob, ako subor obnovit:
+NOTE: until now the CSV was made by hand/ad hoc, so after every key was
+deleted (e.g. after the minimalist mode was removed) it kept rows for keys
+that no longer existed in i18n.py. This script is therefore the only correct
+way to regenerate the file:
 
     python make_translation_todo.py
 """
@@ -25,17 +27,19 @@ import i18n
 
 OUT = "preklad_TODO.csv"
 TARGET_LANGS = ("ja", "zh", "ru", "es", "de", "fr", "pt", "cs", "bg")
-# Jazyky, ktore sa s anglictinou nahodou netrafia (ine pismo) - viz hlavicka.
+# Languages that do not coincide with English by chance (a different
+# script) - see the header.
 SPOLAHLIVE = ("ja", "zh", "ru", "bg")
 
-# Kluce, kde je zhoda s anglictinou ZAMERNA aj v jazyku s inym pismom:
-# japoncina a cinstina pisu percento bez medzery ako anglictina („{n}%“),
-# slovencina s medzerou („{n} %“) - preto sa sk a en lisia.
+# Keys where matching English is DELIBERATE even in a language with a
+# different script: Japanese and Chinese write a percentage without a space
+# like English („{n}%“), Slovak with a space („{n} %“) - that is why sk and en
+# differ.
 ZAMERNA_ZHODA = {"dashboard.fmt.pct"}
 
 
 def na_dopreklad(strings):
-    """Kluce, pri ktorych niektory z jazykov SPOLAHLIVE ostal anglicky."""
+    """Keys where one of the SPOLAHLIVE languages stayed English."""
     return sorted(
         key for key, entry in strings.items()
         if key not in ZAMERNA_ZHODA

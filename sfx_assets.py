@@ -1,20 +1,21 @@
-"""Zabudovana kniznica kratkych meditacnych / herných SFX zvukov.
+"""Built-in library of short meditative / gaming SFX sounds.
 
-Kazdy vizualny rezim (Zen Dojo / Modern Gamer) ma vlastnu sadu 4 zvukov.
-Pri prvom starte `ensure_assets()` pre kazdy chybajuci zvuk:
-  0. V nainstalovanej appke (sys.frozen) ho skopiruje z pribaleneho
-     `assets/sounds` (sys._MEIPASS) - build ich nesie vsetkych osem, takze
-     nainstalovana appka na siet kvoli zvukom nechodi vobec.
-  1. Az ked pribaleny chyba: pre zvuky, kde mame overeny stabilny CC0 zdroj
-     (Kenney Interface Sounds, balicek na GitHube), sa skusi stiahnutie
-     (kratky timeout, overeny SHA-256).
-  2. Vsetko ostatne - a hlavne organicke/meditativne tony, pre ktore
-     ziadny spolahlivy volne dostupny subor neexistuje - sa vygeneruje
-     lokalne cez numpy priamo do .wav (ziadna zavislost na sieti).
-Pri behu zo zdrojakov su zvuky rovno v repozitari (assets/sounds).
+Each visual mode (Zen Dojo / Modern Gamer) has its own set of 4 sounds.
+On the first start, `ensure_assets()` for each missing sound:
+  0. In the installed app (sys.frozen) copies it from the bundled
+     `assets/sounds` (sys._MEIPASS) - the build carries all eight, so the
+     installed app does not go online for sounds at all.
+  1. Only when the bundled one is missing: for sounds where we have a
+     verified stable CC0 source (Kenney Interface Sounds, a package on
+     GitHub), a download is tried (short timeout, verified SHA-256).
+  2. Everything else - and above all the organic/meditative tones, for
+     which no reliable freely available file exists - is generated
+     locally via numpy straight into .wav (no dependency on the network).
+When running from source, the sounds are right in the repository
+(assets/sounds).
 
-Vysledne .wav su kratke (0.35 - 1.2 s), bez ticha na zaciatku, mono
-16-bit PCM 44100 Hz - hotove na okamzite neblokujuce prehratie.
+The resulting .wav files are short (0.35 - 1.2 s), without silence at the
+start, mono 16-bit PCM 44100 Hz - ready for instant non-blocking playback.
 """
 
 import hashlib
@@ -31,14 +32,14 @@ from paths import SOUNDS_DIR
 
 SR = 44100
 
-# Kenney "Interface Sounds" - CC0 1.0, zabalene na GitHube s priamymi
-# surovymi (raw) URL na jednotlive .wav subory. Overene priamym stiahnutim.
+# Kenney "Interface Sounds" - CC0 1.0, packaged on GitHub with direct raw
+# URLs to the individual .wav files. Verified by a direct download.
 KENNEY_BASE = ("https://raw.githubusercontent.com/Calinou/kenney-interface-"
                "sounds/master/addons/kenney_interface_sounds/")
 
 
 # --------------------------------------------------------------------------
-# nizkourovnove DSP pomocky (cisto numpy, ziadne scipy)
+# low-level DSP helpers (pure numpy, no scipy)
 # --------------------------------------------------------------------------
 
 def _t(dur, sr=SR):
@@ -51,7 +52,7 @@ def _noise(dur, sr=SR):
 
 
 def _band_limit(sig, low, high, sr=SR):
-    """FFT orezanie signalu na dane frekvencne pasmo (jednoduchy band/high/low-pass)."""
+    """FFT cut of the signal to the given frequency band (simple band/high/low-pass)."""
     n = len(sig)
     freqs = np.fft.rfftfreq(n, 1.0 / sr)
     spec = np.fft.rfft(sig)
@@ -82,16 +83,17 @@ def _normalize(sig, peak=0.92):
     return sig / m * peak
 
 
-# Kroky a prebijanie protihracov v kompetitivnych FPS su najlepsie citatelne
-# v pasme 2-4 kHz - vsetky vygenerovane SFX preto v tomto pasme nesmu niesc
-# ziadnu energiu, aby DojoSync nikdy neprekryl herny zvuk (viz. aj rovnaky
-# filter aplikovany este raz pri prehravani v main.py - dvojita poistka).
+# Opponents' footsteps and reloads in competitive FPS games are best
+# audible in the 2-4 kHz band - so none of the generated SFX may carry
+# any energy in this band, so that DojoSync never masks the game sound
+# (see also the same filter applied once more at playback in main.py - a
+# double safeguard).
 FOOTSTEP_NOTCH_LOW = 2000.0
 FOOTSTEP_NOTCH_HIGH = 4000.0
 
 
 def _notch(sig, low=FOOTSTEP_NOTCH_LOW, high=FOOTSTEP_NOTCH_HIGH, sr=SR):
-    """FFT band-stop - vynuluje dane frekvencne pasmo, zvysok necha bezo zmeny."""
+    """FFT band-stop - zeroes the given frequency band, leaves the rest intact."""
     n = len(sig)
     if n == 0:
         return sig
@@ -116,11 +118,11 @@ def _save_wav(path, sig, sr=SR):
 
 
 # --------------------------------------------------------------------------
-# ZEN DOJO - organicke, meditativne tony
+# ZEN DOJO - organic, meditative tones
 # --------------------------------------------------------------------------
 
 def _synth_earth_thud(path):
-    """Tlmeny zemity dopad pre ťažisko / crouch (40-80 Hz sine + decay)."""
+    """Muffled earthy thud for grounding / crouch (40-80 Hz sine + decay)."""
     dur = 0.5
     t = _t(dur)
     drop = 80.0 - 40.0 * (t / dur)
@@ -131,8 +133,8 @@ def _synth_earth_thud(path):
 
 
 def _synth_wood_temple_block(path):
-    """Suché drevene klopnutie kláštorného klepadla pre zuby / reload
-    (perkusívny ~800 Hz tón s krátkym dozvukom)."""
+    """A dry wooden knock of a monastery temple block for teeth / reload
+    (percussive ~800 Hz tone with a short reverb)."""
     dur = 0.35
     t = _t(dur)
     click = _band_limit(_noise(dur), 600, 2200) * np.exp(-t * 45.0)
@@ -142,8 +144,8 @@ def _synth_wood_temple_block(path):
 
 
 def _synth_singing_bowl(path):
-    """Mäkký vibrujúci tón tibetskej misky pre uvoľnenie / ADS
-    (528 Hz + harmonické, 1.5 s hladký dozvuk)."""
+    """A soft vibrating Tibetan singing bowl tone for release / ADS
+    (528 Hz + harmonics, 1.5 s smooth decay)."""
     dur = 1.6
     t = _t(dur)
     attack = np.clip(t / 0.04, 0.0, 1.0)
@@ -158,8 +160,8 @@ def _synth_singing_bowl(path):
 
 
 def _synth_breath_chime(path):
-    """Jemný filtrovaný dychový šum (band-pass, 1.2 s) s cinknutím pre
-    nádych / F - simuluje pokojný výdych."""
+    """Gentle filtered breath noise (band-pass, 1.2 s) with a chime for the
+    inhale / F - simulates a calm exhale."""
     dur = 1.2
     t = _t(dur)
     swell = np.sin(np.pi * t / dur) ** 1.5
@@ -173,11 +175,11 @@ def _synth_breath_chime(path):
 
 
 # --------------------------------------------------------------------------
-# MODERN GAMER - takticke, sci-fi UI odozvy
+# MODERN GAMER - tactical, sci-fi UI responses
 # --------------------------------------------------------------------------
 
 def _synth_mech_bass_thump(path):
-    """Hlboký mechanický bass drop pre ťažisko / crouch."""
+    """A deep mechanical bass drop for grounding / crouch."""
     dur = 0.4
     t = _t(dur)
     drop = 130.0 - 90.0 * (t / dur)
@@ -190,7 +192,7 @@ def _synth_mech_bass_thump(path):
 
 
 def _synth_click_reload_fallback(path):
-    """Hladké sci-fi cvaknutie - pouzije sa len ak zlyha stiahnutie."""
+    """A smooth sci-fi click - used only if the download fails."""
     dur = 0.12
     t = _t(dur)
     tick = _band_limit(_noise(dur), 1500, 6000) * np.exp(-t * 90.0)
@@ -200,7 +202,7 @@ def _synth_click_reload_fallback(path):
 
 
 def _synth_lock_ping_fallback(path):
-    """Čistý UI ping / laser-lock blip - pouzije sa len ak zlyha stiahnutie."""
+    """A clean UI ping / laser-lock blip - used only if the download fails."""
     dur = 0.16
     t = _t(dur)
     sweep = 1200.0 + 800.0 * (t / dur)
@@ -210,7 +212,7 @@ def _synth_lock_ping_fallback(path):
 
 
 def _synth_vent_release(path):
-    """Zvuk pretlakového ventilu / cyber vent release pre dych / F."""
+    """Pressure-valve / cyber vent release sound for breath / F."""
     dur = 0.55
     t = _t(dur)
     env = np.exp(-t * 5.0)
@@ -220,7 +222,7 @@ def _synth_vent_release(path):
 
 
 # --------------------------------------------------------------------------
-# kniznica
+# library
 # --------------------------------------------------------------------------
 
 ZEN = "zen"
@@ -277,9 +279,9 @@ SOUND_LIBRARY = {
     },
 }
 
-# Poradie zvukov -> automaticke priradenie novym slotom podla ich indexu
-# (slot 1 = ťažisko/crouch, slot 2 = zuby/reload, slot 3 = uvoľnenie/ADS,
-#  slot 4 = dych, dalsie sloty uz bez auto-priradenia).
+# Sound order -> automatic assignment to new slots by their index
+# (slot 1 = grounding/crouch, slot 2 = teeth/reload, slot 3 = release/ADS,
+#  slot 4 = breath, further slots without auto-assignment).
 DEFAULT_SLOT_SOUND_ORDER = {
     ZEN: ["earth_thud", "wood_temple_block", "zen_singing_bowl", "soft_breath_chime"],
     MODERN: ["mech_bass_thump", "sfx_click_reload", "sfx_lock_ping", "vent_release"],
@@ -307,20 +309,22 @@ def default_sound_for_slot_index(pack, index):
     return order[index] if 0 <= index < len(order) else ""
 
 
-# Strop stahovaneho suboru. Oba zvuky z GitHubu maju 1,7 kB a 49,6 kB;
-# 256 kB je s rezervou nad nimi. SHA-256 sa overuje az po stiahnuti - bez
-# stropu by `resp.read()` natiahol do pamate cokolvek, co na tej adrese
-# lezi (zmeneny alebo podvrhnuty obsah), a zahodil by to az potom.
+# Cap on the downloaded file. The two sounds from GitHub are 1.7 kB and
+# 49.6 kB; 256 kB is comfortably above them. SHA-256 is verified only
+# after the download - without a cap `resp.read()` would pull into memory
+# whatever sits at that address (changed or spoofed content), and only
+# then throw it away.
 MAX_STIAHNUTIE_BAJTOV = 256 * 1024
 _KUS_BAJTOV = 16 * 1024
 
 
 def _citaj_so_stropom(resp, strop=MAX_STIAHNUTIE_BAJTOV):
-    """Obsah odpovede po kusoch; nad `strop` bajtov ValueError.
+    """Response content in chunks; ValueError above `strop` bytes.
 
-    Cita sa, kym nieco prichadza, a skonci sa hned, ako sucet prekroci
-    strop - nespolieha sa na to, ze jedno `read(n)` vrati vsetko naraz.
-    V pamati tak nikdy nie je viac nez strop plus jeden kus."""
+    It reads while something is coming and stops as soon as the total
+    exceeds the cap - it does not rely on a single `read(n)` returning
+    everything at once. So there is never more than the cap plus one
+    chunk in memory."""
     kusy, spolu = [], 0
     while True:
         kus = resp.read(_KUS_BAJTOV)
@@ -340,10 +344,11 @@ def _try_download(url, path, expected_sha256=None, timeout=4.0):
     if len(data) < 200 or data[:4] != b"RIFF":
         raise ValueError("neplatný WAV obsah")
     if expected_sha256:
-        # Integrity pin: aj ked ide o HTTPS a dovryhodny CC0 zdroj (Kenney),
-        # overujeme presny obsah súboru voči hashu zaznamenanému v
-        # SOUND_LIBRARY - appka ma aj tak lokalny numpy fallback, takze
-        # tu nema zmysel dovcrovat tretej strane viac, nez je nutne.
+        # Integrity pin: even though it is HTTPS and a trustworthy CC0 source
+        # (Kenney), we verify the exact file content against the hash
+        # recorded in SOUND_LIBRARY - the app has a local numpy fallback
+        # anyway, so there is no point trusting a third party more than
+        # necessary here.
         actual = hashlib.sha256(data).hexdigest()
         if actual != expected_sha256:
             raise ValueError(
@@ -357,12 +362,13 @@ def _try_download(url, path, expected_sha256=None, timeout=4.0):
 
 
 def _bundled_path(pack, info):
-    """Zvuk pribaleny v nainstalovanej appke, alebo None.
+    """A sound bundled in the installed app, or None.
 
-    PyInstaller dava priecinok `assets` (Dandurf.spec) do `sys._MEIPASS`,
-    ale SOUNDS_DIR je v nainstalovanej appke %APPDATA%\\Zanshin - bez tejto
-    kopie by appka pribalene subory nikdy nepouzila a dva z nich by sa
-    zbytocne stahovali z GitHubu (su to presne tie iste, s tym istym hashom).
+    PyInstaller puts the `assets` folder (Dandurf.spec) into `sys._MEIPASS`,
+    but in the installed app SOUNDS_DIR is %APPDATA%\\Zanshin - without
+    this copy the app would never use the bundled files and two of them
+    would be needlessly downloaded from GitHub (they are exactly the same
+    ones, with the same hash).
     """
     if not getattr(sys, "frozen", False):
         return None
@@ -373,7 +379,7 @@ def _bundled_path(pack, info):
 
 
 def _try_copy_bundled(pack, info, path):
-    """Skopiruje pribaleny zvuk na `path`. True = hotovo, False = nie je."""
+    """Copies the bundled sound to `path`. True = done, False = not there."""
     src = _bundled_path(pack, info)
     if not src:
         return False
@@ -397,7 +403,7 @@ def _all_sound_paths():
 
 
 def missing_count():
-    """Kolko zo zabudovanych SFX este chyba na disku (0 = vsetko pripravene)."""
+    """How many built-in SFX are still missing on disk (0 = all ready)."""
     missing = 0
     for path in _all_sound_paths():
         try:
@@ -410,12 +416,13 @@ def missing_count():
 
 
 def ensure_assets(log=None, progress=None):
-    """Zaisti, ze vsetky bundled SFX existuju - najprv z pribalenych
-    suborov (nainstalovana appka), az potom stiahne alebo vygeneruje.
+    """Makes sure all bundled SFX exist - first from the bundled files
+    (installed app), only then downloads or generates them.
 
-    Blokuje (kopia / siet / numpy synteza) - vola sa z pomocneho vlakna.
-    `progress(done, total)` sa vola po kazdom vybavenom subore (aj preskocenom),
-    aby volajuci mohol zobrazit priebeh (napr. v Onboarding sprievodcovi).
+    Blocks (copy / network / numpy synthesis) - called from a helper
+    thread. `progress(done, total)` is called after each handled file
+    (skipped ones too), so the caller can show progress (e.g. in the
+    Onboarding guide).
     """
     def _log(msg):
         if log:
@@ -450,7 +457,7 @@ def ensure_assets(log=None, progress=None):
                 _progress(done)
                 continue
         except OSError:
-            pass            # kopia zlyhala -> ako keby pribaleny nebol
+            pass            # copy failed -> as if there were no bundled one
 
         label = tr(info["label_key"])
         url = info.get("download_url")

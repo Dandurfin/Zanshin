@@ -1,15 +1,18 @@
 # -*- coding: utf-8 -*-
-"""Text po davke 4b auditu UX (0.2.2): zalamovanie japonciny a cinstiny,
-datum v jazyku appky a dlhy cas nad hranicou.
+"""Text after batch 4b of the UX audit (0.3): wrapping of Japanese and
+Chinese, the date in the app language and long time over the limit.
 
-Strazi sa:
-  * kinsoku: riadok nezacne 「。」「、」「）」「」」 ani malou kanou a
-    neskonci otvaracou zatvorkou; nic sa nestrati, latinka sa nemeni,
-  * kazdy CTkLabel s `wraplength` ukaze ja/zh text zlomeny podla kinsoku,
-    `cget("text")` vrati povodny text; ine jazyky sa nemenia,
-  * datum ma tvar jazyka appky (sk "12. 11. 2026", de "12.11.2026", en
-    "12 Nov 2026", ja "2026年11月12日"), cas ostava HH:MM, subor exportu ISO,
-  * "Nad hranicou" od hodiny "1 h 15 min", nie "75:12" - ako os stopy.
+Guarded:
+  * kinsoku: a line does not start with 「。」「、」「）」「」」 or a small kana
+    and does not end with an opening bracket; nothing is lost, Latin text
+    does not change,
+  * every CTkLabel with `wraplength` shows ja/zh text broken by kinsoku,
+    `cget("text")` returns the original text; other languages do not change,
+  * the date takes the app language's form (sk "12. 11. 2026", de
+    "12.11.2026", en "12 Nov 2026", ja "2026年11月12日"), the time stays
+    HH:MM, the export file ISO,
+  * "Over the limit" from one hour on is "1 h 15 min", not "75:12" - like
+    the trace axis.
 """
 import os
 import sys
@@ -82,7 +85,8 @@ def test_kinsoku_pri_kazdej_sirke(sirka):
 
 
 def test_kinsoku_presunie_bodku_na_koniec_riadku():
-    # pri sirke 5 by "。" zacal druhy riadok - posledny znak ide s nim
+    # at width 5 "。" would start the second line - the last character goes
+    # with it
     zlomeny = ui_kit.zalom_kinsoku("あいうえお。かき", 5, _znaky)
     assert zlomeny == "あいうえ\nお。かき"
 
@@ -127,11 +131,11 @@ def test_label_v_japoncine_zlomi_podla_kinsoku(jazyk):
         assert label.cget("text") == text, "volajuci vidi povodny text"
         zmeraj = ui_kit._merac_pisma(ui_kit.ui(11))
         _kontrola_kinsoku(text, zobrazeny, 160, zmeraj)
-        # novy text cez configure sa zlomi tiez
+        # new text via configure gets broken too
         druhy = tr("dnes.zones_hint")
         label.configure(text=druhy)
         _kontrola_kinsoku(druhy, label._label.cget("text"), 160, zmeraj)
-        # bez wraplength sa nic nezlamuje
+        # without wraplength nothing gets broken
         holy = ctk.CTkLabel(root, text=text, font=ui_kit.ui(11))
         assert holy._label.cget("text") == text
     finally:
@@ -166,7 +170,7 @@ def test_text_na_platne_dnes_sa_zlomi_podla_kinsoku():
 
 
 # --------------------------------------------------------------------------
-# 13: datum v jazyku appky
+# 13: the date in the app language
 # --------------------------------------------------------------------------
 
 TS = time.mktime((2026, 11, 12, 20, 5, 0, 0, 0, -1))
@@ -222,10 +226,10 @@ def test_kazdy_jazyk_ma_tvar_datumu_a_12_mesiacov():
 def test_historia_pise_datum_v_jazyku_appky():
     zdroj = zdroj_suboru("app_history.py")
     assert '"%d.%m.%Y' not in zdroj and "%d.%m. %H:%M" not in zdroj
-    # tabulka relacii aj hlavicka detailu
+    # the sessions table and the detail header
     assert zdroj.count("ui_kit.datum_text(started, cas=True)") >= 2
     assert "when=ui_kit.datum_text(stamp, rok=False, cas=True)" in zdroj
-    # nazov exportovaneho suboru ostava ISO
+    # the exported file name stays ISO
     assert 'time.strftime("zanshin-relacie-%Y-%m-%d.csv")' in zdroj
     assert "ui_kit.datum_text(started, cas=True)" in zdroj_suboru("app_data.py")
 
@@ -244,7 +248,7 @@ def test_popisky_grafu_trendu(jazyk):
 
 
 # --------------------------------------------------------------------------
-# 14: "Nad hranicou" od hodiny ako dlzka
+# 14: "Over the limit" from one hour on as a duration
 # --------------------------------------------------------------------------
 
 def test_cas_nad_hranicou(jazyk):
@@ -256,7 +260,7 @@ def test_cas_nad_hranicou(jazyk):
     assert ui_kit.cas_text(75 * 60 + 12) == tr("dashboard.fmt.h_min", h=1, m="15")
     assert ui_kit.cas_text("zle") == "—"
     assert ui_kit.cas_text(None) == "0:00"
-    # ta ista hranica ako koniec osi stopy relacie
+    # the same threshold as the end of the session trace axis
     assert ui_kit.DLZKA_OD_S == ui_kit.SessionTrace.OS_DLZKA_OD_S == 3600
 
 

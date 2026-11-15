@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
-"""Neulozena relacia (hr_session_pending.json, 0.2.2 davka 4) - kontrola
-skeptika: doplnena relacia ide do historie na SVOJE MIESTO podla casu a
-necitatelny subor cakajucich relacii sa nezmaze ani neprepise.
+"""Unsaved session (hr_session_pending.json, 0.3 batch 4) - skeptic check:
+the added session goes into history at ITS OWN PLACE by time, and an
+unreadable file of pending sessions is neither deleted nor overwritten.
 
-Historia berie poslednu relaciu v subore ako najnovsiu (detail v Historii,
-tabulka od konca). Neulozena relacia sa doplni az po DALSEJ uspesne ulozenej
-- bez zaradenia by v historii stala za novsou a tvarila sa ako posledny
-vecer. Len synteticke data v tmp priecinku."""
+History takes the last session in the file as the newest (detail in
+History, table from the end). An unsaved session is added only after the
+NEXT successfully saved one - without sorting it in, it would stand after a
+newer one in the history and pose as the last evening. Synthetic data in a
+tmp folder only."""
 import json
 import os
 import time
@@ -29,14 +30,14 @@ def _zaciatky(cesta):
 
 
 # --------------------------------------------------------------------------
-# Poradie v historii
+# Order in the history
 # --------------------------------------------------------------------------
 
 def test_doplnena_starsia_relacia_ide_na_svoje_miesto(tmp_path):
     cesta = str(tmp_path / "hr_sessions.json")
     teraz = time.time()
     assert hr_stats.save_session(cesta, _relacia(teraz - 86400))
-    # A sa neulozila (plny disk) - odlozena bokom; B sa potom ulozila normalne
+    # A was not saved (full disk) - set aside; B was then saved normally
     assert hr_stats.zapis_cakajucu(cesta, _relacia(teraz - 7200))
     assert hr_stats.save_session(cesta, _relacia(teraz - 3600))
     doplnene = hr_stats.obnov_cakajuce(cesta)
@@ -48,8 +49,9 @@ def test_doplnena_starsia_relacia_ide_na_svoje_miesto(tmp_path):
 
 
 def test_zatvorenie_relacie_doplni_cakajucu_pred_seba(tmp_path):
-    """Skutocne `_close_hr_session`: ulozi beziacu relaciu a az za nou doplni
-    cakajucu (disk je zase zapisovatelny) - poradie v subore musi sediet."""
+    """The real `_close_hr_session`: saves the running session and only after
+    it adds the pending one (the disk is writable again) - the order in the
+    file must be right."""
     a = vypnutie._appka(tmp_path)
     teraz = time.time()
     hr_stats.save_session(a.hr_sessions_path, _relacia(teraz - 2 * 86400))
@@ -64,8 +66,8 @@ def test_zatvorenie_relacie_doplni_cakajucu_pred_seba(tmp_path):
 
 
 def test_bezna_relacia_sa_dalej_pripaja_na_koniec(tmp_path):
-    """Zaradenie plati len pre doplnene (`recovered`) relacie - bezne ukladanie
-    sa nemeni (napr. hodiny, ktore minule isli dopredu)."""
+    """Sorting in applies only to added (`recovered`) sessions - normal saving
+    does not change (e.g. a clock that ran fast last time)."""
     cesta = str(tmp_path / "hr_sessions.json")
     hr_stats.save_session(cesta, _relacia(2.0e9))
     hr_stats.save_session(cesta, _relacia(1.9e9))
@@ -79,11 +81,11 @@ def test_zaradenie_zvladne_pokazene_casy():
     data = [{"started": 10.0}, {"started": None}]
     hr_stats._zarad_poslednu(data)
     assert data == [{"started": 10.0}, {"started": None}], "bez casu ostava na konci"
-    hr_stats._zarad_poslednu([])                 # prazdny zoznam nespadne
+    hr_stats._zarad_poslednu([])                 # an empty list does not crash
 
 
 # --------------------------------------------------------------------------
-# Necitatelny subor cakajucich relacii
+# Unreadable file of pending sessions
 # --------------------------------------------------------------------------
 
 POKAZENE = '[{"started": 1800000000.0, "duration_s": 12'

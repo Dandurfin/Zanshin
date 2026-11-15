@@ -1,19 +1,20 @@
 # -*- coding: utf-8 -*-
-"""Odinstalator 0.2 nesmie potichu zmazat historiu ZIP verzie (0.2.2).
+"""0.2's uninstaller must not silently delete the ZIP version's history (0.3).
 
-0.2 sa instalovala instalackou (Dandurf.iss). Jej odinstalator sa pyta
-"Ponechat nastavenia...?" a pri Nie zmaze %APPDATA%\\Zanshin - ten isty
-priecinok pouziva aj Zanshin zo ZIP-u. Strazi sa:
+0.2 was installed with an installer (Dandurf.iss). Its uninstaller asks
+"Ponechat nastavenia...?" (Keep settings...?) and on "Nie" (No) deletes
+%APPDATA%\\Zanshin - the same folder that Zanshin from the ZIP uses.
+Guarded:
 
-  * `paths.stara_instalacia` najde kluc odinstalovania `<AppId>_is1` (HKCU,
-    aj HKLM v oboch pohladoch), s presnym AppId z Dandurf.iss, a nikdy
-    nespadne - chybajuci winreg, kluc ci pokazeny register = None,
-  * ked bezi prave nainstalovana appka, nevaruje,
-  * appka to povie RAZ (zapamata si to v nastaveniach), len v zabalenej
-    verzii, a az po starte okna,
-  * README (krok 0 v "A. Ready-made ZIP") aj KNOWN_ISSUES to hovoria.
+  * `paths.stara_instalacia` finds the uninstall key `<AppId>_is1` (HKCU,
+    and HKLM in both views), with the exact AppId from Dandurf.iss, and
+    never crashes - a missing winreg, key or a broken registry = None,
+  * when it is the installed app itself that is running, it does not warn,
+  * the app says it ONCE (it remembers it in the settings), only in the
+    packaged version, and only after the window has started,
+  * the README (step 0 in "A. Ready-made ZIP") and KNOWN_ISSUES say it too.
 
-Register sa nedotyka - vsetko cez falosny winreg.
+The registry is not touched - everything goes through a fake winreg.
 """
 import re
 import sys
@@ -42,7 +43,7 @@ class _Kluc:
 
 
 class _FalosnyWinreg:
-    """Len to, co `paths.stara_instalacia` z winreg pouziva."""
+    """Only what `paths.stara_instalacia` uses from winreg."""
     HKEY_CURRENT_USER = "HKCU"
     HKEY_LOCAL_MACHINE = "HKLM"
     KEY_READ = 0x20019
@@ -50,7 +51,7 @@ class _FalosnyWinreg:
     KEY_WOW64_32KEY = 0x0200
 
     def __init__(self, kluce=None, chyba=None):
-        # {(koren, pohlad): {meno hodnoty: hodnota}}; pohlad 0 = HKCU
+        # {(root, view): {value name: value}}; view 0 = HKCU
         self.kluce = kluce or {}
         self.chyba = chyba
         self.otvorene = []
@@ -86,8 +87,8 @@ ZIP_EXE = r"C:\Games\Zanshin\Zanshin.exe"
 # --------------------------------------------------------------------------
 
 def test_app_id_sedi_s_instalackou():
-    """Kluc odinstalovania je `<AppId>_is1`; v .iss je AppId so zdvojenou
-    `{{` (escapovanie Inno Setup)."""
+    """The uninstall key is `<AppId>_is1`; in the .iss the AppId has a
+    doubled `{{` (Inno Setup escaping)."""
     iss = zdroj_suboru("Dandurf.iss")
     najdene = re.search(r"^AppId=\{(\{[0-9A-F-]+\})\s*$", iss, re.M)
     assert najdene, "AppId v Dandurf.iss"
@@ -117,12 +118,12 @@ def test_bezi_prave_nainstalovana_appka():
     reg = _FalosnyWinreg({("HKCU", 0): _hodnoty()})
     exe = INSTALOVANA + r"\Zanshin.exe"
     assert paths.stara_instalacia(reg, exe=exe) is None
-    # velkost pismen v ceste Windows nerozlisuje
+    # Windows does not distinguish letter case in a path
     assert paths.stara_instalacia(reg, exe=exe.upper()) is None
 
 
 def test_podobny_priecinok_nie_je_ten_isty():
-    """...\\Zanshin a ...\\Zanshin-0.2.2 su dva rozne priecinky."""
+    """...\\Zanshin and ...\\Zanshin-0.3 are two different folders."""
     reg = _FalosnyWinreg({("HKCU", 0): _hodnoty()})
     exe = INSTALOVANA + r"-0.3\Zanshin.exe"
     assert paths.stara_instalacia(reg, exe=exe) is not None
@@ -142,13 +143,13 @@ def test_pokazeny_register_nespadne(chyba):
 
 
 def test_bez_winreg_nic(monkeypatch):
-    """Mimo Windows (alebo bez winreg) sa nic nehlada a nic nespadne."""
-    monkeypatch.setitem(sys.modules, "winreg", None)      # import zlyha
+    """Off Windows (or without winreg) nothing is searched or crashes."""
+    monkeypatch.setitem(sys.modules, "winreg", None)      # the import fails
     assert paths.stara_instalacia(exe=ZIP_EXE) is None
 
 
 # --------------------------------------------------------------------------
-# upozornenie v appke
+# the notice in the app
 # --------------------------------------------------------------------------
 
 def _appka(monkeypatch, najdene, frozen=True):
@@ -166,12 +167,12 @@ def _appka(monkeypatch, najdene, frozen=True):
             raise najdene
         return najdene
 
-    # `_upozorni_na_staru_instalaciu` byva v app_data a meno si importuje
-    # z paths - podstrcit treba tam.
+    # `_upozorni_na_staru_instalaciu` lives in app_data and imports the name
+    # from paths - it has to be injected there.
     monkeypatch.setattr(app_data, "stara_instalacia", _hladaj)
     zobrazene = []
-    # 0.2.2 davka 4: oznam v okne appky (`ui_kit.notify`), nie systemovy
-    # messagebox - app_data ho uz neimportuje
+    # 0.3 batch 4: a notice in the app window (`ui_kit.notify`), not a system
+    # messagebox - app_data no longer imports it
     import ui_kit
     monkeypatch.setattr(ui_kit, "notify",
                         lambda okno, pal, titul, text, **kw: zobrazene.append(text))
@@ -196,7 +197,7 @@ def test_upozorni_raz_az_po_starte_a_zapamata_si_to(monkeypatch):
     assert len(s.zobrazene) == 1 and "0.2" in s.zobrazene[0]
     assert a.old_installer_warned is True and s.ulozene == [True]
     assert s.denn == s.zobrazene
-    # dalsi start (flag z nastaveni) uz nic
+    # the next start (flag from the settings) does nothing more
     spusti()
     assert len(s.planovane) == 1 and len(s.hladane) == 1
 
@@ -217,15 +218,16 @@ def test_bez_starej_instalacie_ani_chyba_nic_neukaze(monkeypatch):
 
 
 def test_flag_prezije_prve_ulozenie_pri_starte():
-    """`__init__` uklada nastavenia hned po postaveni okna - flag musi byt
-    nacitany skor, inak by sa zapisal False a varovanie chodilo stale."""
+    """`__init__` saves the settings right after building the window - the
+    flag has to be loaded earlier, otherwise False would be written and
+    the warning would keep coming."""
     init = zdroj_metody("__init__")
     assert (init.index('self.old_installer_warned = bool(settings.get("old_installer_warned"))')
             < init.index("self._ready = True"))
     assert "'old_installer_warned'" in zdroj_metody("save_settings").replace('"', "'")
     nacitaj = zdroj_metody("load_settings")
     assert 'data["old_installer_warned"] = bool(loaded.get("old_installer_warned", False))' in nacitaj
-    # pri prvom starte bezi sprievodca - povie sa to az pri dalsom
+    # on the first start the tour runs - it is said only at the next one
     assert "if not settings[\"first_run\"]:\n            self._upozorni_na_staru_instalaciu()" in init
 
 
@@ -241,7 +243,7 @@ def test_text_vo_vsetkych_jazykoch():
 
 
 # --------------------------------------------------------------------------
-# dokumenty
+# documents
 # --------------------------------------------------------------------------
 
 def _plain(meno):
@@ -258,11 +260,11 @@ def test_readme_krok_nula_v_zip_navode():
 
 
 def test_known_issues_v_sekcii_022():
-    # Od 0.2.2 (davka 4) je historia verzii v CHANGELOG.md.
+    # Since 0.3 (batch 4) the version history is in CHANGELOG.md.
     k = zdroj_suboru("CHANGELOG.md")
     sekcia = " ".join(k[k.index("## What 0.3 changes"):k.index("## What 0.2.1 fixes")].split())
     assert "The 0.2 uninstaller can delete this version's data." in sekcia
     assert "**No** deletes that folder" in sekcia and "Answer **Yes**." in sekcia
-    # otazka odinstalatora citovana presne podla Dandurf.iss
+    # the uninstaller's question quoted exactly as in Dandurf.iss
     otazka = re.search(r"^english\.KeepDataQuestion=(.+)$", zdroj_suboru("Dandurf.iss"), re.M)
     assert "*%s*" % otazka.group(1).strip() in sekcia

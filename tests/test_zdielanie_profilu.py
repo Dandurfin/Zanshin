@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
-"""Zdieľanie profilu kódom (Spúšťače -> Exportovať profil).
+"""Sharing a profile by code (Triggers -> Export profile).
 
-Kód sa posiela iným ľuďom. Predtým niesol celé sloty vrátane absolútnych
-ciest k nahrávkam (C:\\Users\\<meno>\\AppData\\...) - kto kód zdieľal,
-prezradil meno účtu vo Windows. Import navyše nechal cudziu cestu, ak
-`sfx_key` nebol "__custom__", a tá sa prehrala, keby na tomto PC existovala.
+The code is sent to other people. Before, it carried whole slots including
+absolute paths to recordings (C:\\Users\\<meno>\\AppData\\...) - whoever
+shared the code revealed their Windows account name. On top of that the
+import kept a foreign path if `sfx_key` was not "__custom__", and that path
+would have been played if it existed on this PC.
 """
 import base64
 import json
@@ -44,7 +45,7 @@ def test_zdielane_polia_su_skutocne_polia_slotu():
 
 
 def test_kod_profilu_neprezradi_meno_uctu():
-    """Rovnaké zloženie ako `export_profile_code`."""
+    """The same composition as `export_profile_code`."""
     payload = {"name": "Môj", "slots": [slot_na_zdielanie(_moj_slot())]}
     kod = base64.b64encode(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
     text = base64.b64decode(kod).decode("utf-8")
@@ -52,7 +53,7 @@ def test_kod_profilu_neprezradi_meno_uctu():
 
 
 def test_import_vzdy_vynuluje_cesty_aj_bez_vlastneho_zvuku():
-    """Starý kód (s cestami) a prázdny `sfx_key`: cesta sa predtým nechala."""
+    """Old code (with paths) and an empty `sfx_key`: the path used to stay."""
     stary_kod = dict(_moj_slot(), sfx_key="")
     slot = slot_zo_zdielania(stary_kod)
     assert slot["audio_path"] == "" and slot["voice_path"] == ""

@@ -1,17 +1,18 @@
 # -*- coding: utf-8 -*-
-"""Nastavenia a vizualne zvysky (0.2.2, davka 4 auditu UX).
+"""Settings and visual leftovers (0.3, batch 4 of the UX audit).
 
-  * Zvuk: "Ako sa ozyvam" je prvy riadok panela Hlasitost, nie vlastna
-    karta pre jednu vetu (o panel menej, to iste spravanie),
-  * Panel: nadpis -> linka -> telo po 8 px; linka len MEDZI riadkami, nie
-    pod poslednym (tam lezala tesne nad ramom panela),
-  * ziadna linka nad kartou Sprievodcu, lista profilu na tej istej hrane
-    ako karty pod nou, jeden styl posuvnika v celej appke,
-  * karta pripomienky ukazuje pevny nazov kategorie nad frazou,
-  * Aizome: pokoj (`zone_calm`) uz nie je modry - modra patri zotaveniu,
-  * okno Sprievodcu bez emoji v nadpise.
+  * Sound: "How I speak up" is the first row of the Loudness panel, not
+    its own card for one sentence (one panel less, the same behaviour),
+  * Panel: heading -> line -> body 8 px apart; a line only BETWEEN rows,
+    not under the last one (there it lay right above the panel frame),
+  * no line above the Guide card, the profile bar on the same edge as the
+    cards below it, one slider style across the whole app,
+  * the cue card shows the fixed category name above the phrase,
+  * Aizome: calm (`zone_calm`) is no longer blue - blue belongs to
+    recovery,
+  * the Guide window without emoji in the title.
 
-Bez okna - Tk triedy su atrapy.
+No window - the Tk classes are dummies.
 """
 import ast
 import colorsys
@@ -46,7 +47,7 @@ def _volania(uzol, meno):
 
 
 # --------------------------------------------------------------------------
-# Zvuk: "Ako sa ozyvam" v paneli Hlasitost
+# Sound: "How I speak up" in the Loudness panel
 # --------------------------------------------------------------------------
 
 def test_styl_hlasky_je_prvy_riadok_panela_hlasitost():
@@ -71,7 +72,7 @@ def test_styl_hlasky_sa_sprava_rovnako():
 
 
 # --------------------------------------------------------------------------
-# Panel a deliace linky
+# Panel and divider lines
 # --------------------------------------------------------------------------
 
 def test_panel_rozostupy_8_px():
@@ -108,24 +109,24 @@ class _Rodic:
 
 def test_linka_len_medzi_riadkami():
     a, b, c = _riadok(), _riadok(), _riadok()
-    veta = object()                       # napr. stav pripravy hlasu
+    veta = object()                       # e.g. the voice preparation status
     rodic = _Rodic([a, b, veta, c])
     ui_kit.SettingRow.obnov_linky(rodic)
     assert a.deliaca_linka.vidno and b.deliaca_linka.vidno
     assert not c.deliaca_linka.vidno, "pod poslednym riadkom panela linka nie je"
-    # pribudol dalsi riadok: c uz nie je posledny - linka sa vrati
+    # another row was added: c is no longer the last - the line comes back
     d = _riadok()
     rodic.deti.append(d)
     ui_kit.SettingRow.obnov_linky(rodic)
     assert c.deliaca_linka.vidno and not d.deliaca_linka.vidno
-    # opakovane volanie nic nemeni
+    # a repeated call changes nothing
     ui_kit.SettingRow.obnov_linky(rodic)
     assert c.deliaca_linka.vidno and not d.deliaca_linka.vidno
 
 
 def test_riadok_za_ktorym_nieco_je_linku_ma():
     a = _riadok()
-    rodic = _Rodic([a, object()])         # tlacidlo pod riadkom
+    rodic = _Rodic([a, object()])         # a button under the row
     ui_kit.SettingRow.obnov_linky(rodic)
     assert a.deliaca_linka.vidno
 
@@ -139,9 +140,9 @@ def test_obnova_liniek_nikdy_nevyhodi():
 
 
 def test_linky_sa_prepocitaju_pri_zmene_rodica():
-    """`after_idle` samo nestacilo: rozbalovacka v dalsom riadku si vola
-    `update_idletasks` a kontrola dobehla skor, nez dalsi riadok existoval -
-    linky zmizli aj medzi riadkami (snimka stranky Zvuk)."""
+    """`after_idle` alone was not enough: a dropdown in the next row calls
+    `update_idletasks` and the check finished before the next row existed -
+    the lines disappeared even between rows (screenshot of the Sound page)."""
     init = ast.unparse(_metoda("ui_kit.py", "SettingRow", "__init__"))
     assert "tk.Misc.bind(master, '<Configure>'" in init
     assert "SettingRow.obnov_linky(m)" in init
@@ -156,7 +157,7 @@ def test_ziadna_linka_nad_kartou_sprievodcu():
 
 
 # --------------------------------------------------------------------------
-# Lava hrana, posuvniky
+# Left edge, sliders
 # --------------------------------------------------------------------------
 
 def test_lista_profilu_na_hrane_kariet_pripomienok():
@@ -191,12 +192,12 @@ def test_okno_obrazkov_ma_posuvniky_jednym_stylom():
                 if isinstance(u, ast.ClassDef) and u.name == "OverlaySettingsDialog")
     assert not _volania(okno, "ctk.CTkSlider")
     posuvniky = _volania(okno, "ui_kit.slider")
-    assert len(posuvniky) == 4                        # velkost, X, Y, dych
+    assert len(posuvniky) == 4                        # size, X, Y, breath
     for p in posuvniky:
         farby = {k.arg for k in p.keywords} & {"progress_color", "button_color",
                                                "fg_color", "button_hover_color"}
         assert not farby, "X/Y mali vlastnu tmavu vypln accent2"
-    # "Zavriet" je vedlajsie tlacidlo appky, nie vypln accent2 v pisme CTk
+    # "Close" is the app's secondary button, not an accent2 fill in CTk font
     zavriet = [ast.unparse(c) for c in _volania(okno, "ui_kit.button")]
     assert any("tr('common.close')" in c for c in zavriet)
 
@@ -209,7 +210,7 @@ def test_nastavenia_appky_pouzivaju_jeden_posuvnik():
 
 
 # --------------------------------------------------------------------------
-# Karta pripomienky: pevny nazov kategorie
+# Cue card: fixed category name
 # --------------------------------------------------------------------------
 
 def test_karta_ukazuje_nazov_kategorie_pred_frazou():
@@ -232,7 +233,7 @@ def test_nazvy_kategorii_vo_vsetkych_jazykoch_bez_emoji():
 
 
 # --------------------------------------------------------------------------
-# Aizome: pokoj nie je modry
+# Aizome: calm is not blue
 # --------------------------------------------------------------------------
 
 def _odtien(farba):
@@ -272,7 +273,7 @@ def test_karty_pokoja_a_zotavenia_maju_rozne_tokeny():
 
 
 # --------------------------------------------------------------------------
-# Sprievodca bez emoji
+# Guide without emoji
 # --------------------------------------------------------------------------
 
 @pytest.mark.parametrize("kluc", ["guide.panel_title", "guide.window_title"])

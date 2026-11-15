@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
-"""Karty „Moje štatistiky" na Dnes (B2): strop 4 kariet, posledná karta
-ostáva, výmena miest potiahnutím a výber, ktorý sa zmestí na obrazovku.
+"""The "My stats" cards on Today (B2): a cap of 4 cards, the last card
+stays, swapping places by dragging, and a picker that fits on the screen.
 
-Testy bežia bez Tk: čisté funkcie zo settings_model/ui_kit a skutočné
-metódy `DandurfApp` na malej atrape (rovnako ako test_hr_dropout.py).
+The tests run without Tk: pure functions from settings_model/ui_kit and
+real `DandurfApp` methods on a small dummy (just like test_hr_dropout.py).
 """
 import os
 import sys
@@ -22,7 +22,7 @@ PLNE = ["baseline", "hrr", "over", "breath"]
 
 
 # --------------------------------------------------------------------------
-# settings_model: vymena, strop, posledna karta
+# settings_model: swap, cap, last card
 # --------------------------------------------------------------------------
 
 def test_strop_su_styri_karty_mriezka_2x2():
@@ -57,7 +57,7 @@ def test_pridanie_ide_na_koniec_kym_je_miesto():
 def test_piata_karta_sa_neprida():
     assert toggle_dashboard_stat(PLNE, "avg") == PLNE
     assert not dashboard_stat_clickable(PLNE, "avg")
-    # zvolene sa daju odobrat aj pri plnej mriezke - tym sa miesto uvolni
+    # selected ones can be removed even with a full grid - that frees a spot
     assert toggle_dashboard_stat(PLNE, "hrr") == ["baseline", "over", "breath"]
     assert dashboard_stat_clickable(PLNE, "hrr")
 
@@ -65,7 +65,7 @@ def test_piata_karta_sa_neprida():
 def test_posledna_karta_ostava():
     assert toggle_dashboard_stat(["hrr"], "hrr") == ["hrr"]
     assert not dashboard_stat_clickable(["hrr"], "hrr")
-    # dve karty: jedna sa odobrat da
+    # two cards: one can be removed
     assert toggle_dashboard_stat(["hrr", "over"], "hrr") == ["over"]
 
 
@@ -77,8 +77,8 @@ def test_toggle_nemeni_vstup():
 
 
 def test_strop_je_genericky_nie_viazany_na_pocet_metrik():
-    """Katalog moze rast (dalsia polozka pridava nove metriky) - strop je
-    jedno cislo a nepredpoklada, kolko ich je."""
+    """The catalogue can grow (another item adds new metrics) - the cap is
+    one number and does not assume how many there are."""
     katalog = [f"m{i}" for i in range(13)]
     stats = []
     for sid in katalog:
@@ -90,14 +90,15 @@ def test_strop_je_genericky_nie_viazany_na_pocet_metrik():
 
 
 def test_normalizacia_ostava_ako_bola():
-    """Autor: semantika normalize_dashboard_stats sa nemeni (prazdne ->
-    predvolene, poradie ostava, strop sa rata az v appke)."""
+    """Author: the semantics of normalize_dashboard_stats do not change
+    (empty -> default, the order stays, the cap is applied only in the
+    app)."""
     assert normalize_dashboard_stats([]) == list(DEFAULT_DASHBOARD_STATS)
     assert normalize_dashboard_stats(list(DASHBOARD_STAT_IDS)) == list(DASHBOARD_STAT_IDS)
 
 
 # --------------------------------------------------------------------------
-# ui_kit.fit_popup: vyber sa zmesti na obrazovku
+# ui_kit.fit_popup: the picker fits on the screen
 # --------------------------------------------------------------------------
 
 def test_popup_pod_tlacidlom_ked_sa_zmesti():
@@ -113,7 +114,7 @@ def test_popup_nad_tlacidlom_ked_sa_dole_nezmesti():
 
 def test_popup_pritlaceny_dovnutra_obrazovky_aj_na_druhom_monitore():
     import ui_kit
-    area = (1920, 0, 3840, 1040)          # monitor vpravo od primarneho
+    area = (1920, 0, 3840, 1040)          # monitor to the right of the primary
     x, _y = ui_kit.fit_popup(3700, 100, 240, 300, area, 70)
     assert x == 3840 - 240 - 8
     x, _y = ui_kit.fit_popup(1900, 100, 240, 300, area, 70)
@@ -150,7 +151,7 @@ def test_pracovna_plocha_bez_monitora_padne_na_obrazovku(monkeypatch):
 
 
 # --------------------------------------------------------------------------
-# DandurfApp: klik vo vybere, ✕, tahanie karty
+# DandurfApp: click in the picker, ✕, dragging a card
 # --------------------------------------------------------------------------
 
 def _app():
@@ -194,7 +195,7 @@ def _ev(x, y, widget=None):
     return types.SimpleNamespace(x_root=x, y_root=y, widget=widget or _Widget())
 
 
-# mriezka 2x2: karty 100x60, medzera 10 px
+# 2x2 grid: cards 100x60, gap 10 px
 MIESTA = {"baseline": (0, 0), "hrr": (110, 0), "over": (0, 70), "breath": (110, 70)}
 STRED = {k: (x + 50, y + 30) for k, (x, y) in MIESTA.items()}
 MEDZERA = (105, 30)
@@ -221,7 +222,7 @@ def _atrapa(stats=PLNE):
 
 
 def _tah(a, src, body, pohyby=True):
-    """Stlac na karte `src`, (volitelne pohni) a pusti na bode posledneho z `body`."""
+    """Press on card `src`, (optionally move) and release at the last of `body`."""
     w = _Widget()
     x0, y0 = STRED[src]
     a._dashboard_drag(src, "press", _ev(x0, y0, w))
@@ -260,14 +261,14 @@ def test_potiahnutie_na_inu_kartu_vymeni_miesta_a_ulozi():
     w = _tah(a, "baseline", [(60, 40), STRED["breath"]])
     assert a.dashboard_stats == ["breath", "hrr", "over", "baseline"]
     assert a.ulozene == [a.dashboard_stats]
-    # prestavba az po udalosti - znici aj widget, ktory ju prave vybavuje
+    # rebuild only after the event - it also destroys the widget handling it
     assert a.idle == [a._rebuild_dashboard_stats_grid]
     assert w.cursor == "", "kurzor po pusteni spat"
     assert all(c.look is None for c in a.dashboard_cards.values())
 
 
 def test_rozhoduje_pustenie_aj_bez_jedineho_pohybu():
-    """Skutocna mys niekedy do Tk nepusti ani jeden B1-Motion."""
+    """A real mouse sometimes does not let a single B1-Motion through to Tk."""
     a = _atrapa()
     _tah(a, "hrr", [STRED["over"]], pohyby=False)
     assert a.dashboard_stats == ["baseline", "over", "hrr", "breath"]
@@ -308,13 +309,13 @@ def test_pohyb_len_zvyraznuje_zdroj_a_ciel():
 
 
 def test_kazde_stlacenie_zhodi_zvysky_strateneho_tahu():
-    """Alt-tab uprostred tahu: pustenie nepride a okraje by ostali svietit."""
+    """Alt-tab mid-drag: no release comes and the borders would stay lit."""
     a = _atrapa()
     w = _Widget()
     a._dashboard_drag("baseline", "press", _ev(*STRED["baseline"], w))
     a._dashboard_drag("baseline", "move", _ev(*STRED["hrr"], w))
     assert a.dashboard_cards["hrr"].look == "target"
-    # ... pustenie sa stratilo; dalsie stlacenie inde
+    # ... the release got lost; the next press elsewhere
     a._dashboard_drag("over", "press", _ev(*STRED["over"]))
     assert all(c.look is None for c in a.dashboard_cards.values())
     assert w.cursor == ""
@@ -328,7 +329,7 @@ def test_cudzie_pustenie_bez_stlacenia_nic_nerobi():
 
 
 # --------------------------------------------------------------------------
-# zdroj: StatCard tahanie neviaze na ⓘ ani ✕
+# source: StatCard does not bind dragging to ⓘ or ✕
 # --------------------------------------------------------------------------
 
 def test_statcard_tahanie_len_na_plochach_karty():

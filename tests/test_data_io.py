@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
-"""Export, import a mazanie — najmä to, čo sa nesmie stať potichu.
+"""Export, import and deletion — above all, what must not happen silently.
 
-Import je jediná z tých troch vecí, ktorá vie uškodiť, a robí to bez toho,
-aby to bolo vidieť: cudzie dáta otrávia základňu aj model a appka len začne
-byť horšia. Väčšina testov nižšie je práve o tom.
+Import is the only one of those three things that can do harm, and it does
+so without it being visible: foreign data poisons both the baseline and
+the model and the app just starts getting worse. Most of the tests below
+are about exactly that.
 """
 import json
 import os
@@ -15,9 +16,9 @@ import data_io  # noqa: E402
 import hr_stats  # noqa: E402
 
 
-# Cas v rozsahu, ktory import prijme (`data_io.MIN_CAS`..`MAX_CAS`). Predtym
-# tu bolo 1000.0 (rok 1970) - taky zaznam import od 0.2.1 zahodi, lebo vo
-# Windows zhodi graf Historie.
+# A time in the range the import accepts (`data_io.MIN_CAS`..`MAX_CAS`).
+# It used to be 1000.0 here (the year 1970) - since 0.2.1 the import drops
+# such a record, because on Windows it crashes the History chart.
 T0 = 1700000000.0
 
 
@@ -58,7 +59,7 @@ def test_zapis_neostane_polovicny(tmp_path):
 
 
 # --------------------------------------------------------------------------
-# Import — čo sa musí odmietnuť
+# Import — what must be rejected
 # --------------------------------------------------------------------------
 
 def test_cudzi_json_sa_odmietne(tmp_path):
@@ -92,11 +93,12 @@ def test_novsia_verzia_sa_odmietne(tmp_path):
 
 
 def test_ziadny_pickle_ani_eval():
-    """Import je jediné miesto, kam vstupuje cudzí súbor. Nesmie tam byť
-    nič, čo by vedelo spustiť kód.
+    """Import is the only place a foreign file enters. There must be nothing
+    there that could run code.
 
-    Kontroluje sa AST, nie výskyt slova — v docstringu sa `pickle` spomína
-    zámerne (vysvetľuje, prečo tam nie je).
+    The AST is checked, not the occurrence of a word — `pickle` is
+    mentioned in the docstring on purpose (it explains why it is not
+    there).
     """
     import ast
     cesta = os.path.join(os.path.dirname(__file__), "..", "data_io.py")
@@ -138,12 +140,13 @@ def test_uplne_prazdny_import_sa_odmietne(tmp_path):
 
 
 # --------------------------------------------------------------------------
-# Import — príznak a zlučovanie
+# Import — the flag and merging
 # --------------------------------------------------------------------------
 
 def test_importovane_su_oznacene(tmp_path):
-    """Cudzie telo nie je tvoje telo. Bez príznaku by importované relácie
-    ticho posunuli základňu aj výpočet účinnosti."""
+    """A foreign body is not your body. Without the flag, imported sessions
+    would silently shift both the baseline and the effectiveness
+    calculation."""
     bundle = data_io.build_bundle([relacia()], [okno()])
     sessions, windows, _ = data_io.parse_bundle(zapis(tmp_path, bundle))
     assert sessions[0]["imported"] is True
@@ -159,9 +162,9 @@ def test_zlucenie_nezdvoji_to_iste(tmp_path):
 
 
 def test_pri_zluceni_vyhrava_vlastny_zaznam(tmp_path):
-    """Import vlastného exportu nesmie prepísať vlastné relácie ich kópiou
-    s príznakom `imported` — inak by si človek jedným kliknutím vyradil
-    vlastné dáta z výpočtu účinnosti."""
+    """Importing your own export must not overwrite your own sessions with
+    their copy flagged `imported` — otherwise one click would remove your
+    own data from the effectiveness calculation."""
     moje = [relacia(started=T0)]
     bundle = data_io.build_bundle([relacia(started=T0)], [])
     cudzie, _, _ = data_io.parse_bundle(zapis(tmp_path, bundle))
@@ -177,12 +180,12 @@ def test_zlucenie_zoradi_podla_casu(tmp_path):
 
 
 # --------------------------------------------------------------------------
-# Mazanie
+# Deletion
 # --------------------------------------------------------------------------
 
 def test_plan_mazania_vymenuje_co_zmizne(tmp_path):
-    """Musí sa dať ukázať MENOVITE, čo zmazanie odstráni. Sľub 'všetko
-    ostáva u teba' znamená aj to, že 'zmazať' naozaj zmaže."""
+    """It must be possible to show BY NAME what deletion removes. The promise
+    'everything stays with you' also means that 'delete' really deletes."""
     for meno in ("hr_sessions.json", "hr_events.jsonl"):
         (tmp_path / meno).write_text("[]", encoding="utf-8")
     plan = data_io.delete_plan(str(tmp_path))
@@ -194,9 +197,9 @@ def test_plan_mazania_vymenuje_co_zmizne(tmp_path):
 
 
 def test_zaznamy_hlasok_sa_zmazu(tmp_path):
-    """B1: hr_events.jsonl je tep/záťaž/hra za KAŽDÝ večer — pri 'Zmazať
-    históriu' sa NESMIE nechať na disku. Dovtedy prežíval a dialóg pritom
-    hlásil 'Zmazané'. Toto je jadro chyby B1."""
+    """B1: hr_events.jsonl is heart rate/load/game for EVERY evening — on
+    'Delete history' it MUST NOT be left on disk. Until then it survived
+    while the dialog reported 'Deleted'. This is the core of bug B1."""
     p = tmp_path / "hr_events.jsonl"
     p.write_text('{"typ":"x"}\n', encoding="utf-8")
     data_io.delete_all(str(tmp_path))
@@ -204,7 +207,7 @@ def test_zaznamy_hlasok_sa_zmazu(tmp_path):
 
 
 def test_zalohy_a_docasne_subory_sa_zmazu(tmp_path):
-    """Záloha spred prepočtu a .bak/.tmp nesmú prežiť — sú to kópie dát."""
+    """Pre-recompute backup and .bak/.tmp must not survive — they copy data."""
     (tmp_path / "hr_sessions.json").write_text("[]", encoding="utf-8")
     zalohy = [
         tmp_path / "hr_windows.json.pred-prepoctom-20260919-145129",
@@ -219,7 +222,7 @@ def test_zalohy_a_docasne_subory_sa_zmazu(tmp_path):
 
 
 def test_tts_cache_sa_zmaze(tmp_path):
-    """Vyslovené hlášky sú cache na disku — pri 'zmazať' musia zmiznúť."""
+    """Spoken cues are a cache on disk — on 'delete' they must disappear."""
     cache = tmp_path / "audio" / "tts_cache"
     cache.mkdir(parents=True)
     (cache / "hlas.mp3").write_text("x", encoding="utf-8")
@@ -228,13 +231,14 @@ def test_tts_cache_sa_zmaze(tmp_path):
 
 
 def test_mazanie_nezhodi_cely_priecinok_logs(tmp_path):
-    """V dev režime je data_dir priečinok projektu a logs/ v ňom drží
-    gui_screenshots aj iné veci mimo histórie hráča. rmtree celého priečinka
-    ich mazal — smú sa mazať len vlastné logy appky."""
+    """In dev mode data_dir is the project folder and the logs/ in it holds
+    gui_screenshots and other things outside the player's history. rmtree
+    of the whole folder deleted them — only the app's own logs may be
+    deleted."""
     logs = tmp_path / "logs"
     (logs / "gui_screenshots").mkdir(parents=True)
     (logs / "gui_screenshots" / "01.png").write_text("obrazok", encoding="utf-8")
-    (logs / "app.log").write_text("živý", encoding="utf-8")   # za behu zamknutý
+    (logs / "app.log").write_text("živý", encoding="utf-8")   # locked while running
     (logs / "app.log.1").write_text("stary", encoding="utf-8")
     (logs / "crash.log").write_text("pad", encoding="utf-8")
 
@@ -261,7 +265,7 @@ def test_mazanie_na_prazdnom_priecinku_nespadne(tmp_path):
 
 
 # --------------------------------------------------------------------------
-# Kontext relácie
+# Session context
 # --------------------------------------------------------------------------
 
 def test_kontext_sa_normalizuje():
@@ -271,10 +275,10 @@ def test_kontext_sa_normalizuje():
 
 
 def test_preskocenie_nie_je_to_iste_co_nic_z_toho():
-    """None = hráč sa nevyjadril. [] = povedal 'nič z toho'.
+    """None = the player did not answer. [] = they said 'none of these'.
 
-    Zlúčiť ich by znamenalo stratiť informáciu, ktorá je pri čistení dát
-    to jediné podstatné: či sa na kontext dá spoľahnúť.
+    Merging them would mean losing the information that is the only thing
+    that matters when cleaning data: whether the context can be relied on.
     """
     assert hr_stats.normalize_context(None) is None
     assert hr_stats.normalize_context([]) == []
@@ -293,8 +297,8 @@ def test_kontext_sa_pripoji_k_ulozenej_relacii(tmp_path):
 
 
 def test_kontext_k_neexistujucej_relacii_nie_je_chyba(tmp_path):
-    """Krátka relácia sa neuloží vôbec - dotazník na ňu potom nemá čo
-    naviazať a nie je to dôvod na chybu."""
+    """A short session is not saved at all - the questionnaire then has
+    nothing to attach to, and that is no reason for an error."""
     cesta = str(tmp_path / "hr_sessions.json")
     with open(cesta, "w", encoding="utf-8") as fh:
         json.dump([relacia(started=1000.0)], fh)
@@ -302,18 +306,19 @@ def test_kontext_k_neexistujucej_relacii_nie_je_chyba(tmp_path):
 
 
 def test_neulozeny_kontext_zanecha_stopu_v_logu(tmp_path):
-    """B16: kontext (káva/alkohol/spánok) je najväčší vysvetliteľný zdroj
-    rozptylu — stratiť ho POTICHU je najhorší druh chyby. Každý prípad, keď
-    sa neuloží, musí prejsť cez `log`, aby to volajúci vedel oznámiť hráčovi."""
+    """B16: context (coffee/alcohol/sleep) is the biggest explainable source
+    of variance — losing it SILENTLY is the worst kind of bug. Every case
+    where it is not saved must go through `log`, so the caller can tell
+    the player."""
     cesta = str(tmp_path / "hr_sessions.json")
     with open(cesta, "w", encoding="utf-8") as fh:
         json.dump([relacia(started=1000.0)], fh)
 
     logy = []
-    # relácia sa nenašla → False + záznam
+    # session not found → False + record
     assert hr_stats.attach_context(cesta, 9999.0, ["chill"], log=logy.append) is False
     assert logy, "nenájdená relácia musí zanechať stopu"
-    # súbor neexistuje → False + záznam
+    # file does not exist → False + record
     logy.clear()
     assert hr_stats.attach_context(str(tmp_path / "niet.json"), 1.0, [],
                                    log=logy.append) is False
@@ -321,7 +326,7 @@ def test_neulozeny_kontext_zanecha_stopu_v_logu(tmp_path):
 
 
 def test_uspesny_kontext_nelogu_je(tmp_path):
-    """Pri úspechu sa nič nesťažuje — log je len pre zlyhania."""
+    """On success nothing complains — the log is only for failures."""
     cesta = str(tmp_path / "hr_sessions.json")
     with open(cesta, "w", encoding="utf-8") as fh:
         json.dump([relacia(started=2000.0)], fh)
@@ -331,11 +336,11 @@ def test_uspesny_kontext_nelogu_je(tmp_path):
 
 
 # --------------------------------------------------------------------------
-# Udalosti automatu (bod 6 zadania z 18. 9.)
+# State machine events (point 6 of the spec from 18. 9.)
 #
-# `_cue_log` zbieral každú udalosť a na konci relácie sa z neho použil len
-# POČET do dialógu. Potom sa zahodil — priebeh večera sa spätne nedal
-# prečítať ani pri diagnostike.
+# `_cue_log` collected every event and at the end of the session only the
+# COUNT was used from it, for the dialog. Then it was thrown away — the
+# course of the evening could not be read back even for diagnostics.
 # --------------------------------------------------------------------------
 
 def test_udalosti_sa_dopisuju_a_nie_prepisuju(tmp_path):
@@ -347,15 +352,15 @@ def test_udalosti_sa_dopisuju_a_nie_prepisuju(tmp_path):
 
 
 def test_udalosti_nesu_zaciatok_relacie(tmp_path):
-    """Bez toho sa dajú zoskupiť len hádaním z časov."""
+    """Without it they can only be grouped by guessing from the times."""
     p = str(tmp_path / "u.jsonl")
     data_io.append_events(p, [{"typ": "armed", "ts": 10.0}], started=5.0)
     assert data_io.read_events(p)[0]["session_started"] == 5.0
 
 
 def test_poskodeny_riadok_log_nezhodi(tmp_path):
-    """Log sa číta pri diagnostike, teda vtedy, keď už je niečo zle. Vtedy
-    je najhoršie, keď sa nedá otvoriť vôbec."""
+    """The log is read during diagnostics, i.e. when something is already
+    wrong. Then the worst thing is when it cannot be opened at all."""
     p = str(tmp_path / "u.jsonl")
     data_io.append_events(p, [{"typ": "armed", "ts": 1.0}])
     with open(p, "a", encoding="utf-8") as fh:
@@ -381,16 +386,17 @@ def test_prazdny_zoznam_subor_nevyrobi(tmp_path):
 
 
 # --------------------------------------------------------------------------
-# Export do tabuľky
+# Export to a spreadsheet
 # --------------------------------------------------------------------------
 
 def test_export_berie_stlpce_zo_vsetkych_riadkov(tmp_path):
-    """Kľúč, ktorý pribudol až neskôr (napr. nová kategória hlášky), by
-    z exportu inak ticho vypadol."""
+    """A key that was added only later (e.g. a new cue category) would
+    otherwise silently drop out of the export."""
     p = str(tmp_path / "t.csv")
     data_io.export_rows_csv([{"a": 1}, {"a": 2, "b": 3}], p)
-    # newline="" - bez neho Python prevedie CRLF na LF uz pri citani a test
-    # by presiel aj vtedy, keby sa cely subor zapisal ako jediny riadok.
+    # newline="" - without it Python converts CRLF to LF already when
+    # reading and the test would pass even if the whole file were written as
+    # a single line.
     with open(p, encoding="utf-8-sig", newline="") as fh:
         riadky = [r for r in fh.read().split("\r\n") if r]
     assert len(riadky) == 3, riadky
@@ -398,14 +404,14 @@ def test_export_berie_stlpce_zo_vsetkych_riadkov(tmp_path):
 
 
 def test_export_pouziva_desatinnu_ciarku(tmp_path):
-    """Excel v SK/CZ vidí bodku ako text, nie ako číslo."""
+    """Excel in SK/CZ sees a dot as text, not as a number."""
     p = str(tmp_path / "t.csv")
     data_io.export_rows_csv([{"x": 1.5}], p)
     assert "1,5" in open(p, encoding="utf-8-sig").read()
 
 
 def test_export_neprepusti_oddelovac_do_bunky(tmp_path):
-    """Bodkočiarka v texte by riadok rozsypala na viac stĺpcov."""
+    """A semicolon in the text would scatter the row over more columns."""
     p = str(tmp_path / "t.csv")
     data_io.export_rows_csv([{"x": "a;b", "y": "c\nd"}], p)
     with open(p, encoding="utf-8-sig", newline="") as fh:
@@ -431,13 +437,14 @@ def test_citatelny_cas_znesie_chybajuci_timestamp():
 
 
 # --------------------------------------------------------------------------
-# História — odolnosť voči pokazenému súboru (B15)
+# History — resilience against a broken file (B15)
 # --------------------------------------------------------------------------
 
 def test_pokazeny_subor_historie_sa_neprepise_ale_odlozi(tmp_path):
-    """B15: keď je hr_sessions.json pokazený, uloženie novej relácie ho
-    NESMIE prepísať — inak sa všetky predošlé večery stratia navždy a odvtedy
-    každý ďalší rovnako ticho. Pokazený súbor sa odloží bokom na záchranu."""
+    """B15: when hr_sessions.json is broken, saving a new session MUST NOT
+    overwrite it — otherwise all previous evenings are lost forever, and
+    from then on every next one just as silently. The broken file is set
+    aside for rescue."""
     import glob
     import hr_stats
     p = str(tmp_path / "hr_sessions.json")
@@ -447,18 +454,19 @@ def test_pokazeny_subor_historie_sa_neprepise_ale_odlozi(tmp_path):
     logy = []
     r = {"samples": 50, "duration_s": 120.0, "started": 1.0, "avg_bpm": 90}
     assert hr_stats.save_session(p, r, log=logy.append) is True
-    # pôvodný pokazený obsah je odložený, nie zahodený
+    # the original broken content is set aside, not thrown away
     assert glob.glob(p + ".corrupt-*"), "pokazený súbor sa mal odložiť na záchranu"
-    # a ukladanie pokračuje s platným zoznamom
+    # and saving continues with a valid list
     with open(p, encoding="utf-8") as fh:
         assert isinstance(json.load(fh), list)
     assert logy, "strata dát musí zanechať stopu v logu"
 
 
 def test_load_sessions_rozlisi_prazdne_od_necitatelneho(tmp_path):
-    """Prázdny zoznam z `load_sessions` pri POKAZENOM súbore znamená
-    'nedalo sa prečítať', nie 'žiadne relácie' — a musí zanechať stopu.
-    Neexistujúci súbor je naopak ticho (hráč ešte nič nenameral)."""
+    """An empty list from `load_sessions` with a BROKEN file means 'could not
+    be read', not 'no sessions' — and it must leave a trace. A missing
+    file, on the other hand, is silent (the player has not measured
+    anything yet)."""
     import hr_stats
     logy = []
     assert hr_stats.load_sessions(str(tmp_path / "niet.json"), log=logy.append) == []

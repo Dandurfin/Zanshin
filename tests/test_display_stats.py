@@ -1,7 +1,8 @@
-"""Testy pre rozlisenie/monitory (display.py) a statistiku tepu (hr_stats.py).
+"""Tests for resolution/monitors (display.py) and HR statistics (hr_stats.py).
 
-Obe su cisto vypoctove moduly bez Tk a bez siete, takze sa daju testovat
-priamo - presne preto boli takto oddelene od zvysku appky.
+Both are purely computational modules without Tk and without network, so
+they can be tested directly - which is exactly why they were separated from
+the rest of the app like this.
 """
 
 import os
@@ -19,14 +20,14 @@ import hr_stats
 # --------------------------------------------------------------------------
 
 def test_scale_is_relative_to_1080p():
-    """Toto je jadro opravy 4K: vizual musi zaberat rovnaku CAST obrazovky."""
+    """The 4K fix's core: a visual must take the same SHARE of the screen."""
     assert display.Monitor(0, 0, 1920, 1080).scale == 1.0
     assert display.Monitor(0, 0, 3840, 2160).scale == 2.0
     assert display.Monitor(0, 0, 2560, 1440).scale > 1.3
 
 
 def test_scale_is_clamped():
-    """Na 8K stene nechceme vizual cez pol obrazovky, na 720p necitatelny."""
+    """No half-screen visual on an 8K wall, and no unreadable one on 720p."""
     assert display.Monitor(0, 0, 7680, 4320).scale <= display.MAX_SCALE
     assert display.Monitor(0, 0, 1280, 720).scale >= display.MIN_SCALE
 
@@ -38,8 +39,9 @@ def test_place_centers_on_percentage():
 
 
 def test_place_respects_negative_monitor_origin():
-    """Monitor vlavo od primarneho ma zaporne X - povodny kod to orezal na
-    nulu a vizual skoncil na primarnej obrazovke."""
+    """A monitor to the left of the primary one has a negative X - the
+    original code clipped it to zero and the visual ended up on the
+    primary screen."""
     mon = display.Monitor(-1920, 0, 1920, 1080)
     x, _ = display.place(mon, 300, 200, 50.0, 50.0)
     assert x < 0
@@ -55,8 +57,8 @@ def test_place_clamps_into_target_monitor():
 
 
 def test_resolve_target_falls_back_when_index_missing():
-    """Hrac odpojil monitor, na ktorom mal overlay - nesmie skoncit mimo
-    viditelnej plochy."""
+    """The player unplugged the monitor the overlay was on - it must not end
+    up outside the visible area."""
     mon = display.resolve_target("6")
     assert mon is not None and mon.width > 0
 
@@ -72,7 +74,7 @@ def _feed(stats, values, start=1000.0, step=1.0):
 
 
 def test_rejects_implausible_values():
-    """9999 ani unixovy timestamp nie su tep - zostava predosla hodnota."""
+    """9999 or a unix timestamp is no heart rate - the previous value stays."""
     stats = hr_stats.HeartStats(110)
     stats.add(72, ts=1000.0)
     stats.add(9999, ts=1001.0)
@@ -105,7 +107,7 @@ def test_sustained_elevation_raises_load():
 
 
 def test_time_over_threshold_is_measured_in_seconds_not_samples():
-    """Rychlejsie hodinky (2 Hz) nesmu nazbierat dvojnasobny cas."""
+    """A faster watch (2 Hz) must not collect double the time."""
     slow = hr_stats.HeartStats(100)
     _feed(slow, [130] * 30, step=1.0)
     fast = hr_stats.HeartStats(100)
@@ -132,7 +134,7 @@ def test_clear_live_keeps_session_summary():
 
 
 def test_short_sessions_are_not_saved(tmp_path):
-    """Zapnut a hned vypnut senzor nie je relacia - zasumilo by to priemery."""
+    """Sensor on and right off is not a session - it would muddy averages."""
     path = str(tmp_path / "hr_sessions.json")
     stats = hr_stats.HeartStats(110)
     _feed(stats, [80] * 5)
@@ -151,9 +153,9 @@ def test_real_session_is_saved_and_reloaded(tmp_path):
 
 
 def test_session_log_is_capped(tmp_path):
-    # `tmp_path` (ako v testoch vyssie), nie natvrdo "/tmp/..." - ta cesta
-    # na Windows neexistuje, zapis ticho zlyhal a test padal na prazdnom
-    # zozname namiesto toho, aby overil strop.
+    # `tmp_path` (as in the tests above), not a hard-coded "/tmp/..." - that
+    # path does not exist on Windows, the write silently failed and the test
+    # failed on an empty list instead of checking the cap.
     path = str(tmp_path / "hr_sessions_cap.json")
     stats = hr_stats.HeartStats(110)
     _feed(stats, [80] * 200)

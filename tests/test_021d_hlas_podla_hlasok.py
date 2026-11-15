@@ -1,20 +1,21 @@
 # -*- coding: utf-8 -*-
-"""Hlas podla jazyka HLASOK, nie jazyka rozhrania (0.2.1d).
+"""Voice by the language of the CUES, not the UI language (0.2.1d).
 
-Do 0.2.1d `on_lang_switch` volal `suggested_voice(code, ...)`: hrac s
-predvolenym hlasom, ktory prepol appku do ja/zh/ru/bg, dostal hlas toho
-jazyka. Lenze texty hlasok existujucich profilov sa pri prepnuti neprekladaju
-(vstavane slova sa beru pri zalozeni profilu, pre sk/cs anglicke) - japonsky
-hlas tak cital anglicke "Grounded" a mohol ho skomolit alebo mlcat. Presne
-tomu mal VOICE_HINTS zabranit.
+Until 0.2.1d `on_lang_switch` called `suggested_voice(code, ...)`: a player
+with the default voice who switched the app to ja/zh/ru/bg got that
+language's voice. But the cue texts of existing profiles are not
+translated on a switch (the built-in words are taken when the profile is
+created, for sk/cs English ones) - so a Japanese voice read the English
+"Grounded" and could mangle it or stay silent. That is exactly what
+VOICE_HINTS was meant to prevent.
 
-Teraz (`app_prefs._hlas_k_hlaskam`, `settings_model.jazyky_hlasok`):
-  * prepnutie jazyka zmeni hlas len ked hovoriace hlasky aktivneho profilu
-    su vstavane slova noveho jazyka,
-  * novy profil (rucne aj auto-profil pre hru) - jeho slova su v jazyku
-    appky - dostane hlas toho jazyka,
-  * hlas iny nez predvoleny sa nemeni nikdy, ani spat,
-  * vlastne ci zmiesane texty -> hlas ostava.
+Now (`app_prefs._hlas_k_hlaskam`, `settings_model.jazyky_hlasok`):
+  * switching the language changes the voice only when the speaking cues
+    of the active profile are the built-in words of the new language,
+  * a new profile (manual or an auto-profile for a game) - its words are
+    in the app's language - gets that language's voice,
+  * a voice other than the default is never changed, not even back,
+  * custom or mixed texts -> the voice stays.
 """
 import os
 import sys
@@ -39,14 +40,14 @@ ANGLICKE = {"sk", "en", "cs"}
 
 @pytest.fixture(autouse=True)
 def _jazyk_spat():
-    """`on_lang_switch` aj `default_slots` pracuju s globalnym jazykom i18n."""
+    """`on_lang_switch` and `default_slots` use the global i18n language."""
     povodny = i18n._lang["code"]
     yield
     i18n.set_lang(povodny)
 
 
 def _sloty(jazyk):
-    """Styri vstavane hlasky profilu zalozeneho v jazyku `jazyk`."""
+    """The four built-in cues of a profile created in the language `jazyk`."""
     povodny = i18n._lang["code"]
     i18n.set_lang(jazyk)
     try:
@@ -61,8 +62,9 @@ def _label(kod):
 
 
 def _appka(monkeypatch, lang, hlas, sloty):
-    """Ozajstne `on_lang_switch` a `_hlas_k_hlaskam`, zvysok okna je atrapa.
-    Zapisuje hlas v okamihu ulozenia, pripravy a obnovy vyberu hlasu."""
+    """Real `on_lang_switch`, `_hlas_k_hlaskam`; rest of the window is fake.
+    It records the voice at the moment of saving, preparation and
+    restoring the voice selection."""
     import app as app_mod
     import ui_kit
     monkeypatch.setattr(ui_kit, "freeze_repaint", lambda *x: None)
@@ -85,7 +87,7 @@ def _appka(monkeypatch, lang, hlas, sloty):
 
 
 # --------------------------------------------------------------------------
-# jazyky_hlasok - v akom jazyku su hlasky
+# jazyky_hlasok - which language the cues are in
 # --------------------------------------------------------------------------
 
 def test_vstavane_slova_kazdeho_jazyka_sa_poznaju():
@@ -107,16 +109,16 @@ def test_jazyky_s_navrhom_sa_neprekryvaju():
 
 def test_rata_sa_len_hlaska_ktoru_spolocny_hlas_cita():
     sloty = _sloty("ja")
-    sloty[0].update(text="Moje slovo", enabled=False)       # vypnuta
-    sloty[1].update(text="Moje slovo", mode=MODE_SFX)       # zvuk bez slov
-    sloty[2].update(text="Moje slovo", voice_edge=GUY)      # vlastny hlas slotu
+    sloty[0].update(text="Moje slovo", enabled=False)       # disabled
+    sloty[1].update(text="Moje slovo", mode=MODE_SFX)       # sound without words
+    sloty[2].update(text="Moje slovo", voice_edge=GUY)      # the slot's own voice
     sloty.append(normalize_slot({"text": "Navyse z 0.1"}))  # slot 4+
-    assert jazyky_hlasok(sloty) == {"ja", "zh"}             # zostal len 呼吸
+    assert jazyky_hlasok(sloty) == {"ja", "zh"}             # only 呼吸 remained
 
 
 def test_vlastne_ci_zmiesane_slova_nemaju_jazyk():
     sloty = _sloty("ja")
-    sloty[0]["text"] = "足"                                 # prepisane slovo
+    sloty[0]["text"] = "足"                                 # overwritten word
     assert jazyky_hlasok(sloty) == set()
     zmiesane = _sloty("ja")[:2] + _sloty("en")[2:]
     assert jazyky_hlasok(zmiesane) == set()
@@ -132,13 +134,13 @@ def test_velkost_pismen_a_medzery_nevadia():
 
 
 # --------------------------------------------------------------------------
-# Prepnutie jazyka
+# Switching the language
 # --------------------------------------------------------------------------
 
 @pytest.mark.parametrize("jazyk", sorted(VOICE_HINTS))
 @pytest.mark.parametrize("z", ["en", "sk", "cs"])
 def test_prepnutie_s_anglickymi_hlaskami_necha_hlas(monkeypatch, z, jazyk):
-    """Ten bug: anglicke "Grounded" by citala Nanami/Xiaoxiao/..."""
+    """That bug: Nanami/Xiaoxiao/... would read the English "Grounded"."""
     a = _appka(monkeypatch, z, SONIA, _sloty(z))
     a.on_lang_switch(_label(jazyk))
     assert a.lang == jazyk
@@ -149,9 +151,9 @@ def test_prepnutie_s_anglickymi_hlaskami_necha_hlas(monkeypatch, z, jazyk):
 
 @pytest.mark.parametrize("jazyk", sorted(VOICE_HINTS))
 def test_prepnutie_k_hlaskam_v_tom_jazyku_da_hlas_jazyka(monkeypatch, jazyk):
-    """Profil zalozeny v japoncine, appka medzitym v anglictine: navrat do
-    japonciny da hlas, ktory jeho slova vyslovi - ulozeny aj pouzity pri
-    priprave hlasok."""
+    """A profile created in Japanese, the app in English in the meantime:
+    going back to Japanese gives a voice that pronounces its words - saved
+    and also used when preparing the cues."""
     a = _appka(monkeypatch, "en", SONIA, _sloty(jazyk))
     a.on_lang_switch(_label(jazyk))
     hlas = VOICE_HINTS[jazyk]
@@ -171,8 +173,9 @@ def test_hlas_ktory_si_hrac_vybral_sa_neprepise(monkeypatch):
 
 
 def test_prepnutie_spat(monkeypatch):
-    """ja -> en: japonske hlasky ostali japonske, takze japonsky hlas ostava.
-    S predvolenym hlasom sa spat tiez nic nemeni a znova do ja pride Nanami."""
+    """ja -> en: Japanese cues stayed Japanese, so the Japanese voice stays.
+    With the default voice nothing changes on the way back either, and
+    going to ja again brings Nanami."""
     a = _appka(monkeypatch, "ja", NANAMI, _sloty("ja"))
     a.on_lang_switch(_label("en"))
     assert a.edge_voice_id == NANAMI
@@ -185,8 +188,9 @@ def test_prepnutie_spat(monkeypatch):
     b.on_lang_switch(_label("sk"))
     assert b.edge_voice_id == NANAMI, "spat sa hlas nemeni"
 
-    # Hlas iny nez predvoleny appka nemeni ani pri anglickych slovach: nevie,
-    # ci ho hrac vybral sam (hlas zo stareho prepnutia si vyberie znova).
+    # The app does not change a voice other than the default even with
+    # English words: it does not know whether the player chose it themselves
+    # (a voice left over from an old switch they will pick again).
     c = _appka(monkeypatch, "ja", NANAMI, _sloty("en"))
     c.on_lang_switch(_label("en"))
     assert c.edge_voice_id == NANAMI
@@ -208,7 +212,7 @@ def test_prepnutie_jazyka_neprepisuje_hlasky(monkeypatch):
 
 
 # --------------------------------------------------------------------------
-# Novy profil
+# New profile
 # --------------------------------------------------------------------------
 
 def _profilova(monkeypatch, lang, hlas):
@@ -245,8 +249,9 @@ def test_novy_profil_v_jazyku_s_navrhom_dostane_jeho_hlas(monkeypatch, jazyk):
     assert a.priprava == [hlas], "priprava hlasok ide novym hlasom"
 
 
-# Od 0.2.2 maju navrh aj es/de/fr/pt (ich vstavane slova nie su anglicke) -
-# bez navrhu ostali len jazyky s anglickymi vstavanymi slovami.
+# Since 0.3 es/de/fr/pt also have a suggestion (their built-in words are
+# not English) - only the languages with English built-in words were left
+# without a suggestion.
 @pytest.mark.parametrize("jazyk", ["sk", "en", "cs"])
 def test_novy_profil_v_latinke_hlas_necha(monkeypatch, jazyk):
     a = _profilova(monkeypatch, jazyk, SONIA)
@@ -261,16 +266,16 @@ def test_novy_profil_vlastny_hlas_neprepise(monkeypatch):
 
 
 def test_auto_profil_pre_hru_dostane_hlas_ako_novy_profil(monkeypatch):
-    """Auto-profil zaklada profil so vstavanymi slovami rovnako ako
-    `create_profile`. Ulozenie a pripravu robi `switch_profile` - uz s novym
-    hlasom."""
+    """The auto-profile creates a profile with the built-in words the same
+    way as `create_profile`. Saving and preparation are done by
+    `switch_profile` - already with the new voice."""
     a = _profilova(monkeypatch, "ru", SONIA)
     a._handle_game_found("CS2")
     assert a.edge_voice_id == VOICE_HINTS["ru"]
     assert a.vyber == [VOICE_HINTS["ru"]]
     assert a.prepnute == [("CS2", VOICE_HINTS["ru"])]
 
-    # Profil, ktory uz existuje, sa nezaklada - hlas sa nemeni.
+    # A profile that already exists is not created - the voice does not change.
     b = _profilova(monkeypatch, "ru", SONIA)
     b.profiles.append({"name": "CS2", "slots": _sloty("en")})
     b._handle_game_found("CS2")
@@ -278,7 +283,7 @@ def test_auto_profil_pre_hru_dostane_hlas_ako_novy_profil(monkeypatch):
 
 
 # --------------------------------------------------------------------------
-# Dokumenty hovoria to, co robi kod
+# The documents say what the code does
 # --------------------------------------------------------------------------
 
 def _plain(meno):
@@ -291,8 +296,8 @@ def test_readme_a_known_issues_popisuju_hlas_podla_slov():
     for metoda in ("create_profile", "_handle_game_found"):
         assert "self._hlas_k_hlaskam(new_slots)" in zdroj_metody(metoda), metoda
 
-    # Od 0.2.2d su pravidla hlasu v docs/HOW-IT-WORKS.md, nie v README;
-    # "reminder" je v dokumentoch "cue" ako v appke.
+    # Since 0.3d the voice rules are in docs/HOW-IT-WORKS.md, not in the
+    # README; "reminder" is "cue" in the documents, as in the app.
     readme = _plain("docs/HOW-IT-WORKS.md")
     assert ("which switch to a voice of their own while you're still on the "
             "default") not in readme
@@ -305,7 +310,7 @@ def test_readme_a_known_issues_popisuju_hlas_podla_slov():
             "voice, and switching back doesn't undo a change") in readme
     assert "One voice reads all your profiles" in readme
 
-    # Od 0.2.2 (davka 4) je historia verzii v CHANGELOG.md.
+    # Since 0.3 (batch 4) the version history is in CHANGELOG.md.
     k = _plain("CHANGELOG.md")
     opravy = k[k.index("## What 0.2.1 fixes"):k.index("## What 0.1 got wrong")]
     assert ("**Switching the language to Japanese, Chinese, Russian or "
@@ -313,6 +318,6 @@ def test_readme_a_known_issues_popisuju_hlas_podla_slov():
     assert "the voice follows the words, not the menu" in opravy
     assert "A voice other than the default is never changed" in opravy
 
-    # Veta pod vyberom jazyka ostava pravdiva: hlasky sa neprekladaju.
+    # The line under the language picker stays true: cues are not translated.
     assert i18n.STRINGS["settings.language_sub"]["en"] == (
         "Cues you already have keep their wording.")

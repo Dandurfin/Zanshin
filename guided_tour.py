@@ -1,32 +1,33 @@
-"""Guided tour - sprievodna prehliadka appky po prvom spusteni.
+"""Guided tour - a guided walk through the app after the first start.
 
-Co to je
---------
-Po zavreti onboardingu (alebo na poziadanie z Nastaveni) sa spusti kratka
-prehliadka: postupne sa pri jednotlivych castiach rozhrania objavi bublina
-s popisom "co tu je a na co to sluzi". Hrac klika Dalej, alebo kedykolvek
-Preskocit.
+What it is
+----------
+After the onboarding is closed (or on request from Settings) a short
+tour starts: one by one, a bubble with a description of "what is here
+and what it is for" appears by individual parts of the interface. The
+player clicks Next, or Skip at any time.
 
-Preco samostatny modul
-----------------------
-Onboarding vysvetli PRECO appka existuje (pred jej otvorenim). Guided tour
-vysvetli KDE CO je (uz v otvorenej appke). Su to dve rozne veci a nemaju sa
-miesat - preto samostatny subor.
+Why a separate module
+---------------------
+The onboarding explains WHY the app exists (before it is opened). The
+guided tour explains WHERE WHAT is (in the already opened app). They are
+two different things and should not be mixed - hence a separate file.
 
-Ako to funguje
---------------
-Kazdy krok ukazuje na konkretny widget (napr. polozka menu, dychajuci pas).
-Bublina sa umiestni vedla neho a cielovy widget sa jemne zvyrazni ramom.
-Pred krokom sa v pripade potreby prepne na spravnu stranku, aby bol cielovy
-prvok viditelny.
+How it works
+------------
+Each step points at a specific widget (e.g. a menu item, the breathing
+bar). The bubble is placed next to it and the target widget is gently
+highlighted with a frame. Before a step, if needed, the right page is
+switched to, so that the target element is visible.
 
-Bublina je samostatne overrideredirect okno (`tk.Toplevel`) - takze sa da
-umiestnit kamkolvek nad appku a nema vlastny OS ram. Zvyraznenie ciela je
-tenky farebny ram nakresleny do prekryvneho okna nad nim.
+The bubble is a separate overrideredirect window (`tk.Toplevel`) - so it
+can be placed anywhere over the app and has no OS frame of its own. The
+target highlight is a thin coloured frame drawn into an overlay window
+above it.
 
-Ziadna zavislost na obsahu appky - dostane referenciu na app a zo zoznamu
-krokov si berie cielove widgety cez lambda (aby sa vyhodnotili az v case
-kroku, ked uz existuju).
+No dependency on the app's content - it gets a reference to the app and
+from the list of steps takes the target widgets via lambda (so that they
+are evaluated only at the time of the step, when they already exist).
 """
 
 import tkinter as tk
@@ -37,31 +38,36 @@ import ui_kit
 from i18n import tr
 
 
-# Kroky prehliadky na JEDNOM mieste: (kluc i18n, stranka, ciel, strana,
-# akcia).
+# Tour steps in ONE place: (i18n key, page, target, side,
+# action).
 #
-# Ciel je popis, nie widget - vyhodnocuje sa az v case kroku, ked uz
-# existuje (`_target`). Tabulka je staticka zamerne: appka z nej vie
-# povedat, kolko krokov prehliadka ma, bez toho, aby ju musela postavit
-# (riadok "Prehliadka appky" v Nastaveniach ukazuje "krok 4 z 6").
+# The target is a description, not a widget - it is evaluated only at
+# the time of the step, when it already exists (`_target`). The table is
+# static on purpose: the app can tell from it how many steps the tour
+# has without having to build it (the "App tour" row in Settings shows
+# "step 4 of 6").
 #
-#   None            - bublina v strede okna, bez ukazovania
-#   ("nav", kluc)   - polozka bocneho menu / karta v Nastaveniach
-#   ("attr", meno)  - atribut appky (panel, pas, karta)
-#   ("enso",)       - znacka na strede Dnes (stav appky, klik spusti/zastavi)
-#   ("done",)       - koniec: polozka Nastaveni, ked tep chodi, inak
-#                     kontrolka hodiniek v bocnom paneli (viz `_target`)
+#   None            - bubble in the centre of the window, no pointing
+#   ("nav", key)    - side menu item / tab in Settings
+#   ("attr", name)  - app attribute (panel, bar, card)
+#   ("enso",)       - the mark in the centre of Today (app state, a click
+#                     starts/stops it)
+#   ("done",)       - the end: the Settings item when heart rate is
+#                     coming in, otherwise the watch indicator in the
+#                     side panel (see `_target`)
 #
-# Akcia je tlacidlo navyse v bubline: "pair" otvori navod na parovanie a po
-# jeho zavreti prehliadka pokracuje dalsim krokom.
+# The action is an extra button in the bubble: "pair" opens the pairing
+# guide and after it is closed the tour continues with the next step.
 #
-# PAT MIEST, NIE DESAT (0.2.2). Prehliadka mala 10 bublin a slubovala "par
-# sekund" - spolu s uvodom a parovanim to bolo okolo 20 cislovanych zastavok
-# pred prvym tepom. Kroky "kamae" a "dock" hovorili o tom istom (spusti /
-# zastav), "sound", "ingame" a "today" opisovali, co hrac najde aj sam, ked
-# tam klikne. Ostalo to, bez coho appka nefunguje alebo co nie je vidno:
-# znacka a jej stav, prijem tepu, pripomienky, historia a kde prehliadku
-# spustit znova (alebo ze bez hodiniek appka mlci).
+# FIVE PLACES, NOT TEN (0.3). The tour had 10 bubbles and promised "a
+# few seconds" - together with the introduction and pairing that was
+# around 20 numbered stops before the first heart rate reading. The steps
+# "kamae" and "dock" talked about the same thing (start / stop), "sound",
+# "ingame" and "today" described what the player finds by themselves
+# when they click there. What stayed is what the app does not work
+# without or what is not visible: the mark and its state, heart rate
+# reception, cues, history and where to start the tour again (or that
+# without a watch the app stays silent).
 _STEPS = (
     ("welcome", "dnes", None, "center", None),
     ("dock", "dnes", ("enso",), "right", None),
@@ -73,15 +79,16 @@ _STEPS = (
 
 
 class TourStep:
-    """Jeden krok prehliadky.
+    """One step of the tour.
 
-    target_fn : callable -> widget (vyhodnoti sa az pri kroku; None = bublina
-                v strede okna, bez ukazovania na prvok)
-    page      : na ktoru stranku prepnut pred krokom (None = nemenit)
-    title/body: texty (klucky do i18n sa prekladaju v tour, sem uz text)
-    side      : kam od cielu umiestnit bublinu ('right'/'left'/'above'/'below'/'center')
-    key       : kluc kroku z `_STEPS` (koniec si text vyberie az pri kresleni)
-    action    : tlacidlo navyse v bubline (None / "pair")
+    target_fn : callable -> widget (evaluated only at the step; None = bubble
+                in the centre of the window, not pointing at an element)
+    page      : which page to switch to before the step (None = no change)
+    title/body: texts (i18n keys are translated in the tour, here already text)
+    side      : where to place the bubble relative to the target
+                ('right'/'left'/'above'/'below'/'center')
+    key       : step key from `_STEPS` (the end picks its text only when drawing)
+    action    : extra button in the bubble (None / "pair")
     """
 
     __slots__ = ("target_fn", "page", "title", "body", "side", "key", "action")
@@ -98,38 +105,38 @@ class TourStep:
 
 
 class GuidedTour:
-    """Prehliadka appky. Vytvor s referenciou na app a zavolaj start()."""
+    """App tour. Create it with a reference to the app and call start()."""
 
     BUBBLE_W = 300
-    # Kolko krokov prehliadka ma - appka to potrebuje vediet aj bez toho,
-    # aby ju postavila (riadok "Prehliadka appky" v Nastaveniach).
+    # How many steps the tour has - the app needs to know that even without
+    # building it (the "App tour" row in Settings).
     STEP_COUNT = len(_STEPS)
 
     def __init__(self, app, start_index=0):
         self.app = app
         self.pal = app.pal
         self.steps = self._build_steps()
-        # Prehliadka sa da opustit uprostred a neskor v nej POKRACOVAT -
-        # zacinat vzdy od zaciatku znamena, ze ju druhykrat uz nikto
-        # nepozrie.
+        # The tour can be left midway and CONTINUED later - always starting
+        # from the beginning means nobody looks at it a second time.
         self._index = max(0, min(int(start_index or 0), len(self.steps) - 1))
         self._bubble = None
         self._highlight = None
-        # _show() kresli bublinu s odkladom (after 60 ms). Ak medzitym pride
-        # dalsie Dalej alebo Preskocit, stary odlozeny _place() by nakreslil
-        # bublinu, na ktoru uz nic neukazuje - a ta by ostala visiet navzdy
-        # (odchytene nazivo: dvojklik na Dalej = dve bubliny). Preto sa
-        # cakajuci job rusi a kazdy _place nesie generaciu kroku.
+        # _show() draws the bubble with a delay (after 60 ms). If another Next
+        # or Skip comes in the meantime, the old delayed _place() would draw a
+        # bubble that nothing points to any more - and it would stay hanging
+        # forever (caught live: a double click on Next = two bubbles). That is
+        # why the waiting job is cancelled and every _place carries the step
+        # generation.
         self._place_job = None
         self._gen = 0
         self._finished = False
 
-    # ---- definicia krokov ----
+    # ---- step definitions ----
 
     def _nav_row(self, key):
-        """Cielovy widget navigacie: hlavna polozka v bocnom menu, alebo
-        karta v Nastaveniach (Spustace/Zvuk/V hre/Sprievodca su po
-        feedbacku karty, nie polozky menu). None -> bublina v strede."""
+        """Navigation target widget: the main item in the side menu, or a tab
+        in Settings (Cues/Sound/In game/Guide are tabs after the
+        feedback, not menu items). None -> bubble in the centre."""
         app = self.app
         sb = getattr(app, "sidebar", None)
         if sb is not None and key in getattr(sb, "rows", {}):
@@ -140,7 +147,7 @@ class GuidedTour:
         return None
 
     def _target(self, spec):
-        """Widget podla popisu z `_STEPS` - az v case kroku, nie pri stavbe."""
+        """Widget by its `_STEPS` description - at step time, not on build."""
         if spec is None:
             return None
         if spec[0] == "nav":
@@ -148,46 +155,49 @@ class GuidedTour:
         if spec[0] == "attr":
             return getattr(self.app, spec[1], None)
         if spec[0] == "enso":
-            # Znacka uz nie je widget, ale kresba na strede Dnes
-            # (`_EnsoHero` na `app.dnes_canvas`). Bublina ukazuje na canvas -
-            # `app.sidebar.enso` je len stav bez `winfo_*`, nedal by sa zamerat.
+            # The mark is no longer a widget but a drawing in the centre of
+            # Today (`_EnsoHero` on `app.dnes_canvas`). The bubble points at
+            # the canvas - `app.sidebar.enso` is only a state without
+            # `winfo_*`, it could not be targeted.
             return getattr(self.app, "dnes_canvas", None)
         if spec[0] == "done":
-            # Koniec ukazuje na miesto, ktore k nemu patri: kde sa prehliadka
-            # spusta znova - alebo, kym tep nechodi, na kontrolku hodiniek,
-            # lebo bez nich appka mlci a to je posledna vec, ktoru treba vediet.
+            # The end points at the place that belongs to it: where the tour
+            # is started again - or, while heart rate is not coming in, at the
+            # watch indicator, because without the watch the app stays silent
+            # and that is the last thing one needs to know.
             if self._tep_chodi():
                 return self._nav_row("nastavenia")
             return getattr(getattr(self.app, "sidebar", None), "pair_btn", None)
         return None
 
     def _tep_chodi(self):
-        """Prichadza prave tep z hodiniek? Rovnaka podmienka ako kontrolka
-        hodiniek v bocnom paneli (`_watch_pulse_state`): prijem zapnuty a
-        posledne BPM znamo."""
+        """Is heart rate coming in from the watch right now? The same condition
+        as the watch indicator in the side panel (`_watch_pulse_state`):
+        reception on and the last BPM known."""
         app = self.app
         if not getattr(app, "hr_monitoring_enabled", False):
             return False
         return bool(getattr(getattr(app, "hr_stats", None), "last_bpm", None))
 
     def _body(self, step):
-        """Text bubliny. Koniec sa vybera az pri kresleni, nie pri stavbe:
-        hodinky sa daju sparovat aj POCAS prehliadky (akcia v kroku o tepe)
-        a "Prijemne hranie" by bez nich slubovalo nieco, co sa nestane -
-        bez tepu appka mlci."""
+        """Bubble text. The end is chosen only when drawing, not when building:
+        the watch can be paired even DURING the tour (the action in the
+        heart rate step) and without it "Enjoy your game" would promise
+        something that will not happen - without heart rate the app stays
+        silent."""
         if step.key == "done" and not self._tep_chodi():
             return tr("tour.done.no_watch")
         if step.key == "triggers":
-            # "TERAZ NIE" RAZ, PRI PRIPOMIENKACH (0.2.2): pred prvou
-            # pripomienkou skratku spominal len dennik. Krok hovori, KEDY sa
-            # appka ozve - hned za tym, ako ju v zlej chvili stisit. Menuje sa
-            # skutocna kombinacia, a len ked naozaj plati - inak ponuka ikony
-            # v liste.
+            # "NOT NOW" ONCE, AT THE CUES (0.3): before the first cue only
+            # the journal mentioned the shortcut. The step says WHEN the app
+            # speaks up - right after that, how to silence it at a bad
+            # moment. The real key combination is named, and only when it
+            # really applies - otherwise it offers the icons in the tray.
             return step.body + " " + self._veta_teraz_nie()
         return step.body
 
     def _veta_teraz_nie(self):
-        """Veta o "teraz nie" - so skratkou, ktora naozaj plati."""
+        """Sentence about "not now" - with the shortcut that really applies."""
         zisti = getattr(self.app, "_skratka_teraz_nie", None)
         try:
             skratka = zisti() if callable(zisti) else ""
@@ -205,7 +215,7 @@ class GuidedTour:
             for key, page, spec, side, action in _STEPS
         ]
 
-    # ---- zivotny cyklus ----
+    # ---- life cycle ----
 
     def start(self):
         if not self.steps:
@@ -213,15 +223,15 @@ class GuidedTour:
         self._show()
 
     def _save_progress(self, index):
-        """Kde prehliadka skoncila - aby sa dalo nadviazat, nie zacinat odznova."""
+        """Where the tour ended - so it can be resumed, not started over."""
         try:
             self.app.save_tour_progress(index)
         except Exception:
             pass
 
     def skip(self):
-        """Preskocit = "teraz nie", nie "uz nikdy". Pozicia sa zapamata a
-        v Nastaveniach sa ponuka Pokracovat."""
+        """Skip = "not now", not "never again". The position is remembered and
+        Settings offers Continue."""
         self._finished = True
         self._cleanup()
         self._save_progress(self._index)
@@ -231,7 +241,7 @@ class GuidedTour:
             pass
 
     def _cleanup(self):
-        self._gen += 1                      # zneplatni odlozeny _place()
+        self._gen += 1                      # invalidates the delayed _place()
         if self._place_job is not None:
             try:
                 self.app.root.after_cancel(self._place_job)
@@ -248,12 +258,12 @@ class GuidedTour:
                 setattr(self, attr, None)
 
     def finish(self):
-        """Prehliadka dobehla do konca - pozicia sa vynuluje, takze dalsie
-        spustenie z Nastaveni zacne od zaciatku."""
+        """The tour ran to the end - the position is reset, so the next start
+        from Settings begins from the beginning."""
         self._finished = True
         self._cleanup()
         self._save_progress(0)
-        # zapamataj, ze tour uz videl (app to ulozi do nastaveni)
+        # remember that the tour has been seen (app saves it to the settings)
         try:
             self.app.mark_tour_seen()
         except Exception:
@@ -270,12 +280,13 @@ class GuidedTour:
             self._show()
 
     def _pair(self):
-        """Akcia kroku o tepe: otvori navod na parovanie hodiniek.
+        """Action of the heart rate step: opens the watch pairing guide.
 
-        Bubliny pritom zmiznu - su topmost a modalny navod by inak sedel pod
-        nimi. Pozicia sa ulozi uz na DALSI krok, takze ked appku pocas
-        parovania zavrie, prehliadka v Nastaveniach nadviaze za tymto krokom.
-        Po zavreti navodu pokracuje sama (`_after_pairing`)."""
+        The bubbles disappear meanwhile - they are topmost and the modal
+        guide would otherwise sit under them. The position is saved
+        already at the NEXT step, so if the app is closed during pairing,
+        the tour in Settings picks up after this step. After the guide is
+        closed it continues by itself (`_after_pairing`)."""
         if self._finished:
             return
         self._cleanup()
@@ -286,13 +297,13 @@ class GuidedTour:
             self._after_pairing()
 
     def _after_pairing(self):
-        # Medzitym mohla prehliadka skoncit alebo ju nahradila nova
-        # (`start_tour` z Nastaveni) - potom tato uz nema co ukazat.
+        # In the meantime the tour may have ended or been replaced by a new one
+        # (`start_tour` from Settings) - then this one has nothing to show.
         if self._finished or getattr(self.app, "_tour", self) is not self:
             return
         self._next()
 
-    # ---- vykreslenie kroku ----
+    # ---- drawing a step ----
 
     def _show(self):
         self._cleanup()
@@ -302,14 +313,14 @@ class GuidedTour:
                 self.app.sidebar._select(step.page)
             except Exception:
                 pass
-        # nechaj UI prekreslit, potom umiestni bublinu (widget musi mat rozmery)
+        # let the UI redraw, then place the bubble (the widget must have a size)
         gen = self._gen
         self._place_job = self.app.root.after(60, lambda: self._place(step, gen))
 
     def _place(self, step, gen=None):
         self._place_job = None
         if self._finished or (gen is not None and gen != self._gen):
-            return                          # krok medzitym zmenili / tour skoncil
+            return                          # the step changed meanwhile / the tour ended
         target = None
         if step.target_fn is not None:
             try:
@@ -317,16 +328,16 @@ class GuidedTour:
             except Exception:
                 target = None
 
-        # zvyrazni cielovy widget
+        # highlight the target widget
         rect = self._widget_rect(target) if target is not None else None
         if rect is not None:
             self._draw_highlight(rect)
 
-        # postav bublinu
+        # build the bubble
         self._draw_bubble(step, rect)
 
     def _widget_rect(self, widget):
-        """(x, y, w, h) widgetu v suradniciach obrazovky, alebo None."""
+        """(x, y, w, h) of the widget in screen coordinates, or None."""
         try:
             widget.update_idletasks()
             x = widget.winfo_rootx()
@@ -359,9 +370,9 @@ class GuidedTour:
 
     def _draw_bubble(self, step, rect):
         pal = self.pal
-        # Bublina drzi CTk widgety v obycajnom tk.Toplevel, takze si ju
-        # ScalingTracker zaregistruje - bez priprav_popup by spadla na
-        # `block_update_dimensions_event` pri kazdej zmene DPI (crash.log).
+        # The bubble holds CTk widgets in a plain tk.Toplevel, so the
+        # ScalingTracker registers it - without priprav_popup it would crash
+        # on `block_update_dimensions_event` at every DPI change (crash.log).
         bubble = ui_kit.priprav_popup(tk.Toplevel(self.app.root))
         bubble.overrideredirect(True)
         bubble.attributes("-topmost", True)
@@ -374,7 +385,7 @@ class GuidedTour:
         inner = ctk.CTkFrame(frame, fg_color="transparent")
         inner.pack(fill="both", expand=True, padx=18, pady=16)
 
-        # krok X zo Y
+        # step X of Y
         ctk.CTkLabel(inner, text=tr("tour.step_of", n=self._index + 1,
                                     total=len(self.steps)),
                      font=("Segoe UI", 9, "bold"),
@@ -387,19 +398,21 @@ class GuidedTour:
                      wraplength=self.BUBBLE_W - 40).pack(anchor="w")
 
         if step.action == "pair":
-            # Parovanie priamo z bubliny - krok o tepe inak len povie, ze bez
-            # hodiniek appka mlci, a hrac by navod hladal sam.
+            # Pairing straight from the bubble - otherwise the heart rate step
+            # only says that without a watch the app stays silent, and the
+            # player would look for the guide themselves.
             ctk.CTkButton(inner, text=tr("tour.sensor.pair"), height=30,
                           corner_radius=8, fg_color="transparent", border_width=1,
                           border_color=pal["accent"], hover_color=pal["surface_alt"],
                           text_color=pal["accent"], font=("Segoe UI", 11, "bold"),
                           command=self._pair).pack(anchor="w", pady=(12, 0))
 
-        # tlacidla
+        # buttons
         btns = ctk.CTkFrame(inner, fg_color="transparent")
         btns.pack(fill="x", pady=(14, 0))
-        # `ui_kit.button` (0.2.2 davka 4b): tie iste druhy tlacidiel ako
-        # v oknach appky a pismo jazyka appky (ja/zh maju vlastne).
+        # `ui_kit.button` (0.3 batch 4b): the same kinds of buttons as in
+        # the app's windows and the font of the app's language (ja/zh have
+        # their own).
         ui_kit.button(btns, pal, tr("tour.skip"), kind="quiet", width=90, height=30,
                       font=ui_kit.ui(11), command=self.skip).pack(side="left")
         last = self._index == len(self.steps) - 1
@@ -415,7 +428,7 @@ class GuidedTour:
         self._bubble = bubble
 
     def _bubble_position(self, step, rect, bw, bh):
-        """Kam umiestnit bublinu - vedla cielu, alebo do stredu okna."""
+        """Bubble position - next to the target, or in the window centre."""
         root = self.app.root
         root.update_idletasks()
         rx, ry = root.winfo_rootx(), root.winfo_rooty()
@@ -435,9 +448,10 @@ class GuidedTour:
         else:  # below
             x, y = tx + tw // 2 - bw // 2, ty + th + gap
 
-        # udrz bublinu na monitore, kde je okno appky. winfo_screenwidth()
-        # je VZDY primarna obrazovka - na druhom monitore (napr. x < 0) by
-        # bublinu pritiahol na ten prvy, prec od appky.
+        # keep the bubble on the monitor where the app window is.
+        # winfo_screenwidth() is ALWAYS the primary screen - on a second
+        # monitor (e.g. x < 0) it would pull the bubble to the first one,
+        # away from the app.
         left = top = 0
         right, bottom = root.winfo_screenwidth(), root.winfo_screenheight()
         try:

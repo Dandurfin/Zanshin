@@ -1,15 +1,18 @@
 # -*- coding: utf-8 -*-
-"""Ucenie vlastnych hranic (0.2.1): co README slubuje, to kod robi.
+"""Learning your own limits (0.2.1): what the README promises, the code does.
 
-  1. Svet relacie: odpoved "Hral som / Pracoval som" v dotazniku je OPRAVA
-     sveta - presunie relaciu aj do ucenia kritickeho tepu a prahu. Zamerne
-     (viz komentar pri `hr_stats.WORLD_DEFAULT`); tieto testy to drzia, aby
-     sa to nezmenilo potichu a README to mohlo poctivo povedat.
-  2. Kriticky tep (hranica vysokeho tepu) sa uci len z relacii aspon 5 min,
-     tym istym pravidlom ako prah zataze (`je_dost_dlha`). Tri kratke
-     relacie pri parovani hodiniek uz nenahradia zalohu 110.
-  3. Prah zataze: "tri relacie po zhruba desat minut staci, tri po pat nie"
-     plati aj pri beznom pokryti signalu (85-90 %), nie len pri 100 %.
+  1. Session world: the "Playing / Working" answer in the questionnaire is
+     a CORRECTION of the world - it also moves the session into the
+     learning of the critical heart rate and the threshold. Deliberately
+     (see the comment at `hr_stats.WORLD_DEFAULT`); these tests hold it so
+     that it does not change quietly and the README can say it honestly.
+  2. The critical heart rate (the high heart-rate limit) is learned only
+     from sessions of at least 5 min, by the same rule as the load
+     threshold (`je_dost_dlha`). Three short sessions while pairing the
+     watch no longer replace the fallback 110.
+  3. Load threshold: "three sessions of about ten minutes are enough,
+     three of five are not" also holds with ordinary signal coverage
+     (85-90 %), not only at 100 %.
 """
 import math
 import os
@@ -23,13 +26,14 @@ import hr_stats  # noqa: E402
 
 
 def _relacia(minut, pokrytie=None, kadencia_s=1.0, bodov=None, **kw):
-    """Suhrn relacie ako z `HeartStats.summary`, len polia, ktore ucenie cita.
+    """Session summary like `HeartStats.summary`, only fields learning reads.
 
-    `pokrytie` None = stara relacia bez `zone_seconds` (prehra sa cele
-    trvanie). Inak su pasma spolu `trvanie * pokrytie` a krivka ma tolko
-    bodov, kolko by hodinky s danou kadenciou za ten cas poslali (najviac
-    `CURVE_POINTS`, ako `downsample`). Plynula vlna - `je_podozriva` ju
-    necha tak.
+    `pokrytie` None = an old session without `zone_seconds` (the whole
+    duration is replayed). Otherwise the bands together are
+    `trvanie * pokrytie` and the curve has as many points as the watch
+    with the given cadence would send in that time (at most
+    `CURVE_POINTS`, like `downsample`). A smooth wave - `je_podozriva`
+    leaves it alone.
     """
     trvanie = minut * 60.0
     signal = trvanie * (pokrytie if pokrytie is not None else 1.0)
@@ -49,12 +53,12 @@ def _prah(relacie):
 
 
 # --------------------------------------------------------------------------
-# 3. Prah zataze: tri po desat minut staci aj s dierami v signale
+# 3. Load threshold: three of ten minutes are enough even with signal gaps
 # --------------------------------------------------------------------------
 
 def test_relacia_da_bodov_podla_signalu_bez_kalibracie():
-    """Aritmetika z komentara pri `PRAH_MIN_BODOV`: krok 1,5 s, len cas so
-    signalom, prvych 29 krokov je kalibracia."""
+    """Arithmetic from the comment at `PRAH_MIN_BODOV`: step 1.5 s, only time
+    with signal, the first 29 steps are calibration."""
     for minut, p in ((10, 0.85), (10, 0.9), (10, 1.0), (5, 1.0)):
         body = hr_stats.load_z_krivky(_relacia(minut, p), 70.0, 110)
         assert len(body) == int(minut * 60 * p / 1.5) - 29, (minut, p)
@@ -63,8 +67,8 @@ def test_relacia_da_bodov_podla_signalu_bez_kalibracie():
 @pytest.mark.parametrize("pokrytie", [0.85, 0.9, 0.95, 1.0, None])
 @pytest.mark.parametrize("kadencia_s", [1.0, 2.0])
 def test_tri_relacie_po_desat_minut_staci_aj_pri_beznom_pokryti(pokrytie, kadencia_s):
-    """README: "three of about ten minutes are enough". Pri starom minime
-    1000 bodov nepresli uz pri 90 % pokryti (3 x 331 = 993)."""
+    """README: "three of about ten minutes are enough". With the old minimum
+    of 1000 points they already failed at 90 % coverage (3 x 331 = 993)."""
     relacie = [_relacia(10, pokrytie, kadencia_s) for _ in range(3)]
     assert all(not hr_stats.je_podozriva(r) for r in relacie)
     prah = _prah(relacie)
@@ -75,31 +79,34 @@ def test_tri_relacie_po_desat_minut_staci_aj_pri_beznom_pokryti(pokrytie, kadenc
 
 @pytest.mark.parametrize("bodov", [None, hr_stats.CURVE_POINTS])
 def test_tri_relacie_po_pat_minut_nestacia_ani_pri_plnom_pokryti(bodov):
-    """README: "three of five are not" - ani s plnym pokrytim, ani s krivkou
-    nahustenou na plnych `CURVE_POINTS` (prehrava sa cas, nie body krivky)."""
+    """README: "three of five are not" - neither with full coverage, nor with
+    a curve densified to the full `CURVE_POINTS` (time is replayed, not
+    the curve points)."""
     for pokrytie in (1.0, None):
         relacie = [_relacia(5, pokrytie, bodov=bodov) for _ in range(3)]
         assert _prah(relacie) is None, (pokrytie, bodov)
 
 
 def test_minimum_bodov_lezi_medzi_slubenymi_hranami():
-    """Konkretne cisla z komentara - nech sa minimum neposunie tak, ze by
-    README znova klamalo jednym alebo druhym smerom."""
+    """Concrete numbers from the comment - so that the minimum does not shift
+    such that the README would lie again in one direction or the other."""
     def spolu(minut, p):
         return 3 * len(hr_stats.load_z_krivky(_relacia(minut, p), 70.0, 110))
-    assert spolu(5, 1.0) < hr_stats.PRAH_MIN_BODOV      # tri po pat nie
-    assert spolu(8, 1.0) < hr_stats.PRAH_MIN_BODOV      # ani tri po osem
-    assert spolu(10, 0.85) >= hr_stats.PRAH_MIN_BODOV   # tri po desat ano
-    # "zhruba pol hodiny tepu": minimum spolu s kalibraciou troch relacii
+    assert spolu(5, 1.0) < hr_stats.PRAH_MIN_BODOV      # three of five not
+    assert spolu(8, 1.0) < hr_stats.PRAH_MIN_BODOV      # nor three of eight
+    assert spolu(10, 0.85) >= hr_stats.PRAH_MIN_BODOV   # three of ten yes
+    # "about half an hour of heart rate": the minimum together with the
+    # calibration of three sessions
     tep_min = (hr_stats.PRAH_MIN_BODOV + 3 * 29) * 1.5 / 60.0
     assert 20.0 <= tep_min <= 30.0, tep_min
 
 
 def test_dlha_relacia_s_dierami_sa_do_prahu_rata_ako_doteraz():
-    """Zmena minima nemeni, KTORE relacie sa rataju - len kolko bodov treba.
+    """Changing the minimum: not WHICH sessions count, only how many points.
 
-    Dve dlhe relacie maju bodov dost aj samy, takze o vysledku rozhoduje
-    len pocet relacii a ich dlzka, nie minimum bodov."""
+    Two long sessions have enough points even on their own, so the result
+    is decided only by the number of sessions and their length, not by
+    the point minimum."""
     dve = [_relacia(20, 0.9) for _ in range(2)]
     assert sum(len(hr_stats.load_z_krivky(r, 70.0, 110))
                for r in dve) >= hr_stats.PRAH_MIN_BODOV
@@ -109,7 +116,7 @@ def test_dlha_relacia_s_dierami_sa_do_prahu_rata_ako_doteraz():
 
 
 # --------------------------------------------------------------------------
-# 2. Kriticky tep: len z relacii aspon 5 minut
+# 2. Critical heart rate: only from sessions of at least 5 minutes
 # --------------------------------------------------------------------------
 
 def test_je_dost_dlha_to_iste_pravidlo_ako_prah():
@@ -125,16 +132,16 @@ def test_je_dost_dlha_to_iste_pravidlo_ako_prah():
 
 
 def test_tri_kratke_relacie_nenahradia_zalohu_kritickeho_tepu():
-    """Tri dvojminutove relacie (parovanie hodiniek, tep pri pokoji) maju
-    spolu 360 bodov krivky - nad `KRITICKY_MIN_BODOV`. Do 0.2.1 z nich vysla
-    hranica 80 namiesto zalohy 110."""
+    """Three two-minute sessions (pairing the watch, heart rate at rest) have
+    360 curve points in total - above `KRITICKY_MIN_BODOV`. Up to 0.2.1
+    they produced a limit of 80 instead of the fallback 110."""
     kratke = [_relacia(2, 1.0) for _ in range(3)]
     assert sum(len(r["curve"]) for r in kratke) >= hr_stats.KRITICKY_MIN_BODOV
     assert hr_stats.dynamicky_kriticky(kratke) == hr_stats.KRITICKY_ZALOHA
     assert hr_stats.dynamicky_kriticky(
         kratke, baseline=70.0) == hr_stats.KRITICKY_ZALOHA
-    # Kontrola, ze test meria dlzku, nie body: ta ista krivka s 5 minutami
-    # uz vlastnu hranicu da.
+    # Check that the test measures length, not points: the same curve with
+    # 5 minutes does give its own limit.
     dlhe = [dict(r, duration_s=hr_stats.PRAH_MIN_TRVANIE_S) for r in kratke]
     assert hr_stats.dynamicky_kriticky(dlhe) != hr_stats.KRITICKY_ZALOHA
 
@@ -148,25 +155,27 @@ def test_kratke_relacie_sa_do_troch_potrebnych_nerataju():
 
 
 def test_kratke_relacie_nevytlacia_dlhe_z_okna_poslednych_dvadsiatich():
-    """Filtruje sa PRED vyberom poslednych `KRITICKY_Z_RELACII` - rovnako ako
-    pri prahu. Inak by par kratkych relacii na konci vyradilo dlhe vecery."""
-    # Prvych pat dlhych vecerov je napatejsich. Keby sa najprv rezalo okno
-    # a az potom filtrovalo, vypadli by prave oni - s rovnakymi krivkami by
-    # to test nepoznal (15 rovnakych vecerov da ten isty percentil ako 20).
+    """Filtering happens BEFORE picking the last `KRITICKY_Z_RELACII` - just
+    like for the threshold. Otherwise a few short sessions at the end
+    would push out the long evenings."""
+    # The first five long evenings are tenser. If the window were cut first
+    # and filtered only afterwards, exactly they would drop out - with
+    # identical curves the test would not notice (15 identical evenings give
+    # the same percentile as 20).
     napate = [_relacia(20, 1.0, curve=[120.0] * 400) for _ in range(5)]
     dlhe = napate + [_relacia(20, 1.0)
                      for _ in range(hr_stats.KRITICKY_Z_RELACII - 5)]
     kratke = [_relacia(2, 1.0, curve=[150.0] * 120) for _ in range(5)]
     assert hr_stats.dynamicky_kriticky(dlhe + kratke) == \
         hr_stats.dynamicky_kriticky(dlhe)
-    # Predpoklad testu: bez napatych vecerov vyjde ina hranica.
+    # Test assumption: without the tense evenings a different limit comes out.
     assert hr_stats.dynamicky_kriticky(dlhe[5:]) != \
         hr_stats.dynamicky_kriticky(dlhe)
 
 
 def test_pokazene_trvanie_nezhodi_vypocet_ani_neuci():
-    """`float("dlho")` doteraz v prahu vyhodil vynimku - a v
-    `_open_hr_session` by s nou padla aj dlhodoba zakladna."""
+    """`float("dlho")` used to raise an exception in the threshold - and in
+    `_open_hr_session` the long-term baseline would crash with it too."""
     dobre = [_relacia(10, 1.0) for _ in range(3)]
     zla = _relacia(10, 1.0, duration_s="dlho")
     assert _prah(dobre + [zla]) == _prah(dobre)
@@ -175,25 +184,27 @@ def test_pokazene_trvanie_nezhodi_vypocet_ani_neuci():
 
 
 def test_zakladna_berie_aj_kratke_relacie():
-    """Pravidlo 5 minut plati pre hranice, nie pre pokojovu zakladnu."""
+    """The 5-minute rule is for the limits, not for the resting baseline."""
     kratke = [_relacia(2, 1.0, baseline_bpm=b) for b in (60.0, 62.0, 64.0)]
     assert hr_stats.dlhodoba_zakladna(kratke) is not None
 
 
 # --------------------------------------------------------------------------
-# 1. Svet: odpoved v dotazniku je oprava - aj pre ucenie
+# 1. World: the questionnaire answer is a correction - for learning too
 # --------------------------------------------------------------------------
 
 def test_praca_odpovedana_ako_hra_sa_uci_ako_hra():
-    """Zabudol som prepnut z Prace a hral som - odpoviem "Hral som" a vecer
-    sa rata do kritickeho tepu aj prahu zataze Hry."""
+    """I forgot to switch from Work and played - I answer "Playing" and the
+    evening counts towards the critical heart rate and the load threshold
+    of Play."""
     hra = [_relacia(15, 0.95, world="play") for _ in range(2)]
     oprava = _relacia(15, 0.95, world="work", activity="play")
     herna = hr_stats.sessions_in_world(hra + [oprava], "play")
     assert herna == hra + [oprava]
     assert hr_stats.dynamicky_kriticky(herna) != hr_stats.KRITICKY_ZALOHA
     assert _prah(herna) is not None
-    # bez odpovede ostava pecat zo startu - a hra ma len dve relacie
+    # without an answer the stamp from the start stays - and play has only
+    # two sessions
     bez_odpovede = dict(oprava)
     del bez_odpovede["activity"]
     herna = hr_stats.sessions_in_world(hra + [bez_odpovede], "play")
@@ -209,5 +220,6 @@ def test_hra_odpovedana_ako_praca_z_ucenia_vypadne():
     assert herna == hra
     assert hr_stats.dynamicky_kriticky(herna) == hr_stats.KRITICKY_ZALOHA
     assert _prah(herna) is None
-    # zakladna ide zo vsetkeho - telo je jedno, svet ju nemeni
+    # the baseline comes from everything - there is one body, the world does
+    # not change it
     assert hr_stats.dlhodoba_zakladna(hra + [praca]) is not None

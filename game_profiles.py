@@ -1,10 +1,10 @@
-"""Auto-Profile Engine - rozpozna beziacu hru podla nazvu procesu a podla
-toho sama prepne profil a zapne/vypne odpocuvanie. Cisto read-only:
-len periodicky vycitava zoznam beziacich procesov (psutil), nic
-nespusta, nezatvara ani do niceho nezasahuje.
+"""Auto-Profile Engine - detects a running game by its process name and,
+based on that, switches the profile and turns listening on/off by itself.
+Purely read-only: it only periodically reads the list of running processes
+(psutil), launches nothing, closes nothing and interferes with nothing.
 
-Bezi LEN pri zapnutom prepinaci "auto_profile_enabled" - app.py ho pri
-vypnuti zastavi, takze vtedy sa zoznam procesov necita vobec.
+Runs ONLY with the "auto_profile_enabled" switch on - app.py stops it when
+it is switched off, so then the process list is not read at all.
 """
 
 import threading
@@ -18,9 +18,9 @@ except Exception:
     PSUTIL_AVAILABLE = False
 
 
-# "bootstrapper.exe" tu uz nie je: je to vseobecne meno spustaca, pod ktorym
-# bezia aj ine programy, takze by appka mohla sama spustit pocuvanie a
-# zalozit profil "Call of Duty" pri niecom celkom inom.
+# "bootstrapper.exe" is no longer here: it is a generic launcher name under
+# which other programs run too, so the app could start listening by itself
+# and create a "Call of Duty" profile for something completely different.
 GAME_PROCESS_MAP = {
     "cod.exe": "Call of Duty",
     "r5apex.exe": "Apex Legends",
@@ -30,16 +30,18 @@ GAME_PROCESS_MAP = {
 
 
 def known_games():
-    """Mena hier, ktore auto-profil pozna - pre texty v appke, aby veta o
-    starte pri hre menovala presne tie hry, ktore mapa naozaj obsahuje."""
+    """Names of the games the auto-profile knows - for texts in the app, so
+    that the sentence about starting with a game names exactly the games the
+    map really contains."""
     return sorted(set(GAME_PROCESS_MAP.values()), key=str.lower)
 
 
 class GameProcessWatcher(threading.Thread):
-    """Kazdych `interval` sekund (3-5s) skontroluje beziace procesy oproti
-    `GAME_PROCESS_MAP`. Pri prvom zachyteni znameho procesu zavola
-    `on_game_found(profile_name)`; ked vsetky zname procesy danej hry
-    zmiznu, zavola `on_game_gone()`. Bezi len ak je `psutil` dostupny."""
+    """Every `interval` seconds (3-5s) checks the running processes against
+    `GAME_PROCESS_MAP`. On the first detection of a known process it calls
+    `on_game_found(profile_name)`; when all known processes of that game
+    disappear, it calls `on_game_gone()`. Runs only if `psutil` is
+    available."""
 
     def __init__(self, on_game_found, on_game_gone, interval=4.0):
         super().__init__(daemon=True)

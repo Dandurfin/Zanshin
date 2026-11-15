@@ -1,12 +1,13 @@
-"""Kazdy staticky kluc, ktory appka posle do `tr()`, musi v i18n existovat.
+"""Every static key the app passes to `tr()` must exist in i18n.
 
-Preco to je: `tr()` pri neznamom kluci nepadne - vrati sam kluc. V okne sa
-potom objavi doslova "history.days" namiesto textu a nic to nenahlasi.
-Prave tak sa to aj stalo: kluc sa premenoval v i18n a volanie v app.py
-ostalo. Staticka kontrola to chyti skor nez GUI.
+Why this exists: `tr()` does not crash on an unknown key - it returns the
+key itself. The window then shows literally "history.days" instead of the
+text and nothing reports it. That is exactly what happened: a key was
+renamed in i18n and the call in app.py stayed. The static check catches it
+earlier than the GUI.
 
-Dynamicke kluce (f-stringy typu tr(f"metric.{id}.title")) sa sem
-nedostanu - tie strazi `check_translations.py` a rucne overenie.
+Dynamic keys (f-strings like tr(f"metric.{id}.title")) do not get in here
+- those are guarded by `check_translations.py` and manual checking.
 """
 import os
 import re
@@ -19,11 +20,12 @@ from _zdroj_appky import subory_appky
 
 PROJ = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 
-# tr("kluc") alebo tr('kluc') - f-stringy sem zamerne nepatria
+# tr("key") or tr('key') - f-strings deliberately do not belong here
 _VOLANIE = re.compile(r"""\btr\(\s*(['"])([A-Za-z0-9_.]+)\1""")
 
-# Subory, ktore stavaju rozhranie. Harness a testy nie - tie smu experimentovat.
-# Appka = app.py aj mixiny DandurfApp v app_*.py.
+# Files that build the UI. Not the harness and the tests - those may
+# experiment.
+# App = app.py and the DandurfApp mixins in app_*.py.
 _MODULY = (*subory_appky(), "ui_kit.py", "ui_shell.py", "ui_dialogs.py",
            "guide_panel.py", "guide_content.py", "guided_tour.py", "hud.py",
            "overlay.py", "settings_model.py", "main.py")
@@ -49,13 +51,13 @@ def test_vsetky_staticke_kluce_existuju():
 
 
 def test_kontrola_naozaj_nieco_najde():
-    """Poistka proti tomu, aby test prechadzal len preto, ze regex nic
-    nenasiel (napr. po premenovani `tr`)."""
+    """A safeguard against the test passing only because the regex found
+    nothing (e.g. after renaming `tr`)."""
     assert sum(len(_kluce(meno)) for meno in subory_appky()) > 100
 
 
 def test_appka_ma_jedenast_jazykov():
-    """sk, en, 7 jazykov hracov na Steame a od 0.2 cestina a bulharcina."""
+    """sk, en, 7 Steam player languages and, since 0.2, Czech and Bulgarian."""
     assert i18n.LANGUAGES == ("sk", "en", "ja", "zh", "ru", "es", "de", "fr",
                               "pt", "cs", "bg")
 
@@ -67,12 +69,13 @@ def test_kazdy_kluc_ma_vsetkych_jedenast_jazykov():
 
 
 def test_kazda_karta_na_dnes_ma_vsetky_tri_texty():
-    """Karta statistiky potrebuje `tag`, `more` aj `title`.
+    """A stats card needs `tag`, `more` and `title`.
 
-    `metric.over.more` chybal - a "nad hranicou" je jedna zo STYROCH
-    predvolenych kariet na hlavnej stranke. Klik na otaznik teda ukazal
-    surovy prekladovy kluc 'metric.over.more'. `tr()` chybajuci kluc vracia
-    tak, ako ho dostal: nespadne, len to vyzera ako rozbita appka.
+    `metric.over.more` was missing - and "Over the limit" is one of the
+    FOUR default cards on the main page. A click on the question mark thus
+    showed the raw translation key 'metric.over.more'. `tr()` returns a
+    missing key as it got it: it does not crash, it just looks like a
+    broken app.
     """
     import settings_model
     chyba = []
@@ -85,7 +88,7 @@ def test_kazda_karta_na_dnes_ma_vsetky_tri_texty():
 
 
 def test_anglicke_uvodzovky_su_v_paroch():
-    """“…“ namiesto “…” (preklep v hr.pair_ip_help a overlay.drag_hint)."""
+    """“…“ instead of “…” (a typo in hr.pair_ip_help and overlay.drag_hint)."""
     otv, zatv = "“", "”"
     zle = [k for k, v in i18n.STRINGS.items()
            if re.search(otv + "[^" + otv + zatv + "]*" + otv, v.get("en", ""))

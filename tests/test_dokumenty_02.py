@@ -1,26 +1,31 @@
 # -*- coding: utf-8 -*-
-"""Dokumenty a inštalátor 0.2 hovoria to, čo robí kód a build.
+"""Documents and the 0.2 installer say what the code and the build do.
 
-  * README: port 4455 počúva na všetkých sieťach PC (nie „na lokálnej
-    sieti“), inštalátor sa volá presne tak, ako ho pomenuje Dandurf.iss,
-    a minimá kalibrácie sedia s `hr_stats`.
-  * Najvyššie pásmo tepu je v dokumentoch „Peak“ / „Špička“.
-  * Príprava hlasu nikdy nejde na Microsoft počas počúvania.
-  * ZDROJE.md netvrdí, že appka sama zisťuje, či hlášky pomáhajú.
-  * Vývojárske GUI skripty sú spomenuté a build ich nebalí.
-  * KNOWN_ISSUES: repozitár začína 0.2, bez detailov o pracovných poznámkach
-    (od 0.2.2, dávka 4, je história verzií v CHANGELOG.md).
-  * Dandurf.iss: verzia v Podrobnostiach setup.exe a [InstallDelete] len
-    pre súbory z 0.1 v {app}.
-  * LICENSE-DESIGN.md: CC0 zvuky sú pribalené, nie sťahované.
-  * 0.2.1: tabuľka modulov pokrýva všetko, čo build balí, vývojárske
-    skripty sú opísané, a čísla v README / SAFETY / PRIVACY / KNOWN_ISSUES
-    (stropy, časové limity, rozsah dátumov) sú tie z kódu.
+  * README: port 4455 listens on all of the PC's networks (not "on the
+    local network"), the installer is named exactly as Dandurf.iss names
+    it, and the calibration minimums match `hr_stats`.
+  * The highest heart rate zone is "Peak" / "Špička" in the documents.
+  * Voice preparation never goes to Microsoft while listening.
+  * ZDROJE.md does not claim that the app itself finds out whether cues
+    help.
+  * The developer GUI scripts are mentioned and the build does not
+    package them.
+  * KNOWN_ISSUES: the repository starts at 0.2, without details about
+    working notes (since 0.3, batch 4, the version history is in
+    CHANGELOG.md).
+  * Dandurf.iss: the version in the Details of setup.exe and
+    [InstallDelete] only for files from 0.1 in {app}.
+  * LICENSE-DESIGN.md: the CC0 sounds are bundled, not downloaded.
+  * 0.2.1: the module table covers everything the build packages, the
+    developer scripts are described, and the numbers in README / SAFETY /
+    PRIVACY / KNOWN_ISSUES (caps, time limits, date range) are the ones
+    from the code.
 
-0.2.2d (audit „Testy zamykajú README v dĺžke“): presné dlhé vety sa
-presťahovali spolu s textom - pravidlá do docs/HOW-IT-WORKS.md, moduly,
-skripty a build do DEVELOPMENT.md. Stráž ide s vetou, nie s README; README
-si necháva len to podstatné (port, inštalácia, Peak, „watching“).
+0.3d (audit "Tests lock the README's length"): the exact long sentences
+moved together with the text - the rules to docs/HOW-IT-WORKS.md, modules,
+scripts and the build to DEVELOPMENT.md. The guard goes with the sentence,
+not with the README; the README keeps only the essentials (port,
+installation, Peak, "watching").
 """
 import ast
 import hashlib
@@ -40,11 +45,11 @@ ROOT = os.path.join(os.path.dirname(__file__), "..")
 DOKUMENTY = ("README.md", "SOUL.md", "PRIVACY.md", "SAFETY.md",
              "KNOWN_ISSUES.md", "CHANGELOG.md", "ZDROJE.md", "DEVELOPMENT.md",
              "docs/HOW-IT-WORKS.md", "docs/PRIOR_ART.md")
-# Historia verzii (co ktora verzia opravila) je od 0.2.2 (davka 4) v
-# CHANGELOG.md - straze na tie vety idu tam.
+# The version history (what each version fixed) is in CHANGELOG.md since
+# 0.3 (batch 4) - the guards for those sentences go there.
 ZMENY = "CHANGELOG.md"
-# Kam sa v 0.2.2d presunuli podrobnosti z README (pravidla appky a cast pre
-# vyvojarov) - stráže idú za vetou.
+# Where the details from the README moved in 0.3d (the app's rules and the
+# developer part) - the guards follow the sentence.
 AKO = "docs/HOW-IT-WORKS.md"
 VYVOJ = "DEVELOPMENT.md"
 GUI_SKRIPTY = ("gui_harness_auto.py", "gui_harness_onboarding.py",
@@ -52,18 +57,18 @@ GUI_SKRIPTY = ("gui_harness_auto.py", "gui_harness_onboarding.py",
 
 
 def _read(meno):
-    # utf-8-sig: Dandurf.iss má BOM
+    # utf-8-sig: Dandurf.iss has a BOM
     with open(os.path.join(ROOT, meno), encoding="utf-8-sig") as fh:
         return fh.read()
 
 
 def _plain(meno):
-    """Text bez zalomení riadkov - vety v .md sú zalomené kdekoľvek."""
+    """Text without line breaks - sentences in .md are wrapped anywhere."""
     return " ".join(_read(meno).split())
 
 
 # --------------------------------------------------------------------------
-# README: port, inštalátor, kalibrácia
+# README: port, installer, calibration
 # --------------------------------------------------------------------------
 
 def test_readme_port_pocuva_na_vsetkych_sietach():
@@ -73,8 +78,8 @@ def test_readme_port_pocuva_na_vsetkych_sietach():
     assert "**without a password**" in r
     for meno in ("README.md", "PRIVACY.md"):
         assert "only listens on your local network" not in _plain(meno), meno
-        # Adresa, ktorú PC nemá, spadne späť na všetky rozhrania
-        # (`heart_rate._bind`, log.hr_bind_fallback) - dokument to hovorí.
+        # An address the PC does not have falls back to all interfaces
+        # (`heart_rate._bind`, log.hr_bind_fallback) - the document says so.
         assert "one specific address" not in _plain(meno), meno
         assert "one of this PC's own addresses" in _plain(meno), meno
         assert "the log says so" in _plain(meno), meno
@@ -92,11 +97,12 @@ def _vydana_verzia(verzia):
 
 
 def test_readme_vedie_k_buildu_nie_k_instalatoru():
-    """Instalacka sa nevydava (rozhodnutie autora, 0.2.1): hrac dostane bud
-    hotovy ZIP z Releases s odtlackom SHA-256, alebo si appku postavi sam cez
-    build.bat. Na stiahnutie setup.exe ho README neposiela. Ak README meno
-    instalatora predsa spomenie (napr. vyvojar s Inno Setup), musi sediet
-    s .iss."""
+    """The installer is not released (the author's decision, 0.2.1): the
+    player gets either a ready ZIP from Releases with a SHA-256
+    fingerprint, or builds the app themselves via build.bat. The README
+    does not send them to download setup.exe. If the README does mention
+    the installer's name after all (e.g. a developer with Inno Setup), it
+    must match the .iss."""
     iss = _read("Dandurf.iss")
     verzia = re.search(r'#define\s+MyAppVersion\s+"([^"]+)"', iss).group(1)
     zaklad = re.search(r"^OutputBaseFilename=(.+)$", iss, re.M).group(1).strip()
@@ -120,10 +126,10 @@ def _relacia(sekundy):
 
 
 def test_readme_minima_kalibracie_sedia_s_kodom():
-    """HOW-IT-WORKS (do 0.2.2d README): „three of about ten minutes are
-    enough, three of five are not“ a „roughly half an hour of heart rate“ -
-    prepočítané kódom. README skrátene: hranice len z herných relácií
-    s piatimi minútami a viac."""
+    """HOW-IT-WORKS (until 0.3d the README): "three of about ten minutes are
+    enough, three of five are not" and "roughly half an hour of heart
+    rate" - recomputed by the code. The README in short: limits only from
+    play sessions of five minutes and more."""
     assert hr_stats.PRAH_MIN_RELACII == 3
     assert hr_stats.KRITICKY_MIN_RELACII == 3
     assert hr_stats.DLHODOBA_MIN_RELACII == 3
@@ -142,7 +148,7 @@ def test_readme_minima_kalibracie_sedia_s_kodom():
 
 
 # --------------------------------------------------------------------------
-# Pásmo Špička / Peak
+# The Špička / Peak zone
 # --------------------------------------------------------------------------
 
 STARE_PASMO = re.compile(r"critical zone|kritick\w* pásm|pásm\w* kritick",
@@ -158,13 +164,14 @@ def test_dokumenty_menuju_pasmo_po_novom():
 
 
 # --------------------------------------------------------------------------
-# Príprava hlasu a porovnanie hlas / obrázok
+# Voice preparation and the voice / picture comparison
 # --------------------------------------------------------------------------
 
 def test_priprava_hlasu_nikdy_pocas_pocuvania():
-    """Hlavny vypinac je od 0.2.2d „watching“ (slovnik appky) - dokumenty
-    ho volaju rovnako. README to povie raz, v odseku o sukromi; vynimka
-    (veta, ktora uz leti, sa dopossle) je v HOW-IT-WORKS a PRIVACY."""
+    """Since 0.3d the main switch is "watching" (the app's vocabulary) - the
+    documents call it the same. The README says it once, in the privacy
+    paragraph; the exception (a sentence already on its way still gets
+    sent) is in HOW-IT-WORKS and PRIVACY."""
     readme = _plain("README.md")
     assert readme.count("Nothing new is prepared while Zanshin is watching") == 1
     ako = _plain(AKO)
@@ -176,7 +183,7 @@ def test_priprava_hlasu_nikdy_pocas_pocuvania():
     assert "only the line already on its way is finished" in privacy
     assert "**On the very first start**" in privacy
     assert "Never because a reminder fired during play" not in privacy
-    # stare slovo pre hlavny vypinac sa nevracia
+    # the old word for the main switch does not come back
     for meno, text in (("README.md", readme), (AKO, ako), ("PRIVACY.md", privacy)):
         for stare in ("while Zanshin is listening", "when listening starts",
                       "stop listening", "start listening", "listening stops"):
@@ -184,8 +191,8 @@ def test_priprava_hlasu_nikdy_pocas_pocuvania():
 
 
 def test_cesta_k_hlasu_je_nastavenia_zvuk():
-    """Záložka v Nastaveniach sa volá „Sound“ (nav.nastavenia_tabs.zvuk);
-    „Sound / Audio“ je len položka palety Ctrl+K."""
+    """The tab in Settings is called "Sound" (nav.nastavenia_tabs.zvuk);
+    "Sound / Audio" is only an item of the Ctrl+K palette."""
     import i18n
     assert i18n.STRINGS["nav.nastavenia_tabs.zvuk"]["en"] == "Sound"
     assert i18n.STRINGS["settings.engine"]["en"] == "Voice source"
@@ -207,12 +214,13 @@ def test_ziadny_dokument_netvrdi_ze_appka_uz_porovnava():
 
 
 # --------------------------------------------------------------------------
-# Vývojárske GUI skripty
+# Developer GUI scripts
 # --------------------------------------------------------------------------
 
 def test_gui_skripty_su_spomenute_a_build_ich_nebali():
-    # Od 0.2.2d su vyvojarske skripty v DEVELOPMENT.md (README na neho
-    # odkazuje); SAFETY ich meno necha, lebo hybu skutocnou mysou.
+    # Since 0.3d the developer scripts are in DEVELOPMENT.md (the README
+    # links to it); SAFETY keeps their name, because they move the real
+    # mouse.
     for meno in GUI_SKRIPTY:
         assert os.path.isfile(os.path.join(ROOT, meno)), meno
         for doc in (VYVOJ, "SAFETY.md"):
@@ -234,8 +242,9 @@ def test_gui_skripty_su_spomenute_a_build_ich_nebali():
 # --------------------------------------------------------------------------
 
 def test_known_issues_vysvetli_historiu_bez_detailov():
-    """0.1 je v historii repozitara bez veci, ktore do verejnosti nepatrili -
-    KNOWN_ISSUES to povie vseobecne (rozhodnutie autora 24. 9.), bez detailov."""
+    """0.1 is in the repository history without things that did not belong in
+    public - KNOWN_ISSUES says so in general terms (the author's decision
+    24. 9.), without details."""
     k = _plain(ZMENY)
     assert "**About 0.1 in this repository's history.**" in k
     assert "work stays work, private stays private" in k
@@ -244,7 +253,8 @@ def test_known_issues_vysvetli_historiu_bez_detailov():
     for zle in ("Working notes", "history on GitHub", "tester",
                 "folders on my PC", "prototypes"):
         assert zle not in k, zle
-    # log.safe_mode už „no blocking“ nehovorí - bod o skratke to nesmie tvrdiť
+    # log.safe_mode no longer says "no blocking" - the point about the
+    # shortcut must not claim it
     for meno in ("KNOWN_ISSUES.md", ZMENY):
         assert "The anti-cheat log line says input is read with" not in _plain(meno)
         for zle in ("Working notes", "history on GitHub", "tester"):
@@ -259,8 +269,8 @@ def test_setup_exe_ma_verziu_v_podrobnostiach():
     iss = _read("Dandurf.iss")
     setup = iss[iss.index("\n[Setup]\n"):iss.index("\n[Languages]\n")]
     assert re.search(r"^VersionInfoVersion=\{#MyAppVersion\}$", setup, re.M)
-    # Inno doplní chýbajúce čísla nulami: "0.2.1" -> 0.2.1.0, to isté ako
-    # filevers vo version_info.txt.
+    # Inno fills missing numbers with zeros: "0.2.1" -> 0.2.1.0, the same as
+    # filevers in version_info.txt.
     verzia = re.search(r'#define\s+MyAppVersion\s+"([^"]+)"', iss).group(1)
     assert re.fullmatch(r"\d+(\.\d+){0,3}", verzia), verzia
     cisla = [int(x) for x in verzia.split(".")] + [0] * 4
@@ -280,7 +290,8 @@ def test_instalator_zmaze_len_subory_z_01_v_app():
     for riadok, meno in zip(zaznamy, mena):
         assert meno.startswith("{app}\\_internal\\assets\\"), meno
         assert "*" not in meno and "filesandordirs" not in riadok, riadok
-    # 0.2 tie súbory naozaj nemá a PyInstaller 6 dáva dáta do _internal
+    # 0.2 really does not have those files and PyInstaller 6 puts data
+    # into _internal
     assert not os.path.exists(os.path.join(ROOT, "assets", "images", "dojo_band.jpg"))
     assert not os.path.exists(os.path.join(ROOT, "assets", "guides"))
     assert "contents_directory" not in _read("Dandurf.spec")
@@ -302,7 +313,8 @@ def test_cc0_zvuky_su_pribalene():
 
 
 # --------------------------------------------------------------------------
-# 0.2.1: README opisuje celý projekt, čísla v dokumentoch sú z kódu
+# 0.2.1: the README describes the whole project, the numbers in the
+# documents come from the code
 # --------------------------------------------------------------------------
 
 def _lokalne_moduly():
@@ -310,8 +322,8 @@ def _lokalne_moduly():
 
 
 def _moduly_z_main():
-    """Moduly projektu, ktoré main.py naťahuje (aj cez ďalšie moduly) - to
-    isté, čo PyInstaller zabalí do buildu."""
+    """The project modules main.py pulls in (also via other modules) - the
+    same that PyInstaller packages into the build."""
     lokalne = _lokalne_moduly()
     videne, fronta = set(), ["main"]
     while fronta:
@@ -337,22 +349,22 @@ def _sekcia(text, nadpis):
 
 
 def test_readme_tabulka_modulov_pokryva_build():
-    """Review 0.2.1: tabuľke „Project structure“ chýbalo ~14 modulov, ktoré
-    appka naozaj používa (display, ui_kit, hotkey, obs_websocket, ...).
-    Od 0.2.2d je tabuľka v DEVELOPMENT.md, nie v README."""
+    """Review 0.2.1: the "Project structure" table was missing ~14 modules
+    the app really uses (display, ui_kit, hotkey, obs_websocket, ...).
+    Since 0.3d the table is in DEVELOPMENT.md, not in the README."""
     assert "\n## Project structure" not in _read("README.md")
     tabulka = _sekcia(_read(VYVOJ), "Project structure")
     moduly = _moduly_z_main()
     assert {"app", "display", "ui_kit", "hotkey", "obs_websocket",
-            "netinfo", "make_icon"} <= moduly     # poistka: prechod nieco nasiel
+            "netinfo", "make_icon"} <= moduly     # safety check: the walk found something
     chyba = sorted(m for m in moduly if "`%s.py`" % m not in tabulka)
     assert not chyba, "DEVELOPMENT.md 'Project structure' nemá: %s" % chyba
 
 
 def test_readme_opisuje_vyvojarske_skripty_a_zavislosti():
-    """Každý .py v koreni, ktorý appka nenaťahuje, je vývojársky skript -
-    DEVELOPMENT.md (do 0.2.2d README) ho musí menovať. Testy potrebujú
-    requirements-dev.txt."""
+    """Every .py in the root that the app does not pull in is a developer
+    script - DEVELOPMENT.md (until 0.3d the README) must name it. The
+    tests need requirements-dev.txt."""
     readme = _read(VYVOJ)
     skripty = sorted(_lokalne_moduly() - _moduly_z_main())
     assert {"simulate", "prepocitaj_okna", "check_sources"} <= set(skripty)
@@ -364,18 +376,19 @@ def test_readme_opisuje_vyvojarske_skripty_a_zavislosti():
         dev = fh.read().split()
     for balik in dev:
         assert balik in testy, balik
-    # prepocitaj_okna.py prepisuje ulozene data - README to musi povedat
+    # prepocitaj_okna.py rewrites saved data - the README must say so
     assert "It rewrites the saved" in " ".join(testy.split())
     assert "os.replace(tmp, cesta)" in _read("prepocitaj_okna.py")
 
 
 def test_readme_build_hovori_co_skript_robi():
-    """build_all.ps1 spustí check_before_run.py a zatvorí bežiaci Zanshin -
-    DEVELOPMENT.md to hovorí, a skript to naozaj robí.
+    """build_all.ps1 runs check_before_run.py and closes a running Zanshin -
+    DEVELOPMENT.md says so, and the script really does it.
 
-    Audit 0.2.2d: nadpis „Build the installer (optional)“ klamal (inštalačka
-    sa nevydáva) a „Build it yourself (no warning)“ tiež (krok Unblock je
-    tam práve kvôli varovaniu). Nadpisy sa nesmú vrátiť."""
+    Audit 0.3d: the heading "Build the installer (optional)" was a lie
+    (the installer is not released) and so was "Build it yourself (no
+    warning)" (the Unblock step is there precisely because of the
+    warning). The headings must not come back."""
     for meno in ("README.md", VYVOJ):
         assert "Build the installer" not in _read(meno), meno
     assert "Build it yourself (no warning)" not in _read("README.md")
@@ -390,9 +403,9 @@ def test_readme_build_hovori_co_skript_robi():
 
 
 def test_readme_svet_relacie_urci_dotaznik():
-    """Odpoveď v dotazníku reláciu presunie do iného sveta (hr_stats) -
-    HOW-IT-WORKS (do 0.2.2d README) už netvrdí len, že relácia ostane vo
-    svete, kde začala."""
+    """The answer in the questionnaire moves the session to another world
+    (hr_stats) - HOW-IT-WORKS (until 0.3d the README) no longer claims
+    only that a session stays in the world where it started."""
     import i18n
     otazka = i18n.STRINGS["session.context.activity_question"]["en"]
     readme = _plain(AKO)
@@ -401,19 +414,19 @@ def test_readme_svet_relacie_urci_dotaznik():
 
 
 def test_log_bez_listy_nemenuje_listu():
-    """0.2.1: `log.hotkey_failed` ide do denníka len vtedy, keď ikona v lište
-    nie je (bez pystray/PIL) - veta ju preto nesmie ponúkať."""
+    """0.2.1: `log.hotkey_failed` goes into the journal only when there is no
+    tray icon (without pystray/PIL) - so the sentence must not offer it."""
     import i18n
     s = i18n.STRINGS["log.hotkey_failed"]
     assert "lišt" not in s["sk"] and "tray" not in s["en"]
     assert "lišt" not in s["cs"] and "трея" not in s["bg"]
-    # riadok ide po skutocnom vysledku registracie (0.2.2 davka 4b)
+    # the line follows the real result of the registration (0.3 batch 4b)
     telo = zdroj_metody("_ohlas_vysledok_skratky")
     assert telo.index("elif TRAY_AVAILABLE") < telo.index('"log.hotkey_failed"')
 
 
 def test_cisla_v_dokumentoch_su_z_kodu():
-    """Stropy a limity, ktoré 0.2.1 pridalo a dokumenty menujú."""
+    """Caps and limits that 0.2.1 added and the documents name."""
     import data_io
     import heart_rate
     import obs_websocket

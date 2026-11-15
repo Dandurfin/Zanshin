@@ -1,22 +1,23 @@
 # -*- coding: utf-8 -*-
-"""Relacia prezije vypnutie PC, pad aj Spravcu uloh (0.2.2).
+"""The session survives a PC shutdown, a crash and Task Manager (0.3).
 
-Do 0.2.2 sa relacia zapisala LEN v `_close_hr_session` a ten volal len
-`stop_listening`, vypnutie senzora a `_quit` (WM_DELETE_WINDOW). Vypnutie
-Windows, pad, ukoncenie cez Spravcu uloh alebo `build.bat` tak zahodili cely
-vecer. Strazi sa:
+Before 0.3 the session was written ONLY in `_close_hr_session`, and that was
+called only by `stop_listening`, switching the sensor off and `_quit`
+(WM_DELETE_WINDOW). A Windows shutdown, a crash, ending it via Task Manager
+or `build.bat` thus threw away the whole evening. Guarded:
 
-  * WM_SAVE_YOURSELF (Tk tak na Windows hlasi WM_QUERYENDSESSION) ulozi
-    relaciu BEZ dotaznika a ulozi nastavenia; dvakrat aj pocas `_quit` je to
-    bezpecne a zrusene vypnutie meranie znova rozbehne,
-  * kontrolny bod: suhrn otvorenej relacie sa atomicky zapisuje do
-    hr_session_open.json, normalne zatvorenie ho zmaze,
-  * pri starte sa kontrolny bod prida do historie RAZ (`recovered`), nie
-    dvakrat, a nevierohodny sa zahodi,
-  * obnovena relacia nevstupuje do ucenia prahov (`ciste_relacie`),
-  * "Zmazat historiu" zmaze aj kontrolny bod.
+  * WM_SAVE_YOURSELF (this is how Tk on Windows reports WM_QUERYENDSESSION)
+    saves the session WITHOUT the questionnaire and saves the settings;
+    twice, and also during `_quit`, it is safe, and a cancelled shutdown
+    starts measuring again,
+  * checkpoint: the summary of the open session is written atomically to
+    hr_session_open.json, a normal close deletes it,
+  * at start the checkpoint is added to the history ONCE (`recovered`), not
+    twice, and an implausible one is thrown away,
+  * a recovered session does not enter threshold learning (`ciste_relacie`),
+  * "Delete history" deletes the checkpoint too.
 
-Vsetko v tmp priecinku - %APPDATA%\\Zanshin sa nedotyka nic.
+Everything in a tmp folder - nothing touches %APPDATA%\\Zanshin.
 """
 import json
 import os
@@ -39,7 +40,7 @@ def _nic(*_a, **_k):
 
 
 class _Root:
-    """`root.after` bez Tk: uloha sa spusti, az ked ju test pusti."""
+    """`root.after` without Tk: a task runs only when the test lets it."""
 
     def __init__(self):
         self.ulohy = {}
@@ -56,7 +57,7 @@ class _Root:
 
 
 def _statistika(minut=15, teraz=None):
-    """Skutocny `HeartStats` s relaciou, ktoru `save_session` prijme."""
+    """A real `HeartStats` with a session that `save_session` accepts."""
     teraz = time.time() if teraz is None else teraz
     st = hr_stats.HeartStats(critical_bpm=110)
     st.session_start = teraz - minut * 60.0
@@ -66,9 +67,9 @@ def _statistika(minut=15, teraz=None):
 
 
 def _appka(tmp_path, minut=15):
-    """Skutocne `_close_hr_session`, `_suhrn_relacie` a ochrana relacie na
-    `DandurfApp` bez Tk. Dotaznik, promocia, analyza a nastavenia sa len
-    zaznamenaju."""
+    """The real `_close_hr_session`, `_suhrn_relacie` and session protection
+    on `DandurfApp` without Tk. The questionnaire, promotion, analysis and
+    settings are only recorded."""
     import app as app_mod
     a = app_mod.DandurfApp.__new__(app_mod.DandurfApp)
     a.root = _Root()
@@ -118,7 +119,7 @@ def _checkpoint(a):
 
 
 # --------------------------------------------------------------------------
-# (a) vypnutie Windows
+# (a) Windows shutdown
 # --------------------------------------------------------------------------
 
 def test_protokol_vypnutia_je_zaregistrovany_vedla_zatvorenia_okna():
@@ -130,10 +131,11 @@ def test_protokol_vypnutia_je_zaregistrovany_vedla_zatvorenia_okna():
 
 @pytest.mark.skipif(sys.platform != "win32", reason="WM_QUERYENDSESSION je vec Windows")
 def test_tk_na_windows_hlasi_vypnutie_ako_wm_save_yourself():
-    """Overenie predpokladu, na ktorom oprava stoji: Tk z WM_QUERYENDSESSION
-    spravi WM_SAVE_YOURSELF - aj pri bezramovom okne schovanom v liste (tak
-    appka byva pri vypinani PC). Sprava sa POSIELA vlastnemu oknu, takze sa
-    nic nevypina; spracuje ju slucka Tk ako pri skutocnom vypnuti."""
+    """Checks the assumption the fix stands on: Tk turns WM_QUERYENDSESSION
+    into WM_SAVE_YOURSELF - even for a frameless window hidden in the tray
+    (that is how the app usually is when the PC shuts down). The message is
+    SENT to its own window, so nothing shuts down; the Tk loop handles it as
+    in a real shutdown."""
     import ctypes
     from ctypes import wintypes
     import tkinter as tk
@@ -148,8 +150,8 @@ def test_tk_na_windows_hlasi_vypnutie_ako_wm_save_yourself():
         volania = []
         root.protocol("WM_SAVE_YOURSELF", lambda: volania.append("vypnutie"))
         root.protocol("WM_DELETE_WINDOW", lambda: volania.append("zatvorenie"))
-        # Vlastny WinDLL, nie `ctypes.windll.user32`: argtypes na zdielanom
-        # objekte by platili pre cely beh testov (aj pre ine moduly).
+        # Own WinDLL, not `ctypes.windll.user32`: argtypes on the shared object
+        # would apply to the whole test run (to other modules too).
         user32 = ctypes.WinDLL("user32")
         user32.PostMessageW.argtypes = [wintypes.HWND, wintypes.UINT,
                                         wintypes.WPARAM, wintypes.LPARAM]
@@ -174,10 +176,10 @@ def test_vypnutie_ulozi_relaciu_a_nastavenia_bez_dotaznika(tmp_path):
     assert historia[0]["duration_s"] >= 60
     assert a._hr_session_open is False
     assert a.nastavenia == [True]
-    # Windows caka par sekund - ziadny dotaznik (zahodil by sa s procesom),
-    # promocia ani analyza v pozadi
+    # Windows waits a few seconds - no questionnaire (it would be thrown away
+    # with the process), no promotion or analysis in the background
     assert a.dotazniky == [] and a.promocie == [] and a.analyzy == []
-    # riadok "Relacia ulozena" do dennika ide aj tak
+    # the "Session saved" line goes to the journal anyway
     assert len(a.denn) == 1
 
 
@@ -186,15 +188,17 @@ def test_vypnutie_dvakrat_ulozi_relaciu_raz(tmp_path):
     a._pri_vypinani_windows()
     a._pri_vypinani_windows()
     assert len(_historia(a)) == 1
-    # naplanovany navrat po zrusenom vypnuti je len jeden (stary sa zrusi)
+    # there is only one scheduled return after a cancelled shutdown (the old
+    # one is cancelled)
     assert len(a.root.ulohy) == 1
 
 
 def test_vypnutie_pocas_quit_nic_nezopakuje_ani_neotvori(tmp_path):
-    """`_quit` relaciu uz zavrel (a caka na dotaznik) - vypnutie ulozi len
-    nastavenia a relaciu po nom neotvori."""
+    """`_quit` has already closed the session (and waits for the
+    questionnaire) - the shutdown saves only the settings and does not
+    open the session after it."""
     a = _appka(tmp_path)
-    a._close_hr_session()                 # ako `_quit` -> `stop_listening`
+    a._close_hr_session()                 # like `_quit` -> `stop_listening`
     assert len(_historia(a)) == 1 and len(a.dotazniky) == 1
     a._quit_bezi = True
     a._zatvara_sa = True
@@ -213,7 +217,7 @@ def test_zrusene_vypnutie_rozbehne_meranie_znova(tmp_path, monkeypatch):
     (ms, fn), = a.root.ulohy.values()
     assert ms == app_data.VYPNUTIE_ZRUSENE_MS
     fn()
-    # siete sa nedotyka - prijem bezi dalej (ako `start_listening`)
+    # network untouched - receiving keeps running (like `start_listening`)
     assert a.otvorene == [{"prepoj": False, "meria": True}]
 
 
@@ -227,7 +231,7 @@ def test_zrusene_vypnutie_bez_pocuvania_nic_neotvori(tmp_path):
 
 
 def test_vypnutie_prezije_chybu_pri_ukladani(tmp_path):
-    """Pad ukladania relacie nesmie zastavit ulozenie nastaveni."""
+    """A failed session save must not stop the settings from being saved."""
     a = _appka(tmp_path)
     a._suhrn_relacie = lambda: (_ for _ in ()).throw(RuntimeError("pad"))
     a._pri_vypinani_windows()
@@ -236,12 +240,12 @@ def test_vypnutie_prezije_chybu_pri_ukladani(tmp_path):
 
 
 # --------------------------------------------------------------------------
-# (b) kontrolny bod
+# (b) checkpoint
 # --------------------------------------------------------------------------
 
 def test_suhrn_relacie_nema_vedlajsie_ucinky(tmp_path):
-    """Kontrolny bod bezi uprostred hrania - nesmie nic vynulovat ani
-    pripocitat (inak by zatvorenie ulozilo ine cisla)."""
+    """The checkpoint runs in the middle of playing - it must not reset or
+    add anything (otherwise closing would save different numbers)."""
     a = _appka(tmp_path)
     a._snooze_po_hlaske = (20.0, time.time() - 30.0)
     a._snooze_rel_s = 12.0
@@ -272,7 +276,7 @@ def test_kontrolny_bod_je_to_iste_co_zatvorenie(tmp_path):
 
 
 def test_kontrolny_bod_sa_zapisuje_atomicky(tmp_path, monkeypatch):
-    """Zapis ide cez .tmp + os.replace - pad uprostred necha stary bod cely."""
+    """Write via .tmp + os.replace - a crash midway keeps the old one whole."""
     a = _appka(tmp_path)
     assert a._zapis_rozpracovanu_relaciu()
     with open(_checkpoint(a), encoding="utf-8") as fh:
@@ -297,7 +301,7 @@ def test_kontrolny_bod_bez_otvorenej_alebo_s_kratkou_relaciou_nepise(tmp_path):
     a = _appka(tmp_path)
     a._hr_session_open = False
     assert a._zapis_rozpracovanu_relaciu() is False
-    b = _appka(tmp_path, minut=0.5)       # pod minutu - neulozila by sa ani tak
+    b = _appka(tmp_path, minut=0.5)       # under a minute - it would not be saved anyway
     assert b._zapis_rozpracovanu_relaciu() is False
     assert not os.path.exists(_checkpoint(a))
 
@@ -312,7 +316,7 @@ def test_normalne_zatvorenie_kontrolny_bod_zmaze(tmp_path):
 
 
 def test_nepodarene_ulozenie_kontrolny_bod_necha(tmp_path, monkeypatch):
-    """Plny disk pri zatvoreni: kontrolny bod je jedina kopia - ostava."""
+    """Full disk on close: the checkpoint is the only copy - it stays."""
     import app_data
     a = _appka(tmp_path)
     a._zapis_rozpracovanu_relaciu()
@@ -330,7 +334,7 @@ def test_tik_sa_planuje_dalej_a_pocas_quit_skonci(tmp_path):
     a.root.ulohy.clear()
     fn()
     assert os.path.exists(_checkpoint(a))
-    assert len(a.root.ulohy) == 1          # dalsi tik naplanovany
+    assert len(a.root.ulohy) == 1          # next tick scheduled
     (_ms, fn2), = a.root.ulohy.values()
     a.root.ulohy.clear()
     a._quit_bezi = True
@@ -342,16 +346,16 @@ def test_kontrolny_bod_sa_spusta_pri_starte_po_obnove():
     init = zdroj_metody("__init__")
     obnova = init.index("self._obnov_rozpracovanu_relaciu()")
     assert obnova < init.index("self._naplanuj_rozpracovanu_relaciu()")
-    # obnova skor, nez senzor otvori novu relaciu
+    # recovery before the sensor opens a new session
     assert obnova < init.index("self.start_heart_rate_monitor()")
 
 
 # --------------------------------------------------------------------------
-# (b) obnova pri starte
+# (b) recovery at start
 # --------------------------------------------------------------------------
 
 def _pad_s_kontrolnym_bodom(tmp_path):
-    """Relacia s kontrolnym bodom a potom "pad" - zatvorenie neprislo."""
+    """A session with a checkpoint, then a "crash" - the close never came."""
     a = _appka(tmp_path)
     assert a._zapis_rozpracovanu_relaciu()
     return a
@@ -359,21 +363,21 @@ def _pad_s_kontrolnym_bodom(tmp_path):
 
 def test_obnova_prida_relaciu_raz_a_oznaci_ju(tmp_path):
     a = _pad_s_kontrolnym_bodom(tmp_path)
-    b = _appka(tmp_path)                   # dalsi start
+    b = _appka(tmp_path)                   # next start
     obnovena = b._obnov_rozpracovanu_relaciu()
     assert obnovena is not None and obnovena["recovered"] is True
     historia = _historia(b)
     assert len(historia) == 1 and historia[0]["recovered"] is True
     assert historia[0]["started"] == a.hr_stats.session_start
     assert not os.path.exists(_checkpoint(b))
-    assert len(b.denn) == 1                # jeden riadok v denniku
-    # dalsi start uz nic neobnovi
+    assert len(b.denn) == 1                # one line in the journal
+    # the next start no longer recovers anything
     assert b._obnov_rozpracovanu_relaciu() is None
     assert len(_historia(b)) == 1
 
 
 def test_obnova_nezdvoji_relaciu_ktora_sa_stihla_ulozit(tmp_path):
-    """Pad AZ po ulozeni relacie, ale pred zmazanim kontrolneho bodu."""
+    """Crash AFTER the session save, but before the checkpoint was deleted."""
     a = _pad_s_kontrolnym_bodom(tmp_path)
     assert hr_stats.save_session(a.hr_sessions_path, a._suhrn_relacie())
     assert os.path.exists(_checkpoint(a))
@@ -383,11 +387,11 @@ def test_obnova_nezdvoji_relaciu_ktora_sa_stihla_ulozit(tmp_path):
 
 
 @pytest.mark.parametrize("pokazit", [
-    lambda s: s.update(duration_s=30.0),                      # pod minutu
-    lambda s: s.update(samples=3),                            # bez dat
-    lambda s: s.update(started=None),                         # bez casu
-    lambda s: s.update(started=12345.0),                      # rok 1970
-    lambda s: s.update(started=time.time() + 86400.0),        # v buducnosti
+    lambda s: s.update(duration_s=30.0),                      # under a minute
+    lambda s: s.update(samples=3),                            # no data
+    lambda s: s.update(started=None),                         # no time
+    lambda s: s.update(started=12345.0),                      # year 1970
+    lambda s: s.update(started=time.time() + 86400.0),        # in the future
     lambda s: s.update(duration_s=float("nan")),
 ])
 def test_nevierohodny_kontrolny_bod_sa_zahodi(tmp_path, pokazit):
@@ -411,14 +415,15 @@ def test_necitatelny_kontrolny_bod_nezhodi_start(tmp_path):
 
 
 def test_obnovena_relacia_sa_neuci_prahy(tmp_path):
-    """Rozhodnutie 0.2.2: obnovena relacia je v Historii, ale prahy, kriticky
-    tep ani dlhodoba zakladna sa z nej neucia (chyba koniec aj dotaznik)."""
+    """Decision for 0.3: a recovered session is in History, but thresholds,
+    the critical heart rate and the long-term baseline are not learned from
+    it (both the end and the questionnaire are missing)."""
     s = dict(_appka(tmp_path)._suhrn_relacie(), duration_s=1800.0,
              baseline_bpm=62)
     obnovena = dict(s, recovered=True)
     assert hr_stats.ciste_relacie([s]) == [s]
     assert hr_stats.ciste_relacie([obnovena]) == []
-    # ale vlastna relacia hraca to ostava (nie je cudzia ako import)
+    # but it stays the player's own session (it is not foreign like an import)
     assert data_io.vlastne([obnovena]) == [obnovena]
 
 
@@ -442,17 +447,18 @@ def test_texty_su_vo_vsetkych_jazykoch():
             if param:
                 assert "{%s}" % param in i18n.STRINGS[kluc][jazyk], (kluc, jazyk)
     assert "Obnovila som reláciu" in i18n.tr_lang("sk", "log.hr_session_recovered")
-    # anglictina nie je len skopirovana do inych jazykov
+    # English is not just copied into the other languages
     en = i18n.STRINGS["log.hr_session_recovered"]["en"]
     for jazyk in ("ja", "de", "cs", "bg"):
         assert i18n.STRINGS["log.hr_session_recovered"][jazyk] != en, jazyk
 
 
 def test_gui_nastroje_zalohuju_kontrolny_bod_aj_zalohu_nastaveni():
-    """gui_harness_auto a gui_screenshots bezia nad datami vedla main.py a na
-    konci vracaju historiu spred behu. Appka pri ich starte kontrolny bod
-    prida do historie a ZMAZE - bez jeho zalohy by ho nastroj spotreboval a
-    relacia z padnutej appky by zmizla s vratenou historiou."""
+    """gui_harness_auto and gui_screenshots run on the data next to main.py
+    and at the end restore the history from before the run. At their start
+    the app adds the checkpoint to the history and DELETES it - without a
+    backup of it the tool would consume it and the session from the crashed
+    app would vanish with the restored history."""
     import ast
     harness = ast.parse(zdroj_suboru("gui_harness_auto.py"))
     priradene = {u.targets[0].id: u.value for u in harness.body
@@ -470,7 +476,7 @@ def test_gui_nastroje_zalohuju_kontrolny_bod_aj_zalohu_nastaveni():
 
 
 def test_checkpoint_je_v_gitignore():
-    """Zdravotne data - kontrolny bod nesmie skoncit v gite."""
+    """Health data - the checkpoint must not end up in git."""
     import fnmatch
     vzory = [r.strip() for r in zdroj_suboru(".gitignore").splitlines()
              if r.strip() and not r.startswith("#")]

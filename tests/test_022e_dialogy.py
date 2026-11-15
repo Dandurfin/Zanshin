@@ -1,15 +1,17 @@
 # -*- coding: utf-8 -*-
-"""Okna appky namiesto systemovych (0.2.2, davka 4 auditu UX).
+"""App windows instead of system ones (0.3, UX audit batch 4).
 
-  * ziadny `tkinter.messagebox` v appke - oznamy, otazky a volby idu cez
-    `ui_kit.notify` / `confirm` / `choose` (tmave okno appky, tlacidla v
-    jazyku appky, fokus na bezpecnom tlacidle, Enter / Escape),
-  * systemove okno ostava len ZALOHA, ked sa okno appky postavit neda
-    (ziadne / schovane hlavne okno, TclError) - a nikdy nevyhodi vynimku,
-  * prvy × v titulkovej liste: dve jasne tlacidla "Nechat bezat v liste" /
-    "Ukoncit Zanshin", Escape = nic sa nedeje a pyta sa znova.
+  * no `tkinter.messagebox` in the app - notices, questions and choices go
+    through `ui_kit.notify` / `confirm` / `choose` (the app's dark window,
+    buttons in the app's language, focus on the safe button, Enter /
+    Escape),
+  * the system window stays only as a FALLBACK when the app window cannot
+    be built (no / hidden main window, TclError) - and it never raises an
+    exception,
+  * the first × in the title bar: two clear buttons "Keep running in the
+    tray" / "Quit Zanshin", Escape = nothing happens and it asks again.
 
-Bez skutocneho okna - Tk triedy su atrapy, data synteticke.
+Without a real window - the Tk classes are dummies, the data synthetic.
 """
 import ast
 import glob
@@ -40,11 +42,12 @@ def sk():
 
 
 # --------------------------------------------------------------------------
-# Ziadny systemovy messagebox v appke
+# No system messagebox in the app
 # --------------------------------------------------------------------------
 
-# Skripty mimo appky: harness (podstrkuje messagebox atrapou) a main.py, kde
-# je systemove okno jedina moznost - customtkinter sa vtedy nenacital.
+# Scripts outside the app: the harness (slips in a dummy messagebox) and
+# main.py, where the system window is the only option - customtkinter had
+# not loaded at that point.
 _MIMO_APPKY = {"gui_harness_auto.py", "gui_harness_onboarding.py", "main.py", "ui_kit.py"}
 
 
@@ -76,7 +79,7 @@ def test_main_ma_systemove_okno_len_bez_customtkinter():
 
 
 # --------------------------------------------------------------------------
-# Zaloha: systemove okno, ked sa okno appky postavit neda
+# Fallback: the system window, when the app window cannot be built
 # --------------------------------------------------------------------------
 
 def _systemove(monkeypatch, ano=True):
@@ -94,7 +97,7 @@ def test_notify_bez_hlavneho_okna_ukaze_systemove_podla_druhu(monkeypatch):
     ui_kit.notify(None, PAL, "Zanshin", "info")
     ui_kit.notify(None, PAL, "Zanshin", "pozor", kind="warning")
     ui_kit.notify(None, PAL, "Zanshin", "chyba", kind="error")
-    # bez palety (atrapa appky) tiez - nie vynimka
+    # without a palette (app dummy) too - not an exception
     ui_kit.notify(types.SimpleNamespace(), None, "Zanshin", "bez palety")
     assert volania == [("showinfo", "Zanshin", "info"),
                        ("showwarning", "Zanshin", "pozor"),
@@ -120,13 +123,13 @@ def test_choose_bez_okna_povie_text_a_vrati_bezpecnu_volbu(monkeypatch):
 
 
 @pytest.mark.parametrize("owner", [
-    types.SimpleNamespace(winfo_exists=lambda: False),          # znicene
-    types.SimpleNamespace(winfo_exists=lambda: True,            # schovane v liste
+    types.SimpleNamespace(winfo_exists=lambda: False),          # destroyed
+    types.SimpleNamespace(winfo_exists=lambda: True,            # hidden in the tray
                           winfo_viewable=lambda: False),
 ])
 def test_neviditelne_hlavne_okno_nedostane_modalny_dialog(monkeypatch, owner):
-    """Dialog nad oknom schovanym v liste by ostal neviditelny s grabom -
-    appka by cakala na odpoved, ktoru nikto nevidi."""
+    """A dialog over a window hidden in the tray would stay invisible with a
+    grab - the app would wait for an answer nobody can see."""
     volania = _systemove(monkeypatch)
 
     def nestavat(*a, **k):
@@ -154,7 +157,7 @@ def test_tclerror_pri_stavbe_okna_padne_na_systemove(monkeypatch):
 
 
 def test_tclerror_v_obsahu_zrusi_rozostavane_okno(monkeypatch):
-    """Okno vzniklo, ale obsah nie - nesmie ostat visiet prazdne."""
+    """The window exists but its content does not - it must not hang empty."""
     volania = _systemove(monkeypatch)
     okna = []
 
@@ -201,7 +204,7 @@ def test_zlyhane_systemove_okno_nevyhodi_vynimku(monkeypatch):
 
 
 # --------------------------------------------------------------------------
-# Okno appky: fokus a Enter na bezpecnom tlacidle, Escape = zrusit
+# App window: focus and Enter on the safe button, Escape = cancel
 # --------------------------------------------------------------------------
 
 class _Tlacidlo:
@@ -287,7 +290,7 @@ class _Kus:
 
 @pytest.fixture
 def okno_appky(monkeypatch):
-    """Atrapy Tk + zaznam: ktore tlacidla vznikli, kam ide fokus, kde stoji."""
+    """Tk dummies + record: buttons created, where focus goes, where it is."""
     _Kus.vsetky = []
     stav = types.SimpleNamespace(umiestnenie=[], chrome=[])
 
@@ -312,10 +315,10 @@ def okno_appky(monkeypatch):
 
 
 def _owner(akcia):
-    """Hlavne okno, ktore pocas cakania "klikne" - `akcia(okno)`."""
+    """The main window that "clicks" while waiting - `akcia(okno)`."""
     def cakaj(top):
         for fn in list(top.after_fn):
-            fn()                  # oneskorene `focus_set`
+            fn()                  # deferred `focus_set`
         akcia(top)
     return types.SimpleNamespace(wait_window=cakaj)
 
@@ -334,7 +337,7 @@ def test_confirm_fokus_aj_enter_na_zrusit(okno_appky):
 def test_confirm_enter_na_inom_tlacidle_stlaci_to(okno_appky):
     def klik(top):
         zmazat = next(b for b in top.tlacidla if b.popis == "Zmazat")
-        zmazat.focus_set()        # Tab na "Zmazat", potom Enter
+        zmazat.focus_set()        # Tab to "Delete", then Enter
         top.binds["<Return>"]()
 
     assert ui_kit.confirm(_owner(klik), PAL, "Z", "x", "Zmazat", "Zrusit",
@@ -344,7 +347,7 @@ def test_confirm_enter_na_inom_tlacidle_stlaci_to(okno_appky):
 def test_escape_a_krizik_su_zrusit(okno_appky):
     def escape(top):
         _title, on_close = okno_appky.chrome[-1]
-        on_close()                # DialogChrome: Escape aj ✕ volaju on_close
+        on_close()                # DialogChrome: Escape and ✕ both call on_close
 
     volba = ui_kit.choose(_owner(escape), PAL, "Z", "x",
                           [("tray", "Do listy", "primary"), ("quit", "Koniec", "secondary")],
@@ -396,7 +399,7 @@ def test_oznam_nad_inym_dialogom_mu_vrati_grab(okno_appky):
 
 
 # --------------------------------------------------------------------------
-# Prvy × - dve jasne tlacidla
+# The first × - two clear buttons
 # --------------------------------------------------------------------------
 
 def _app_na_zatvorenie():
@@ -458,7 +461,7 @@ def test_veta_pri_krizi_nespomina_ano_nie():
     assert "(No" not in zaznam["en"] and "Yes" not in zaznam["en"]
     for jazyk in i18n.LANGUAGES:
         text = zaznam[jazyk]
-        assert "=" not in text, jazyk          # "(Nie = ukoncit hned)"
+        assert "=" not in text, jazyk          # "(Nie = ukoncit hned)" (No = quit now)
         assert "^" in text and "▶" in text and "{port}" in text, jazyk
     assert "meriam a ukladám" in zaznam["sk"]
 
@@ -485,7 +488,7 @@ def test_tlacidla_dialogu_su_sloveso_nie_ano_nie():
 
 
 # --------------------------------------------------------------------------
-# Kto co vola
+# Who calls what
 # --------------------------------------------------------------------------
 
 def test_zmazanie_profilu_v_okne_appky_so_slovesom():

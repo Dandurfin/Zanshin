@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
-"""Meracie okna - co robi okno platnym a co ho zneplatni.
+"""Measurement windows - what makes a window valid and what invalidates it.
 
-Testuje sa cisty modul `measure` nad vymyslenymi datami, takze to bezi
-bez Tk, bez hodiniek a bez cakania v realnom case.
+The pure `measure` module is tested over made-up data, so it runs without
+Tk, without a watch and without waiting in real time.
 
-Preco tolko testov na "neplatne" pripady: okno, ktore vyzera platne a
-nie je, je horsie nez ziadne - tiche skreslenie sa v grafe neprejavi ako
-chyba, len ako iny vysledok.
+Why so many tests for "invalid" cases: a window that looks valid and is not
+is worse than none - a silent bias does not show up in the chart as an
+error, only as a different result.
 """
 import json
 import os
@@ -16,15 +16,15 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import measure  # noqa: E402
 
-T0 = 10_000.0          # lubovolny "absolutny" cas, nech su cisla citatelne
-CUE = T0 + 300.0       # hlaska 5 minut po zaciatku relacie
+T0 = 10_000.0          # an arbitrary "absolute" time, so the numbers are readable
+CUE = T0 + 300.0       # a cue 5 minutes after the session start
 
 
 def rad(start, end, bpm=80.0, krok=1.0, vynechaj=None):
-    """Vzorky 1x za sekundu od `start` po `end`.
+    """Samples once per second from `start` to `end`.
 
-    `vynechaj` je (od, do) - diera, ktorou sa simuluje vypadok senzora.
-    `bpm` moze byt cislo alebo funkcia casu.
+    `vynechaj` is (from, to) - a gap that simulates a sensor dropout.
+    `bpm` can be a number or a function of time.
     """
     out = []
     t = start
@@ -44,7 +44,7 @@ def okno(samples, cues=None, **kw):
 
 
 # --------------------------------------------------------------------------
-# Ciste vypocty
+# Pure calculations
 # --------------------------------------------------------------------------
 
 def test_priemer_berie_len_vzorky_v_intervale():
@@ -54,9 +54,10 @@ def test_priemer_berie_len_vzorky_v_intervale():
 
 
 def test_diery_sa_rozlisuju_podla_toho_kde_su():
-    """Zaciatok, vnutro a koniec musia byt tri rozne cisla.
+    """Start, inside and end must be three different numbers.
 
-    Keby sa scitali, skratene okno by sa hlasilo ako vypadok senzora.
+    If they were added up, a shortened window would be reported as a
+    sensor dropout.
     """
     samples = rad(110.0, 190.0)
     zaciatok, vnutro, koniec = measure.gaps(samples, 100.0, 200.0)
@@ -64,8 +65,9 @@ def test_diery_sa_rozlisuju_podla_toho_kde_su():
     assert vnutro == 1.0
     assert koniec == 10.0
 
-    # Suvisly rad: na okrajoch ostava nanajvys jedna vzorkovacia perioda
-    # (interval je polootvoreny, takze vzorka presne na konci uz dnu nepatri).
+    # A continuous series: at most one sampling period remains at the edges
+    # (the interval is half-open, so a sample exactly at the end no longer
+    # belongs inside).
     diera = rad(100.0, 200.0, vynechaj=(140.0, 160.0))
     zaciatok, vnutro, koniec = measure.gaps(diera, 100.0, 200.0)
     assert zaciatok == 0.0
@@ -78,11 +80,12 @@ def test_prazdny_interval_je_cely_diera():
 
 
 def test_refrakterna_zona_preskakuje_seba_sameho():
-    """Volajuci posiela casy VSETKYCH hlasok vratane tejto."""
+    """The caller sends the times of ALL cues including this one."""
     assert measure.refractory_conflict(CUE, [CUE]) is False
     assert measure.refractory_conflict(CUE, [CUE, CUE + 30.0]) is True
     assert measure.refractory_conflict(CUE, [CUE, CUE - 30.0]) is True
-    # tesne za zonou: -60 a +180 su hranice, cokolvek za nimi uz nevadi
+    # just past the zone: -60 and +180 are the limits, anything beyond them no
+    # longer matters
     assert measure.refractory_conflict(CUE, [CUE, CUE + 181.0]) is False
     assert measure.refractory_conflict(CUE, [CUE, CUE - 61.0]) is False
 
@@ -101,7 +104,7 @@ def test_kategoria_podla_slotu():
 
 
 # --------------------------------------------------------------------------
-# Zostavenie okna
+# Building a window
 # --------------------------------------------------------------------------
 
 def test_cele_okno_je_platne():
@@ -116,8 +119,8 @@ def test_cele_okno_je_platne():
 
 
 def test_mrtvy_cas_sa_do_po_okna_nepocita():
-    """Prvych 10 s po hlaske musi z priemeru vypadnut - inak by doň
-    natiekol este stav z momentu hlasky."""
+    """The first 10 s after the cue must drop out of the mean - otherwise the
+    state from the moment of the cue would still leak into it."""
     def bpm(t):
         return 200.0 if CUE <= t < CUE + measure.DEAD_S else 80.0
 
@@ -143,12 +146,13 @@ def test_vypadok_senzora_zneplatni_okno_ako_diera():
     w = okno(samples)
     assert w["valid"] is False
     assert measure.R_GAP in w["reasons"]
-    # NIE ako skratene okno - relacia bezala dalej, len senzor vypadol
+    # NOT as a shortened window - the session went on, only the sensor dropped
+    # out
     assert measure.R_POST_SHORT not in w["reasons"]
 
 
 def test_hlaska_prilis_skoro_je_skratene_pred_okno_nie_diera():
-    """Relacia zacala 20 s pred hlaskou - pred-okno chce 60 s."""
+    """The session began 20 s before the cue - the pre-window wants 60 s."""
     samples = rad(CUE - 20.0, CUE + 240.0)
     w = okno(samples)
     assert w["valid"] is False
@@ -197,7 +201,7 @@ def test_okna_su_zoradene_podla_casu():
 
 
 # --------------------------------------------------------------------------
-# Ulozenie
+# Saving
 # --------------------------------------------------------------------------
 
 def test_ulozenie_a_nacitanie(tmp_path):
@@ -210,17 +214,18 @@ def test_ulozenie_a_nacitanie(tmp_path):
 
 
 def test_zapis_neostane_polovicny(tmp_path):
-    """Po zapise nesmie vedla ostat `.tmp` - pisalo sa cez premenovanie."""
+    """No `.tmp` may stay next to it after the write - it went via a rename."""
     path = str(tmp_path / "hr_windows.json")
     measure.save_windows(path, [{"ts": 1.0}])
     assert not os.path.exists(path + ".tmp")
 
 
 def test_poskodeny_subor_sa_neprepise(tmp_path):
-    """Necitatelny subor nie je dovod zahodit vsetko, co sa nameralo.
+    """An unreadable file is no reason to throw away everything measured.
 
-    Radsej sa nezapise nic - clovek si vsimne, ze okna nepribudaju, a da
-    sa to zachranit. Prepisanim prazdnym zoznamom by sa nezachranilo nic.
+    Better to write nothing - the person notices that windows are not being
+    added, and it can be rescued. Overwriting with an empty list would
+    rescue nothing.
     """
     path = str(tmp_path / "hr_windows.json")
     with open(path, "w", encoding="utf-8") as fh:
@@ -236,7 +241,7 @@ def test_strop_poctu_okien(tmp_path):
     measure.save_windows(path, vela)
     ulozene = measure.load_windows(path)
     assert len(ulozene) == measure.MAX_WINDOWS
-    # zahadzuju sa NAJSTARSIE
+    # the OLDEST are thrown away
     assert ulozene[-1]["ts"] == float(measure.MAX_WINDOWS + 49)
 
 
@@ -255,22 +260,23 @@ def test_prehlad_pocita_len_platne_okna():
 
 
 def test_prehlad_nerobi_ziadny_zaver():
-    """Vracia cisla, nie verdikt - rozhodnut sa da az pri dost okien."""
+    """Returns numbers, not a verdict - deciding needs enough windows."""
     prehlad = measure.summarize([
         {"arm": "voice", "valid": True, "pre_bpm": 100.0, "post_bpm": 50.0}])
     assert set(prehlad["voice"]) == {"n", "delta_bpm"}
 
 
 # --------------------------------------------------------------------------
-# `delivery` v okne — našla revízia
+# `delivery` in the window - found by the review
 # --------------------------------------------------------------------------
 
 def test_okno_nesie_aj_sposob_dorucenia():
-    """`arm` a `delivery` sú rôzne veci a obe musia byť v okne.
+    """`arm` and `delivery` differ, and both must be in the window.
 
-    Bez `delivery` sa spätne nedá zistiť, ktoré hlášky prišli na pauzu a
-    ktoré až po 90 s ticho — a práve prah pauzy je číslo, o ktorom sa vedie
-    spor. Nemal by sa z čoho overiť.
+    Without `delivery` it cannot be found out afterwards which cues came at
+    a pause and which only after 90 s of silence - and the pause threshold
+    is exactly the number under dispute. There would be nothing to check it
+    against.
     """
     cue = {"ts": 1000.0, "category": "breath", "cue_id": "slot3",
            "arm": "voice", "source": "auto", "delivery": "timeout"}
@@ -281,8 +287,9 @@ def test_okno_nesie_aj_sposob_dorucenia():
 
 
 def test_stare_okno_bez_delivery_nepadne():
-    """Dáta z relácií spred tejto zmeny `delivery` nemajú. Musia sa dať
-    načítať ďalej — inak by oprava zahodila, čo sa dovtedy nameralo."""
+    """Data from sessions before this change have no `delivery`. They must
+    still be loadable - otherwise the fix would throw away what was measured
+    up to then."""
     cue = {"ts": 1000.0, "arm": "silent", "source": "auto"}
     vzorky = [(1000.0 - 60 + i, 70.0) for i in range(140)]
     okno = measure.build_window(cue, vzorky, [1000.0])
@@ -290,11 +297,11 @@ def test_stare_okno_bez_delivery_nepadne():
 
 
 # --------------------------------------------------------------------------
-# Striedanie kategórií (18. 9.)
+# Category rotation (18. 9.)
 #
-# Do 18. 9. hrala appka vždy jeden pevný slot. Malo to jednu silnú vlastnosť
-# — všetky okná z jednej kategórie — a jednu fatálnu: rovnaká veta stokrát
-# za večer prestane fungovať.
+# Until 18. 9. the app always played one fixed slot. That had one strong
+# property - all windows from one category - and one fatal one: the same
+# sentence a hundred times an evening stops working.
 # --------------------------------------------------------------------------
 
 def test_striedanie_ide_kolo_dokola():
@@ -303,34 +310,35 @@ def test_striedanie_ide_kolo_dokola():
 
 
 def test_striedanie_preskoci_vypnute_sloty():
-    """Vypnutý slot je rozhodnutie hráča a automat ho obchádzať nesmie."""
+    """Disabled slot = the player's decision; automation must not bypass it."""
     assert [measure.next_slot([1, 3], p) for p in (None, 1, 3)] == [1, 3, 1]
 
 
 def test_striedanie_pri_jedinom_slote_opakuje():
-    """Opakovaniu sa pri jednom zapnutom slote vyhnúť nedá — a je to lepšie
-    než mlčať."""
+    """With one enabled slot repetition cannot be avoided - and it is better
+    than silence."""
     assert measure.next_slot([2], 2) == 2
 
 
 def test_striedanie_bez_slotov_vrati_none():
-    """Volajúci si potom siahne po zálohe, nie po náhodnom indexe."""
+    """The caller then reaches for a fallback, not a random index."""
     assert measure.next_slot([], None) is None
     assert measure.next_slot(None, 1) is None
 
 
 def test_striedanie_znesie_neznamy_posledny():
-    """Hráč mohol slot medzitým vypnúť. Nesmie to spadnúť ani zaseknúť
-    striedanie na jednej kategórii."""
+    """The player may have switched the slot off meanwhile. It must not crash
+    or get the rotation stuck on one category."""
     assert measure.next_slot([0, 2], 1) == 0
 
 
 # --------------------------------------------------------------------------
-# Účinnosť podľa kategórie
+# Effectiveness by category
 # --------------------------------------------------------------------------
 
 def _okno(kat, pre, post, arm="voice", valid=True, **kw):
-    # Hlaska dorucena na pauze (0.2: graf rata len tie) - viz nizsie.
+    # A cue delivered at a pause (0.2: the chart counts only those) - see
+    # below.
     okno = {"category": kat, "pre_bpm": pre, "post_bpm": post,
             "arm": arm, "valid": valid, "delivery": "pause"}
     okno.update(kw)
@@ -338,9 +346,9 @@ def _okno(kat, pre, post, arm="voice", valid=True, **kw):
 
 
 def test_ucinnost_pocita_len_hlasne_rameno():
-    """Tiché okná sú referencia pre to, či hláška funguje VOBEC — nie pre
-    porovnanie kategórií medzi sebou. Zmiešať ich by znamenalo porovnávať
-    kategóriu s tichom."""
+    """Silent windows are the reference for whether a cue works AT ALL - not
+    for comparing categories with each other. Mixing them would mean
+    comparing a category with silence."""
     okna = [_okno("breath", 100, 95) for _ in range(6)]
     okna += [_okno("breath", 100, 60, arm="silent") for _ in range(6)]
     von = measure.by_category(okna)
@@ -354,8 +362,9 @@ def test_ucinnost_preskoci_neplatne_okna():
 
 
 def test_ucinnost_pod_prahom_nedovoli_tvrdit():
-    """Pri troch oknách je interval široký ako celý rozsah. Graf, ktorý by
-    z toho nakreslil pruh, by tvrdil niečo, čo v dátach nie je."""
+    """With three windows the interval is as wide as the whole range. A chart
+    that drew a bar from that would claim something that is not in the
+    data."""
     okna = [_okno("jaw", 100, 96 + i) for i in range(3)]
     von = measure.by_category(okna)["jaw"]
     assert von["n"] == 3
@@ -363,8 +372,8 @@ def test_ucinnost_pod_prahom_nedovoli_tvrdit():
 
 
 def test_ucinnost_vracia_interval_nie_hole_cislo():
-    """Zadanie 2.1b, B2: „výstup nech je odhad s intervalom, nikdy holé
-    číslo."""
+    """Spec 2.1b, B2: "let the output be an estimate with an interval, never a
+    bare number"."""
     okna = [_okno("release", 100, 100 - d) for d in (2, 4, 6, 4, 5, 3, 5)]
     von = measure.by_category(okna)["release"]
     assert von["dost_dat"] is True
@@ -372,15 +381,15 @@ def test_ucinnost_vracia_interval_nie_hole_cislo():
 
 
 def test_ucinnost_jedineho_okna_nema_interval():
-    """Z jednej hodnoty sa rozptyl spočítať nedá — a vymyslieť si ho by bolo
-    horšie než ho nemať."""
+    """A variance cannot be computed from one value - and making one up would
+    be worse than not having it."""
     von = measure.by_category([_okno("breath", 100, 94)])["breath"]
     assert von["ci95"] is None and von["dost_dat"] is False
 
 
 def test_ucinnost_nerobi_zaver():
-    """Nevracia poradie ani „najlepšiu kategóriu". Z prekrývajúcich sa
-    intervalov by to spravilo rebríček, ktorý dáta neunesú."""
+    """Returns no ranking and no "best category". From overlapping intervals
+    that would make a leaderboard the data cannot carry."""
     okna = [_okno("breath", 100, 94) for _ in range(6)]
     okna += [_okno("jaw", 100, 99) for _ in range(6)]
     von = measure.by_category(okna)
@@ -390,29 +399,31 @@ def test_ucinnost_nerobi_zaver():
 
 
 def test_rucna_hlaska_sa_do_merania_nezapisuje():
-    """Klik na Test nesmie skoncit v grafe ucinnosti.
+    """A click on Test must not end up in the effectiveness chart.
 
-    `fire_slot` dnes spusta jedine tlacidlo Test a klik v HUD nahlade -
-    oboje pri nastavovani, casto viackrat za sebou a bez hrania.
-    `by_category` filtruje len podla `valid` a `arm`, `source` necita, takze
-    kazdy taky klik by sa zaratal ako hlaska a jeho cas by navyse zabral
-    refrakternu zonu skutocnej hlaske o par sekund neskor.
+    `fire_slot` is today triggered only by the Test button and a click in
+    the HUD preview - both while setting up, often several times in a row
+    and without playing. `by_category` filters only by `valid` and `arm`,
+    it does not read `source`, so every such click would count as a cue
+    and its time would also take the refractory zone from a real cue a few
+    seconds later.
     """
     import inspect
     import app as app_mod
     telo = inspect.getsource(app_mod.DandurfApp._note_cue)
-    # az KOD pod docstringom - v poznamke je volanie spomenute zamerne
+    # only the CODE below the docstring - the note mentions the call on purpose
     telo = telo[telo.index('"""', telo.index('"""') + 3):]
     assert "note_trigger" not in telo, "rucna hlaska sa zapisuje do merania"
 
 
 def test_hlaska_bez_vizualu_sa_nedoruci():
-    """Slot bez zapnuteho in-game vizualu sa do striedania nesmie dostat.
+    """A slot without an enabled in-game visual must not get into the rotation.
 
-    V tichom rameni je vizual JEDINA vec, ktora sa doruci. Slot s vypnutym
-    vizualom by teda v tichom rameni neurobil nic, okno by sa zapisalo ako
-    platne - a porovnanie ramien, teda cely dovod, preco ticha hlaska
-    existuje, by meralo ticho proti tichu.
+    In the silent arm the visual is the ONLY thing that gets delivered. A
+    slot with its visual off would therefore do nothing in the silent arm,
+    the window would be written as valid - and the comparison of arms,
+    i.e. the whole reason why the silent cue exists, would measure silence
+    against silence.
     """
     import inspect
     import app as app_mod
@@ -421,12 +432,12 @@ def test_hlaska_bez_vizualu_sa_nedoruci():
 
 
 def test_importovane_okna_sa_do_ucinnosti_nerataju():
-    """`data_io` sľubuje, že importované záznamy sa z účinnosti vylučujú.
+    """`data_io` promises imported records are excluded from effectiveness.
 
-    Značku `imported: True` nastavoval, ale nečítal ju NIKTO — ani
-    `by_category`, ani `summarize`, ani `hr_insights._valid`. Kto si
-    naimportoval zálohu od kamaráta, videl vo svojom grafe jeho telo
-    zmiešané so svojím a nemal ako to zistiť.
+    It set the `imported: True` marker, but NOBODY read it - neither
+    `by_category`, nor `summarize`, nor `hr_insights._valid`. Whoever
+    imported a backup from a friend saw the friend's body in their chart
+    mixed with their own and had no way to find out.
     """
     okna = [
         {"valid": True, "arm": "voice", "category": "jaw",
@@ -444,29 +455,30 @@ def test_importovane_okna_sa_do_ucinnosti_nerataju():
 
 
 def _aktivita(t0, t1, idle_ms):
-    """Rovnomerná aktivita v úseku — [(čas, idle_ms)] ako z ActivityTracker."""
+    """Even activity over a stretch - [(time, idle_ms)] as ActivityTracker."""
     return [(t, idle_ms) for t in range(int(t0), int(t1), 2)]
 
 
 def test_hlaska_mimo_klavesnice_sa_do_ucinnosti_nerata():
-    """Keď hráč vstane a odíde, tep mu stúpne CHÔDZOU, nie hrou.
+    """When the player gets up and leaves, WALKING raises their heart rate.
 
-    Appka to vidí ako záťaž, ozve sa — a po návrate a sadnutí si tep klesne.
-    Okno potom vyzerá ako účinná hláška, pritom nemeria nič iné než to, že si
-    človek sadol. `pre_activity` sa zapisovalo od začiatku, ale na platnosť
-    okna nemalo vplyv.
+    The app sees it as load, speaks up - and after they come back and sit
+    down the heart rate drops. The window then looks like an effective cue,
+    while it measures nothing but the person sitting down. `pre_activity`
+    was written from the start, but had no effect on the window's validity.
     """
     ts = 10_000.0
     vzorky = [(t, 90.0) for t in range(int(ts - 200), int(ts + 400), 2)]
     cue = {"ts": ts, "arm": "voice", "category": "jaw", "cue_id": "slot1"}
 
-    # pri klávesnici (idle 0 ms = vstup chodí) -> platné
+    # at the keyboard (idle 0 ms = input is coming) -> valid
     pri_stole = _aktivita(ts - 200, ts + 400, 0)
     okno = measure.build_window(cue, vzorky, [ts], activity=pri_stole)
     assert okno["valid"], okno["reasons"]
     assert okno["pre_activity"] > 0.9
 
-    # preč od PC (idle rastie nad prah) -> neplatné, s dôvodom
+    # away from the PC (idle grows above the threshold) -> invalid, with a
+    # reason
     prec = [(t, 60_000) for t in range(int(ts - 200), int(ts + 400), 2)]
     okno = measure.build_window(cue, vzorky, [ts], activity=prec)
     assert not okno["valid"]
@@ -474,10 +486,10 @@ def test_hlaska_mimo_klavesnice_sa_do_ucinnosti_nerata():
 
 
 def test_neznama_aktivita_okno_nezneplatni():
-    """`None` znamená „nevieme", nie „bol preč".
+    """`None` means "we do not know", not "was away".
 
-    Staršie relácie aktivitu nezapisovali. Keby ju neznalosť zneplatňovala,
-    spätne by sa zahodila celá história.
+    Older sessions did not record activity. If not knowing invalidated it,
+    the whole history would be thrown away retroactively.
     """
     ts = 10_000.0
     vzorky = [(t, 90.0) for t in range(int(ts - 200), int(ts + 400), 2)]
@@ -487,32 +499,33 @@ def test_neznama_aktivita_okno_nezneplatni():
 
 
 def test_prepocet_okien_pouziva_rovnake_pravidlo_ako_measure():
-    """`prepocitaj_okna.py` nesmie mať vlastnú predstavu o platnosti.
+    """`prepocitaj_okna.py` must not have its own idea of validity.
 
-    Je to druhé miesto, kde sa rozhoduje, či okno platí. Keby sa rozišlo
-    s `measure.build_window`, súbor a grafy by tvrdili každý niečo iné — a
-    nikto by nevedel, ktoré číslo je to správne.
+    It is the second place where it is decided whether a window is valid.
+    If it diverged from `measure.build_window`, the file and the charts
+    would each claim something different - and nobody would know which
+    number is the right one.
     """
     import prepocitaj_okna
 
-    # pod prahom pred aj po -> dôvod
+    # below the threshold before and after -> reason
     for pre, post in ((0.1, 1.0), (1.0, 0.0), (0.1, 0.1)):
         okno = {"pre_activity": pre, "post_activity": post}
         assert prepocitaj_okna._dovody_z_aktivity(okno) == [measure.R_NEAKTIVNY], (pre, post)
 
-    # nad prahom -> nič
+    # above the threshold -> nothing
     assert prepocitaj_okna._dovody_z_aktivity(
         {"pre_activity": 0.9, "post_activity": 0.9}) == []
 
-    # „nevieme" nesmie zneplatniť
+    # "we do not know" must not invalidate
     assert prepocitaj_okna._dovody_z_aktivity(
         {"pre_activity": None, "post_activity": None}) == []
 
 
 def test_prepocet_nesiaha_na_dovody_zo_surovych_vzoriek():
-    """Dôvody ako `skratene_po` sa rátali zo vzoriek tepu, ktoré v súbore
-    nie sú. Dopočítať ich spätne by znamenalo vyrobiť čísla, ktoré nikto
-    nenameral — tak sa ich nástroj nesmie dotknúť.
+    """Reasons like `skratene_po` were computed from heart-rate samples that
+    are not in the file. Computing them retroactively would mean making up
+    numbers nobody measured - so the tool must not touch them.
     """
     import prepocitaj_okna
     zdroj = inspect_source(prepocitaj_okna._dovody_z_aktivity)
@@ -526,12 +539,13 @@ def inspect_source(fn):
 
 
 # --------------------------------------------------------------------------
-# Nedoručená hláška sa nesmie merať (B17)
+# An undelivered cue must not be measured (B17)
 # --------------------------------------------------------------------------
 
 def test_nevykresleny_vizual_zneplatni_okno():
-    """B17: tiché rameno má vizuál ako jediný podnet. Keď sa nevykreslil,
-    okno by porovnávalo hlášku proti ničomu — musí vypadnúť z merania."""
+    """B17: the silent arm has the visual as its only stimulus. When it was
+    not drawn, the window would compare the cue against nothing - it must
+    drop out of the measurement."""
     samples = rad(T0, CUE + 200.0)
     cue = {"ts": CUE, "category": "breath", "cue_id": "x", "arm": "silent",
            "source": "auto", "delivered": False}
@@ -548,25 +562,26 @@ def test_dorucena_hlaska_ostava_platna():
 
 
 def test_stary_zaznam_bez_delivered_sa_nezneplatni():
-    """Staré okná pole `delivered` nemajú (None = nevieme) — nesmú sa
-    spätne zahodiť, rovnaké pravidlo ako pri aktivite."""
+    """Old windows have no `delivered` field (None = we do not know) - they
+    must not be thrown away retroactively, the same rule as for activity."""
     samples = rad(T0, CUE + 200.0)
     cue = {"ts": CUE, "category": "breath", "cue_id": "x", "arm": "voice",
-           "source": "auto"}   # žiadny 'delivered'
+           "source": "auto"}   # no 'delivered'
     w = measure.build_window(cue, samples, [CUE])
     assert measure.R_NEDORUCENE not in w["reasons"]
 
 
 # --------------------------------------------------------------------------
-# Čistý koniec relácie nie je výpadok senzora (B5)
+# A clean end of a session is not a sensor dropout (B5)
 # --------------------------------------------------------------------------
 
 def test_cisty_koniec_relacie_nie_je_diera_v_datach():
-    """B5: keď hláška padne na konci večera a hráč vypne počúvanie, po-okno
-    je prázdne. Dostane správne `skratene_po`, ale NESMIE dostať aj
-    `diera_v_datach` — pri ladení to tvrdilo, že vypadli hodinky, hoci hráč
-    len dohral. (`gaps()` vracia pri prázdnom okne celý rozsah ako začiatok.)"""
-    pred = rad(CUE - 60.0, CUE)              # dáta pred hláškou
+    """B5: when a cue comes at the end of the evening and the player turns off
+    listening, the post-window is empty. It correctly gets `skratene_po`,
+    but must NOT also get `diera_v_datach` - while debugging it claimed the
+    watch had dropped out, although the player had just finished playing.
+    (`gaps()` returns the whole range as the start for an empty window.)"""
+    pred = rad(CUE - 60.0, CUE)              # data before the cue
     w = measure.build_window(
         {"ts": CUE, "category": "b", "cue_id": "x", "arm": "voice",
          "source": "auto"}, pred, [CUE])
@@ -575,12 +590,12 @@ def test_cisty_koniec_relacie_nie_je_diera_v_datach():
 
 
 def test_skutocna_diera_uprostred_ostava_diera():
-    """Oprava B5 nesmie umlčať detekciu skutočného výpadku: diera obklopená
-    dátami na oboch stranách stále musí byť `diera_v_datach`."""
+    """The B5 fix must not silence the detection of a real dropout: a gap
+    surrounded by data on both sides must still be `diera_v_datach`."""
     a = int(CUE + measure.DEAD_S)
     b = int(CUE + measure.POST_S)
     po = ([(t, 80.0) for t in range(a, a + 5)]
-          + [(t, 80.0) for t in range(b - 5, b + 1)])   # diera v strede po-okna
+          + [(t, 80.0) for t in range(b - 5, b + 1)])   # gap in the middle of the post-window
     w = measure.build_window(
         {"ts": CUE, "category": "b", "cue_id": "x", "arm": "voice",
          "source": "auto"}, rad(CUE - 60.0, CUE) + po, [CUE])

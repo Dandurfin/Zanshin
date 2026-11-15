@@ -1,13 +1,16 @@
 # -*- coding: utf-8 -*-
-"""Prazdne stavy po davke 4 auditu UX (0.2.2): jedna veta, nanajvys jedna
-akcia - nie pomlcky, nuly a prazdne grafy, ktore vyzeraju ako meranie.
+"""Empty states after batch 4 of the UX audit (0.3): one sentence, at most
+one action - not dashes, zeros and empty charts that look like a
+measurement.
 
-Strazi sa:
-  * `ui_kit.EmptyState` (veta + volitelna akcia, farby z palety),
-  * Dnes bez tepu: "Sparovat hodinky" otvara navod na parovanie,
-  * Historia, "Relacia zblizka" bez relacie: len veta, po prvej relacii sa
-    stopa, legenda aj mriezka vratia v povodnom poradi,
-  * prazdna veta pod 80 px grafom trendu nezabera miesto.
+Guarded:
+  * `ui_kit.EmptyState` (sentence + optional action, colours from the
+    palette),
+  * Today without heart rate: "Pair your watch" opens the pairing how-to,
+  * History, "One session up close" without a session: only a sentence,
+    after the first session the trace, legend and grid come back in the
+    original order,
+  * an empty sentence under the 80 px trend chart takes no space.
 """
 import os
 import sys
@@ -67,7 +70,7 @@ def test_emptystate_veta_a_jedna_akcia(tema):
         stav.pack()
         root.update_idletasks()
         assert stav.label.cget("text") == "Zatiaľ nič."
-        # obsahovy text, nie dekoracia: text_dim (>= 4,5:1)
+        # content text, not decoration: text_dim (>= 4.5:1)
         assert stav.label.cget("text_color") == pal["text_dim"]
         assert isinstance(stav.action, ctk.CTkButton)
         assert stav.action.cget("text") == "Spárovať hodinky"
@@ -75,7 +78,7 @@ def test_emptystate_veta_a_jedna_akcia(tema):
         assert klik == [1]
         stav.set_text("Iná veta.")
         assert stav.label.cget("text") == "Iná veta."
-        # bez akcie (alebo bez prikazu) ziadne tlacidlo
+        # without an action (or without a command) no button
         holy = ui_kit.EmptyState(root, pal, "Len veta.")
         assert holy.action is None
         bez_prikazu = ui_kit.EmptyState(root, pal, "Veta", action="Nic")
@@ -89,16 +92,16 @@ def test_dnes_bez_tepu_ponuka_parovanie(sk):
     assert ('self.dnes_empty = ui_kit.EmptyState(\n'
             '            hr_panel.body, pal, tr("dnes.empty_body"), action=tr("dnes.empty_btn"),\n'
             '            command=self.open_watch_pairing)') in stavba
-    # navod na parovanie zapina prijem tepu (hrac nemusi hladat prepinac)
+    # pairing how-to turns HR reception on (player need not find the toggle)
     assert "self._enable_hr_monitoring()" in zdroj_metody("open_watch_pairing")
     assert "self.hr_monitoring_enabled = True" in zdroj_metody("_enable_hr_monitoring")
     assert i18n.tr("dnes.empty_btn") == "Spárovať hodinky"
-    # ziadny vymysleny tep v nahlade HUD-u
+    # no made-up heart rate in the HUD preview
     assert "render_hud(" not in stavba
 
 
 # --------------------------------------------------------------------------
-# Historia: Relacia zblizka
+# History: One session up close
 # --------------------------------------------------------------------------
 
 def test_detail_bez_relacie_je_len_veta_a_po_relacii_sa_vrati(sk):
@@ -123,11 +126,11 @@ def test_detail_bez_relacie_je_len_veta_a_po_relacii_sa_vrati(sk):
         for _kolo in range(3):
             D._history_detail_prazdny(a, True)
             assert panel.body.pack_slaves() == [veta]
-            D._history_detail_prazdny(a, True)          # druhy raz nic nerozbije
+            D._history_detail_prazdny(a, True)          # a second time breaks nothing
             assert panel.body.pack_slaves() == [veta]
             D._history_detail_prazdny(a, False)
             assert panel.body.pack_slaves() == [stopa, legenda, mriezka]
-            # okraje sa pri navrate nenasobia mierkou DPI znova
+            # margins are not multiplied by the DPI scale again on return
             assert [w.pack_info()["pady"] for w in (stopa, legenda, mriezka)] == okraje
             assert a._history_detail_packy is None
     finally:
@@ -145,7 +148,7 @@ def test_detail_historie_vola_prazdny_stav():
 
 
 # --------------------------------------------------------------------------
-# Historia: prazdna veta pod grafom trendu
+# History: empty sentence under the trend chart
 # --------------------------------------------------------------------------
 
 class _Label:
@@ -197,7 +200,7 @@ def test_prazdna_veta_pod_grafom_nezabera_miesto(sk):
     assert a.history_trend.kw["empty_text"] == i18n.tr("history.empty_period")
     assert a.history_trend_delta.text == ""
     assert a.history_trend_delta.m == "", "prazdny riadok sa schova"
-    # s relaciou sa veta vrati - nad vysvetlivku metriky
+    # with a session the sentence comes back - above the metric explanation
     now = time.time()
     relacie = [{"started": now - 86400, "duration_s": 1800.0, "baseline_bpm": 62,
                 "samples": 1800}]

@@ -1,28 +1,31 @@
-"""Senzor tepu a meracia relacia - cast hlavnej appky (DandurfApp z app.py).
+"""Heart-rate sensor and measurement session - part of the main app
+(DandurfApp from app.py).
 
-SessionMixin je mixin DandurfApp: app.py ho dedi a cely stav (prijem tepu z
-hodiniek a stav spojenia, otvorena relacia a jej prahy, zaznam aktivity)
-zije na DandurfApp. Tu su len metody, ktore s nim pracuju cez `self` -
-mixin nema __init__ ani vlastne atributy.
+SessionMixin is a DandurfApp mixin: app.py inherits it and the whole state
+(heart rate received from the watch and the connection state, the open
+session and its thresholds, the activity record) lives on DandurfApp. Only
+the methods that work with it through `self` are here - the mixin has no
+__init__ and no attributes of its own.
 
-Presunuty z app.py bez zmeny zvysok sekcie "Auto-Profile Engine
-(rozpoznanie beziacej hry)" - stal pod tou znackou, hoci s rozpoznanim hry
-nesuvisi (prva cast sekcie je v app_profiles.py), preto tu ma novu znacku:
-nastavenie a zapnutie senzora, otvorenie meracej relacie (svet, dlhodoba
-zakladna, kriticky tep, prahy spustaca, stupen rebrika), prijem tepu,
-krokov a stavu spojenia, vypadky tepu, opakovana vazba na obsadeny port,
-stav senzora v Nastaveniach, skryta IP a tiky relacie a aktivity. Pomocnici
-`_hr_overlay_available` a `_warn_hr_overlay_disabled_once` (pouziva ich
-dorucenie hlasky) stali v tej istej sekcii. Zatvorenie relacie
-(`_close_hr_session`) je v app_data.py.
+Moved from app.py unchanged: the rest of the "Auto-Profile Engine
+(detecting the running game)" section - it stood under that marker although
+it has nothing to do with game detection (the first part of the section is
+in app_profiles.py), so here it has a new marker: setting up and switching
+on the sensor, opening a measurement session (world, long-term baseline,
+critical heart rate, trigger thresholds, ladder step), receiving heart rate,
+steps and connection state, heart-rate dropouts, repeated binding to a busy
+port, sensor status in Settings, the hidden IP, and the session and activity
+ticks. The helpers `_hr_overlay_available` and
+`_warn_hr_overlay_disabled_once` (cue delivery uses them) stood in the same
+section. Closing the session (`_close_hr_session`) is in app_data.py.
 
-Konstanta `HR_NO_CLIENT_AFTER_MS` ostala v triede DandurfApp medzi
-ostatnymi konstantami triedy - `_schedule_no_client_check` ju cita cez
+The constant `HR_NO_CLIENT_AFTER_MS` stayed in the DandurfApp class among
+the other class constants - `_schedule_no_client_check` reads it through
 `self`.
 
-Pozor v testoch: `_open_hr_session`, `_apply_hr_bpm` a
-`_tick_nonstop_input` citaju `time` z tohto modulu - falosne hodiny treba
-podstrcit aj tu (`app_session.time`), nie len na module app.
+Watch out in tests: `_open_hr_session`, `_apply_hr_bpm` and
+`_tick_nonstop_input` read `time` from this module - a fake clock must be
+slipped in here too (`app_session.time`), not only on the app module.
 """
 
 import time
@@ -42,17 +45,18 @@ from app_spolocne import app_log, stranka_vhre
 
 
 def _senzor_vypla_chyba(app):
-    """Port/vazba zlyhali: senzor je vypnuty LEN V PAMATI (0.2.2).
+    """Port/binding failed: the sensor is switched off ONLY IN MEMORY (0.3).
 
-    Obsadeny port ani chyba vazby nie su rozhodnutie hraca. Prepinac ukaze
-    vypnute (tep naozaj nechodi), ale `_hr_vypnute_chybou` povie
-    `save_settings`, ze do suboru patri dalej zapnute - nech uz ulozenie
-    spusti ktorekolvek z desiatok miest (posuvnik, jazyk, ukoncenie appky).
-    Dalsi start teda skusi prijem znova. Priznak zhodi az hrac sam
-    (`on_hr_toggle`) alebo novy pokus po zmene IP/portu (`on_hr_config_change`).
+    Neither a busy port nor a binding error is the player's decision. The
+    switch shows off (heart rate really is not coming), but
+    `_hr_vypnute_chybou` tells `save_settings` that the file should still
+    say on - whichever of the dozens of places triggers the save (a slider,
+    the language, quitting the app). So the next start tries receiving
+    again. The flag is cleared only by the player (`on_hr_toggle`) or by a
+    new attempt after an IP/port change (`on_hr_config_change`).
 
-    Funkcia modulu, nie metoda: `_apply_hr_status` bezi v testoch aj na
-    atrapach (SimpleNamespace), ktore by novu metodu nemali.
+    A module function, not a method: `_apply_hr_status` also runs on stubs
+    in tests (SimpleNamespace), which would not have a new method.
     """
     app.hr_monitoring_enabled = False
     app._hr_vypnute_chybou = True
@@ -60,34 +64,36 @@ def _senzor_vypla_chyba(app):
         app.hr_enabled_var.set(False)
 
 
-# USPANIE PC (0.2.2, audit 4). Tiky relacie (`_tick_activity`, 4x za
-# sekundu) a vzorky tepu pocas spanku/hibernacie nechodia. Medzera dlhsia
-# nez toto znamena, ze PC spalo (alebo appka visela) - relacia sa uzavrie k
-# poslednemu tiku pred medzerou a po nej sa zacne nova. Bez toho vznikla
-# jedna 14-hodinova "relacia" a spankovy tep vosiel do pokojovej zakladne.
+# PC SLEEP (0.3, audit 4). Session ticks (`_tick_activity`, 4x per
+# second) and heart-rate samples do not come during sleep/hibernation. A gap
+# longer than this means the PC slept (or the app hung) - the session is
+# closed at the last tick before the gap and a new one starts after it.
+# Without this, one 14-hour "session" came about and the sleeping heart rate
+# went into the resting baseline.
 MEDZERA_SPANKU_S = 120.0
 
 
 def je_medzera_spanku(posledny, teraz, limit=MEDZERA_SPANKU_S):
-    """Bola medzi dvoma tikmi relacie medzera, ked PC spalo? Cista funkcia.
+    """Did the PC sleep in a gap between two session ticks? Pure function.
 
-    Hodiny iduce DOZADU (synchronizacia casu, rucna zmena) medzera nie su -
-    rozdiel je zaporny. Pokazene cislo (None, NaN, text) tiez nie."""
+    A clock going BACKWARDS (time sync, manual change) is not a gap - the
+    difference is negative. A broken number (None, NaN, text) is not either."""
     try:
         rozdiel = float(teraz) - float(posledny)
     except (TypeError, ValueError):
         return False
-    return rozdiel > float(limit)      # NaN je vzdy False
+    return rozdiel > float(limit)      # NaN is always False
 
 
 def _zrus_pokus_o_vazbu(app):
-    """Zrusi cakajuci pokus o vazbu po obsadenom porte (`_retry_hr_bind`).
+    """Cancels a pending binding attempt after a busy port (`_retry_hr_bind`).
 
-    JEDINE miesto, kde sa `_hr_retry_job` zahadzuje (0.2.2). Doteraz ho
-    `_open_hr_session` len prepisal na None: casovac v Tk zil dalej a o par
-    sekund restartoval prijem - aj po vypnuti senzora, po zmene portu ci po
-    zapnuti sledovania. Funkcia modulu, nie metoda: vola sa aj na atrapach
-    (SimpleNamespace) v testoch `_apply_hr_status`."""
+    The ONLY place where `_hr_retry_job` is discarded (0.3). Until now
+    `_open_hr_session` only overwrote it with None: the timer in Tk lived on
+    and a few seconds later restarted receiving - even after the sensor was
+    switched off, after a port change or after watching was switched on. A
+    module function, not a method: it is also called on stubs
+    (SimpleNamespace) in the `_apply_hr_status` tests."""
     job = getattr(app, "_hr_retry_job", None)
     app._hr_retry_job = None
     if job is None:
@@ -100,17 +106,17 @@ def _zrus_pokus_o_vazbu(app):
 
 
 class SessionMixin:
-    """Senzor tepu a meracia relacia (mixin DandurfApp)."""
+    """Heart-rate sensor and measurement session (DandurfApp mixin)."""
 
-    # ---------- senzor tepu a meracia relacia ----------
+    # ---------- heart-rate sensor and measurement session ----------
 
     def on_hr_config_change(self):
-        # prazdne policko = "pocuvaj na vsetkych sietach", nie "vrat povodnu
-        # hodnotu" - hrac musi mat sposob, ako sa k tomu bezpecnemu stavu
-        # dostat aj ked si tam raz napisal nefunkcnu adresu
+        # empty field = "listen on all networks", not "restore the original
+        # value" - the player must have a way to get to that safe state even
+        # after once typing a non-working address there
         ip = self.hr_ip_var.get().strip() or ANY_INTERFACE
         port = clamp_int(self.hr_port_var.get(), 1, 65535, self.hr_port)
-        critical = int(self.hr_critical_bpm)      # rata sa, nenastavuje
+        critical = int(self.hr_critical_bpm)      # computed, not set
         network_changed = (ip != self.hr_ip) or (port != self.hr_port)
         self.hr_ip, self.hr_port, self.hr_critical_bpm = ip, port, critical
         self.hr_stats.critical_bpm = critical
@@ -121,10 +127,11 @@ class SessionMixin:
         self.save_settings()
         if (network_changed and not self.hr_monitoring_enabled
                 and getattr(self, "_hr_vypnute_chybou", False)):
-            # Senzor vypla chyba portu ci adresy, nie hrac (`_senzor_vypla_chyba`).
-            # Nove cislo v poli je presne oprava, ktoru radi dennik
-            # (`log.hr_port_busy`) - skusime hned, bez dalsieho kliku na
-            # prepinac. Hracom vypnuty senzor (bez priznaku) sa nezapina.
+            # A port or address error switched the sensor off, not the player
+            # (`_senzor_vypla_chyba`). A new number in the field is exactly the
+            # fix the journal advises (`log.hr_port_busy`) - we try right away,
+            # without another click on the switch. A sensor switched off by the
+            # player (no flag) is not switched on.
             self.hr_monitoring_enabled = True
             self._hr_vypnute_chybou = False
             if self.hr_enabled_var is not None:
@@ -134,8 +141,9 @@ class SessionMixin:
 
     def on_hr_toggle(self):
         self.hr_monitoring_enabled = bool(self.hr_enabled_var.get())
-        # Klik na prepinac je rozhodnutie hraca - plati to, co zvolil, nie
-        # zapnute "z pamati" po chybe portu (`_senzor_vypla_chyba`).
+        # A click on the switch is the player's decision - what they chose
+        # applies, not "on from memory" after a port error
+        # (`_senzor_vypla_chyba`).
         self._hr_vypnute_chybou = False
         self.save_settings()
         if self.hr_monitoring_enabled:
@@ -144,113 +152,123 @@ class SessionMixin:
             self.stop_heart_rate_monitor()
 
     def start_heart_rate_monitor(self):
-        """Otvori novu meraciu relaciu A naštartuje sietovy prijem.
+        """Opens a new measurement session AND starts network receiving.
 
-        Ked treba len novu relaciu (zapnutie sledovania, ked uz tep chodi),
-        vola sa `_open_hr_session` priamo - restart socketu by appku v
-        telefone na chvilu odpojil.
+        When only a new session is needed (watching switched on while heart
+        rate is already coming), `_open_hr_session` is called directly - a
+        socket restart would briefly disconnect the app on the phone.
         """
-        # Cakajuci pokus po obsadenom porte (`_retry_hr_bind`) patri
-        # PREDOSLEMU behu. `_open_hr_session` ho len zabudne (None), no
-        # `after` by ho o par sekund aj tak spustil - restartoval by tento
-        # novy prijem (iny port, vypnutie a zapnutie), telefon by sa odpojil
-        # a relacia by sa otvorila nanovo. Novy beh si pokusy zacne sam.
+        # A pending attempt after a busy port (`_retry_hr_bind`) belongs to the
+        # PREVIOUS run. `_open_hr_session` only forgets it (None), but `after`
+        # would still fire it a few seconds later - it would restart this new
+        # receiving (another port, off and on), the phone would disconnect and
+        # the session would open anew. The new run starts its attempts itself.
         _zrus_pokus_o_vazbu(self)
-        # Novy beh od hraca (zapnutie, iny port) = pokusy po obsadenom porte
-        # sa ratau odznova. `_open_hr_session` ich uz nenuluje - inak by ich
-        # nuloval aj kazdy pokus sam (`_retry_hr_bind`) a appka by sa nevzdala
-        # nikdy (0.2.2).
+        # A new run by the player (switching on, another port) = attempts
+        # after a busy port are counted from scratch. `_open_hr_session` no
+        # longer resets them - otherwise every attempt itself
+        # (`_retry_hr_bind`) would reset them too and the app would never
+        # give up (0.3).
         self._hr_bind_retries = 0
         self._open_hr_session(meria=self.listening)
         self._hr_generation = self.heart_rate_monitor.start(self.hr_ip, self.hr_port)
         self.log(tr("log.hr_enabled", ip=self._hr_ip_display(), port=self.hr_port))
-        # Ak sa do N sekúnd nepripojí ani jeden klient, povedz to inak než
-        # "Pripája sa…" - "bound, ale nikto sa nepripojil" je iný problém
-        # (najčastejšie firewall) a hráč to má vedieť (B2).
+        # If not a single client connects within N seconds, say it differently
+        # from "Connecting..." - "bound, but nobody connected" is a different
+        # problem (most often the firewall) and the player should know (B2).
         self._schedule_no_client_check()
-        # Varovanie o exkluzívnom fullscreene sa TU nekontroluje: v tejto
-        # chvíli je popredím Zanshin (hráč práve klikol), takže hru by nikdy
-        # nezachytilo (bug A3). Rieši to `_tick_session`, keď je popredím hra.
+        # The warning about exclusive fullscreen is NOT checked HERE: at this
+        # moment Zanshin is in the foreground (the player just clicked), so it
+        # would never catch the game (bug A3). `_tick_session` handles it when
+        # the game is in the foreground.
 
     def _open_hr_session(self, prepoj=True, meria=True):
-        """Zacne novu meraciu relaciu. Siete sa NEDOTYKA.
+        """Starts a new measurement session. Does NOT TOUCH the network.
 
-        `prepoj=False` znamena "prijem uz bezi a tep chodi" - vtedy
-        sa stav pripojenia nesmie zhodit na "connecting", lebo by okno
-        tvrdilo, ze sa prave pripaja, hoci data chodia.
+        `prepoj=False` means "receiving is already running and heart rate is
+        coming" - then the connection state must not be dropped to
+        "connecting", because the window would claim it is connecting right
+        now even though data is coming.
         """
-        # Predosla relacia sa musi KOREKTNE ZATVORIT, nie len prepisat.
-        # `hr_stats.reset_session()` nizsie zmaze `cues` aj `_all`, takze bez
-        # tohto by sa meracie okna uz nemali z coho zostavit - a jedina
-        # cesta, ktora sem vedie s otvorenou relaciou, je zmena IP/portu
-        # uprostred vecera (`apply_hr_settings`). Odmerane: cely vecer dat
-        # zmizol bez jedineho riadku v logu.
+        # The previous session must be CLOSED PROPERLY, not just overwritten.
+        # `hr_stats.reset_session()` below erases `cues` and `_all`, so without
+        # this the measurement windows would have nothing left to be built
+        # from - and the only path that leads here with an open session is an
+        # IP/port change in the middle of the evening (`apply_hr_settings`).
+        # Measured: a whole evening of data vanished without a single line in
+        # the log.
         if getattr(self, "_hr_session_open", False):
             self._close_hr_session()
         if prepoj:
             self._hr_state = "connecting"
         self._hr_last_bpm = None
-        # Vypadok patri do predoslej relacie, aj ked sa otvara bez prepojenia
-        # (`start_listening` pocas vypadku). Inak by sa priznak preniesol do
-        # novej relacie a riadok "tep je spat" by ratal od casu, ktory
-        # `reset_session` nizsie prepise.
+        # A dropout belongs to the previous session, even when opening without
+        # reconnecting (`start_listening` during a dropout). Otherwise the
+        # flag would carry over into the new session and the "heart rate is
+        # back" line would count from a time that `reset_session` below
+        # overwrites.
         self._hr_lost = False
         self._hr_lost_od = None
         self._hr_over_since = None
         self._hr_overlay_warned = False
-        # Exkluzivny fullscreen zbadany v TEJTO relacii (0.2.2 davka 4) - ide
-        # do suhrnu ako `fullscreen` a dotaznik podla neho povie, preco
-        # obrazky nebolo vidno (`_warn_exclusive_fullscreen_once`).
+        # Exclusive fullscreen noticed in THIS session (0.3 batch 4) - goes
+        # into the summary as `fullscreen` and the questionnaire uses it to say
+        # why the pictures were not visible
+        # (`_warn_exclusive_fullscreen_once`).
         self._session_fullscreen = False
-        # CAKAJUCI POKUS O VAZBU SA TU NEZAHADZUJE (0.2.2). Doteraz tu bolo
-        # `_hr_retry_job = None` a `_hr_bind_retries = 0`: casovac v Tk zil
-        # dalej bez odkazu, takze ho uz nezrusilo vypnutie senzora ani zmena
-        # portu, a pocitadlo sa nulovalo pri kazdom pokuse (`_retry_hr_bind`
-        # otvara relaciu) - appka skusala obsadeny port donekonecna. Pokus
-        # je tu potrebny: po obsadenom porte `heart_rate_monitor.running`
-        # ostava True, takze `start_listening` socket sam neobnovi. Rusi ho
-        # `_zrus_pokus_o_vazbu` (novy beh, vypnutie senzora, ukoncenie).
-        # Telefon drzi spojenie dalej, ked sa siete nedotykame (`prepoj=False`).
-        # Zhodit priznak aj vtedy znamenalo, ze po dalsom vypadku tepu
-        # (`disconnected`) by okno, Dnes aj navod tvrdili "odpojene / cakam na
-        # pripojenie telefonu", hoci je pripojeny. Od 0.2.2 sa to deje aj na
-        # prvom starte: navod na parovanie zapne prijem a sledovanie zacne az
-        # po priprave hlasu, uprostred parovania. Odchod klienta zhodi priznak
-        # sam (`client_gone`).
+        # A PENDING BINDING ATTEMPT IS NOT DISCARDED HERE (0.3). Until now
+        # this had `_hr_retry_job = None` and `_hr_bind_retries = 0`: the
+        # timer in Tk lived on without a reference, so neither switching the
+        # sensor off nor a port change cancelled it any more, and the counter
+        # was reset on every attempt (`_retry_hr_bind` opens a session) - the
+        # app tried the busy port forever. The attempt is needed here: after a
+        # busy port `heart_rate_monitor.running` stays True, so
+        # `start_listening` does not restore the socket by itself. It is
+        # cancelled by `_zrus_pokus_o_vazbu` (new run, sensor off, quitting).
+        # The phone keeps the connection when we do not touch the network
+        # (`prepoj=False`). Clearing the flag even then meant that after the
+        # next heart-rate dropout (`disconnected`) the window, Today and the
+        # guide would claim "disconnected / waiting for the phone to connect",
+        # even though it is connected. Since 0.3 this also happens on the
+        # first start: the pairing guide switches receiving on and watching
+        # starts only after the voice preparation, in the middle of pairing.
+        # The client leaving clears the flag by itself (`client_gone`).
         if prepoj:
             self._hr_client_linked = False
         self.hr_stats.critical_bpm = self.hr_critical_bpm
-        # SVET RELACIE SA PECATI TU (B3-worlds), pri otvoreni - nie pri
-        # zatvoreni. Kto si uprostred hry len prepne na Pracu, aby videl
-        # pracovne statistiky, a zabudne prepnut spat, nema mat hru
-        # zapisanu ako pracu. Ide do suhrnu ako `world` (`_close_hr_session`)
-        # a urcuje, ci hlaska smie mat hlas (nizsie, `open_session`).
+        # THE SESSION'S WORLD IS SEALED HERE (B3-worlds), on opening - not on
+        # closing. Someone who just switches to Work in the middle of a game to
+        # see the work statistics and forgets to switch back should not have
+        # the game recorded as work. It goes into the summary as `world`
+        # (`_close_hr_session`) and decides whether a cue may have a voice
+        # (below, `open_session`).
         self._session_world = self.world
-        # Pokojovy tep z predchadzajucich vecerov. Bez neho appka v suvislom
-        # strese nevidi ziadnu zataz - zakladna sa jej dotiahne za stresom a
-        # pocita voci nemu (viz `hr_stats.dlhodoba_zakladna`).
+        # Resting heart rate from previous evenings. Without it the app sees no
+        # load during continuous stress - the baseline catches up with the
+        # stress and computes against it (see `hr_stats.dlhodoba_zakladna`).
         try:
             historia = self._history_sessions()
-            # Zakladna zo VSETKYCH relacii - telo je jedno (B3-worlds).
+            # Baseline from ALL sessions - the body is one (B3-worlds).
             self.hr_stats.long_baseline = hr_stats.dlhodoba_zakladna(historia)
-            # Kriticky tep a prah zataze len z HERNYCH relacii (B3-worlds,
-            # viz `ALGORITMUS_SVET`). Plati aj pre pracovnu relaciu - tam
-            # sa hlaska aj tak ukaze len obrazom.
+            # Critical heart rate and load threshold only from GAME sessions
+            # (B3-worlds, see `ALGORITMUS_SVET`). Also applies to a work
+            # session - there the cue is shown only as a picture anyway.
             herna = hr_stats.sessions_in_world(historia, self.ALGORITMUS_SVET)
-            # Kriticky tep sa prepocita RAZ ZA RELACIU, nie priebezne.
-            # Menit skalu zataze uprostred vecera by znamenalo, ze okna z
-            # prvej polovice a z druhej sa nedaju porovnat - to iste
-            # pravidlo, ake plati pre prahy spustaca (zadanie §3.3).
+            # The critical heart rate is recomputed ONCE PER SESSION, not
+            # continuously. Changing the load scale mid-evening would mean
+            # that windows from the first half and from the second cannot be
+            # compared - the same rule as for the trigger thresholds (spec
+            # §3.3).
             self.hr_critical_bpm = int(hr_stats.dynamicky_kriticky(
                 herna, baseline=self.hr_stats.long_baseline))
-            # Prah zataze z vlastnych relacii. None = este nie je z coho,
-            # vtedy ostavaju cisla pre priemerneho hraca.
+            # Load threshold from the player's own sessions. None = nothing
+            # to go on yet, then the numbers for the average player stay.
             self._prah_z_dat = hr_stats.dynamicky_prah_zataze(
                 herna, baseline=self.hr_stats.long_baseline,
                 critical=self.hr_critical_bpm)
-            # To iste pravidlo ako vypocet (`je_dost_dlha`): pokazene
-            # `duration_s` tu nesmie vyhodit vynimku, inak by `except` nizsie
-            # zahodil aj dlhodobu zakladnu.
+            # The same rule as the computation (`je_dost_dlha`): a broken
+            # `duration_s` must not raise an exception here, otherwise the
+            # `except` below would throw away the long-term baseline too.
             self._prah_z_relacii = len([
                 r for r in hr_stats.ciste_relacie(herna)
                 if hr_stats.je_dost_dlha(r)])
@@ -262,75 +280,82 @@ class SessionMixin:
         self._refresh_kriticky_popis()
         self._refresh_citlivost_detail()
         self.hr_stats.reset_session()
-        # Prvych par sprav s krokmi zapis do denniku - z nich sa nastavi prah.
+        # Write the first few step messages to the journal - the threshold
+        # is set from them.
         self._metrics_log_left = 10
-        # Zaznam aktivity sa vynuluje spolu s relaciou, aby meracie okna
-        # nevideli nic spred zapnutia senzora.
+        # The activity record is reset together with the session, so that
+        # the measurement windows see nothing from before the sensor was
+        # switched on.
         self.activity.reset_session()
-        # Riadok "ziadna pauza vo vstupe" je raz za relaciu.
+        # The "no pause in input" line is once per session.
         self._nonstop_input.reset()
-        # Podiel tichych hlasok klesne po kalibracii (25 % -> 10 %), ale
-        # nikdy nie na nulu. Pocet relacii sa berie z historie.
+        # The share of silent cues drops after calibration (25 % -> 10 %), but
+        # never to zero. The number of sessions is taken from history.
         self._cue_log = []
-        # Prahy sa beru AZ TU, cize az pri novej relacii (§3.3): menit ich
-        # uprostred vecera znamena merat pohyblivy ciel.
+        # The thresholds are taken ONLY HERE, i.e. only with a new session
+        # (§3.3): changing them in the middle of the evening means measuring a
+        # moving target.
         #
-        # Poradie je zamerne. Najprv volba "ako casto sa ozvem" (cely
-        # slovnik, takze prepnutie spat na "bezne" naozaj vrati vychodiskove
-        # cisla a nenecha visiet stare), az potom vyvojarska vrstva, ktora
-        # je jemnejsi nastroj a smie prekryt hocico.
-        # Cisla pre priemerneho hraca z literatury; prvá relácia bezi na nich.
+        # The order is deliberate. First the "how often I speak up" choice (the
+        # whole dictionary, so switching back to "bezne" really restores the
+        # starting numbers and does not leave old ones hanging), only then the
+        # developer overlay, which is a finer tool and may override anything.
+        # Numbers for the average player from the literature; the first session
+        # runs on them.
         self.cue_trigger.params.update(trigger.default_params())
         if getattr(self, "_prah_z_dat", None) is not None:
             self.cue_trigger.params["stress_threshold"] = float(self._prah_z_dat)
         if getattr(self, "_dev_params", None):
             self.cue_trigger.params.update(self._dev_params)
         podiel = self._silent_share_for_next_session()
-        # REBRIK HLASKY (0.2): na akom stupni bezi tato relacia. Pauza =
-        # automat sa vobec nenatiahne (diagnostika bezi dalej).
+        # CUE LADDER (0.2): which step this session runs on. Pause = the
+        # automaton is not armed at all (diagnostics keep running).
         self._urci_stupen_hlasky()
         if self._cue_rung == rebrik.PAUZA:
             self.cue_trigger.params["cues_enabled"] = False
         self._snooze_po_hlaske = None
         self._snooze_rel_s = 0.0
         self._snooze_rel_od = None
-        # PRACA = LEN OBRAZ (B3-worlds, rozhodnutie zadavatela). Kto sa v
-        # praci sustredi, nema mu do toho nic hovorit ani cinkat - vizual v
-        # rohu oka staci. Plati pre celu relaciu podla sveta, v ktorom zacala.
-        # Pod stupnom hlasu (rebrik) tiez len obraz - `hlas` v udalosti tak
-        # hovori pravdu o tom, co mohlo zaznet.
+        # WORK = PICTURE ONLY (B3-worlds, the requester's decision). Whoever is
+        # concentrating at work should not have anything talking or chiming at
+        # them - a visual in the corner of the eye is enough. Applies to the
+        # whole session by the world it started in.
+        # Below the voice step (ladder) also picture only - `hlas` in the event
+        # thus tells the truth about what could have been heard.
         self.cue_trigger.open_session(silent_share=podiel,
                                       voice=self._session_world != "work"
                                       and self._cue_rung == rebrik.HLAS)
-        # "TERAZ NIE" PLATI AJ CEZ NOVU RELACIU. `open_session` automat
-        # zdvihne - a nova relacia sa da otvorit aj pocas stisenia (stop a
-        # start, zapnutie senzora, zmena IP), odkedy snooze pocuvanie
-        # nezastavuje (24. 9.).
+        # "NOT NOW" ALSO HOLDS ACROSS A NEW SESSION. `open_session` re-arms the
+        # automaton - and a new session can also be opened during a snooze
+        # (stop and start, sensor switched on, IP change), since snooze no
+        # longer stops listening (24. 9.).
         if getattr(self, "_snooze_job", None) is not None:
             self._suspend_cue_trigger(trigger.A_SNOOZE)
-            # Aj do `snoozed_s` novej relacie - od jej zaciatku.
+            # Also into the new session's `snoozed_s` - from its start.
             if meria:
                 self._snooze_rel_od = time.time()
-        # MERIA SA LEN, KED SVIETI ZELENA.
+        # MEASURING ONLY WHEN THE GREEN IS LIT.
         #
-        # `hr_stats.add()` bezi pri kazdej vzorke bez ohladu na to, ci appka
-        # pocuva - takze relacia otvorena SAMOTNYM ZAPNUTIM SENZORA by
-        # zbierala trvanie, pasma aj zakladnu z casu, v ktorom hlaska nemohla
-        # padnut. V exporte by z toho bola "relacia", v ktorej sa nemeralo
-        # nic, a v pocte vecerov do zaveru by sa ratala ako plnohodnotna.
+        # `hr_stats.add()` runs on every sample whether or not the app is
+        # listening - so a session opened BY JUST SWITCHING ON THE SENSOR
+        # would collect duration, zones and baseline from time in which a cue
+        # could not fire. In the export that would become a "session" in which
+        # nothing was measured, and in the count of evenings towards the
+        # conclusion it would count as a full one.
         #
-        # `meria=False` teda nechá senzor bezat (aby bolo vidiet tep pri
-        # parovani), ale relaciu NEOTVORI. Otvori ju az `start_listening`.
+        # So `meria=False` lets the sensor run (so the heart rate is visible
+        # during pairing), but does NOT OPEN the session. Only
+        # `start_listening` opens it.
         self._hr_session_open = bool(meria)
         if meria:
-            # Nova relacia: vynuluj sledovac viditelnosti HUD-u.
+            # New session: reset the HUD visibility tracker.
             self._hud_vis_s = 0.0
             self._hud_active_s = 0.0
             self._hud_tick_t = time.time()
-            # Od tohto casu sa meria medzera medzi tikmi (uspanie PC,
+            # From this time the gap between ticks is measured (PC sleep,
             # `_hlidaj_medzeru_relacie`).
             self._posledny_tik_relacie = self._hud_tick_t
-        # Pocas otvorenej relacie je "Zmazat historiu" vypnute (0.2.2).
+        # While a session is open, "Delete history" is disabled (0.3).
         obnov = getattr(self, "_refresh_data_delete_state", None)
         if callable(obnov):
             try:
@@ -345,29 +370,31 @@ class SessionMixin:
     def stop_heart_rate_monitor(self):
         self.heart_rate_monitor.stop()
         self._cancel_no_client_check()
-        # Pokus po obsadenom porte by inak o par sekund prijem znova spustil
-        # (`_retry_hr_bind` sa pyta len na `hr_monitoring_enabled`, a to
-        # moze byt medzitym znova zapnute).
+        # Otherwise the attempt after a busy port would restart receiving a few
+        # seconds later (`_retry_hr_bind` only checks `hr_monitoring_enabled`,
+        # and that may have been switched on again in the meantime).
         _zrus_pokus_o_vazbu(self)
         self._hr_bind_retries = 0
-        # generacia 0 = ziadne bezuce vlakno, takze uz odoslane (a este
-        # nedorucene) aktualizacie z prave zastaveneho vlakna sa zahodia
+        # generation 0 = no running thread, so updates already sent (and not
+        # yet delivered) from the thread just stopped are thrown away
         self._hr_generation = 0
         self._hr_state = "disconnected"
         self._hr_last_bpm = None
         self._hr_over_since = None
         self._hr_client_linked = False
-        # Senzor vypol hrac - to uz nie je vypadok. Relacia sa zatvara az
-        # nizsie, takze vypadok, ktory prave trval, sa do suhrnu este zarata.
+        # The player switched the sensor off - that is no longer a dropout. The
+        # session is closed only below, so a dropout that was just going on is
+        # still counted into the summary.
         self._hr_lost = False
         self._hr_lost_od = None
         self._close_hr_session()
         self.hud.set_connected(False)
         self.hr_stats.clear_live()
         self.refresh_hr_status_label()
-        # Dnes aj pas pisu stav podla prijmu ("prijem tepu vypnuty"), nie
-        # "cakam na hodinky" - po vypnuti sa musia prepisat hned, nie az pri
-        # dalsej udalosti z hodiniek, ktora uz nepride.
+        # Today and the bar show the status by receiving ("heart-rate
+        # receiving off"), not "waiting for watch" - after switching off they
+        # must be rewritten right away, not only at the next event from the
+        # watch, which will not come any more.
         self._refresh_dnes_stats()
         self._refresh_kamae_state_text()
         self.log(tr("log.hr_disabled"))
@@ -391,25 +418,26 @@ class SessionMixin:
 
     def _hr_no_client(self):
         self._hr_no_client_job = None
-        # Stále "connecting" a nikto sa nepripojil → povedz to narovinu.
+        # Still "connecting" and nobody connected → say it plainly.
         if self._hr_state == "connecting" and self.hr_monitoring_enabled:
             self._hr_state = "no_client"
             self.refresh_hr_status_label()
-            # Pas a Dnes povedia "telefon sa nepripojil" a kam pre radu -
-            # predtym sa menil len stitok pri prepinaci na stranke V hre.
+            # The bar and Today say "phone didn't connect" and where to
+            # look for advice - before, only the label by the switch on the
+            # In game page changed.
             self._refresh_kamae_state_text()
             self._refresh_dnes_stats()
 
     def _hr_ip_display(self):
-        """IP pre riadok v denniku appky - skryta, kym ju hrac neodkryje
-        (0.0.0.0 sa neskryva, nie je to adresa PC)."""
+        """IP for the line in the app journal - hidden until the player reveals
+        it (0.0.0.0 is not hidden, it is not the PC's address)."""
         ip = self.hr_ip if self.hr_ip.strip() else ANY_INTERFACE
         return netinfo.ip_for_screen(ip, self.show_ip)
 
     def set_show_ip(self, show):
-        """Ukazat / Skryt IP pre celu appku (okno parovania aj pole IP v
-        Nastaveniach). Len v pamati - po restarte je IP znova skryta, preto
-        to `save_settings` ZAMERNE nezapisuje."""
+        """Show / Hide IP for the whole app (pairing window and the IP field in
+        Settings). Only in memory - after a restart the IP is hidden again,
+        which is why `save_settings` DELIBERATELY does not write it."""
         self.show_ip = bool(show)
         var = getattr(self, "show_ip_var", None)
         if var is not None:
@@ -421,13 +449,14 @@ class SessionMixin:
         self._apply_hr_ip_mask()
 
     def _apply_hr_ip_mask(self):
-        """Pole IP v Nastaveniach kresli skutocnu adresu bodkami, kym nie je
-        `show_ip`. Prazdne pole a 0.0.0.0 ostavaju citatelne.
+        """The IP field in Settings draws the real address as dots unless
+        `show_ip` is set. An empty field and 0.0.0.0 stay readable.
 
-        Prepinac "Ukazat IP" vedla pola je viditelny LEN pri skutocnej
-        adrese (0.2.2). Pri predvolenom 0.0.0.0 nemal co odkryt - hrac ho
-        zapol, cakal adresu PC a nestalo sa nic. Adresu PC ukazuje navod na
-        parovanie (ma vlastne "Ukazat IP"), nie toto pole."""
+        The "Show IP" switch next to the field is visible ONLY with a real
+        address (0.3). With the default 0.0.0.0 it had nothing to reveal -
+        the player switched it on, expected the PC's address and nothing
+        happened. The PC's address is shown by the pairing guide (it has its
+        own "Show IP"), not by this field."""
         entry = getattr(self, "hr_ip_entry", None)
         var = getattr(self, "hr_ip_var", None)
         if entry is None or var is None:
@@ -439,8 +468,9 @@ class SessionMixin:
                 entry.configure(show=maska)
             prepinac = getattr(self, "hr_ip_show_switch", None)
             if prepinac is not None:
-                # `entry_mask(..., False)` je prazdne presne vtedy, ked v poli
-                # nie je co skryt - ta ista definicia "adresy" ako maska.
+                # `entry_mask(..., False)` is empty exactly when there is
+                # nothing to hide in the field - the same definition of
+                # "address" as the mask.
                 ukaz = netinfo.entry_mask(hodnota, False) != ""
                 zobrazeny = bool(prepinac.winfo_manager())
                 if ukaz and not zobrazeny:
@@ -449,16 +479,17 @@ class SessionMixin:
                     prepinac.pack_forget()
             self._hr_ip_virtual_hint(hodnota)
         except Exception:
-            pass            # pole uz neexistuje (prestavba UI)
+            pass            # the field no longer exists (UI rebuild)
 
     def _hr_ip_virtual_hint(self, hodnota, virtualne=None):
-        """Adresa v poli IP patri VPN alebo virtualnemu adapteru (0.2.2)?
-        Potom k vysvetlivke pod polom pribudne veta, ze telefon (appka, ktora
-        posiela tep z hodiniek) sa na nu vacsinou nedostane. Mobilny hotspot
-        Windowsu a externy prepinac Hyper-V s domacou sietou medzi virtualne
-        nepatria (`netinfo.druhy_adries`, 0.2.2 davka 4b). Vracia, ci veta
-        plati. `virtualne` (mnozina IP)
-        sa da vlozit (testy); predvolene sa pyta `netinfo`."""
+        """Does the address in the IP field belong to a VPN or virtual adapter
+        (0.3)? Then the explanation under the field gets a sentence that the
+        phone (the app that sends heart rate from the watch) usually cannot
+        reach it. The Windows mobile hotspot and an external Hyper-V switch
+        with the home network do not count as virtual
+        (`netinfo.druhy_adries`, 0.3 batch 4b). Returns whether the sentence
+        applies. `virtualne` (a set of IPs) can be passed in (tests); by
+        default it asks `netinfo`."""
         hodnota = str(hodnota or "").strip()
         if virtualne is None:
             virtualne = netinfo.virtualne_adresy() if netinfo.entry_mask(hodnota, False) else set()
@@ -480,9 +511,9 @@ class SessionMixin:
 
     def _apply_hr_bpm(self, bpm, generation=None):
         if generation is not None and generation != self._hr_generation:
-            return                      # sprava od uz zastaveneho vlakna
-        # Vzorka po uspani PC patri uz novej relacii (`_hlidaj_medzeru_relacie`).
-        # Atrapy v testoch tu metodu nemaju.
+            return                      # a message from an already stopped thread
+        # A sample after the PC slept already belongs to a new session
+        # (`_hlidaj_medzeru_relacie`). Stubs in tests do not have this method.
         hlidac = getattr(self, "_hlidaj_medzeru_relacie", None)
         if callable(hlidac):
             try:
@@ -490,41 +521,46 @@ class SessionMixin:
             except Exception:
                 app_log.exception("relacia: kontrola medzery po uspani zlyhala")
         self._hr_state = "connected"
-        self._hr_bind_retries = 0       # port sa uvolnil, pocitadlo odznova
+        self._hr_bind_retries = 0       # the port was freed, counter starts over
         self._hr_last_bpm = bpm
         self.hr_stats.add(bpm)
-        # Vypadok konci az PLATNOU vzorkou - tou istou, ktora v `hr_stats`
-        # uzavrie slepy cas, aby riadok v denniku a suhrn nehovorili ine.
+        # The dropout ends only with a VALID sample - the same one that closes
+        # the blind time in `hr_stats`, so the journal line and the summary do
+        # not say different things.
         if self._hr_lost and self.hr_stats.last_bpm is not None:
             self._tep_je_spat()
         self.hud.set_connected(True)
         self._refresh_hud_session_text()
         self._refresh_dnes_stats()
         self.refresh_hr_status_label()
-        # Pás flipne z "Čakám na tep" na "Sledujem tep", len čo dáta chodia
-        # (bug A2 - pás sa dovtedy prekresľoval len z `_set_enso_armed`).
+        # The bar flips from "Čakám na tep" (Waiting for heart rate) to
+        # "Sledujem tep" (Watching your heart rate) as soon as data comes in
+        # (bug A2 - until then the bar was redrawn only from
+        # `_set_enso_armed`).
         self._refresh_kamae_state_text()
         now = time.time()
-        # Faza 2: spusta ZATAZ drziaca nad prahom, nie surove BPM prekracujuce
-        # kriticku hranicu. Zataz uz v sebe nesie `sustained` - podiel
-        # poslednych dvoch minut nad zakladnou - takze "spicka po headshote
-        # nie je stres" je zabudovane v samotnom cisle, nie dolepene.
-        # ZATAZ SA PODAVA AUTOMATU LEN POCAS RELACIE.
+        # Phase 2: the trigger is LOAD holding above the threshold, not raw
+        # BPM crossing the critical limit. The load already carries
+        # `sustained` - the share of the last two minutes above the
+        # baseline - so "a spike after a headshot is not stress" is built
+        # into the number itself, not glued on.
+        # LOAD IS FED TO THE AUTOMATON ONLY DURING A SESSION.
         #
-        # Volalo sa to pri kazdej vzorke, aj ked relacia nebezala (senzor
-        # zapnuty, pocuvanie vypnute). Automat sa teda natiahol, prstenec na
-        # ense sa rozsvietil - a `_tick_cue_trigger` sa kvoli
-        # `_hr_session_open` hned vracal, takze uz ho nemal co zhodit.
-        # Prstenec "natiahnute" potom svietil donekonecna a tvrdil stav,
-        # ktory neexistoval.
+        # This was called on every sample, even when no session was running
+        # (sensor on, listening off). So the automaton armed, the ring on the
+        # enso lit up - and `_tick_cue_trigger` returned right away because
+        # of `_hr_session_open`, so nothing could clear it any more. The
+        # "armed" ring then stayed lit forever and claimed a state that did
+        # not exist.
         if not self._hr_session_open:
             return
         self.cue_trigger.resume(now)
-        # Pocas kalibracie (prvych ~30 vzoriek relacie) sa nic nenatiahne -
-        # viz `trigger.CueTrigger.note_load`.
-        # `zona` je pre BRANU hlasky (0.2): pasmo TEPU (`zone_of_bpm`, to
-        # iste slovo ako na HUD-e), None ked ho appka nepozna. Nikdy nie
-        # pasma zataze - nad hranicou vysokeho tepu hlas nezaznie.
+        # During calibration (the first ~30 samples of the session) nothing
+        # arms - see `trigger.CueTrigger.note_load`.
+        # `zona` is for the cue GATE (0.2): the HEART-RATE zone
+        # (`zone_of_bpm`, the same word as on the HUD), None when the app does
+        # not know it. Never the load zones - above the high heart-rate limit
+        # the voice is not heard.
         udalost = self.cue_trigger.note_load(
             self.hr_stats.stress, now,
             calibrating=self.hr_stats.is_calibrating,
@@ -536,7 +572,7 @@ class SessionMixin:
         self.ui_call(lambda: self._apply_hr_metrics(metrics, generation))
 
     def _apply_hr_metrics(self, metrics, generation=None):
-        """Kroky a rychlost z hodiniek. Bezi na Tk vlakne ako `_apply_hr_bpm`."""
+        """Watch steps and speed. Runs on the Tk thread like `_apply_hr_bpm`."""
         if generation is not None and generation != self._hr_generation:
             return
         try:
@@ -558,22 +594,24 @@ class SessionMixin:
 
     def _apply_hr_status(self, status, generation=None):
         if generation is not None and generation != self._hr_generation:
-            return                      # sprava od uz zastaveneho vlakna
+            return                      # a message from an already stopped thread
         kind, payload = status
         if kind == "bound_any":
-            # zadanu IP toto PC nema - pocuvame na vsetkych sietach, nech
-            # hracovi funkcia nezomrie kvoli jednemu zlemu cislu
+            # this PC does not have the given IP - we listen on all networks,
+            # so the feature does not die for the player over one wrong number
             self.log(tr("log.hr_bind_fallback",
                         ip=netinfo.ip_for_screen(payload, self.show_ip)))
             return
         if kind in ("udp_busy", "udp_error"):
-            # UDP SA NEOTVORILO, TCP BEZI. Nie "busy"/"error" nizsie: tie
-            # zatvaraju relaciu a vypinaju senzor, lenze appky pre OBS (TCP)
-            # tu funguju dalej a nesmu o tep prist. Staci riadok do dennika
-            # a vlastny text pri prepinaci (`_hr_status_display`).
-            # Priznak nesie generaciu behu: RAZ za beh, a novy beh (restart,
-            # iny port, dalsi pokus po obsadenom TCP) ho zahodi sam - netreba
-            # ho rucne nulovat na kazdom mieste, kde sa vola `start()`.
+            # UDP DID NOT OPEN, TCP IS RUNNING. Not "busy"/"error" below: those
+            # close the session and switch the sensor off, but the apps for OBS
+            # (TCP) keep working here and must not lose the heart rate. A line
+            # in the journal and its own text by the switch
+            # (`_hr_status_display`) are enough.
+            # The flag carries the run's generation: ONCE per run, and a new
+            # run (restart, another port, another attempt after a busy TCP)
+            # discards it by itself - no need to reset it by hand everywhere
+            # `start()` is called.
             if getattr(self, "_hr_udp_off_gen", None) == self._hr_generation:
                 return
             self._hr_udp_off_gen = self._hr_generation
@@ -585,12 +623,13 @@ class SessionMixin:
             self.refresh_hr_status_label()
             return
         if kind == "two_series":
-            # DO JEDNEHO ZDROJA CHODIA DVA ROZNE TEPY (0.2.2, rozpoznava
-            # `heart_rate.dva_rady_v_okne`). Na meranie ani spojenie sa
-            # nesiaha - tep chodi dalej a oprava je v appke na hodinkach.
-            # Riadok do dennika a text pri prepinaci (`_hr_status_display`),
-            # RAZ za beh rovnako ako UDP vyssie: priznak nesie generaciu, novy
-            # beh (vypnutie, restart, iny port) ho zahodi sam.
+            # TWO DIFFERENT HEART RATES COME INTO ONE SOURCE (0.3, detected by
+            # `heart_rate.dva_rady_v_okne`). Measuring and the connection are
+            # not touched - heart rate keeps coming and the fix is in the app
+            # on the watch. A journal line and the text by the switch
+            # (`_hr_status_display`), ONCE per run just like UDP above: the
+            # flag carries the generation, a new run (switch-off, restart,
+            # another port) discards it by itself.
             if getattr(self, "_hr_dva_tepy_gen", None) == self._hr_generation:
                 return
             self._hr_dva_tepy_gen = self._hr_generation
@@ -598,14 +637,15 @@ class SessionMixin:
             self.refresh_hr_status_label()
             return
         if kind == "client":
-            # appka v telefone drzi spojenie - to este NEznamena, ze tep chodi
-            # (hodinky nemusia merat ani byt pri telefone)
-            self._cancel_no_client_check()      # klient prisiel (B2)
+            # the app on the phone holds the connection - that does NOT yet
+            # mean heart rate is coming (the watch may not be measuring or be
+            # near the phone)
+            self._cancel_no_client_check()      # client arrived (B2)
             self._hr_client_linked = True
             self._hr_state = "linked"
             self.log(tr("log.hr_client_connected"))
         elif kind == "client_gone":
-            self._zaznamenaj_vypadok(kind)      # PRED clear_live
+            self._zaznamenaj_vypadok(kind)      # BEFORE clear_live
             self.hud.set_connected(False)
             self.hr_stats.clear_live()
             self._hr_client_linked = False
@@ -618,9 +658,10 @@ class SessionMixin:
             self._hr_state = "connecting"
             self._hr_last_bpm = None
         elif kind == "disconnected":
-            # tep prestal chodit; ak telefon spojenie stale drzi, je to
-            # "pripojene, ale bez dat", nie "odpojene" - iny problem, iny text
-            self._zaznamenaj_vypadok(kind)      # PRED clear_live
+            # heart rate stopped coming; if the phone still holds the
+            # connection, it is "connected, but no data", not "disconnected" -
+            # a different problem, a different text
+            self._zaznamenaj_vypadok(kind)      # BEFORE clear_live
             self.hud.set_connected(False)
             self.hr_stats.clear_live()
             self._hr_state = "linked" if self._hr_client_linked else "disconnected"
@@ -628,31 +669,32 @@ class SessionMixin:
             self._hr_over_since = None
             self._suspend_cue_trigger(trigger.A_TEP_VYPADOL)
         elif kind == "busy":
-            # OBSADENY PORT JE DOCASNY STAV, NIE ROZHODNUTIE HRACA.
+            # A BUSY PORT IS A TEMPORARY STATE, NOT THE PLAYER'S DECISION.
             #
-            # Doteraz sa sem padalo spolu s "error": appka vypla
-            # `hr_monitoring_enabled` a hned to ULOZILA na disk. Z kolizie,
-            # ktora trva par sekund (druha instancia appky sa prave zatvara,
-            # alebo ju niekto omylom spustil dvakrat), sa tak stalo trvale
-            # nastavenie - senzor ostal vypnuty aj potom, co sa port uvolnil,
-            # a hrac nemal ako zistit preco. Jediny signal bol riadok v
-            # DENNIKU, ktory je predvolene zabaleny.
+            # Until now this landed here together with "error": the app
+            # switched `hr_monitoring_enabled` off and SAVED it to disk right
+            # away. A collision that lasts a few seconds (a second app instance
+            # is just closing, or someone started it twice by mistake) thus
+            # became a permanent setting - the sensor stayed off even after the
+            # port was freed, and the player had no way to find out why. The
+            # only signal was a line in the JOURNAL, which is collapsed by
+            # default.
             #
-            # Teraz sa prepinac nechava zapnuty, do nastaveni sa neuklada nic
-            # a vazba sa par krat zopakuje. Az ked port drzi niekto natrvalo,
-            # sa senzor vzda - a vtedy to uz naozaj je stav, o ktorom ma
-            # zmysel hraca informovat.
+            # Now the switch is left on, nothing is saved to settings and the
+            # binding is retried a few times. Only when someone holds the port
+            # permanently does the sensor give up - and then it really is a
+            # state worth telling the player about.
             self._hr_state = "busy"
             self._hr_last_bpm = None
             self._hr_over_since = None
             self._hr_client_linked = False
-            self._hr_lost = False           # port, nie vypadok tepu
+            self._hr_lost = False           # port, not a heart-rate dropout
             self._hr_lost_od = None
             self._hr_generation = 0
             self._close_hr_session()
             self._hr_bind_retries = getattr(self, "_hr_bind_retries", 0) + 1
-            # Nikdy dva pokusy naraz: stary cakajuci sa zrusi skor, nez sa
-            # naplanuje novy (0.2.2).
+            # Never two attempts at once: the old pending one is cancelled
+            # before a new one is scheduled (0.3).
             _zrus_pokus_o_vazbu(self)
             if self._hr_bind_retries <= self.HR_BIND_RETRIES:
                 self.log(tr("log.hr_port_busy_retry", port=payload,
@@ -660,66 +702,75 @@ class SessionMixin:
                 self._hr_retry_job = self.root.after(
                     self.HR_BIND_RETRY_MS, self._retry_hr_bind)
             else:
-                # Ani vzdanie sa NIE JE rozhodnutie hraca (0.2.2): prepinac
-                # ukaze vypnute len pre tento beh, do nastaveni ide dalej
-                # zapnute - dalsi start to skusi znova. Do 0.2.2 sa tu
-                # ukladalo vypnutie a druha spustena kopia appky tak prvej
-                # vypla prijem tepu natrvalo (spolocny subor nastaveni).
+                # Giving up is NOT the player's decision either (0.3): the
+                # switch shows off only for this run, settings still get on -
+                # the next start tries again. Before 0.3 the switch-off was
+                # saved here, and a second running copy of the app thus
+                # switched off heart-rate receiving for the first one for good
+                # (shared settings file).
                 _senzor_vypla_chyba(self)
-                # Stav sa MUSÍ zmeniť z "busy" - inak štítok navždy tvrdí
-                # "skúšam znova", hoci sme to vzdali (B3).
+                # The state MUST change from "busy" - otherwise the label
+                # claims "retrying" forever, even though we gave up (B3).
                 self._hr_state = "busy_gave_up"
-                # meno stranky podla sveta ("Obrazovka" v Praci, 0.2.2 davka 4b)
+                # page name by world ("Screen" in Work, 0.3 batch 4b)
                 self.log(tr("log.hr_port_busy", port=payload, page=stranka_vhre(self)))
             self.refresh_hr_status_label()
             self._refresh_dnes_stats()
-            self._refresh_kamae_state_text()   # pás nesmie tvrdiť "sledujem"
+            self._refresh_kamae_state_text()   # the bar must not claim "watching"
             return
         elif kind == "error":
             self._hr_state = "disconnected"
             self._hr_last_bpm = None
             self._hr_over_since = None
             self._hr_client_linked = False
-            self._hr_lost = False           # senzor je vypnuty, nie slepy
+            self._hr_lost = False           # the sensor is off, not blind
             self._hr_lost_od = None
-            # Chyba vazby (napr. port, ktory si rezervoval Windows, alebo
-            # adresa, ktoru PC nema a nepomohla ani zaloha na 0.0.0.0 v
-            # `heart_rate._bind`) NIE JE rozhodnutie hraca - vypnute len v
-            # pamati, dalsi start to skusi znova (rovnako ako "busy" vyssie).
+            # A binding error (e.g. a port reserved by Windows, or an address
+            # the PC does not have, where even the fallback to 0.0.0.0 in
+            # `heart_rate._bind` did not help) is NOT the player's decision -
+            # switched off only in memory, the next start tries again (same as
+            # "busy" above).
             _senzor_vypla_chyba(self)
-            # Pokus po skorsom obsadenom porte by inak o par sekund prijem
-            # znova spustil, hoci je senzor po chybe vypnuty (0.2.2).
+            # Otherwise an attempt after an earlier busy port would restart
+            # receiving a few seconds later, although the sensor is off after
+            # the error (0.3).
             _zrus_pokus_o_vazbu(self)
-            # Prepinac sa prave vypol, ale relacia zostavala OTVORENA: uz
-            # sa nedala vypnut cez `stop_heart_rate_monitor` (ten vola len
-            # `on_hr_toggle`, a prepinac je uz v polohe vypnute), takze sa
-            # ulozila az pri ukonceni appky - a `summary()` medzitym ratal
-            # `duration_s` z `time.time()`, cize relacia narastla o cely
-            # zvysok vecera. Zatvarame ju tu, kym su cisla este pravdive.
-            # Generacia 0 zaroven zahodi spravy z uz mrtveho vlakna.
+            # The switch has just turned off, but the session stayed OPEN: it
+            # could no longer be ended via `stop_heart_rate_monitor` (only
+            # `on_hr_toggle` calls that, and the switch is already in the off
+            # position), so it was saved only when the app quit - and
+            # `summary()` meanwhile computed `duration_s` from `time.time()`,
+            # i.e. the session grew by the whole rest of the evening. We close
+            # it here while the numbers are still true.
+            # Generation 0 also throws away messages from the already dead
+            # thread.
             self._hr_generation = 0
             self._close_hr_session()
             self.log(tr("log.hr_socket_error", err=payload))
         self.refresh_hr_status_label()
         self._refresh_dnes_stats()
-        # Pás aj text pod ensom musia sledovať SKUTOČNÝ stav spojenia
-        # (connecting / disconnected / client_gone), nie len prepínač — inak
-        # tvrdia "Sledujem tep" aj keď hodinky vypadli (bug A2).
+        # The bar and the text under the enso must both follow the REAL
+        # connection state (connecting / disconnected / client_gone), not just
+        # the switch — otherwise they claim "Sledujem tep" (Watching your
+        # heart rate) even when the watch dropped out (bug A2).
         self._refresh_kamae_state_text()
 
     def _zaznamenaj_vypadok(self, kind):
-        """Tep, ktory appka pocula, prestal chodit - zapamataj si to.
+        """Heart rate that the app was hearing stopped coming - remember that.
 
-        Vola sa z vetiev `disconnected` a `client_gone` PRED `clear_live`
-        (potom uz `hr_stats` nevie, kedy prisla posledna vzorka). Len ked
-        appka tep naozaj pocula: vypadok pred prvou vzorkou je "este nic
-        neprislo" a ma vlastny text. Obe udalosti mozu prist za sebou (TCP
-        spojenie padne az po 12 s ticha, alebo naopak) - druha uz `_hr_last_bpm`
-        nema, takze sa ten isty vypadok nerata dvakrat.
+        Called from the `disconnected` and `client_gone` branches BEFORE
+        `clear_live` (after that `hr_stats` no longer knows when the last
+        sample came). Only when the app really heard the heart rate: a
+        dropout before the first sample is "nothing has come yet" and has
+        its own text. Both events may come one after the other (the TCP
+        connection drops only after 12 s of silence, or the other way
+        round) - the second no longer has `_hr_last_bpm`, so the same
+        dropout is not counted twice.
 
-        ZIADNY NOVY CASOVAC, ZVUK ANI OKNO. Hranica 12 s je ta ista ako doteraz
-        (`heart_rate.STALE_AFTER_S`); tu sa len prestane tvarit, ze hodinky
-        ani neboli sparovane (Dnes necha zivy blok a stopu relacie).
+        NO NEW TIMER, SOUND OR WINDOW. The 12 s limit is the same as before
+        (`heart_rate.STALE_AFTER_S`); here it just stops pretending the
+        watch was never even paired (Today keeps the live block and the
+        session trace).
         """
         if self._hr_last_bpm is None:
             return
@@ -732,7 +783,7 @@ class SessionMixin:
         app_log.info("tep vypadol (%s)", kind)
 
     def _tep_je_spat(self):
-        """Prva platna vzorka po vypadku: jeden riadok do dennika, nic viac."""
+        """First valid sample after a dropout: one journal line, no more."""
         od = self._hr_lost_od
         self._hr_lost = False
         self._hr_lost_od = None
@@ -742,25 +793,26 @@ class SessionMixin:
         self.log(tr("log.hr_back", s=sekund))
         app_log.info("tep je spat po %d s", sekund)
 
-    # POZN: tu bol `_maybe_trigger_hr_breathing` - starý automatický spúšťač
-    # z fázy 1 (tep nad kritickou 5 s → dýchací kruh). Už ho nič nevolalo,
-    # nahradil ho `trigger.CueTrigger` (záťaž nad prahom 90 s, odklad na
-    # pauzu). Zmazaný aj s konštantami HR_TRIGGER_* (B28). Pomocníci
-    # `_hr_overlay_available` / `_warn_hr_overlay_disabled_once` ostávajú -
-    # používa ich živá cesta hlášok.
+    # NOTE: `_maybe_trigger_hr_breathing` was here - the old automatic trigger
+    # from phase 1 (heart rate above critical for 5 s → breathing circle).
+    # Nothing called it any more; `trigger.CueTrigger` replaced it (load above
+    # the threshold for 90 s, postponed to a pause). Deleted together with the
+    # HR_TRIGGER_* constants (B28). The helpers `_hr_overlay_available` /
+    # `_warn_hr_overlay_disabled_once` stay - the live cue path uses them.
 
     def _hr_overlay_available(self):
-        """True, ak ma aspon JEDEN slot zapnuty in-game vizual.
+        """True if at least ONE slot has an in-game visual switched on.
 
-        Do 19. 9. sa pytala vylucne na slot 3 (dychaci kruh). To bolo spravne,
-        kym vsetky hlasky chodili na ten jeden slot - lenze od zavedenia
-        striedania kategorii (`_dalsi_cue_slot`) sa hlaska moze dorucit na
-        hociktory zo styroch. Brana teda povolila hlasku, ked bezal dychaci
-        kruh, a poslala ju na slot, ktory kreslit nemal - alebo naopak
-        umlcala appku, ktora mala tri vizualy zapnute a len ten stvrty nie.
+        Until 19. 9. it asked exclusively about slot 3 (breathing circle).
+        That was right while all cues went to that one slot - but since
+        category rotation was introduced (`_dalsi_cue_slot`) a cue can be
+        delivered to any of the four. So the gate allowed a cue when the
+        breathing circle was running, and sent it to a slot that was not
+        supposed to draw - or the other way round silenced an app that had
+        three visuals switched on and only the fourth not.
 
-        Samotny vyber uz zapnutost vizualu zohladnuje, takze tu staci, ze
-        existuje aspon jeden pouzitelny.
+        The choice itself already takes into account whether the visual is
+        on, so here it is enough that at least one usable one exists.
         """
         try:
             return any(bool(cfg["enabled"]) for cfg in self.overlay_configs)
@@ -774,80 +826,89 @@ class SessionMixin:
         self.log(tr("log.hr_overlay_disabled", page=stranka_vhre(self)))
 
     def _retry_hr_bind(self):
-        """Skusi znova otvorit prijem po obsadenom TCP porte ("busy").
+        """Tries again to open receiving after a busy TCP port ("busy").
 
-        Obsadeny UDP port sem NEVEDIE - ten ma vlastnu vetvu v
-        `_apply_hr_status` ("udp_busy") a neopakuje sa, TCP bezi dalej.
+        A busy UDP port does NOT LEAD here - it has its own branch in
+        `_apply_hr_status` ("udp_busy") and is not retried; TCP keeps
+        running.
 
-        Nevola `on_hr_toggle` - prepinac je stale zapnuty a nesmie sa hybat.
-        Otvara priamo novy socket, rovnako ako `_open_hr_session` pri starte.
+        Does not call `on_hr_toggle` - the switch is still on and must not
+        move. Opens a new socket directly, the same as `_open_hr_session`
+        at start.
         """
         self._hr_retry_job = None
         if not self.hr_monitoring_enabled:
-            return                      # hrac medzitym vypol sam
+            return                      # the player switched it off meanwhile
         try:
             self._hr_state = "connecting"
             self.refresh_hr_status_label()
             self._hr_generation = self.heart_rate_monitor.start(self.hr_ip,
                                                                 self.hr_port)
-            # SOCKET JE SPÄŤ - ALE RELÁCIA SA V "busy" VETVE ZAVRELA.
+            # THE SOCKET IS BACK - BUT THE SESSION CLOSED IN THE "busy" BRANCH.
             #
-            # Bez tohto by appka po obnovenom porte ukazovala živý tep, no
-            # `_hr_session_open` by ostalo False - `_tick_cue_trigger` sa pri
-            # zatvorenej relácii hneď vracia, takže by sa NIKDY neozvala a na
-            # konci by neuložila NIČ. Pás pritom sľubuje "sledujem". Otvárame
-            # ju nanovo (siete sa to nedotýka; `start()` ju už obnovil),
-            # rovnako ako pri štarte. Dáta spred výpadku sú už uložené
-            # (`busy` vetva volá `_close_hr_session`, ktorý ukladá).
+            # Without this the app would show a live heart rate after the port
+            # was restored, but `_hr_session_open` would stay False -
+            # `_tick_cue_trigger` returns right away with a closed session, so
+            # it would NEVER speak up and would save NOTHING at the end. And
+            # the bar promises "watching" all along. We open it anew (this does
+            # not touch the network; `start()` has already restored it), the
+            # same as at start. Data from before the dropout is already saved
+            # (the `busy` branch calls `_close_hr_session`, which saves).
             self._open_hr_session(prepoj=False, meria=self.listening)
-            self._schedule_no_client_check()   # čerstvých 20 s na klienta (B2)
+            self._schedule_no_client_check()   # a fresh 20 s for the client (B2)
         except Exception:
             app_log.exception("opakovana vazba na port tepu zlyhala")
 
     def _hr_status_display(self):
         pal = self.pal
         if self._hr_state == "connected" and self._hr_last_bpm is not None:
-            # CISLO JE VYHLADENE (0.2.2) - to iste ako na HUD-e a na Dnes
-            # (`HeartStats.display_bpm`). O tom, ci sa ukaze, rozhoduje dalej
-            # surovy `_hr_last_bpm`; bez `hr_stats` (atrapy) ostava surove.
+            # THE NUMBER IS SMOOTHED (0.3) - the same as on the HUD and on
+            # Today (`HeartStats.display_bpm`). Whether it is shown is still
+            # decided by the raw `_hr_last_bpm`; without `hr_stats` (stubs) it
+            # stays raw.
             tep = getattr(getattr(self, "hr_stats", None), "display_bpm", None)
             if tep is None:
                 tep = self._hr_last_bpm
             if (self._hr_generation
                     and getattr(self, "_hr_dva_tepy_gen", None) == self._hr_generation):
-                # Dva rady tepu v jednom zdroji. Az ked tep chodi - bez dat
-                # ma prednost skutocny stav spojenia (a UDP nizsie), lebo ten
-                # je to, co hrac prave potrebuje vediet. Cislo ostava, text
-                # pribudne za nim.
+                # Two heart-rate series in one source. Only when heart rate is
+                # coming - without data the real connection state takes
+                # precedence (and UDP below), because that is what the player
+                # needs to know right now. The number stays, the text is added
+                # after it.
                 return (f"❤️ {tep} BPM · {tr('settings.hr_status_two_series')}",
                         pal["warn"])
-            # farby pasiem, nie success/danger - inak by stav tepu svietil
-            # inou zelenou, nez akou appka kresli pokoj (viz theme.ZONE_TOKENS)
+            # zone colours, not success/danger - otherwise the heart-rate
+            # status would glow a different green than the one the app draws
+            # calm with (see theme.ZONE_TOKENS)
             zone = "critical" if tep > self.hr_critical_bpm else "calm"
             return f"❤️ {tep} BPM", theme_mod.zone_color(pal, zone)
         if self._hr_state == "linked":
             return tr("settings.hr_status_waiting"), pal["warn"]
         if self._hr_state == "busy":
-            # Vlastny stav, nie "Odpojene": hrac vidi presne to, co sa deje,
-            # priamo pri prepinaci a nemusi rozbalovat dennik.
+            # Its own state, not "Disconnected": the player sees exactly what
+            # is going on, right by the switch, and does not have to expand the
+            # journal.
             return tr("settings.hr_status_busy"), pal["warn"]
         if self._hr_state == "busy_gave_up":
-            # Pokusy vycerpane - uz to neskusa, tak to ani netvrdi (B3).
-            # Drobny text: `danger_text` (>= 4,5:1), nie `danger` (theme.py).
+            # Attempts used up - it no longer tries, so it does not say so
+            # (B3). Small text: `danger_text` (>= 4,5:1), not `danger`
+            # (theme.py).
             return tr("settings.hr_status_busy_gave_up"), pal["danger_text"]
         if (self._hr_state in ("connecting", "no_client") and self._hr_generation
                 and getattr(self, "_hr_udp_off_gen", None) == self._hr_generation):
-            # UDP sa v tomto behu neotvorilo. Kym sa nikto nepripojil, je to
-            # najpravdepodobnejsi dovod pre appky, ktore posielaju len UDP/OSC
-            # (iPhone) - bez toho by hrac videl len "Pripaja sa...". Ked uz
-            # telefon drzi TCP spojenie alebo chodi tep, UDP nechyba nikomu
-            # a stitok ukazuje skutocny stav spojenia.
+            # UDP did not open in this run. While nobody has connected, this is
+            # the most likely reason for apps that send only UDP/OSC (iPhone) -
+            # without it the player would see only "Connecting...". Once the
+            # phone holds a TCP connection or heart rate is coming, UDP is
+            # missed by nobody and the label shows the real connection state.
             return tr("settings.hr_status_udp_off"), pal["warn"]
         if self._hr_state == "connecting":
             return tr("settings.hr_status_connecting"), pal["text_dim"]
         if self._hr_state == "no_client":
-            # Počúvame, ale za N s sa nikto nepripojil - iný problém než
-            # "pripája sa" (najčastejšie firewall / iná Wi-Fi) (B2).
+            # We are listening, but nobody connected within N s - a different
+            # problem from "connecting" (most often the firewall / another
+            # Wi-Fi) (B2).
             return tr("settings.hr_status_no_client"), pal["warn"]
         return tr("settings.hr_status_disconnected"), pal["text_dim"]
 
@@ -861,14 +922,15 @@ class SessionMixin:
             pass
 
     def _hlidaj_medzeru_relacie(self, teraz=None):
-        """Tik relacie alebo vzorka tepu: bola od posledneho dlha medzera?
+        """Session tick or heart-rate sample: a long gap since the last one?
 
-        Vola sa zo `_tick_activity` (4x za sekundu) a z `_apply_hr_bpm`
-        PRED zapisom vzorky - vzorka po prebudeni tak uz patri novej relacii.
-        Medzera sa rata len pocas sledovania s otvorenou relaciou; cas sa
-        posuva vzdy, aby relacia otvorena neskor nemerala od stareho tiku.
-        Hodiny iduce dozadu len posunu vychodisko (`je_medzera_spanku`).
-        Vracia True, ked relaciu rozdelila."""
+        Called from `_tick_activity` (4x per second) and from `_apply_hr_bpm`
+        BEFORE the sample is written - so a sample after waking up already
+        belongs to a new session. The gap is counted only while watching
+        with an open session; the time always moves on, so that a session
+        opened later does not measure from an old tick. A clock going
+        backwards only moves the starting point (`je_medzera_spanku`).
+        Returns True when it split the session."""
         teraz = time.time() if teraz is None else float(teraz)
         posledny = getattr(self, "_posledny_tik_relacie", None)
         self._posledny_tik_relacie = teraz
@@ -881,13 +943,13 @@ class SessionMixin:
         return True
 
     def _rozdel_relaciu_po_medzere(self, posledny, teraz):
-        """PC spalo: relacia konci POSLEDNYM TIKOM pred medzerou a po nej sa
-        zacne nova, ak sa stale sleduje a prijem bezi.
+        """The PC slept: the session ends at the LAST TICK before the gap and a
+        new one starts after it, if watching is still on and receiving runs.
 
-        Uklada sa beznou cestou (`_close_hr_session(koniec=...)`), takze
-        plati vsetko ako inde - kratka relacia sa neulozi, zo spanku sa nic
-        neuci, kontrolny bod sa zmaze. Bez dotaznika (hrac pri tom nebol).
-        Do dennika jeden riadok."""
+        It is saved the usual way (`_close_hr_session(koniec=...)`), so
+        everything applies as elsewhere - a short session is not saved,
+        nothing is learned from sleep, the checkpoint is deleted. No
+        questionnaire (the player was not there). One line to the journal."""
         minut = max(1, int(round((float(teraz) - float(posledny)) / 60.0)))
         app_log.info("relacia: %d s bez tiku (PC asi spalo) - relacia sa rozdeli",
                      int(float(teraz) - float(posledny)))
@@ -901,7 +963,8 @@ class SessionMixin:
                 and not getattr(self, "_hr_session_open", False)):
             try:
                 if self.heart_rate_monitor.running:
-                    # Prijem bezi dalej, siete sa nedotykame (ako `start_listening`).
+                    # Receiving keeps running, we do not touch the network
+                    # (like `start_listening`).
                     self._open_hr_session(prepoj=False, meria=True)
                     nova = bool(getattr(self, "_hr_session_open", False))
             except Exception:
@@ -911,32 +974,34 @@ class SessionMixin:
         return nova
 
     def _tick_session(self):
-        """Raz za sekundu obnovi "naposledy sa ozvala pred X min" a pri
-        otvorenej relacii skontroluje exkluzivny fullscreen.
+        """Once a second refreshes "last spoke X min ago" and, with an open
+        session, checks for exclusive fullscreen.
 
-        Popri nom bezi este `_tick_activity` (4x za sekundu); vsetko ostatne
-        sa prekresluje az na zaklade prichadzajucich dat.
+        Alongside it only `_tick_activity` runs (4x per second); everything
+        else is redrawn only based on incoming data.
 
-        POZN: bol tu aj `_refresh_kamae_metrics()` - tri cisla vpravo v
-        pase. S ich odstranenim (viz `ui_kit.KamaeBar`) uz pas nema co
-        posuvat po sekundach.
+        NOTE: `_refresh_kamae_metrics()` was also here - three numbers on the
+        right of the bar. With their removal (see `ui_kit.KamaeBar`) the bar
+        no longer has anything to move every second.
         """
         try:
-            # "Naposledy sa ozvala pred X min" sa pocita z `time.time()` az
-            # pri prekresleni. Vsetky ostatne cesty k `_refresh_dnes_stats`
-            # visia na prichadzajucom tepe, takze bez tohto riadku sa cislo
-            # zastavilo na hodnote spred poslednej vzorky a uz sa nepohlo -
-            # a po vypadku hodiniek klamalo donekonecna.
+            # "Last spoke X min ago" is computed from `time.time()` only on
+            # redraw. All other paths to `_refresh_dnes_stats` hang on incoming
+            # heart rate, so without this line the number stopped at the value
+            # from before the last sample and did not move any more - and after
+            # a watch dropout it lied forever.
             self._refresh_last_cue()
         except Exception:
             pass
-        # Exkluzívny fullscreen: Windows v ňom naše overlay okná nevykreslí,
-        # takže vizuál (jadro appky) ticho zmizne. Kontrola má zmysel LEN keď
-        # je popredím hra — čo počas relácie väčšinou je, a nikdy to nie je
-        # počas `start_heart_rate_monitor`, kde kontrola pôvodne bola a bola
-        # preto mŕtva (bug A3). Raz za spustenie appky (flag
-        # `_fullscreen_warned` sa nenuluje) - a len ako odhad: rovnako veľké
-        # je aj okno bez okrajov, preto text hovorí „ak vizuály nevidíš“.
+        # Exclusive fullscreen: Windows does not draw our overlay windows in
+        # it, so the visual (the core of the app) silently disappears. The
+        # check makes sense ONLY when the game is in the foreground — which
+        # during a session it mostly is, and it never is during
+        # `start_heart_rate_monitor`, where the check originally was and was
+        # therefore dead (bug A3). Once per app start (the `_fullscreen_warned`
+        # flag is not reset) - and only as a guess: a borderless window is the
+        # same size too, which is why the text says "if you cannot see the
+        # visuals".
         if getattr(self, "_hr_session_open", False):
             try:
                 self._warn_exclusive_fullscreen_once()
@@ -948,18 +1013,19 @@ class SessionMixin:
             pass
 
     def _tick_activity(self):
-        """4x za sekundu sa spyta Windowsu, ako dlho je hrac necinny.
+        """Asks Windows 4x per second how long the player has been idle.
 
-        Je to jedno `GetLastInputInfo` - ziadny hook, ziadna informacia o
-        tom, co hrac stlacil. Beha aj mimo relacie, aby `pause_s()` malo
-        zmysel hned, ked sa senzor zapne; zaznam do meracich okien sa pri
-        zapnuti senzora aj tak vynuluje.
+        It is one `GetLastInputInfo` - no hook, no information about what
+        the player pressed. It runs outside a session too, so that
+        `pause_s()` makes sense right when the sensor is switched on; the
+        record for the measurement windows is reset anyway when the sensor
+        is switched on.
 
-        `after` id sa drzi, aby sa dalo pri ukonceni zrusit - inak by sa
-        4x za sekundu zvysovala sanca, ze jeden callback dobehne az nad
-        rozobratym oknom.
+        The `after` id is kept so it can be cancelled on quit - otherwise,
+        4x per second, the chance would grow that one callback runs only
+        over an already dismantled window.
         """
-        # Uspanie PC: prvy tik po prebudeni prisiel po dlhej medzere.
+        # PC sleep: the first tick after waking up came after a long gap.
         try:
             self._hlidaj_medzeru_relacie()
         except Exception:
@@ -968,10 +1034,11 @@ class SessionMixin:
             idle = self.activity.poll()
         except Exception:
             idle = None
-        # Krivka aktivity do relacie - z nej sa neskor spocita, kedy sa
-        # naozaj hralo a kedy sa sedelo v menu. Zapisuje sa LEN pocas
-        # relacie, rovnako ako vsetko ostatne: mimo nej by to len riedilo
-        # priemer casom, ked hrac appku ani nepouziva.
+        # Activity curve into the session - later it is used to compute when
+        # the player was really playing and when sitting in a menu. It is
+        # written ONLY during a session, like everything else: outside it, it
+        # would only dilute the average with time when the player is not even
+        # using the app.
         if idle is not None and getattr(self, "_hr_session_open", False):
             try:
                 self.hr_stats.note_activity(idle <= measure.ACTIVE_IDLE_MS)
@@ -992,13 +1059,14 @@ class SessionMixin:
             self._activity_job = None
 
     def _tick_nonstop_input(self, now=None):
-        """Tichy riadok na Dnes, ked appka uz dlho nevidela ani kratku pauzu
-        vo vstupe (`activity.NonstopInputWatch`).
+        """A quiet line on Today when the app has not seen even a short pause
+        in input for a long time (`activity.NonstopInputWatch`).
 
-        Stalo sa to zadavatelovi: gyroskop ovladaca hlasil Windowsu vstup
-        kazdych ~16 ms a appka nemala kedy najst pauzu. Rata sa, len ked
-        appka pocuva a tep chodi (hrac je pri PC). LEN na Dnes - nie v hre,
-        nie v HUD-e; hrac to uvidi, ked sa na appku sam pozrie.
+        It happened to the requester: the controller's gyroscope reported
+        input to Windows every ~16 ms and the app never had a chance to find
+        a pause. It is counted only while the app is listening and heart rate
+        is coming (the player is at the PC). ONLY on Today - not in game, not
+        in the HUD; the player sees it when they look at the app themselves.
         """
         now = time.time() if now is None else now
         watching = bool(self.listening

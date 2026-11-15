@@ -1,13 +1,15 @@
 # -*- coding: utf-8 -*-
-"""Licencia a ochrana ludi (0.2, LICENSE-DESIGN.md prepisany autorom).
+"""Licence and protecting people (0.2, LICENSE-DESIGN.md rewritten by the
+author).
 
-Kod je cely GPLv3 - vratane ensa, tem a rozlozenia. Autorove su len dva
-obrazky (ikona a obrazok dojo). Upravena verzia sa musi zretelne oznacit
-ako ina a nesmie sa vydavat za oficialny Zanshin. Oficialny zdroj je len
-jeden repozitar - aby sa hrac vedel ubranit podvrhnutemu instalatoru.
+The code is entirely GPLv3 - including the enso, the themes and the layout.
+Only two images are the author's (the icon and the dojo image). A modified
+version must be clearly marked as different and must not pass itself off as
+the official Zanshin. The official source is just one repository - so that
+the player can defend themselves against a planted installer.
 
-Testy strazia, aby README, SOUL.md, PRIVACY.md a „O appke“ hovorili to
-iste ako LICENSE-DESIGN.md.
+The tests guard that README, SOUL.md, PRIVACY.md and "About" say the same as
+LICENSE-DESIGN.md.
 """
 import os
 import sys
@@ -49,10 +51,11 @@ def test_readme_hovori_to_iste_co_license_design():
     for zle in ("feature arrangement", "written consent", "all rights reserved",
                 "dual-licensed"):
         assert zle not in readme, zle
-    # Od 0.2.1: instalacka sa nevydava (bez podpisoveho certifikatu). Oficialny
-    # je len repozitar - zdrojak a hotovy ZIP v jeho Releases s odtlackom
-    # SHA-256, aby si hrac overil, ze ma pravy subor. Kopia odinakial nie je
-    # od autora - README aj LICENSE-DESIGN.md to musia povedat rovnako.
+    # Since 0.2.1: no installer is released (no signing certificate). Only the
+    # repository is official - the source and the ready ZIP in its Releases
+    # with a SHA-256 fingerprint, so the player can check they have the right
+    # file. A copy from anywhere else is not from the author - README and
+    # LICENSE-DESIGN.md must both say so the same way.
     plain = " ".join(readme.split())
     assert "Official source:** only <https://" + REPO + ">" in readme
     assert ("ready-made Zanshin `.exe` or installer anywhere else, it isn't "

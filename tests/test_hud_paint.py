@@ -1,8 +1,8 @@
-"""Testy kreslenia (hud_paint.py) - bezia bez Tk aj bez Windows.
+"""Drawing tests (hud_paint.py) - they run without Tk and without Windows.
 
-Nekontroluju "ci to pekne vyzera" (to sa testovat neda), ale to, co sa
-rozbije ticho: zle rozmery, prazdny obrazok, pad pri okrajovych hodnotach
-(nulova historia, nulova zataz, chybajuce popisky).
+They do not check "whether it looks nice" (that cannot be tested), but what
+breaks silently: wrong sizes, an empty image, a crash on edge values (empty
+history, zero load, missing labels).
 """
 
 import os
@@ -25,7 +25,7 @@ def style():
 
 
 def _has_content(image):
-    """Aspon jeden nepriehladny pixel - chyti 'nakreslilo sa nic'."""
+    """At least one non-transparent pixel - catches 'nothing got drawn'."""
     return image.getchannel("A").getextrema()[1] > 0
 
 
@@ -38,7 +38,7 @@ def test_visuals_render_at_every_animation_phase(style, name, t):
 
 
 def test_visual_scales_to_4k_size(style):
-    """Na 4K sa kresli dvojnasobok - nesmie to spadnut ani zmenit pomer."""
+    """At 4K double the size is drawn - must not crash or change the ratio."""
     image = hud_paint.render_visual("grounding", 480, 320, style, ss=2)
     assert image.size == (480, 320)
     assert _has_content(image)
@@ -69,14 +69,14 @@ def test_hud_renders_with_full_data(style):
 
 
 def test_hud_renders_with_no_data_at_all(style):
-    """Stav 'este nic nechodi' je ten, ktory hrac uvidi ako prvy."""
+    """The 'nothing coming in yet' state is the one the player sees first."""
     image = hud_paint.render_hud(style, bpm=None, stress=0.0, history=[],
                                  threshold=110, connected=False, ss=2)
     assert _has_content(image)
 
 
 def test_hud_survives_flat_history(style):
-    """Konstantny tep = nulovy rozsah; delenie nulou by krivku zhodilo."""
+    """Flat heart rate = zero range; division by zero would break the curve."""
     image = hud_paint.render_hud(style, bpm=70, stress=5, history=[70] * 40,
                                  threshold=110, baseline=70, ss=2)
     assert _has_content(image)
@@ -97,7 +97,7 @@ def test_both_themes_produce_different_accents():
 
 
 # --------------------------------------------------------------------------
-# Enso a prstenec "natiahnute"
+# The enso and the "armed" ring
 # --------------------------------------------------------------------------
 
 @pytest.mark.parametrize("live", [False, True])
@@ -109,7 +109,7 @@ def test_enso_renders_in_every_state(style, live, phase):
 
 
 def test_armed_ring_changes_the_picture(style):
-    """Prstenec musi byt VIDNO - `armed=True` nesmie vratit ten isty obrazok."""
+    """Ring must be VISIBLE - `armed=True` must not return the same image."""
     bez = hud_paint.render_enso(68, style, live=True, phase=0.45, ss=2)
     s_prstencom = hud_paint.render_enso(68, style, live=True, phase=0.45,
                                         armed=True, ss=2)
@@ -117,7 +117,7 @@ def test_armed_ring_changes_the_picture(style):
 
 
 def test_armed_ring_only_when_live(style):
-    """Natiahnute sa bez pocuvania stat neda; kreslit sa nesmie ani omylom."""
+    """Armed cannot happen without listening; must not be drawn by mistake."""
     bez = hud_paint.render_enso(68, style, live=False, phase=0.45, ss=2)
     s_prstencom = hud_paint.render_enso(68, style, live=False, phase=0.45,
                                         armed=True, ss=2)
@@ -125,12 +125,13 @@ def test_armed_ring_only_when_live(style):
 
 
 def test_armed_ring_stays_inside_the_canvas(style):
-    """Prstenec ide DOVNUTRA, nie von.
+    """The ring goes INSIDE, not outside.
 
-    Vonku uz prstenec je (nacitavaci, r*1.20) a ten sa pri plnom nadychu
-    plátna uz dotyka. Keby natiahnutie pridalo cokolvek von, orezalo by sa.
-    Test porovnava alfu na okraji platna s tou istou snimkou bez prstenca -
-    nesmie narast.
+    There already is a ring outside (the loading one, r*1.20), and at a
+    full inhale it already touches the edge of the canvas. If arming added
+    anything outside, it would get clipped. The test compares the alpha at
+    the canvas edge with the same frame without the ring - it must not
+    grow.
     """
     for phase in (0.0, 0.45):
         bez = hud_paint.render_enso(68, style, live=True, phase=phase, ss=2)
@@ -140,7 +141,7 @@ def test_armed_ring_stays_inside_the_canvas(style):
 
 
 def _okraj(image):
-    """Najvyssia alfa na krajnych riadkoch a stlpcoch obrazka."""
+    """The highest alpha in the outermost rows and columns of the image."""
     a = image.getchannel("A")
     w, h = a.size
     pasy = (a.crop((0, 0, w, 1)), a.crop((0, h - 1, w, h)),
@@ -149,15 +150,17 @@ def _okraj(image):
 
 
 def test_armed_ring_contracts_with_the_breath(style):
-    """Stahovanie sa pocita z NEDYCHAJUCEHO zakladu.
+    """The contraction is computed from the NON-BREATHING base.
 
-    Keby sa pocitalo z `r`, dychanie tahu (0.955 -> 1.045) by stahovanie
-    prstenca takmer vyrusilo (z 12 % by ostalo ~1,5 %) a prstenec by stal.
+    If it were computed from `r`, the breathing of the stroke (0.955 ->
+    1.045) would almost cancel out the ring's contraction (of 12 % only
+    ~1.5 % would remain) and the ring would stand still.
 
-    Polomer sa meria ako ROZDIEL oproti tej istej snimke bez prstenca. Prvy
-    pokus meral najdalsi pixel vo vnutornej polovici obrazka a meral tym
-    ziaru okolo tahu - vysla rovnaka hodnota pre obe fazy a test padol na
-    spravnom kode.
+    The radius is measured as the DIFFERENCE against the same frame without
+    the ring. The first attempt measured the furthest pixel in the inner
+    half of the image and thereby measured the glow around the stroke - the
+    same value came out for both phases and the test failed on correct
+    code.
     """
     vydych = _polomer_prstenca(style, 0.0)
     nadych = _polomer_prstenca(style, 0.45)
@@ -166,11 +169,12 @@ def test_armed_ring_contracts_with_the_breath(style):
 
 
 def _polomer_prstenca(style, phase, size=68):
-    """Stredovy polomer prstenca "natiahnute" v pixeloch.
+    """Middle radius of the "armed" ring in pixels.
 
-    Berie sa rozdiel alfy medzi snimkou s prstencom a bez neho - to je
-    presne on a nic ine. Z pixelov, kde rozdiel prekroci polovicu maxima,
-    sa vrati priemerna vzdialenost od stredu.
+    It takes the alpha difference between a frame with the ring and one
+    without it - that is exactly the ring and nothing else. Of the pixels
+    where the difference exceeds half the maximum, it returns the average
+    distance from the centre.
     """
     bez = hud_paint.render_enso(size, style, live=True, phase=phase,
                                 ss=2).getchannel("A")

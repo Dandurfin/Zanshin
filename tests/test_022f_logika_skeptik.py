@@ -1,15 +1,15 @@
 # -*- coding: utf-8 -*-
-"""Nezavisla kontrola davky 4b - logika a texty (0.2.2).
+"""Independent check of batch 4b - logic and texts (0.3).
 
-  * Cinstina dava nazvy stranok a tlacidiel do “…” (nie do 「…」 ako
-    japoncina). `ui_kit.zalom_kinsoku` tieto uvodzovky nepoznal: riadok
-    koncil otvaracou “ a dalsi zacinal zatvaracou ” - presne to, co
-    kinsoku ma zabranit.
-  * Riadok do app.log pri vymene skratky (AltGr) mal skratku v jazyku appky
-    ("Strg + Alt + Z"), hoci app.log je po anglicky (`hotkey.format_combo`
-    s `lang="en"`).
+  * Chinese puts the names of pages and buttons in “…” (not in 「…」 like
+    Japanese). `ui_kit.zalom_kinsoku` did not know these quotes: a line
+    ended with an opening “ and the next began with a closing ” - exactly
+    what kinsoku is supposed to prevent.
+  * The line to app.log on a shortcut change (AltGr) had the shortcut in
+    the app's language ("Strg + Alt + Z"), even though app.log is in
+    English (`hotkey.format_combo` with `lang="en"`).
 
-Vsetko na atrapach - bez okna, data vymyslene.
+Everything on dummies - no window, made-up data.
 """
 import pytest
 
@@ -24,13 +24,13 @@ S = i18n.STRINGS
 
 
 def _odhad(text):
-    """Sirka bez Tk: znak CJK 12 px, ostatne 6 px (ako odhad `_merac_pisma`)."""
+    """Tk-free width: CJK char 12 px, others 6 px (`_merac_pisma` estimate)."""
     return sum(12 if ui_kit._cjk_znak(c) else 6 for c in text)
 
 
 def _zlomy(text, sirka):
-    """Riadky, ktore vznikli ZLOMOM (prvy riadok odseku sa nepocita - ten
-    zacina tam, kde autor textu)."""
+    """Lines that came from a BREAK (the first line of a paragraph does not
+    count - it starts where the author of the text started it)."""
     return [ui_kit.zalom_kinsoku(odsek, sirka, _odhad).split("\n")
             for odsek in text.split("\n")]
 
@@ -40,7 +40,7 @@ def test_cinske_uvodzovky_dodrzia_kinsoku():
     assert texty, "cinske texty s “…” existuju"
     zle = []
     for text in texty:
-        for sirka in range(72, 481, 12):          # 6 az 40 znakov CJK na riadok
+        for sirka in range(72, 481, 12):          # 6 to 40 CJK characters per line
             for riadky in _zlomy(text, sirka):
                 for i, riadok in enumerate(riadky):
                     if riadok and riadok[-1] in "“‘" and i < len(riadky) - 1:
@@ -56,7 +56,7 @@ def test_priklad_okna_parovania_v_cinstine():
         riadky = ui_kit.zalom_kinsoku(text, sirka, _odhad).split("\n")
         assert not [r for r in riadky[:-1] if r.endswith("“")], (sirka, riadky)
         assert not [r for r in riadky[1:] if r.startswith("”")], (sirka, riadky)
-        # nic sa nestratilo ani nepribudlo
+        # nothing was lost and nothing was added
         assert "".join(riadky).replace(" ", "") == text.replace(" ", "")
 
 
@@ -97,8 +97,8 @@ def test_app_log_pri_vymene_skratky_ostava_anglicky(monkeypatch, nemcina):
     nemecky = hotkey.format_combo(DEFAULT_SNOOZE_HOTKEY)
     anglicky = hotkey.format_combo(DEFAULT_SNOOZE_HOTKEY, lang="en")
     assert "Strg" in nemecky and "Ctrl" in anglicky
-    # dennik je v jazyku appky...
+    # the journal is in the app's language...
     assert nemecky in a.denn[0]
-    # ...app.log po anglicky
+    # ...app.log in English
     assert [r for r in log.riadky if anglicky in r], log.riadky
     assert not [r for r in log.riadky if "Strg" in r], log.riadky

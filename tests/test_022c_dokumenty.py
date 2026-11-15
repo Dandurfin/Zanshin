@@ -1,24 +1,28 @@
 # -*- coding: utf-8 -*-
-"""README, PRIVACY a KNOWN_ISSUES po davke 0.2.2c hovoria to, co robi kod.
+"""README, PRIVACY and KNOWN_ISSUES after batch 0.3c say what the code does.
 
-Audit: parovanie v README nemalo postup (kde je adresa PC, ze 0.0.0.0 do
-telefonu nepatri, Sukromna siet, Cancel vo firewalle, OBS na 4455). Davka
-0.2.2c zmenila parovanie, uvod, prehliadku a prvy vecer - dokumenty to musia
-povedat rovnako. Strazi sa:
+Audit: pairing in the README had no procedure (where the PC address is,
+that 0.0.0.0 does not belong in the phone, Private network, Cancel in the
+firewall, OBS on 4455). Batch 0.3c changed pairing, the introduction, the
+tour and the first evening - the documents must say it the same way.
+Guarded:
 
-  * README "Getting your heart rate in" zacina 5 krokmi, za nimi "Still
-    waiting for the watch?" a "Streaming with OBS?"; nazvy ovladacov su
-    presne tie z anglickeho UI a cisla (20 s, 4456) z kodu,
-  * prvy start caka na hlas najviac 15 s - README aj PRIVACY uz netvrdia,
-    ze appka zacne sledovat hned po uvode,
-  * es/de/fr/pt dostanu hlas svojho jazyka, relacia "Len nastavovanie
-    appky" sa z ucenia vyradi,
-  * KNOWN_ISSUES ma v sekcii 0.2.2 body o uvode, prehliadke a parovani
-    (od davky 4 je ta sekcia v CHANGELOG.md).
+  * README "Getting your heart rate in" starts with 5 steps, followed by
+    "Still waiting for the watch?" and "Streaming with OBS?"; the control
+    names are exactly those of the English UI and the numbers (20 s,
+    4456) come from the code,
+  * the first start waits for the voice at most 15 s - README and PRIVACY
+    no longer claim that the app starts watching right after the
+    introduction,
+  * es/de/fr/pt get a voice of their language, a "Just setting up the
+    app" session is excluded from learning,
+  * KNOWN_ISSUES has points about the introduction, the tour and pairing
+    in the 0.3 section (since batch 4 that section is in CHANGELOG.md).
 
-Zamerne sa nepinuju cele odstavce (audit: testy zamykali README v dlzke) -
-len nazvy z UI, cisla z kodu a vety, ktore uz nesmu byt pravda. Od 0.2.2d
-su pravidla hlasu a ucenia v docs/HOW-IT-WORKS.md - straze isli s nimi.
+Whole paragraphs are deliberately not pinned (audit: tests locked the
+README in length) - only names from the UI, numbers from the code and
+sentences that must no longer be true. Since 0.3d the voice and learning
+rules are in docs/HOW-IT-WORKS.md - the guards went with them.
 """
 import os
 import re
@@ -42,8 +46,8 @@ def _read(meno):
 
 
 def _plain(text):
-    # vety v .md su zalomene kdekolvek; nedelitelny spojovnik (U+2011) z UI
-    # aj z README sa porovnava ako obycajny
+    # sentences in .md are wrapped anywhere; the non-breaking hyphen (U+2011)
+    # from the UI and from the README is compared as an ordinary one
     return " ".join(text.split()).replace("‑", "-")
 
 
@@ -58,14 +62,14 @@ def _sekcia(text, nadpis, koniec=None):
 
 
 def _konstanta(meno):
-    """Cislo triedy DandurfApp zo zdroja app.py - bez importu Tk."""
+    """A DandurfApp class number from app.py source - no Tk import."""
     m = re.search(r"^\s+%s = ([\d.]+)\s*$" % meno, zdroj_suboru("app.py"), re.M)
     assert m, meno
     return float(m.group(1))
 
 
 # --------------------------------------------------------------------------
-# README: parovanie po krokoch
+# README: pairing step by step
 # --------------------------------------------------------------------------
 
 def _parovanie():
@@ -77,11 +81,11 @@ def test_readme_parovanie_zacina_krokmi():
     kroky = [s.index("%d. **" % n) for n in range(1, 6)]
     assert kroky == sorted(kroky)
     assert "6. **" not in s
-    # kroky su navrchu sekcie, rady za nimi, technika portu az potom
+    # steps at the top of the section, tips after them, port details only then
     assert (kroky[-1] < s.index("**Still waiting for the watch?**")
             < s.index("**Streaming with OBS?**")
             < s.index("listens on port `4455`"))
-    # stara veta, ktoru kroky nahradili
+    # the old sentence that the steps replaced
     assert "*Pairing* then means pointing the companion" not in s
 
 
@@ -92,18 +96,19 @@ def test_readme_kroky_menuju_ovladace_ako_appka():
         assert _plain(_en(kluc)) in s, kluc
     assert "**%s → %s**" % (_en("nav.vhre_short"),
                             _en("settings.hr_section_title")) in s
-    # scena a zdroj su tie, ktore appka v telefone ponuka (krok 4 navodu)
+    # scene and source are the ones the phone app offers (how-to step 4)
     krok4 = _en("hr.step4_body")
     assert "“Zanshin”" in krok4 and "“Tep”" in krok4
     assert 'the scene "Zanshin" and the source "Tep"' in s
-    # 0.0.0.0 do telefonu nepatri - README to hovori ako pole v appke
+    # 0.0.0.0 does not go in the phone - README says it like the app's field
     assert "not the `0.0.0.0`" in s
     assert "0.0.0.0" in _en("settings.hr_ip_hint")
 
 
 def test_readme_cesty_vo_windows_ako_v_navode():
-    """Ponuky Windows v README su tie iste ako v boxe "Watch won't connect
-    at all?" - inak by hrac hladal dve rozne cesty."""
+    """The Windows menus in the README are the same as in the box "Watch
+    won't connect at all?" - otherwise the player would look for two
+    different paths."""
     s = _parovanie()
     box = _plain(_en("hr.noconnect_body"))
     for cesta in ("Windows Security → Firewall & network protection → Allow "
@@ -117,15 +122,15 @@ def test_readme_cesty_vo_windows_ako_v_navode():
 
 def test_readme_cisla_parovania_su_z_kodu():
     s = _parovanie()
-    # "telefon sa nepripojil" po `HR_NO_CLIENT_AFTER_MS`
+    # "the phone did not connect" after `HR_NO_CLIENT_AFTER_MS`
     assert _konstanta("HR_NO_CLIENT_AFTER_MS") == 20000
     assert "after about 20 seconds" in s
-    # OBS drzi 4455: dennik radi ten isty nahradny port ako README
+    # OBS holds 4455: the journal suggests the same fallback port as the README
     assert "4456" in _en("log.hr_port_busy") and "OBS" in _en("log.hr_port_busy")
     assert "for example to `4456`" in s
     assert "You don't need OBS for Zanshin" in s
-    # "Zanshin tries the new port right away": zmena portu prijem hned
-    # znova spusti, aj ked ho predtym vypla chyba portu
+    # "Zanshin tries the new port right away": a port change restarts
+    # reception right away, even if a port error switched it off before
     zmena = zdroj_metody("on_hr_config_change")
     assert "network_changed" in zmena
     assert "self.start_heart_rate_monitor()" in zmena
@@ -133,8 +138,9 @@ def test_readme_cisla_parovania_su_z_kodu():
 
 
 def test_navod_uz_neradi_prepnut_prijem():
-    """Krok 5 navodu kedysi radil zapnut prepinac, ktory uz zaplo otvorenie
-    navodu - kto posluchol, prijem si vypol. README kroky to nerobia tiez."""
+    """Step 5 of the how-to used to advise switching on a toggle that opening
+    the how-to had already switched on - whoever obeyed switched reception
+    off. The README steps do not do that either."""
     prepinac = _en("settings.hr_enable_switch")
     assert prepinac not in _en("hr.step5_body")
     assert "self._enable_hr_monitoring()" in zdroj_metody("open_watch_pairing")
@@ -145,7 +151,7 @@ def test_navod_uz_neradi_prepnut_prijem():
 
 
 # --------------------------------------------------------------------------
-# Prvy start, hlasy jazykov, relacia nastavovania
+# First start, language voices, setup session
 # --------------------------------------------------------------------------
 
 def test_prvy_start_caka_na_hlas_najviac_15_s():
@@ -161,8 +167,8 @@ def test_prvy_start_caka_na_hlas_najviac_15_s():
 
 
 def test_hlas_ukazky_v_uvode_je_z_windows():
-    """README aj PRIVACY: ukazka hlasu v uvode nic neposiela - kod pouziva
-    len hlas z Windows (`speak_sapi_isolated`)."""
+    """README and PRIVACY: the voice sample in the introduction sends nothing
+    - the code uses only the Windows voice (`speak_sapi_isolated`)."""
     assert "speak_sapi_isolated(" in zdroj_suboru("ui_dialogs.py")
     assert "its voice preview there uses the Windows voice and sends nothing" in (
         _plain(_read(AKO)))
@@ -176,7 +182,7 @@ def test_hlasy_jazykov_es_de_fr_pt():
     assert "also in Spanish, German, French or Portuguese" in ako
     k = _plain(_sekcia(_read("CHANGELOG.md"), "What 0.3 changes",
                        "\n## What 0.2.1 fixes"))
-    # mena hlasov v CHANGELOG su tie z VOICE_HINTS
+    # the voice names in CHANGELOG are those from VOICE_HINTS
     for jazyk in ("es", "de", "fr", "pt"):
         meno = re.match(r"\w+-\w+-(\w+?)Neural$", VOICE_HINTS[jazyk]).group(1)
         assert meno in k, (jazyk, meno)
@@ -193,7 +199,7 @@ def test_relacia_nastavovania_sa_neuci():
 
 
 # --------------------------------------------------------------------------
-# KNOWN_ISSUES: sekcia 0.2.2
+# KNOWN_ISSUES: section 0.3
 # --------------------------------------------------------------------------
 
 def _known_022():
@@ -223,13 +229,13 @@ def test_known_issues_022_cituje_texty_z_appky():
                  "settings.hr_ip_label", "hr.pair_button"):
         assert "*%s*" % _plain(_en(kluc)) in k, kluc
     assert '"%s"' % _en("hr.pair_this_pc") in k
-    # zivy stav v navode - od cakania po tep
+    # live status in the how-to - from waiting to heart rate
     assert "*%s*" % _en("hr.pair_status_waiting").lstrip("● ") in k
 
 
 def test_known_issues_prehliadka_pat_miest():
-    """Uvitanie + pat miest = 6 bubliniek; "five places" v texte prehliadky
-    aj v KNOWN_ISSUES."""
+    """Welcome + five places = 6 bubbles; "five places" in the tour text and
+    in KNOWN_ISSUES."""
     from guided_tour import GuidedTour
     assert GuidedTour.STEP_COUNT == 6
     assert "five places" in _en("tour.welcome.body")

@@ -1,21 +1,24 @@
 # -*- coding: utf-8 -*-
-"""0.2.2 (UX audit, časť 3): jeden slovník a texty, ktoré nesľubujú viac než kód.
+"""0.3 (UX audit, part 3): one vocabulary and texts promising no more than code.
 
-Čo sa stalo a prečo to stráži test:
-  * Hlavný vypínač mal tri mená a „odpočúvať“ po slovensky znamená špehovať -
-    pre appku, ktorá číta časovanie vstupov a názvy procesov, najhoršie
-    možné slovo. Teraz: hlavný vypínač = „sledovať“ (en "watching"),
-    prepínač tepu = „Prijímať tep z telefónu“ (en "Receive heart rate from
-    the phone"), to, čo appka pošle = „pripomienka“ (en "cue").
-  * Jedna pripomienka mala päť mien (hláška, spúšťač, slot, line, reminder)
-    a každá zo štyroch 3-4 mená v dvoch jazykoch.
-  * „Hranica“ boli dve rôzne čísla: BPM aj záťaž 0-100. Teraz hranica /
-    limit = len tep v BPM, prah / threshold = len záťaž.
-  * „0× som naschvál mlčala“ pri nule a porovnanie, ktoré sa nestalo: tiché
-    kontrolné rameno je SÚČASŤOU počtu (ukázal sa len obrázok).
-  * Bodka v bočnom paneli: tip opisuje tvar, ktorý kód naozaj kreslí.
+What happened and why the test guards it:
+  * The main switch had three names, and „odpočúvať“ in Slovak means to
+    spy on someone - for an app that reads input timing and process names,
+    the worst possible word. Now: main switch = „sledovať“ (en "watching"),
+    the heart rate switch = „Prijímať tep z telefónu“ (en "Receive heart
+    rate from the phone"), what the app sends = „pripomienka“ (en "cue").
+  * One cue had five names (hláška, spúšťač, slot, line, reminder) and
+    each of the four had 3-4 names in two languages.
+  * „Hranica“ was two different numbers: BPM and load 0-100. Now hranica /
+    limit = only heart rate in BPM, prah / threshold = only load.
+  * „0× som naschvál mlčala“ at zero, and a comparison that did not
+    happen: the silent control arm is PART of the count (only the picture
+    was shown).
+  * The dot in the side panel: the tip describes the shape the code really
+    draws.
 
-Starý test, ktorý by tu niečo opakoval, ostal - tento stráži len nové veci.
+The old test that would repeat something here stays - this one guards only
+the new things.
 """
 import ast
 import os
@@ -34,11 +37,12 @@ KOREN = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 S = i18n.STRINGS
 JAZYKY = i18n.LANGUAGES
 
-# Kluce, ktore appka uz nepouzivala (zvysky z 0.1 - prekryvanie hlasok, prisny
-# zamok, oneskorenie, cooldown, QR poznamka, Start / Stop v liste). Do 0.2.2
-# tu boli vynimkou zo slovnika; v davke 4 su zo slovnika ZMAZANE vo vsetkych
-# jedenastich jazykoch, takze slovnik uz stazi kazdy kluc bez vynimky.
-# test_mrtve_kluce_su_zmazane strazi, aby sa nevratili.
+# Keys the app no longer used (leftovers from 0.1 - overlapping cues, the
+# strict lock, delay, cooldown, the QR note, Start / Stop in the tray).
+# Until 0.3 they were an exception from the dictionary here; in batch 4
+# they were DELETED from the dictionary in all eleven languages, so the
+# dictionary now guards every key without exception.
+# test_mrtve_kluce_su_zmazane guards that they do not come back.
 ZMAZANE = {"hr.qr_note", "log.listener_error", "settings.overlap", "settings.overlap_sub",
            "log.overlap_on", "log.overlap_off", "settings.strict_global_lock",
            "settings.strict_global_lock_short", "settings.strict_global_lock_sub",
@@ -47,19 +51,21 @@ ZMAZANE = {"hr.qr_note", "log.listener_error", "settings.overlap", "settings.ove
            "app.tagline", "onboarding.diag.subtitle", "tray.toggle",
            "settings.cooldown_sub", "dialog.jitter", "dialog.custom_cooldown",
            "dialog.every_n", "dialog.repeat", "dialog.repeat_gap", "slot.summary_every",
-           # mrtvy a k tomu s muzskym rodom v osloveni ("pokojnejsi, nez si vosiel")
+           # dead, and on top of that with a masculine form of address
+           # ("pokojnejsi, nez si vosiel")
            "onboarding.why.mission",
-           # mrtvy, v rustine este stare slovo "реплика"
+           # dead, and in Russian still the old word "реплика"
            "log.cue_rate_changed",
-           # 0.2.2 davka 4b: nikde v kode - Sprievodca sa vola `guide.panel_title`
-           # (stary `nav.guide` s 📖 este prekryval mladsi), karta HRPI z Dnes
-           # odisla, prefix gamepadu a symptomy z uvodu 0.1 sa nekreslia
+           # 0.3 batch 4b: nowhere in the code - the Guide is called
+           # `guide.panel_title` (the old `nav.guide` with 📖 still overrode
+           # the newer one), the HRPI card left Today, the gamepad prefix and
+           # the symptoms from the 0.1 introduction are not drawn
            "nav.guide", "dnes.stat_hrpi", "key.gamepad_prefix",
            "onboarding.hero.symptom.cramp", "onboarding.hero.symptom.jaw",
            "onboarding.hero.symptom.breath"}
 MRTVE = frozenset()
 
-# "pocuvat" v prirodzenom zmysle, nie ako vypinac appky.
+# "pocuvat" in the natural sense, not as the app's switch.
 PRIRODZENE_POCUVAT = {"about.between_lines"}
 
 
@@ -73,8 +79,8 @@ def _zive():
 
 
 def test_mrtve_kluce_su_zmazane():
-    """Mŕtve kľúče zo starého slovníka sú preč zo slovníka, z češtiny a
-    bulharčiny aj zo `_tr7` riadkov - a žiadny modul appky ich nevolá."""
+    """Dead keys of the old dictionary are gone from the dictionary, from Czech
+    and Bulgarian and from the `_tr7` lines - and no app module calls them."""
     import i18n_cs_bg
     zdroje = "".join(_read(m) for m in os.listdir(KOREN)
                      if m.endswith(".py") and not m.startswith("i18n"))
@@ -88,7 +94,7 @@ def test_mrtve_kluce_su_zmazane():
 
 
 # --------------------------------------------------------------------------
-# Hlavny vypinac = sledovat, prepinac tepu = prijimat tep
+# Main switch = sledovat (watch), heart rate toggle = prijimat tep (receive)
 # --------------------------------------------------------------------------
 
 def test_hlavny_vypinac_sa_vola_sledovat():
@@ -110,15 +116,15 @@ def test_prepinac_tepu_sa_vola_prijimat_tep_a_texty_ho_cituju_presne():
     assert S["settings.hr_enable_switch"]["en"] == "Receive heart rate from the phone"
     for jazyk in JAZYKY:
         meno = S["settings.hr_enable_switch"][jazyk]
-        # veta v denniku radi ten prepinac vypnut a zapnut - musi ho volat
-        # presne tak, ako je napisany pri prepinaci
+        # the line in the journal advises switching that toggle off and on - it
+        # has to call it exactly as it is written at the toggle
         assert meno in S["log.hr_udp_busy"][jazyk], jazyk
     assert "príjem tepu" in S["tray.close_first"]["sk"]
     assert "heart-rate receiving" in S["tray.close_first"]["en"]
 
 
 # --------------------------------------------------------------------------
-# Pripomienka / cue - jedno slovo
+# Pripomienka / cue - one word
 # --------------------------------------------------------------------------
 
 def test_pripomienka_ma_jedno_meno():
@@ -141,11 +147,12 @@ def test_styri_pripomienky_maju_v_kazdom_jazyku_jedno_meno():
         for index, kluc in enumerate(sprievodca):
             meno = S[f"overlay.slot.{index}"][jazyk]
             assert S[kluc][jazyk] == meno, (jazyk, kluc)
-            # bez emoji a bez zatvoriek z 0.1 (pripomienky uz nespustaju klavesy)
+            # no emoji and no brackets from 0.1 (keys no longer fire cues)
             assert "(" not in meno and "（" not in meno, (jazyk, meno)
             assert all(ch.isalpha() or ch in " &" for ch in meno), (jazyk, meno)
         assert S["cue.category.release"][jazyk].lower() == S["overlay.slot.2"][jazyk].lower(), jazyk
-        # popisy v uvode = presne to, co hrac uvidi pod obrazkom v hre
+        # descriptions in the introduction = exactly what the player sees
+        # under the picture in game
         for cap, popis in (("grounding", "grounding"), ("jaw", "jaw"), ("release", "release")):
             assert (S[f"ob.step1.cap_{cap}"][jazyk].upper()
                     == S[f"overlay.caption.{popis}"][jazyk].upper()), (jazyk, cap)
@@ -162,13 +169,13 @@ def test_hranica_je_tep_prah_je_zataz():
     for kluc in ("settings.hr_critical_learning", "settings.hr_critical_computed",
                  "metric.over.title", "metric.zones.title"):
         assert "limit" in S[kluc]["en"] and "threshold" not in S[kluc]["en"], kluc
-    # zataz sa ukazuje na stupnici 0-100, nie ako hole cislo
+    # load is shown on a 0-100 scale, not as a bare number
     assert "{prah} zo 100" in S["cue_rate.learning"]["sk"]
     assert "{prah}/100" in S["cue_rate.learning"]["en"]
 
 
 # --------------------------------------------------------------------------
-# Dotaznik: "0× som naschval mlcala"
+# Questionnaire: "0× som naschval mlcala" (0× I stayed silent on purpose)
 # --------------------------------------------------------------------------
 
 def test_tiche_pripomienky_su_sucastou_poctu():
@@ -178,7 +185,7 @@ def test_tiche_pripomienky_su_sucastou_poctu():
         assert "{silent}" in S["session.end.cues_silent"][jazyk], jazyk
     assert "z toho" in S["session.end.cues_silent"]["sk"]
     assert "of those" in S["session.end.cues_silent"]["en"]
-    # veta s tichymi ide LEN pri nenulovom pocte
+    # the sentence with silent ones goes ONLY with a non-zero count
     strom = ast.parse(_read("ui_dialogs.py"))
     init = next(f for t in ast.walk(strom) if isinstance(t, ast.ClassDef)
                 and t.name == "SessionEndDialog" for f in t.body
@@ -190,8 +197,9 @@ def test_tiche_pripomienky_su_sucastou_poctu():
 
 
 def test_uvod_povie_o_pripomienkach_len_obrazkom():
-    """Kto zvolil hlas, nemá si myslieť, že hlas nefunguje - asi štvrtina
-    pripomienok je zo začiatku zámerne len obrázkom (trigger.silent_share_for)."""
+    """Whoever chose voice must not think the voice does not work - about a
+    quarter of the cues are deliberately picture-only at first
+    (trigger.silent_share_for)."""
     import trigger
     assert trigger.silent_share_for(0) == 0.25
     assert "každú štvrtú" in S["ob.cue.note"]["sk"]
@@ -199,7 +207,7 @@ def test_uvod_povie_o_pripomienkach_len_obrazkom():
 
 
 # --------------------------------------------------------------------------
-# Lista, styl v Nastaveniach, bodka
+# Tray, style in Settings, dot
 # --------------------------------------------------------------------------
 
 class _Ikona:
@@ -241,15 +249,16 @@ def test_polozka_listy_povie_co_sa_po_kliku_stane(monkeypatch):
     a.listening = True
     texty = [p.text for p in a.tray_icon.menu.items]
     assert i18n.tr("tray.stop") in texty and i18n.tr("tray.start") not in texty
-    # po zmene stavu sa menu prestavia - inak by pystray ukazoval stary text
+    # after a state change the menu is rebuilt - otherwise pystray would
+    # show the old text
     pred = a.tray_icon.aktualizacie
     app_mod.DandurfApp.update_tray_icon(a)
     assert a.tray_icon.aktualizacie == pred + 1
 
 
 def test_styl_v_nastaveniach_ma_vlastne_mena():
-    """V Nastaveniach nie je otázka „keď ťa hra vytočí…“ - riadok nesmie
-    ukazovať odpovede na ňu."""
+    """In Settings there is no question „keď ťa hra vytočí…“ (when the game
+    winds you up…) - the row must not show the answers to it."""
     import app as app_mod
     D = app_mod.DandurfApp
     mena = D._cue_style_labels(None)
@@ -261,9 +270,10 @@ def test_styl_v_nastaveniach_ma_vlastne_mena():
 
 
 def test_tip_bodky_opisuje_to_co_bodka_kresli():
-    """Zastavená appka = dutý krúžok (`text_faint`), sledujúca = plná zelená
-    (`success`). Tip pri bodke to musí povedať - nie „červená“, ktorú už
-    nekreslí, ani farbu ensō, ktoré má vždy farbu accent."""
+    """A stopped app = hollow ring (`text_faint`), a watching one = solid green
+    (`success`). The tip at the dot has to say that - not „červená“ (red),
+    which it no longer draws, nor the colour of the ensō, which always has
+    the accent colour."""
     tip = S["sidebar.state_tip"]
     assert "zelená" in tip["sk"].lower() and "krúžok" in tip["sk"]
     assert "green" in tip["en"].lower() and "ring" in tip["en"].lower()
@@ -279,7 +289,7 @@ def test_tip_bodky_opisuje_to_co_bodka_kresli():
 
 
 # --------------------------------------------------------------------------
-# Texty bez zargonu a bez slubov, ktore kod nedrzi
+# Texts without jargon and without promises the code does not keep
 # --------------------------------------------------------------------------
 
 def test_hracske_texty_bez_zargonu():
@@ -303,7 +313,8 @@ def test_uvod_nesluby_co_kod_nerobi():
     assert "corner" not in S["ob.step2.title"]["en"].lower()
     assert "nepovinn" not in S["ob.step3.kicker"]["sk"]
     assert "optional" not in S["ob.step3.kicker"]["en"]
-    # "neviem" sa ulozi ako hlas - neslubuje rezim, ktory by si appka zistovala
+    # "neviem" (I don't know) is saved as voice - it does not promise a
+    # mode the app would figure out by itself
     assert "zistí sama" not in S["ob.cue.unsure"]["sk"]
     assert "figure it out" not in S["ob.cue.unsure"]["en"]
 

@@ -1,12 +1,16 @@
 # -*- coding: utf-8 -*-
-"""Opravy z triaze 0.2 - veci, na ktore by sa clovek spolahol.
+"""Fixes from the 0.2 triage - things a person would rely on.
 
-  * vypnute vizualy: jednorazova naprava predvolby ostala naozaj jednorazova
-    - kto si vypne vsetky styri, appka ich pri dalsom starte nezapne,
-  * dennik nepise „odpocuvanie pozastavene“, ked pocuvanie bezi dalej,
-  * uvod pusteny znova z palety zacina na aktualnom svete a hlasitosti,
-  * export sa vola podla toho, co naozaj nesie (historia, nie „vsetko“),
-  * postrehy a Sprievodca netvrdia zdravotny fakt ani ucinok.
+  * switched-off visuals: the one-time fix of the default really stayed
+    one-time - whoever switches off all four, the app does not switch them
+    on at the next start,
+  * the journal does not write "odpocuvanie pozastavene" (listening paused)
+    when listening keeps running,
+  * the introduction replayed from the command palette starts on the current
+    world and volume,
+  * the export is named after what it really carries (history, not
+    "everything"),
+  * insights and the Guide do not claim a health fact or an effect.
 """
 import ast
 import json
@@ -30,7 +34,7 @@ def _read(meno):
 
 
 # --------------------------------------------------------------------------
-# Vypnute vizualy
+# Switched-off visuals
 # --------------------------------------------------------------------------
 
 @pytest.fixture
@@ -38,8 +42,8 @@ def nastavenia(tmp_path, monkeypatch):
     import app as app_mod
     import app_prefs
     cesta = str(tmp_path / "dandurf_settings.json")
-    # `load_settings` byva v mixine app_prefs (PrefsMixin) a cita
-    # SETTINGS_PATH zo svojho modulu - presmerovat ho treba tam.
+    # `load_settings` lives in the app_prefs mixin (PrefsMixin) and reads
+    # SETTINGS_PATH from its own module - it must be redirected there.
     monkeypatch.setattr(app_prefs, "SETTINGS_PATH", cesta)
     povodny = i18n._lang["code"]
 
@@ -77,7 +81,7 @@ def test_znacka_napravy_sa_uklada():
 
 
 # --------------------------------------------------------------------------
-# Dennik pri skonceni hry
+# The journal when the game ends
 # --------------------------------------------------------------------------
 
 def _hra_skoncila(pocuva, spustila_appka):
@@ -99,7 +103,7 @@ def test_pozastavene_sa_pise_len_ked_sa_naozaj_zastavilo():
 
 
 # --------------------------------------------------------------------------
-# Uvod znova z palety
+# Introduction again from the command palette
 # --------------------------------------------------------------------------
 
 def test_uvod_znova_zacina_na_aktualnom_svete_a_hlasitosti():
@@ -116,7 +120,7 @@ def test_uvod_znova_zacina_na_aktualnom_svete_a_hlasitosti():
 
 
 # --------------------------------------------------------------------------
-# Texty
+# Texts
 # --------------------------------------------------------------------------
 
 def test_export_sa_vola_podla_obsahu():

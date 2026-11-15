@@ -1,21 +1,22 @@
 # -*- coding: utf-8 -*-
 #
-# Metadata .exe (Windows VERSIONINFO resource) - to, co vidno v
-# Vlastnosti -> Podrobnosti.
+# Metadata of the .exe (Windows VERSIONINFO resource) - what you see in
+# Properties -> Details.
 #
-# POZN: .exe tieto udaje DOTERAZ NEMAL - ani PyInstaller spec na ne
-# neukazoval, takze zabaleny .exe sa hlasil bez nazvu, autora aj popisu
-# (prazdna zalozka Podrobnosti). Pre doveryhodnost voci SmartScreen je
-# to zbytocna diera.
+# NOTE: the .exe did NOT HAVE this data UNTIL NOW - not even the
+# PyInstaller spec pointed to it, so the packaged .exe showed up without
+# a name, author and description (an empty Details tab). For credibility
+# with SmartScreen that is a needless hole.
 #
-# Verziu drz v sulade s:
-#   - MyAppVersion v Dandurf.iss        (instalator)
-#   - 'app.version_short' v i18n.py     (titulna lista appky)
-#   - "*Alpha X.Y.Z" v README.md        (hlavicka na GitHube)
+# Keep the version in sync with:
+#   - MyAppVersion in Dandurf.iss       (installer)
+#   - 'app.version_short' in i18n.py    (the app's title bar)
+#   - "*Alpha X.Y.Z" in README.md       (header on GitHub)
 #
-# filevers/prodvers musia byt 4 cisla (Windows to inak neprijme), takze
-# chybajuce cisla verzie su tu nuly - "0.2.1" -> 0, 2, 1, 0 (a "0.2" bolo
-# 0, 2, 0, 0). Rovnako ich doplna Inno Setup vo VersionInfoVersion.
+# filevers/prodvers must be 4 numbers (Windows does not accept it
+# otherwise), so missing version numbers are zeros here -
+# "0.2.1" -> 0, 2, 1, 0 (and "0.2" was 0, 2, 0, 0). Inno Setup fills
+# them in the same way in VersionInfoVersion.
 VSVersionInfo(
   ffi=FixedFileInfo(
     filevers=(0, 3, 0, 0),
@@ -31,9 +32,9 @@ VSVersionInfo(
     StringFileInfo(
       [
         StringTable(
-          # 040904B0 = anglictina (US) + Unicode. Nechavame anglicky zapis
-          # metadat aj pri slovenskej appke - Windows aj obchody s nim
-          # pracuju najspolahlivejsie.
+          # 040904B0 = English (US) + Unicode. We keep the metadata in
+          # English even for a Slovak app - Windows and stores work
+          # with it most reliably.
           '040904B0',
           [StringStruct('CompanyName', 'Dandurfin'),
            StringStruct('FileDescription', 'Zanshin - heart-rate companion for gamers'),

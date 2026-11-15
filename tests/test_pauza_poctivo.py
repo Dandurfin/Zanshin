@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
-"""Kedy hlas zaznie - dokumenty musia hovorit to, co robi trigger.py.
+"""When the voice speaks - the documents must say what trigger.py does.
 
-Hlas caka na kratku pauzu vo VSTUPE (~2,5 s bez klavesu, mysi, ovladaca),
-ked zataz prestala stupat, a nikdy v kritickom pasme. Hru appka nevidi -
-tichy moment uprostred boja sa moze ratat ako pauza. „Nikdy cez akciu“
-alebo „medzi kolami“ je slub, ktory kod nevie dat.
+The voice waits for a short pause in the INPUT (~2.5 s without a key, the
+mouse, the controller) when the load has stopped rising, and never in the
+critical zone. The app does not see the game - a quiet moment in the middle
+of a fight can count as a pause. „Never during action“ or „between rounds“
+is a promise the code cannot give.
 """
 import os
 import sys
@@ -21,7 +22,7 @@ def _read(meno):
         return fh.read()
 
 
-DOKUMENTY = ("SOUL.md", "README.md", "docs/HOW-IT-WORKS.md")   # 0.2.2d: aj pravidla
+DOKUMENTY = ("SOUL.md", "README.md", "docs/HOW-IT-WORKS.md")   # 0.3d: the rules too
 
 
 def test_pauza_v_dokumentoch_sedi_s_kodom():

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Kalibracia na zaciatku relacie (B3b, KNOWN_ISSUES §7)."""
+"""Calibration at the start of a session (B3b, KNOWN_ISSUES §7)."""
 import os
 import random
 import sys

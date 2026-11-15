@@ -1,15 +1,17 @@
 # -*- coding: utf-8 -*-
-"""check_sources.py bez internetu na Windows (review 0.2.1, bug 6).
+"""check_sources.py without internet on Windows (review 0.2.1, bug 6).
 
-Skript rozoznaval "nie je siet" len podla linuxoveho textu "Name or service
-not known". Na Windows bez internetu hlasi getaddrinfo `[Errno 11001]
-getaddrinfo failed` (pripadne WinError 11002 / 10051 / 10065 alebo timeout),
-takze skript vyhlasil KAZDY odkaz za mrtvy a skoncil kodom 1. Teraz: ked
-ziaden server neodpovedal a vsetko padlo na sieti, povie "nie si online, nic
-som neskontroloval" a skonci neutralne (0). Ked aspon jeden server odpovedal,
-sietova chyba pri inom odkaze je naozaj nedostupny odkaz (napr. mrtva domena).
+The script recognised "no network" only by the Linux text "Name or service
+not known". On Windows without internet getaddrinfo reports `[Errno 11001]
+getaddrinfo failed` (or WinError 11002 / 10051 / 10065, or a timeout), so
+the script declared EVERY link dead and exited with code 1. Now: when no
+server answered and everything failed on the network, it says "you are not
+online, I checked nothing" and exits neutrally (0). When at least one
+server answered, a network error on another link really is an unreachable
+link (e.g. a dead domain).
 
-urlopen je v testoch vzdy nahradeny - test nikam nesiela ani bajt.
+urlopen is always replaced in the tests - the test sends not a single byte
+anywhere.
 """
 import os
 import socket
@@ -26,15 +28,15 @@ import i18n  # noqa: E402
 
 
 def _win_chyba(kod, text):
-    """OSError tak, ako ho vyrobi Windows (winerror aj errno). Na inom
-    systeme len errno - aby test bezal aj tam."""
+    """OSError the way Windows produces it (both winerror and errno). On
+    another system only errno - so that the test runs there too."""
     if sys.platform == "win32":
         return OSError(None, text, None, kod)
     return OSError(kod, text)
 
 
 class _Odpoved:
-    """Nahrada odpovede urlopen - server odpovedal 200."""
+    """Stand-in for the urlopen response - the server answered 200."""
     status = 200
 
     def __enter__(self):
@@ -46,7 +48,8 @@ class _Odpoved:
 
 @pytest.fixture(autouse=True)
 def _jazyk_naspat(monkeypatch):
-    # main() prepina i18n na anglictinu - po teste vratime povodny jazyk
+    # main() switches i18n to English - after the test we restore the
+    # original language
     monkeypatch.setitem(i18n._lang, "code", i18n._lang["code"])
 
 
@@ -64,7 +67,7 @@ def _vzdy(chyba):
 
 
 @pytest.mark.parametrize("chyba", [
-    # to, co naozaj pride z urlopen na Windows bez internetu
+    # what really comes from urlopen on Windows without internet
     urllib.error.URLError(socket.gaierror(11001, "getaddrinfo failed")),
     urllib.error.URLError(socket.gaierror(11002, "getaddrinfo failed")),
     urllib.error.URLError(_win_chyba(11001, "No such host is known")),
@@ -73,9 +76,9 @@ def _vzdy(chyba):
                                             "to an unreachable network")),
     urllib.error.URLError(_win_chyba(10065, "A socket operation was attempted "
                                             "to an unreachable host")),
-    # nezabalene (chyba pocas citania odpovede)
+    # unwrapped (an error while reading the response)
     _win_chyba(10051, "unreachable network"),
-    # linuxovy text, ktory skript poznal doteraz, stale plati
+    # the Linux text the script knew until now still applies
     urllib.error.URLError(socket.gaierror(-2, "Name or service not known")),
 ], ids=["gai11001", "gai11002", "win11001", "win11002", "win10051",
         "win10065", "raw10051", "linux"])
@@ -89,8 +92,8 @@ def test_bez_siete_hlasi_offline_nie_mrtve_odkazy(monkeypatch, capsys, chyba):
 
 
 def test_timeout_na_vsetkych_odkazoch_je_offline(monkeypatch, capsys):
-    """Sieť bez internetu (napr. Wi-Fi bez pripojenia) - kazdy odkaz
-    vyprsi. Zabalene aj nezabalene, ako to urllib naozaj posiela."""
+    """A network without internet (e.g. Wi-Fi without a connection) - every
+    link times out. Wrapped and unwrapped, as urllib really sends it."""
     chyby = iter([urllib.error.URLError(TimeoutError("timed out")),
                   socket.timeout("timed out"),
                   urllib.error.URLError(_win_chyba(10060, "connection timed out"))])
@@ -104,8 +107,8 @@ def test_timeout_na_vsetkych_odkazoch_je_offline(monkeypatch, capsys):
 
 
 def test_online_mrtva_domena_je_stale_mrtvy_odkaz(monkeypatch, capsys):
-    """Oprava nesmie skryt skutocne mrtvy odkaz: ked ostatne servery
-    odpovedaju, neexistujuca domena (getaddrinfo) je chyba odkazu."""
+    """The fix must not hide a really dead link: when the other servers
+    answer, a nonexistent domain (getaddrinfo) is a link error."""
     mrtva = cs.PHILOSOPHY_SOURCES[1][1]
 
     def urlopen(req, timeout=None):
@@ -120,7 +123,7 @@ def test_online_mrtva_domena_je_stale_mrtvy_odkaz(monkeypatch, capsys):
 
 
 def test_http_404_nie_je_offline(monkeypatch, capsys):
-    """Server odpovedal (hoci chybou) - siet ide, odkazy su mrtve."""
+    """Server answered (if with an error) - network works, links are dead."""
     def urlopen(req, timeout=None):
         raise urllib.error.HTTPError(req.full_url, 404, "Not Found", {}, None)
     kod, vystup = _spusti(monkeypatch, capsys, urlopen)
@@ -136,8 +139,8 @@ def test_vsetko_zije(monkeypatch, capsys):
 
 
 def test_get_po_head_odpovedi_nie_je_offline(monkeypatch):
-    """HEAD dostal 405 (server odpovedal), GET potom vyprsi - server je
-    dosiahnutelny, takze je to zlyhanie odkazu, nie chyba siete."""
+    """HEAD got 405 (the server answered), GET then times out - the server is
+    reachable, so it is a link failure, not a network error."""
     def urlopen(req, timeout=None):
         if req.get_method() == "HEAD":
             raise urllib.error.HTTPError(req.full_url, 405, "Method", {}, None)
@@ -155,7 +158,7 @@ def test_get_po_head_odpovedi_nie_je_offline(monkeypatch):
     (_win_chyba(10065, "x"), True),
     (TimeoutError("timed out"), True),
     (urllib.error.URLError("timed out"), True),
-    # server je dosiahnutelny, len odmieta / odpovedal chybou
+    # the server is reachable, it just refuses / answered with an error
     (ConnectionRefusedError(10061, "refused"), False),
     (urllib.error.URLError(ConnectionRefusedError(10061, "refused")), False),
     (urllib.error.HTTPError("u", 404, "Not Found", {}, None), False),

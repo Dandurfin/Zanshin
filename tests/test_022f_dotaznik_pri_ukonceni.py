@@ -1,15 +1,16 @@
 # -*- coding: utf-8 -*-
-"""Dotaznik po relacii pri kazdom ukonceni a vypnuti Windows (0.2.2 davka 4b).
+"""Session questionnaire on every quit and Windows shutdown (0.3 batch 4b).
 
-Do davky 4 ulozilo dotknute odpovede len druhe "Ukoncit" pocas dotaznika
-zatvarania (`_dotaznik_pri_zatvarani`). Dotaznik otvoreny beznym Stop, ktory
-este visel, ked hrac ukoncil appku z listy alebo sa vypinal Windows
-(WM_SAVE_YOURSELF), zanikol s `root.destroy()` aj s odpovedami.
+Up to batch 4, touched answers were saved only by a second "Quit" during
+the closing questionnaire (`_dotaznik_pri_zatvarani`). A questionnaire
+opened by an ordinary Stop, still hanging when the player quit the app
+from the tray or Windows was shutting down (WM_SAVE_YOURSELF), died with
+`root.destroy()` along with the answers.
 
-Pravidlo zadavatela teraz plati pri KAZDOM ukonceni: dotknute odpovede sa
-ulozia ako "Ulozit", nedotknuty dotaznik sa zavrie ako "Preskocit", do
-dennika ide jeden riadok. Okno s chybou ulozenia sa pri tom neotvara.
-Vsetky data su vymyslene.
+The requester's rule now applies on EVERY quit: touched answers are saved
+as with "Save", an untouched questionnaire is closed as with "Skip", one
+line goes to the journal. The save-error window does not open in the
+process. All data is made up.
 """
 import types
 
@@ -31,7 +32,7 @@ class _Top:
 
 
 class _Dotaznik:
-    """Atrapa SessionEndDialog: zaznamenava, co s nou appka spravila."""
+    """Dummy SessionEndDialog: records what the app did with it."""
 
     def __init__(self, poradie, vyplneny, ok=True, zije=True, meno="dotaznik"):
         self.poradie, self.vyplneny, self.ok = poradie, vyplneny, ok
@@ -66,7 +67,7 @@ class _Root:
 
 
 def _appka(poradie):
-    """DandurfApp bez Tk: kroky ukoncenia sa len zapisu do `poradie`."""
+    """DandurfApp without Tk: the quit steps are only written to `poradie`."""
     a = app_mod.DandurfApp.__new__(app_mod.DandurfApp)
     a.root = _Root(poradie)
     a.denn = []
@@ -87,7 +88,7 @@ def test_prve_ukoncenie_ulozi_dotknuty_dotaznik_z_bezneho_stop():
     a = _appka(poradie)
     a._otvorene_dotazniky = [_Dotaznik(poradie, vyplneny=True)]
     a._quit()
-    # dotaznik sa dokonci PRED zastavenim (novy dotaznik sa neotvori nad nim)
+    # questionnaire finished BEFORE stopping (no new one opens over it)
     assert poradie[:2] == ["dotaznik:ulozit", "stop_listening"], poradie
     assert poradie[-1] == "destroy"
     assert a.denn == [tr("log.quit_questionnaire_saved")]
@@ -110,7 +111,7 @@ def test_zavrety_dotaznik_sa_preskoci_a_bez_dotaznika_nic_navyse():
     a._quit()
     assert poradie[0] == "stop_listening", poradie
     assert a.denn == []
-    # appka bez jedineho dotaznika (atribut ani nevznikol)
+    # app without a single questionnaire (the attribute never even existed)
     poradie2 = []
     b = _appka(poradie2)
     b._quit()
@@ -147,8 +148,8 @@ def test_vypnutie_windows_ulozi_dotaznik_pred_relaciou():
 
 
 def test_vypnutie_windows_zavrie_aj_dotaznik_na_ktory_caka_quit():
-    """`_quit` caka vo `wait_window` na dotaznik zatvarania; ten je tiez
-    v `_otvorene_dotazniky`, takze ho vypnutie Windows dokonci tiez."""
+    """`_quit` waits in `wait_window` for the closing questionnaire; it is
+    also in `_otvorene_dotazniky`, so the Windows shutdown finishes it too."""
     poradie = []
     a = _appka(poradie)
     d = _Dotaznik(poradie, vyplneny=False)
@@ -171,7 +172,7 @@ def test_pri_ukonceni_sa_okno_s_chybou_neotvori(monkeypatch):
     a._dotaznik_bez_okna_chyby = True
     assert a.save_session_context({"started": 1.0}, []) is False
     assert okna == []
-    # bezne "Ulozit" mimo ukoncenia okno s chybou ukaze ako doteraz
+    # an ordinary "Save" outside of quitting shows the error window as before
     a._dotaznik_bez_okna_chyby = False
     assert a.save_session_context({"started": 1.0}, []) is False
     assert len(okna) == 1
@@ -205,9 +206,10 @@ def test_kazdy_otvoreny_dotaznik_si_appka_zapamata(monkeypatch):
     a._ask_session_context({"started": 1.0})
     a._ask_session_context({"started": 2.0})
     assert a._otvorene_dotazniky == vytvorene and len(vytvorene) == 2
-    # pri beznom Stop sa na dotaznik neceka a `_dotaznik_pri_zatvarani` ostava prazdny
+    # on an ordinary Stop nothing waits for the questionnaire and
+    # `_dotaznik_pri_zatvarani` stays empty
     assert getattr(a, "_dotaznik_pri_zatvarani", None) is None
-    # zavrete okno z dlhsieho behu sa pri dalsom dotazniku zahodi
+    # a closed window from a longer run is discarded at the next questionnaire
     vytvorene[0].top.zije = False
     a._ask_session_context({"started": 3.0})
     assert a._otvorene_dotazniky == vytvorene[1:]

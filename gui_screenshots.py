@@ -1,43 +1,46 @@
 # -*- coding: utf-8 -*-
-"""Vizuálna kontrola okna — postaví appku, nakŕmi ju dátami a odfotí stránky.
+"""Visual window check — builds the app, feeds it data, screenshots the pages.
 
-Načo to je
+What it is for
+--------------
+`gui_harness_auto.py` also checks what cannot be checked without real input
+(dragging the window, the mouse wheel, global hooks), but it **moves the real
+mouse and sends keys** — while it runs the computer cannot be used, and it
+can only be started when a person has two minutes to spare. That is why it is
+not run routinely, and why visual bugs (an empty strip under a chart,
+clipped text, a panel that fell out of the window) were found only late.
+
+This script is the cheap remainder: it builds the app, switches through the
+pages and takes pictures of them. It does not touch the mouse or keyboard,
+runs about 20 seconds and can be started at any time. It claims nothing
+about correctness — a person (or a model) has to look at the pictures. What
+CAN be checked programmatically, it reports as checks at the end.
+
+What it backs up and restores
+-----------------------------
+`dandurf_settings.json` (and its `.bak`), `hr_sessions.json`, `hr_insights.json`,
+`hr_session_open.json` (the session checkpoint) and `hr_session_pending.json`
+(sessions that could not be saved). The script writes into
+them (synthetic history, theme switch), but at the end — even after a
+crash — it restores the original state. Without this the screenshots would
+overwrite your real sessions.
+
+Running it
 ----------
-`gui_harness_auto.py` overí aj to, čo sa bez reálneho vstupu overiť nedá
-(ťahanie okna, koliesko myši, globálne hooky), ale **hýbe reálnou myšou a
-posiela klávesy** — počas jeho behu sa počítač nedá používať a spustiť sa
-dá len vtedy, keď má človek dve minúty času. Preto sa nespúšťa bežne, a
-preto sa vizuálne chyby (prázdny pruh pod grafom, orezaný text, panel,
-ktorý vypadol z okna) našli až neskoro.
+    python gui_screenshots.py                 # into logs/gui_screenshots
+    python gui_screenshots.py C:\\cesta\\sem   # somewhere else
+    python gui_screenshots.py --lang en       # whole run in another UI language
+    python gui_screenshots.py --okno          # only the app window, no desktop
 
-Tento skript je ten lacný zvyšok: appku postaví, prepne po stránkach a
-odfotí ich. Nedotkne sa myši ani klávesnice, beží asi 20 sekúnd a dá sa
-pustiť kedykoľvek. Nič netvrdí o správnosti — obrázky musí pozrieť človek
-(alebo model). Čo sa overiť DÁ programovo, hlási ako kontroly na konci.
+`--lang` switches the language right at the start, and the German and
+Japanese steps then return to it (without it to Slovak, as before). `--okno`
+(alias `--window`) shoots only the app window itself by its HWND - without
+the desktop, the taskbar and the windows around it, even when something
+covers it - and in addition shoots the "One session up close" panel from
+History (`17_relacia_zblizka`); the pictures in the README come from that.
+Without `--okno` the window shot with a small margin stays as before.
 
-Čo si zálohuje a vráti
-----------------------
-`dandurf_settings.json` (aj jeho `.bak`), `hr_sessions.json`, `hr_insights.json`,
-`hr_session_open.json` (kontrolný bod relácie) a `hr_session_pending.json`
-(relácie, ktoré sa nepodarilo uložiť). Skript do
-nich zapisuje (syntetická história, prepnutie témy), ale na konci — aj po
-páde — obnoví pôvodný stav. Bez toho by ti fotenie prepísalo reálne relácie.
-
-Spustenie
----------
-    python gui_screenshots.py                 # do logs/gui_screenshots
-    python gui_screenshots.py C:\\cesta\\sem   # inam
-    python gui_screenshots.py --lang en       # cely beh v inom jazyku appky
-    python gui_screenshots.py --okno          # len okno appky, bez plochy okolo
-
-`--lang` prepne jazyk hned na zaciatku a kroky s nemcinou a japoncinou sa
-potom vratia k nemu (bez neho k slovencine, ako doteraz). `--okno` (alias
-`--window`) foti len samotne okno appky podla jeho HWND - bez plochy, panela
-uloh a okien okolo, aj ked ho nieco prekryva - a navyse odfoti panel
-„Relacia zblizka“ z Historie (`17_relacia_zblizka`); z toho su obrazky
-v README. Bez `--okno` ostava fotka okna s malym okrajom ako doteraz.
-
-Návratový kód: 0 = žiadna chyba v callbackoch Tk, 1 = niečo spadlo.
+Return code: 0 = no error in Tk callbacks, 1 = something crashed.
 """
 import argparse
 import json
@@ -51,12 +54,12 @@ import traceback
 PROJ = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, PROJ)
 
-from i18n import LANGUAGES                      # noqa: E402  (bez Tk, nic nezapisuje)
+from i18n import LANGUAGES                      # noqa: E402  (no Tk, writes nothing)
 
 
 def _argumenty(argv):
-    """Volby sa citaju PRED zalohou a pred appkou - zly jazyk skonci hned,
-    skor nez sa skript dotkne jedineho suboru."""
+    """Options are read BEFORE the backup and before the app - a wrong
+    language ends right away, before the script touches a single file."""
     p = argparse.ArgumentParser(
         description="Odfoti okno Zanshinu so syntetickymi datami.")
     p.add_argument("out", nargs="?",
@@ -74,14 +77,15 @@ OUT = ARGS.out
 os.makedirs(OUT, exist_ok=True)
 os.chdir(PROJ)
 
-# hr_session_open.json a .bak nastaveni od 0.2.2: appka pri starte kontrolny
-# bod prida do historie a zmaze ho - bez zalohy by ho fotenie "spotrebovalo"
-# a historiu potom vratilo bez neho (viz gui_harness_auto.py).
+# hr_session_open.json and the settings .bak since 0.3: at start the app
+# adds the checkpoint to the history and deletes it - without a backup the
+# screenshots would "consume" it and then restore the history without it
+# (see gui_harness_auto.py).
 ZALOHOVAT = [os.path.join(PROJ, n) for n in
              ("dandurf_settings.json", "hr_sessions.json", "hr_insights.json",
               "hr_session_open.json", "dandurf_settings.json.bak",
-              # relacie, ktore sa nedali ulozit (0.2.2) - start ich doplni
-              # do historie a subor zmaze, rovnako ako kontrolny bod
+              # sessions that could not be saved (0.3) - the start adds them
+              # to the history and deletes the file, just like the checkpoint
               "hr_session_pending.json")]
 _zalohy = {}
 for _cesta in ZALOHOVAT:
@@ -91,7 +95,7 @@ for _cesta in ZALOHOVAT:
 
 
 def obnov_subory():
-    """Vráti zálohované súbory; čo pred behom neexistovalo, zmaže."""
+    """Restores the backed-up files; deletes what was absent before the run."""
     for cesta in ZALOHOVAT:
         try:
             if cesta in _zalohy:
@@ -111,15 +115,15 @@ import theme as theme_mod                       # noqa: E402
 import ui_kit                                   # noqa: E402
 from app import DandurfApp                      # noqa: E402
 
-# Pevné semienko: dve spustenia po sebe majú dať tie isté obrázky, inak sa
-# nedá povedať, či sa zmenil vzhľad alebo len náhodné dáta.
+# Fixed seed: two runs in a row must give the same pictures, otherwise
+# you cannot tell whether the look changed or just the random data.
 random.seed(7)
 
 chyby = []
 kontroly = []
 
 
-otvorene = []          # dialogy cakajuce na zatvorenie
+otvorene = []          # dialogs waiting to be closed
 
 
 def kontrola(nazov, podmienka, detail=""):
@@ -133,12 +137,12 @@ app = DandurfApp(root)
 
 
 def _len_okno(okno):
-    """HWND okna pre `--okno`, alebo None (vtedy sa foti obdlznik)."""
+    """HWND of the window for `--okno`, or None (then a rectangle is shot)."""
     return ui_kit._window_hwnd(okno) if ARGS.okno else None
 
 
 def _bez_metadat(img):
-    """Kopia obrazka bez EXIF/XMP/textovych blokov - nic okrem pixelov."""
+    """Copy of the image without EXIF/XMP/text chunks - nothing but pixels."""
     cisty = img.convert("RGB")
     cisty.info = {}
     return cisty
@@ -147,8 +151,9 @@ def _bez_metadat(img):
 def foto(meno):
     root.update_idletasks()
     root.update()
-    # Okno, ktore este caka na odhalenie (DWM cloak pri starte), nevidno -
-    # snimka by zachytila plochu za nim. Radsej ziadna fotka.
+    # A window still waiting to be revealed (DWM cloak at start) is not
+    # visible - the shot would capture the desktop behind it. Better no
+    # picture at all.
     if getattr(app, "_zahalene", False) or ui_kit.je_zahalene(root):
         kontrola(f"foto {meno}: okno uz nie je zahalene", False)
         return
@@ -156,15 +161,15 @@ def foto(meno):
     hwnd = _len_okno(root)
     try:
         if hwnd:
-            # LEN NASE OKNO (`--okno`): podla HWND, nie obdlznik obrazovky -
-            # ziadna plocha ani panel uloh, a okno inej appky navrchu sa do
-            # fotky nedostane.
+            # ONLY OUR WINDOW (`--okno`): by HWND, not a screen rectangle - no
+            # desktop or taskbar, and another app's window on top does not get
+            # into the picture.
             img = ImageGrab.grab(window=hwnd)
         elif ARGS.okno:
             img = ImageGrab.grab(bbox=(x, y, x + root.winfo_width(),
                                        y + root.winfo_height()), all_screens=True)
         else:
-            # okno + kúsok okolo, aby bolo vidno aj vlastnú titulkovú lištu
+            # the window + a bit around it, so its own title bar is visible too
             bbox = (x - 8, y - 40, x + root.winfo_width() + 8, y + root.winfo_height() + 8)
             img = ImageGrab.grab(bbox=bbox, all_screens=True)
         _bez_metadat(img).save(os.path.join(OUT, meno + ".png"))
@@ -175,11 +180,12 @@ def foto(meno):
 
 
 def foto_panelu(widget, meno, viditelne=None):
-    """Jeden panel okna (obrazok do README) - vyrez z fotky celeho okna.
+    """One window panel (README picture) - cut out of a whole-window shot.
 
-    Len s `--okno`: vtedy fotka zacina presne v rohu okna, takze poloha
-    panelu v okne je aj jeho poloha na fotke. `viditelne` je widget, ktory
-    panel orezava (platno scrollovanej stranky) - panel musi byt cely v nom."""
+    Only with `--okno`: then the shot starts exactly at the window corner,
+    so the panel's position in the window is also its position in the
+    shot. `viditelne` is the widget that clips the panel (the canvas of a
+    scrolled page) - the panel must be wholly inside it."""
     img = foto("_okno_pre_" + meno)
     if img is None:
         return
@@ -204,16 +210,17 @@ def foto_panelu(widget, meno, viditelne=None):
 
 
 def foto_okna(okno, meno):
-    """Ako `foto`, ale pre samostatný Toplevel (dialóg).
+    """Like `foto`, but for a standalone Toplevel (dialog).
 
-    `foto` fotí obdĺžnik hlavného okna. Dialóg je vlastné okno inde na
-    obrazovke, takže by z neho zachytila akurát okraj — presne to sa aj
-    stalo, kým tu tento pomocník nebol.
+    `foto` shoots the main window's rectangle. A dialog is its own window
+    elsewhere on the screen, so it would catch just its edge — exactly
+    what happened before this helper was here.
     """
-    # Dialogy su teraz BEZRAMOVE (ui_kit.DialogChrome) - `y - 40` bol offset na
-    # OS titulok, ktory uz nie je; kreslime od vrchu okna. lift() ich skusi
-    # dat navrch (v harnesse to je pri modalnych oknach nespolahlive, ale
-    # neskodi - v realnej appke ich DialogChrome._take_focus zdvihne sam).
+    # Dialogs are now FRAMELESS (ui_kit.DialogChrome) - `y - 40` was the offset
+    # for the OS title, which is no longer there; we draw from the top of the
+    # window. lift() tries to bring them to the top (in the harness this is
+    # unreliable for modal windows, but it does no harm - in the real app
+    # DialogChrome._take_focus raises them by itself).
     try:
         okno.lift()
     except Exception:
@@ -235,12 +242,13 @@ def foto_okna(okno, meno):
 
 
 # --------------------------------------------------------------------------
-# Syntetické dáta - appka bez relácií ukazuje prázdne stavy, a tie sa dajú
-# odfotiť aj tak; toto je druhá polovica pravdy ("ako to vyzerá s dátami").
+# Synthetic data - the app without sessions shows empty states, and those
+# can be shot anyway; this is the other half of the truth ("what it looks
+# like with data").
 # --------------------------------------------------------------------------
 
 def ziva_relacia(minut=95):
-    """Nakŕmi `app.hr_stats` jednou hodnovernou reláciou (1 vzorka/s)."""
+    """Feeds `app.hr_stats` with one believable session (1 sample/s)."""
     stats = app.hr_stats
     stats.reset_session()
     n = minut * 60
@@ -259,20 +267,21 @@ def ziva_relacia(minut=95):
 
 
 def historia(pocet=46, dni=74):
-    """Zapíše `hr_sessions.json` s reláciami za posledných ~10 týždňov —
-    s dierami (dni bez hrania) aj s krivkou, nech je čo kresliť.
+    """Writes `hr_sessions.json` with sessions from the last ~10 weeks —
+    with gaps (days without playing) and with a curve, so there is
+    something to draw.
 
-    Relacie zacinaju vecer (18-23 h miestneho casu), ako herny vecer, a
-    pocet pripomienok sedi s trojuholnikmi v krivke (audit: "HLÁŠKY 0" pri
-    troch ▼ vyzeralo ako chyba appky)."""
+    Sessions start in the evening (18-23 h local time), like a gaming
+    evening, and the number of cues matches the triangles in the curve
+    (audit: "HLÁŠKY 0" with three ▼ looked like an app bug)."""
     sessions = []
     teraz = time.time()
     for den in range(1, dni + 1):
         if random.random() < 0.32:
             continue
         d = time.localtime(teraz - (dni - den) * 86400)
-        # od 18:00 TOHO DNA, nie od polnoci + 18 h - v den zmeny casu by to
-        # bolo 17:00 alebo 19:00
+        # from 18:00 OF THAT DAY, not from midnight + 18 h - on the day of the
+        # clock change that would be 17:00 or 19:00
         vecer = time.mktime((d.tm_year, d.tm_mon, d.tm_mday, 18, 0, 0, 0, 0, -1))
         for _ in range(1 if random.random() < 0.8 else 2):
             start = vecer + random.uniform(0, 5) * 3600
@@ -292,7 +301,7 @@ def historia(pocet=46, dni=74):
                 krivka.append(int(round(bpm)))
                 if bpm >= kriticky:
                     nad += trvanie / hr_stats.CURVE_POINTS
-            # jedno cislo pre pocet, automaticke aj ▼ v krivke
+            # one number for the count, the automatic ones and ▼ in the curve
             hlasok = random.randint(0, 4)
             sessions.append({
                 "started": start, "duration_s": round(trvanie, 1),
@@ -320,7 +329,7 @@ def historia(pocet=46, dni=74):
 
 
 # --------------------------------------------------------------------------
-# Kroky - každý beží vo vlastnom `after()`, aby Tk medzi nimi stihol kresliť
+# Steps - each runs in its own `after()`, so Tk has time to draw between them
 # --------------------------------------------------------------------------
 
 kroky = []
@@ -336,11 +345,11 @@ ZACIATOCNY_JAZYK = {}
 
 @krok
 def k_jazyk_zaciatok():
-    """`--lang`: cely beh v tom jazyku (napr. anglicke obrazky do README).
-    Ulozene nastavenia sa na konci vratia zo zalohy, takze jazyk hraca
-    ostane, aky bol."""
+    """`--lang`: the whole run in that language (e.g. English pictures for
+    the README). Saved settings are restored from the backup at the end,
+    so the player's language stays as it was."""
     from app import LANG_NATIVE_LABELS
-    # bez --lang sa kroky s de/ja vracaju k slovencine, ako doteraz
+    # without --lang the de/ja steps return to Slovak, as before
     ZACIATOCNY_JAZYK["kod"] = ARGS.lang or "sk"
     if ARGS.lang:
         if app.lang != ARGS.lang:
@@ -350,7 +359,7 @@ def k_jazyk_zaciatok():
 
 @krok
 def k_data():
-    # appka býva pod terminálom, z ktorého sa skript spúšťa
+    # the app usually sits under the terminal the script is started from
     root.attributes("-topmost", True)
     root.lift()
     relacie = historia()
@@ -366,11 +375,12 @@ def k_dnes():
     kontrola("stopa relácie má body", len(app.dnes_trace._values) > 2,
              str(len(app.dnes_trace._values)))
     kontrola("pásma relácie sa sčítali", sum(app.hr_stats.zone_seconds.values()) > 0)
-    # Do 2.1 tu bola kontrola "karta má mikrograf" (`karta._series`).
-    # Mikrograf z karty odišiel — karta je teraz VEĽKÉ číslo a pod ním
-    # jedno slovo. Kontroluje sa teda to, na čom teraz stojí: že popisok
-    # je naozaj krátky. Dlhý popisok bol to, čo v nemčine a ruštine
-    # rozťahovalo pravý stĺpec na úkor stredu so značkou.
+    # Until 2.1 this was a "card has a micrograph" check (`karta._series`).
+    # The micrograph left the card — the card is now a BIG number with one
+    # word under it. So what is checked is what it stands on now: that the
+    # caption is really short. A long caption was what stretched the right
+    # column in German and Russian at the expense of the centre with the
+    # mark.
     karta = next(iter(app.dashboard_cards.values()), None)
     tag = karta.tag_label.cget("text") if karta is not None else ""
     kontrola("karta štatistiky má číslo aj popisok",
@@ -378,9 +388,9 @@ def k_dnes():
              f"{karta.value_label.cget('text')!r} / {tag!r}" if karta else "")
     kontrola("popisok karty je krátky (<= 14 znakov)", len(tag) <= 14,
              f"{tag!r} má {len(tag)}")
-    # `_refresh_dnes_stats` má celé telo v jednom `except`, takže rozbitá
-    # stránka z Tk callbacku neunikne a "0 chýb v Tk" ju nevidí. Toto je
-    # jediné miesto, kde sa to dá zachytiť.
+    # `_refresh_dnes_stats` has its whole body in one `except`, so a broken
+    # page does not escape from the Tk callback and "0 errors in Tk" does not
+    # see it. This is the only place where it can be caught.
     kontrola("obnovenie Dnes nikdy nezlyhalo", app._dnes_refresh_fails == 0,
              f"{app._dnes_refresh_fails} zlyhaní — pozri logy/app.log")
 
@@ -397,8 +407,9 @@ def k_historia():
     kontrola("graf trendu má body aj popisky osi",
              len(app.history_trend._values) > 1 and len(app.history_trend._labels) > 1,
              f"{len(app.history_trend._values)} bodov / {len(app.history_trend._labels)} popiskov")
-    # Od 0.2.2 (davka 4) mriezka ukazuje tyzdne od prvej relacie, najviac
-    # 26 - nie cely rok. Ma mat aspon tyzden, najviac pol roka, a popisky.
+    # Since 0.3 (batch 4) the grid shows weeks from the first session, at most
+    # 26 - not the whole year. It must have at least a week, at most half a
+    # year, and the labels.
     mriezka = app.history_daygrid
     kontrola("mriežka dní je naplnená",
              7 <= len(mriezka._days) <= 26 * 7
@@ -437,11 +448,12 @@ def k_historia_foto3():
 
 @krok
 def k_historia_detail():
-    """`--okno`: panel „Relacia zblizka“ navrch viditelnej casti stranky -
-    v dalsom kroku z neho bude samostatny obrazok (README)."""
+    """`--okno`: the "One session up close" panel at the top of the visible
+    part of the page - in the next step it becomes a separate picture
+    (README)."""
     if not ARGS.okno:
         return
-    # najnovsia relacia s dvoma pripomienkami - nech su v krivke vidno ▼
+    # the newest session with two cues - so ▼ is visible in the curve
     sessions = app._world_sessions()
     s_dvoma = [i for i, s in enumerate(sessions)
                if len(s.get("trigger_offsets_s") or ()) == 2]
@@ -473,8 +485,8 @@ def k_vhre_foto():
 
 @krok
 def k_vhre_qr():
-    """Karta senzora je na spodku stránky; QR je tam len ako značka,
-    kód sa rozbalí až klikom."""
+    """The sensor card is at the bottom of the page; the QR is there only as
+    a mark, the code expands only on click."""
     app.vhre_scroll._parent_canvas.yview_moveto(0.82)
     if getattr(app, "hr_qr", None) is not None:
         app.hr_qr._flip()
@@ -499,7 +511,7 @@ def k_zvuk_foto():
 
 @krok
 def k_zvuk_scroll():
-    # spodok stránky (Časovanie + Vrátiť odporúčané)
+    # bottom of the page (Timing + Restore recommended)
     app.zvuk_scroll._parent_canvas.yview_moveto(1.0)
 
 
@@ -510,9 +522,9 @@ def k_zvuk_foto2():
 
 @krok
 def k_sprievodca():
-    # "guide" uz nie je samostatna karta - `TAB_ALIAS` ho presmeruje na
-    # stranku Hlasky. Vysvetlivka ku kazdej hlaske sedi PRIAMO v jej karte,
-    # takze sa fotí rozbalena karta, nie samostatna stranka.
+    # "guide" is no longer a separate tab - `TAB_ALIAS` redirects it to the
+    # Cues page. The explanation for each cue sits RIGHT in its card, so
+    # the expanded card is shot, not a separate page.
     app.sidebar._select("guide")
     app.spustace_scroll._parent_canvas.yview_moveto(0.0)
     app.slots[0].toggle_detail()
@@ -526,7 +538,8 @@ def k_sprievodca_foto():
 
 @krok
 def k_sprievodca_periferia():
-    # Tretia hlaska (Uvolnenie & periferia) - iny obsah, iny piktogram.
+    # The third cue (Uvolnenie & periferia, Release & periphery) - different
+    # content, different pictogram.
     app.slots[0].toggle_detail()
     app.slots[2].toggle_detail()
     app.spustace_scroll._parent_canvas.yview_moveto(0.62)
@@ -539,8 +552,8 @@ def k_sprievodca_foto3():
 
 @krok
 def k_sprievodca_filozofia():
-    # Filozofia a zdroje su jedina cast, ktora nepatri ziadnej hlaske -
-    # sedi zabalena na spodku stranky.
+    # Philosophy and sources are the only part that belongs to no cue - it
+    # sits collapsed at the bottom of the page.
     app.slots[2].toggle_detail()
     app.guide_content._toggle("philosophy")
     app.spustace_scroll._parent_canvas.yview_moveto(1.0)
@@ -553,9 +566,9 @@ def k_sprievodca_foto2():
 
 @krok
 def k_spustace():
-    # Sprievodca je na TEJ ISTEJ stranke, len nizsie - vyber karty scroll
-    # nevracia, takze bez tohto by fotka spustacov zacinala tam, kde
-    # skoncil sprievodca.
+    # The guide is on THE SAME page, just lower - choosing a tab does not
+    # reset the scroll, so without this the shot of the triggers would start
+    # where the guide ended.
     app.sidebar._select("spustace")
     app.spustace_scroll._parent_canvas.yview_moveto(0.0)
 
@@ -577,10 +590,11 @@ def k_vseobecne_foto():
 
 @krok
 def k_acko_v_liste():
-    """Tlačidlo „A" v titulkovej lište musí naozaj skočiť na sekciu.
+    """The "A" button in the title bar must really jump to the section.
 
-    Otvoriť správnu stránku je len polovica úlohy — keby hráč ostal hore,
-    sekciu by musel nájsť sám a tlačidlo by nebolo na nič.
+    Opening the right page is only half the job — if the player stayed at
+    the top, they would have to find the section themselves and the button
+    would be useless.
     """
     app.sidebar._select("dnes")
     root.update()
@@ -588,8 +602,8 @@ def k_acko_v_liste():
              getattr(app.titlebar, "about_btn", None) is not None)
     app.show_about()
     root.update()
-    # "vseobecne" je KARTA vnutri stranky "nastavenia", nie samostatna
-    # stranka - preto sa overuje oboje (viz `DandurfApp.SETTINGS_TABS`).
+    # "vseobecne" is a TAB inside the "nastavenia" page, not a separate
+    # page - that is why both are checked (see `DandurfApp.SETTINGS_TABS`).
     kontrola("áčko otvorí Nastavenia → Všeobecné",
              app.pages.current == "nastavenia"
              and app.settings_pages.current == "vseobecne",
@@ -598,7 +612,7 @@ def k_acko_v_liste():
 
 @krok
 def k_acko_posun():
-    """Posun beží cez `after(80)`, takže sa meria až v ďalšom kroku."""
+    """The scroll runs via `after(80)`, so it is measured in the next step."""
     wrap = getattr(app, "vseobecne_wrap", None)
     canvas = getattr(wrap, "_parent_canvas", None) if wrap else None
     hore = canvas.yview()[0] if canvas is not None else None
@@ -609,10 +623,11 @@ def k_acko_posun():
 
 @krok
 def k_about():
-    """Sekcia „O appke" a odkazy na autora.
+    """The "About" section and the links to the author.
 
-    Odkazy vedú von z appky, takže keď sa stratia alebo sa ich zmení počet,
-    nikto si to nevšimne — v okne to vyzerá rovnako, len tlačidlá chýbajú.
+    The links lead out of the app, so when they get lost or their number
+    changes, nobody notices — the window looks the same, only the buttons
+    are missing.
     """
     import guide_content
 
@@ -638,11 +653,12 @@ def k_about():
 
 @krok
 def k_tema():
-    """Prepnutie témy je najčastejší zdroj „zabudnutých" farieb — prvky,
-    ktoré si držia vlastnú kópiu palety alebo kreslia na Canvas.
+    """Switching the theme is the most common source of "forgotten" colours —
+    elements that keep their own copy of the palette or draw on a Canvas.
 
-    Od 0.2 téma patrí svetu (B3-worlds), takže sa prepína svet - priame
-    `on_theme_switch` by rozišlo vzhľad a svet."""
+    Since 0.2 the theme belongs to the world (B3-worlds), so the world is
+    switched - a direct `on_theme_switch` would split the look and the
+    world apart."""
     app.set_world("work" if app.world == "play" else "play")
     app.sidebar._select("historia")
 
@@ -661,8 +677,8 @@ def k_tema_foto():
 
 @krok
 def k_tema_dnes():
-    # Dnes v opačnej téme - pásma tepu (pruh záťaže, stopa relácie,
-    # legenda) majú v každej téme vlastný rad farieb
+    # Today in the opposite theme - the heart-rate zones (load strip, session
+    # trace, legend) have their own set of colours in each theme
     app.sidebar._select("dnes")
     app._refresh_dnes_stats()
 
@@ -674,9 +690,9 @@ def k_tema_dnes_foto():
 
 @krok
 def k_jazyk_de():
-    """Nemčina má najdlhšie slová zo všetkých jazykov appky - ak sa
-    rozloženie niekde zlomí, zlomí sa tu. Japončina zase overí, či sa vôbec
-    vykreslia CJK znaky (potrebujú systémové písmo)."""
+    """German has the longest words of all the app's languages - if the
+    layout breaks anywhere, it breaks here. Japanese in turn checks whether
+    CJK characters are drawn at all (they need a system font)."""
     from app import LANG_NATIVE_LABELS
     app.on_lang_switch(LANG_NATIVE_LABELS["de"])
 
@@ -718,15 +734,17 @@ def k_jazyk_spat():
 
 @krok
 def k_dotaznik():
-    """Dotazník po relácii sa musí dať OTVORIŤ — na každom tvare súhrnu.
+    """The post-session questionnaire must OPEN — for every summary shape.
 
-    Chyba, kvôli ktorej tento krok vznikol, bola v `__init__` dialógu.
-    Pytest ju minul (volal pomocníkov na triede, kde nevzniká) a harness
-    tiež (dialóg nikdy neotvoril). Výsledok: sedem `TypeError` v denníku,
-    trinásť relácií bez kontextu a všetky brány zelené.
+    The bug this step was created for was in the dialog's `__init__`.
+    Pytest missed it (it called the helpers on the class, where it does not
+    arise) and so did the harness (it never opened the dialog). Result: seven
+    `TypeError`s in the journal, thirteen sessions without context and all
+    gates green.
 
-    Tvary nižšie sú tie, ktoré v histórii naozaj ležia — od relácie zo
-    staršej verzie bez krivky až po dnešnú s pruhom aktivity.
+    The shapes below are the ones that really lie in the history — from a
+    session from an older version without a curve to today's with an
+    activity strip.
     """
     import ui_dialogs
     import ui_kit
@@ -746,12 +764,13 @@ def k_dotaznik():
             duration_s=1200.0, curve=[70, None, 80, None] * 50,
             activity_curve=[None, 0.5] * 40), 0),
     )
-    # OKNA SA TU NEZATVARAJU, len skryju.
+    # THE WINDOWS ARE NOT CLOSED HERE, only hidden.
     #
-    # CustomTkinter si po otvoreni Toplevelu planuje oneskoreny
-    # `focus_set`. Ked okno zanikne skor, nez callback dobehne, Tk hodi
-    # "bad window path name" - a harness by hlasil chybu, ktora s
-    # dotaznikom nesuvisi. Zatvaraju sa az v `k_dotaznik_zavri`.
+    # After opening a Toplevel, CustomTkinter schedules a delayed
+    # `focus_set`. When the window is gone before the callback runs, Tk
+    # throws "bad window path name" - and the harness would report an error
+    # that has nothing to do with the questionnaire. They are closed only in
+    # `k_dotaznik_zavri`.
     for popis, suhrn, hlasok in tvary:
         try:
             dialog = ui_dialogs.SessionEndDialog(
@@ -766,8 +785,9 @@ def k_dotaznik():
         dialog.top.grab_release()
         dialog.top.withdraw()
 
-    # Graf v dotazníku: pri dosť dlhej krivke tam byť MUSÍ, inak by sa
-    # hráč pýtal, čo sa dialo, bez toho, aby to videl.
+    # The chart in the questionnaire: with a long enough curve it MUST be
+    # there, otherwise the player would be asked what was going on without
+    # seeing it.
     def ma_graf(widget):
         if isinstance(widget, ui_kit.SessionTrace):
             return True
@@ -778,9 +798,9 @@ def k_dotaznik():
         kontrola("dotazník má krivku relácie", ma_graf(s_grafom.top))
         otvorene.append(s_grafom)
         root.update()
-        # ODFOTI SA AZ V DALSOM KROKU. `CTkToplevel` si rozmer nastavuje
-        # oneskorene, takze hned po postaveni ma `winfo_width()` par pixelov
-        # a na obrazku by bol cierny stvorcek.
+        # IT IS SHOT ONLY IN THE NEXT STEP. `CTkToplevel` sets its size with a
+        # delay, so right after being built `winfo_width()` is a few pixels and
+        # the picture would show a black square.
         globals()["_dotaznik_na_foto"] = s_grafom
     except Exception:
         chyby.append(traceback.format_exc())
@@ -789,7 +809,7 @@ def k_dotaznik():
 
 @krok
 def k_dotaznik_zavri():
-    """Az teraz - okno ma rozmer a oneskorene `focus_set` uz dobehlo."""
+    """Only now - the window has a size and the delayed `focus_set` has run."""
     d = globals().get("_dotaznik_na_foto")
     if d is not None:
         try:
@@ -810,7 +830,7 @@ def k_dotaznik_zavri():
 
 @krok
 def k_prazdny_stav():
-    """Druhá polovica pravdy: ako appka vyzerá hneď po inštalácii."""
+    """The other half of the truth: how the app looks right after install."""
     try:
         os.remove(os.path.join(PROJ, "hr_sessions.json"))
     except OSError:
@@ -847,7 +867,7 @@ def k_koniec():
         print("---- chyba ----\n", e)
     print("obrázky:", OUT)
     print("nastavenia a história obnovené zo zálohy")
-    sys.stdout.flush()          # os._exit() buffer nevyprázdni
+    sys.stdout.flush()          # os._exit() does not flush the buffer
     root.after(200, lambda: os._exit(1 if (zlyhali or chyby) else 0))
 
 

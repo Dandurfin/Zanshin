@@ -1,13 +1,15 @@
 # -*- coding: utf-8 -*-
-"""Testy nepisu do dat v koreni repa (0.2.2 davka 4b, tests/conftest.py).
+"""Tests leave the repo-root data alone (0.3 batch 4b, tests/conftest.py).
 
-Pri behu zo zdrojakov su data appky v koreni repa (`paths.data_dir`) a
-`logging_setup` zapisoval z testov do toho isteho logs/app.log ako ziva
-appka. conftest.py presmeruje cesty do docasneho priecinka pred prvym
-importom modulov appky. Appka sama sa nemeni: `paths.data_dir()` vracia
-pri behu zo zdrojakov stale koren repa.
+When running from sources, the app's data are in the repo root
+(`paths.data_dir`) and `logging_setup` wrote from tests into the same
+logs/app.log as the live app. conftest.py redirects the paths to a temporary
+folder before the first import of the app modules. The app itself does not
+change: `paths.data_dir()` still returns the repo root when running from
+sources.
 
-Koren repa sa tu len cita (`os.stat`) - nic sa v nom neotvara na zapis.
+The repo root is only read here (`os.stat`) - nothing in it is opened for
+writing.
 """
 import logging
 import os
@@ -30,9 +32,9 @@ def _v_repe(cesta):
 
 
 def test_appka_by_pisala_do_repa_testy_nie():
-    # spravanie appky sa nezmenilo
+    # the app's behaviour has not changed
     assert os.path.normcase(paths.data_dir()) == KOREN
-    # ...ale cely beh testov ma data v docasnom priecinku
+    # ...but the whole test run has its data in a temporary folder
     assert not _v_repe(paths.DATA_DIR)
     assert os.path.normcase(paths.DATA_DIR).startswith(
         os.path.normcase(os.path.abspath(tempfile.gettempdir())))
@@ -63,7 +65,7 @@ def test_log_ide_do_docasneho_suboru_nie_do_repa():
         assert "riadok z testu (mimo repa)" in fh.read()
     if pred is not None:
         po = os.stat(zivy_log)
-        # ziva appka moze pisat sama; tento riadok tam ale nie je
+        # the live app may write by itself; but this line is not there
         if (po.st_size, po.st_mtime_ns) != (pred.st_size, pred.st_mtime_ns):
             with open(zivy_log, "rb") as fh:
                 fh.seek(pred.st_size)

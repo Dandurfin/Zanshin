@@ -1,14 +1,15 @@
 # -*- coding: utf-8 -*-
-"""Tlacidlo "Aktualizovat hlas" - jadro (hlas_kniznica.py, 0.2.2h).
+"""The "Update voice" button - the core (hlas_kniznica.py, 0.3h).
 
-Microsoft v novembri 2026 odmietol edge-tts 7.2.8 a oprava bola zmena KODU,
-takze vydany Zanshin sa neda opravit datami. Hrac si novsi edge-tts stiahne
-sam - len na klik, nikdy pocas sledovania, len z PyPI, overeny, vyskusany
-jednym slovom a ponechany, len ked funguje.
+In November 2026 Microsoft rejected edge-tts 7.2.8 and the fix was a change
+to the CODE, so a released Zanshin cannot be fixed with data. The player
+downloads a newer edge-tts themselves - only on click, never while watching,
+only from PyPI, verified, tried with one word and kept only when it works.
 
-Ziadny test nejde na siet: `_otvor` (HTTP) aj `_syntetizuj` (Microsoft) su
-v autouse fixture nahradene chybou. Testy, ktore skusobne slovo potrebuju,
-ho pustia LEN atrapou balika (`ATRAPA = True`), ktora pise lokalny subor.
+No test goes to the network: `_otvor` (HTTP) and `_syntetizuj` (Microsoft)
+are replaced with an error in an autouse fixture. Tests that need the test
+word only let it through the package stub (`ATRAPA = True`), which writes a
+local file.
 """
 import asyncio
 import hashlib
@@ -46,8 +47,8 @@ def _je_nase_meno(k):
 
 @pytest.fixture(autouse=True)
 def izolacia(monkeypatch, tmp_path):
-    """Bez siete, kniznica v tmp_path a po teste ten isty stav importu
-    (sys.modules, sys.meta_path) aj globalov audio_engine."""
+    """No network, the library in tmp_path, and after the test the same import
+    state (sys.modules, sys.meta_path) and audio_engine globals."""
     def _siet(*_a, **_k):
         raise AssertionError("test siel na siet")
     monkeypatch.setattr(hk, "_otvor", _siet)
@@ -70,7 +71,7 @@ def izolacia(monkeypatch, tmp_path):
 
 
 def _lokalna_synteza(monkeypatch, zaznam=None):
-    """Skusobne slovo smie ist len atrapou - ta pise lokalny subor."""
+    """The test word may only go through the stub - it writes a local file."""
     def _synt(modul, text, hlas, cesta, timeout):
         assert getattr(modul, "ATRAPA", False), "skusobne slovo by islo na Microsoft"
         if zaznam is not None:
@@ -80,7 +81,7 @@ def _lokalna_synteza(monkeypatch, zaznam=None):
 
 
 # --------------------------------------------------------------------------
-# Atrapa balika edge_tts, wheel a odpoved PyPI
+# Stub of the edge_tts package, the wheel and the PyPI response
 # --------------------------------------------------------------------------
 
 ULOZ_OK = ('        with open(audio_fname, "wb") as fh:\n'
@@ -135,7 +136,7 @@ def _wheel(verzia=NOVA, balik=None, metadata_text=None, navyse=(),
     balik = _balik(verzia) if balik is None else balik
     buf = io.BytesIO()
     with warnings.catch_warnings():
-        warnings.simplefilter("ignore")      # duplicitne mena v testoch zamerne
+        warnings.simplefilter("ignore")      # duplicate names in tests on purpose
         with zipfile.ZipFile(buf, "w", kompresia) as zf:
             for meno, obsah in balik.items():
                 zf.writestr("edge_tts/" + meno, obsah)
@@ -203,7 +204,7 @@ class _Odpoved:
 
 
 def _falosna_siet(monkeypatch, mapa, zaznam=None):
-    """mapa: url -> bajty | vynimka | (bajty, konecna_url) | (bajty, url, hlavicky)."""
+    """mapa: url -> bytes | exception | (bytes, final_url) | (bytes, url, headers)."""
     def _otvor(req, hostitelia):
         if zaznam is not None:
             zaznam.append((req.full_url, dict(req.header_items()), hostitelia))
@@ -251,7 +252,7 @@ def _nase_hladace():
 
 
 # --------------------------------------------------------------------------
-# Verzie a specifikatory
+# Versions and specifiers
 # --------------------------------------------------------------------------
 
 @pytest.mark.parametrize("verzia, spec, ocakavane", [
@@ -310,14 +311,15 @@ def test_verzia_finalna_len_cisla_a_bodky(text, ocakavane):
 
 
 def test_koniec_riadku_nie_je_cast_verzie_mena_ani_sha():
-    """`$` v regexe pusti aj koncovy '\\n'. Verzia z PyPI, meno suboru
-    z manifestu, sha256 ani priecinok verzie ho mat nesmu - inak by verzia
-    "9.0.0\\n" platila za finalnu a riadok app.log by sa rozdelil na dva."""
+    """`$` in a regex also lets a trailing '\\n' through. The PyPI version,
+    the file name from the manifest, sha256 and the version folder must
+    not have it - otherwise version "9.0.0\\n" would count as final and
+    the app.log line would split in two."""
     assert not hk._je_modul_py("communicate\n.py")
     assert not hk._SHA256.match("a" * 64 + "\n")
     assert not hk._PRIECINOK_VERZIE.match("edge_tts-9.0.0\n")
     assert not hk._MENO_MODULU.match("communicate\n")
-    # manifest s takym menom suboru je neplatny
+    # a manifest with such a file name is invalid
     os.makedirs(hk.kniznica_dir())
     with open(os.path.join(hk.kniznica_dir(), "manifest.json"), "w") as fh:
         json.dump({"format": 1, "version": NOVA, "folder": "edge_tts-9.0.0",
@@ -346,7 +348,7 @@ def test_je_novsia(a, b, ocakavane):
 
 
 # --------------------------------------------------------------------------
-# Znacky a zavislosti z METADATA
+# Markers and dependencies from METADATA
 # --------------------------------------------------------------------------
 
 @pytest.mark.parametrize("znacka, ocakavane", [
@@ -359,7 +361,7 @@ def test_je_novsia(a, b, ocakavane):
     ('(python_version < "3" or os_name == "nic") and os_name != "nic"', False),
     ('"win" in sys_platform or "linux" in sys_platform or "darwin" in sys_platform', True),
     ('platform_python_implementation not in "Jython"', True),
-    ('neznama_premenna == "x"', True),           # neznama = poziadavka sa skontroluje
+    ('neznama_premenna == "x"', True),           # unknown = the requirement is checked
     ('python_version <', True),
     ('python_version === "3.14"', True),
 ])
@@ -391,7 +393,7 @@ def test_zavislost_chyba_alebo_je_stara():
     assert "certifi" in text and "nesplna >=99999" in text
     assert "nesplna >>3" in text
     assert "foo (URL)" in text
-    assert "zanshin-neexistujuci-balik2 chyba" in text   # neznama znacka = plati
+    assert "zanshin-neexistujuci-balik2 chyba" in text   # unknown marker = applies
     assert len(problemy) == 7, problemy
 
 
@@ -403,8 +405,9 @@ def test_rozober_poziadavku_tvary():
 
 
 def test_neznama_verzia_zavislosti_sa_prepusti_a_povie(monkeypatch):
-    """V builde nema typing_extensions dist-info ani __version__ - nesmie to
-    zablokovat opravu (rozhodne import a skusobne slovo), ale povie sa to."""
+    """In the build, typing_extensions has no dist-info or __version__ - that
+    must not block the fix (import and the test word decide), but it is
+    reported."""
     import typing_extensions
     assert not hasattr(typing_extensions, "__version__")
 
@@ -414,7 +417,7 @@ def test_neznama_verzia_zavislosti_sa_prepusti_a_povie(monkeypatch):
         version=_bez_dist_info, packages_distributions=lambda: {},
         PackageNotFoundError=metadata.PackageNotFoundError))
     problemy, neoverene = hk.skontroluj_zavislosti(ZAVISLOSTI_731)
-    # aiohttp, certifi, tabulate maju __version__ - overia sa aj bez dist-info
+    # aiohttp, certifi, tabulate have __version__ - checked without dist-info
     assert problemy == []
     assert neoverene == ["typing-extensions"]
     problemy, _ = hk.skontroluj_zavislosti(["aiohttp>=999"])
@@ -433,12 +436,12 @@ def test_skontroluj_metadata():
     with pytest.raises(hk._Zlyhanie) as z:
         hk.skontroluj_metadata(_metadata(NOVA, zavislosti=["zanshin-neexistujuci>=1"]), NOVA)
     assert z.value.stav == hk.STAV_NEKOMPATIBILNY and "zavislosti" in z.value.dovod
-    # "Requires-Dist" v popise (telo za prazdnym riadkom) nie je hlavicka
+    # "Requires-Dist" in the description (body after blank line) is no header
     assert hk.skontroluj_metadata(_metadata(NOVA, zavislosti=[]), NOVA) == []
 
 
 # --------------------------------------------------------------------------
-# Vyber verzie z PyPI
+# Choosing the version from PyPI
 # --------------------------------------------------------------------------
 
 def test_vyber_najnovsiu_finalnu_nie_predbeznu_ani_stiahnutu():
@@ -468,7 +471,7 @@ def test_vyber_starsiu_novsiu_ked_najnovsia_chce_iny_python():
 
 @pytest.mark.parametrize("zmena, dovod", [
     ({"requires_python": ">=3.99"}, "Python"),
-    ({"requires_python": "≥3.7"}, "Python"),          # neznamy tvar = nie
+    ({"requires_python": "≥3.7"}, "Python"),          # unknown form = no
     ({"packagetype": "sdist"}, "bez wheelu"),
     ({"filename": "edge_tts-7.4.0-py3-none-win_amd64.whl"}, "bez wheelu"),
     ({"filename": "edge_ttz-7.4.0-py3-none-any.whl"}, "bez wheelu"),
@@ -508,7 +511,7 @@ def test_bez_aktivnej_verzie_ide_najnovsia_a_bez_releases_info_urls():
 
 
 # --------------------------------------------------------------------------
-# Siet: https, hostitel, presmerovanie, stropy
+# Network: https, host, redirect, caps
 # --------------------------------------------------------------------------
 
 @pytest.mark.parametrize("url", [
@@ -562,7 +565,7 @@ def test_strop_velkosti_odpovede(monkeypatch):
     with pytest.raises(hk._Zlyhanie) as z:
         hk._http_get(url, 100, hk._SUBORY_HOSTITELIA)
     assert z.value.stav == hk.STAV_OVERENIE_ZLYHALO
-    # bez Content-Length sa cita po kusoch a skonci hned za stropom
+    # without Content-Length it is read in chunks and stops right after the cap
     _falosna_siet(monkeypatch, {url: b"x" * 200_000})
     with pytest.raises(hk._Zlyhanie) as z:
         hk._http_get(url, 100_000, hk._SUBORY_HOSTITELIA)
@@ -595,8 +598,8 @@ def test_poziadavka_nesie_len_holy_nazov_appky(monkeypatch):
 
 
 def test_otvor_ide_cez_https_s_certifi_a_kratkym_timeoutom(monkeypatch):
-    """Skutocny `_otvor` bez siete: opener sa podvrhne a zapise si, s cim
-    ho appka postavila."""
+    """The real `_otvor` without network: the opener is faked and records what
+    the app built it with."""
     import ssl
 
     import certifi
@@ -633,7 +636,7 @@ def test_otvor_ide_cez_https_s_certifi_a_kratkym_timeoutom(monkeypatch):
 
 
 # --------------------------------------------------------------------------
-# Stiahnutie a overenie wheelu
+# Downloading and verifying the wheel
 # --------------------------------------------------------------------------
 
 def test_wheel_sha256_a_velkost_musia_sediet(monkeypatch):
@@ -657,7 +660,7 @@ def test_wheel_sa_rozbali_len_edge_tts_a_metadata_do_pamate():
 
 
 def _zip(polozky, kompresia=zipfile.ZIP_DEFLATED):
-    """Wheel s presne tymito polozkami: [(meno|ZipInfo, obsah)] + METADATA."""
+    """Wheel with exactly these items: [(name|ZipInfo, content)] + METADATA."""
     return _wheel(navyse=polozky, kompresia=kompresia)
 
 
@@ -665,7 +668,7 @@ def _info(meno, upravy=None, povodne_meno=None):
     zi = zipfile.ZipInfo(meno)
     zi.compress_type = zipfile.ZIP_DEFLATED
     if povodne_meno is not None:
-        zi.filename = povodne_meno       # obide normalizaciu ZipInfo
+        zi.filename = povodne_meno       # bypasses the ZipInfo normalisation
     for k, v in (upravy or {}).items():
         setattr(zi, k, v)
     return zi
@@ -703,8 +706,8 @@ def test_zip_necakane_alebo_nebezpecne_polozky(polozka, stav):
 
 
 def test_zip_spatna_lomka_v_mene():
-    """zipfile vo Windows meni '\\' na '/' uz pri citani - rozhoduje
-    povodne meno v archive."""
+    """zipfile on Windows changes '\\' to '/' already on reading - the original
+    name in the archive decides."""
     wheel = _zip([(_info("edge_tts/x.py", povodne_meno="edge_tts\\x.py"), b"x = 1\n")])
     with zipfile.ZipFile(io.BytesIO(wheel)) as zf:
         assert any("\\" in i.orig_filename for i in zf.infolist())
@@ -729,15 +732,16 @@ def test_zip_symbolicky_odkaz_a_specialne_subory():
         with pytest.raises(hk._Zlyhanie) as z:
             hk.rozbal_wheel(_zip([(zi, b"../../etc/passwd")]), NOVA)
         assert z.value.stav == hk.STAV_OVERENIE_ZLYHALO
-    # obycajny unixovy subor (0o100644) prejde
+    # an ordinary unix file (0o100644) passes
     zi = _info("edge_tts/obycajny.py", {"create_system": 3, "external_attr": 0o100644 << 16})
     subory, _ = hk.rozbal_wheel(_zip([(zi, b"a = 1\n")]), NOVA)
     assert subory["obycajny.py"] == b"a = 1\n"
 
 
 def _nastav_priznak(wheel, meno, priznak):
-    """Zapise bit do priznakov polozky v centralnom adresari zipu (zipfile
-    pri zapise priznaky nuluje, takze sifrovanu polozku inak nevyrobi)."""
+    """Writes a bit into an entry's flags in the zip central directory
+    (zipfile clears the flags on write, so it would not make an encrypted
+    entry otherwise)."""
     data = bytearray(wheel)
     meno = meno.encode()
     poz = data.find(b"PK\x01\x02")
@@ -763,7 +767,7 @@ def test_zip_sifrovana_polozka():
 def test_zip_stropy_velkosti_a_poctu(monkeypatch):
     velky = b"#" * (hk.ZIP_SUBOR_STROP_B + 512 * 1024)
     wheel = _zip([("edge_tts/velky.py", velky)])
-    assert len(wheel) < 100_000              # zbalene je malicke - strop je na rozbalene
+    assert len(wheel) < 100_000              # packed it is tiny - the cap is on unpacked size
     with pytest.raises(hk._Zlyhanie) as z:
         hk.rozbal_wheel(wheel, NOVA)
     assert z.value.stav == hk.STAV_OVERENIE_ZLYHALO and "vacsia" in z.value.dovod
@@ -787,7 +791,7 @@ def test_zip_poskodeny_obsah_chyba_metadata_a_init():
     with pytest.raises(hk._Zlyhanie) as z:
         hk.rozbal_wheel(b"toto nie je zip", NOVA)
     assert z.value.stav == hk.STAV_OVERENIE_ZLYHALO
-    # METADATA inej verzie nez z PyPI
+    # METADATA of a different version than from PyPI
     with pytest.raises(hk._Zlyhanie) as z:
         hk.rozbal_wheel(_wheel(), "9.0.1")
     assert z.value.stav == hk.STAV_OVERENIE_ZLYHALO
@@ -803,7 +807,7 @@ def test_zip_priecinky_ako_polozky_prejdu():
 
 
 # --------------------------------------------------------------------------
-# Kontrola kodu (ast, nic sa nespusta)
+# Code check (ast, nothing is run)
 # --------------------------------------------------------------------------
 
 @pytest.mark.parametrize("riadok", [
@@ -835,7 +839,7 @@ def test_kontrola_kodu_nic_nespusti(tmp_path):
 
 
 # --------------------------------------------------------------------------
-# Hladac a loader: len edge_tts*, sha256, bez bytecode
+# Finder and loader: only edge_tts*, sha256, no bytecode
 # --------------------------------------------------------------------------
 
 def _zapis_balik(priecinok, subory):
@@ -917,7 +921,7 @@ def test_obsadene_meno_sa_nenacita(tmp_path):
 
 
 # --------------------------------------------------------------------------
-# API smoke test a skusobne slovo
+# API smoke test and the test word
 # --------------------------------------------------------------------------
 
 def test_api_smoke():
@@ -931,7 +935,7 @@ def test_api_smoke():
             pass
 
     class _ZlyKonstruktor:
-        def __init__(self, text, voice):          # bez rate=
+        def __init__(self, text, voice):          # without rate=
             pass
 
         async def save(self, cesta):
@@ -1002,11 +1006,11 @@ def test_skusobne_slovo_ma_casovy_limit(monkeypatch):
 
 
 # --------------------------------------------------------------------------
-# Cela aktualizacia (siet aj synteza podvrhnute)
+# The whole update (network and synthesis faked)
 # --------------------------------------------------------------------------
 
 class _ZamokSoZaznamom:
-    """Zamok cache, ktory si pamata, ci vymena prebehla, kym bol drzany."""
+    """Cache lock remembering whether the swap happened while it was held."""
 
     def __init__(self):
         self._z = threading.Lock()
@@ -1045,20 +1049,20 @@ def test_aktualizacia_aktivuje_novu_verziu(monkeypatch, tmp_path, caplog):
 
     assert (v.stav, v.aktivna, v.nova, v.najnovsia) == (hk.STAV_AKTUALIZOVANY, AKTIVNA, NOVA, NOVA)
     assert v.ok
-    # na siet presne dve poziadavky: zoznam vydani a wheel
+    # exactly two requests to the network: the release list and the wheel
     assert [z[0] for z in zaznam] == [JSON_URL, _wheel_url(NOVA)]
     assert all(z[1]["User-agent"] == "Zanshin" for z in zaznam)
-    # skusobne slovo novym modulom, pevny text
+    # test word with the new module, fixed text
     ((modul, text, hlas),) = synteza
     assert text == "Zanshin" and hlas == "en-GB-SoniaNeural" and modul.__version__ == NOVA
-    # vymena pod zamkom cache
+    # swap under the cache lock
     assert audio_engine.edge_tts is modul and audio_engine.edge_tts is not stary
     assert audio_engine.EDGE_AVAILABLE and audio_engine.EDGE_STIAHNUTY
     assert audio_engine.EDGE_VERZIA == NOVA
     assert cache._lock.ziskania == [hk.ZAMOK_CAKANIE_S]
     assert cache._lock.modul_pri_uvolneni == [modul]
     assert hk.aktivna_verzia() == (NOVA, True)
-    # manifest + priecinok, stare verzie a tmp prec, cudzi subor ostal
+    # manifest + folder, old versions and tmp gone, a foreign file stayed
     manifest = hk.citaj_manifest()
     assert manifest["version"] == NOVA and manifest["broken"] is False
     assert manifest["folder"] == "edge_tts-9.0.0"
@@ -1066,7 +1070,7 @@ def test_aktualizacia_aktivuje_novu_verziu(monkeypatch, tmp_path, caplog):
     assert manifest["wheel"] == "edge_tts-9.0.0-py3-none-any.whl"
     assert sorted(os.listdir(koren)) == ["edge_tts-9.0.0", "manifest.json", "poznamka.txt"]
     assert sorted(os.listdir(os.path.join(koren, "edge_tts-9.0.0", "edge_tts"))) == sorted(_balik())
-    # jeden riadok do app.log, bez ciest
+    # one line to app.log, no paths
     riadky = [r.getMessage() for r in caplog.records if r.name == "zanshin.hlas_kniznica"]
     assert riadky == ["aktualizacia hlasu: updated (aktivna edge-tts 7.3.1, "
                       "najnovsia 9.0.0, nova 9.0.0)"]
@@ -1074,8 +1078,8 @@ def test_aktualizacia_aktivuje_novu_verziu(monkeypatch, tmp_path, caplog):
 
 
 def test_aktualizacia_a_priprava_hlasok_idu_novym_modulom(monkeypatch, tmp_path):
-    """Po vymene `EdgeTTSCache.ensure` (pod tym istym zamkom) syntetizuje
-    novym modulom - bez restartu appky."""
+    """After the swap `EdgeTTSCache.ensure` (under the same lock) synthesises
+    with the new module - without an app restart."""
     _aktivny_pribaleny(monkeypatch, modul=object())
     _priprav_aktualizaciu(monkeypatch)
     _lokalna_synteza(monkeypatch)
@@ -1135,9 +1139,10 @@ def test_balik_ktory_sa_nenaimportuje_je_nekompatibilny(monkeypatch):
 
 
 def test_sys_exit_z_kodu_kniznice_nezhodi_vlakno_aktualizacie(monkeypatch):
-    """`sys.exit()` v kode kandidata (pri importe, v Communicate(...) alebo pri
-    skusobnom slove) je SystemExit - nie Exception. Nesmie ujst z `aktualizuj`
-    (GUI by navzdy cakalo s vypnutym tlacidlom a app.log by nemal riadok)."""
+    """`sys.exit()` in the candidate's code (on import, in Communicate(...) or
+    during the test word) is SystemExit - not Exception. It must not escape
+    from `aktualizuj` (the GUI would wait forever with a disabled button and
+    app.log would have no line)."""
     stary = object()
     _aktivny_pribaleny(monkeypatch, modul=stary)
     _lokalna_synteza(monkeypatch)
@@ -1201,20 +1206,20 @@ def test_sledovanie_zastavi_aktualizaciu_pred_kazdym_krokom_na_siet(monkeypatch)
         assert len(zaznam) == povolene, "po zapnuti sledovania uz ziadna poziadavka"
         assert synteza == []
         _stav_bez_zmeny(stary)
-    # abort, ktory sam spadne, sa berie ako "zastav"
+    # an abort that crashes itself is taken as "stop"
     v = hk.aktualizuj(abort=lambda: 1 / 0)
     assert v.stav == hk.STAV_ZRUSENY
 
 
 @pytest.mark.parametrize("povolene, slov", [
-    (2, 0),  # sledovanie sa zaplo pocas stahovania wheelu
-    (3, 0),  # ... po nacitani, pred skusobnym slovom
-    (4, 1),  # ... pocas skusobneho slova (to uz letelo, dobehne)
+    (2, 0),  # watching started while the wheel was downloading
+    (3, 0),  # ... after loading, before the test word
+    (4, 1),  # ... during the test word (it was already in flight, it finishes)
 ])
 def test_sledovanie_pocas_aktualizacie_nic_nenacita_ani_nevymeni(monkeypatch, povolene, slov):
-    """Pocas sledovania sa nic nemeni: stiahnuty kod sa po zapnuti sledovania
-    nezapise ani nenatiahne (= nespusti) a uspesne skusobne slovo, ktore uz
-    letelo, novu verziu nenecha ani nevymeni."""
+    """Nothing changes while watching: downloaded code is not written or loaded
+    (= not run) after watching starts, and a successful test word that was
+    already in flight does not keep or swap in the new version."""
     stary = object()
     _aktivny_pribaleny(monkeypatch, modul=stary)
     zaznam = []
@@ -1239,7 +1244,7 @@ def test_sledovanie_pocas_aktualizacie_nic_nenacita_ani_nevymeni(monkeypatch, po
     assert len(synteza) == slov
     assert bool(nacitane) == (povolene >= 3)
     _stav_bez_zmeny(stary)
-    # bez sledovania ta ista aktualizacia prejde
+    # without watching the same update passes
     v = hk.aktualizuj(abort=lambda: False)
     assert v.stav == hk.STAV_AKTUALIZOVANY and v.nova == NOVA
 
@@ -1263,17 +1268,17 @@ def test_aktualna_verzia_sa_overi_skusobnym_slovom(monkeypatch):
     v = hk.aktualizuj()
     assert (v.stav, v.najnovsia, v.nova) == (hk.STAV_AKTUALNY, AKTIVNA, None)
     assert len(synteza) == 1 and synteza[0][0] is ATRAPA_MODUL
-    # Microsoft odmieta aj najnovsiu
+    # Microsoft refuses even the newest one
     _aktivny_pribaleny(monkeypatch, modul=_modul_s_chybou(WSServerHandshakeError(403)))
     assert hk.aktualizuj().stav == hk.STAV_STALE_ODMIETNUTY
-    # bez overenia sa na Microsoft nejde vobec
+    # without verification nothing goes to Microsoft at all
     monkeypatch.setattr(hk, "_syntetizuj", lambda *a: pytest.fail("synteza"))
     assert hk.aktualizuj(over_aktualnu=False).stav == hk.STAV_AKTUALNY
 
 
 def test_ziadna_aktivna_verzia_berie_najnovsiu(monkeypatch):
-    """Ked prirodzeny hlas vobec nebezi (pribaleny sa nenaimportoval), plati
-    kazda verzia - aj rovnaka ako pribalena."""
+    """When the natural voice is not running at all (the bundled one did not
+    import), any version counts - even the same as the bundled one."""
     monkeypatch.setattr(audio_engine, "EDGE_AVAILABLE", False)
     monkeypatch.setattr(audio_engine, "edge_tts", None)
     assert hk.aktivna_verzia() == (None, False)
@@ -1308,7 +1313,7 @@ def test_neocakavana_chyba_vrati_vysledok(monkeypatch):
 
 
 # --------------------------------------------------------------------------
-# Start appky: novsia stiahnuta vyhrava, pokazena sa oznaci
+# App start: a newer downloaded one wins, a broken one is marked
 # --------------------------------------------------------------------------
 
 def _nainstaluj_stiahnutu(verzia=NOVA, balik=None):
@@ -1336,7 +1341,7 @@ def test_novsia_stiahnuta_sa_nacita_pod_skutocnym_menom(caplog):
     assert sys.modules["edge_tts"] is modul
     assert sys.modules["edge_tts.communicate"].Communicate is modul.Communicate
     assert isinstance(sys.meta_path[0], hk._Hladac) and sys.meta_path[0].meno == "edge_tts"
-    # druhe volanie (napr. "Skusit znova") vrati ten isty modul
+    # a second call (e.g. "Try again") returns the same module
     assert hk.nacitaj_pri_starte(pribalena=AKTIVNA) == (modul, NOVA)
     assert any("edge-tts 9.0.0 zo stiahnutej kniznice" in r.getMessage()
                for r in caplog.records)
@@ -1435,10 +1440,10 @@ def test_load_edge_pri_pokazenej_stiahnutej_ide_pribalena(monkeypatch):
 
 
 def test_sys_exit_v_stiahnutej_pri_starte_neukonci_appku(monkeypatch):
-    """Stiahnuta kniznica, ktora pri importe zavola sys.exit(): bez poistky
-    by audio_engine.load_edge pustil SystemExit von a appka by skoncila pri
-    KAZDOM starte (manifest by sa neoznacil). Musi ist pribalena a stiahnuta
-    sa oznaci ako pokazena."""
+    """A downloaded library that calls sys.exit() on import: without a safety
+    net audio_engine.load_edge would let SystemExit out and the app would
+    quit on EVERY start (the manifest would not be marked). The bundled one
+    must be used and the downloaded one is marked as broken."""
     pytest.importorskip("edge_tts")
     _nainstaluj_stiahnutu(balik=_balik(init_navyse="raise SystemExit(3)\n"))
     _bez_edge_tts_v_pamati()
@@ -1447,7 +1452,7 @@ def test_sys_exit_v_stiahnutej_pri_starte_neukonci_appku(monkeypatch):
     assert sys.meta_path == pred and "edge_tts" not in sys.modules
     manifest = hk.citaj_manifest()
     assert manifest["broken"] is True and "SystemExit" in manifest["broken_reason"]
-    # cely start: znova neplatna (uz oznacena) aj s cerstvym manifestom
+    # whole start: invalid again (already marked) even with a fresh manifest
     _nainstaluj_stiahnutu(balik=_balik(init_navyse="raise SystemExit(3)\n"))
     monkeypatch.setattr(hk, "pribalena_verzia", lambda: AKTIVNA)
     _bez_edge_tts_v_pamati()
@@ -1475,7 +1480,7 @@ def test_vymena_pocka_na_zamok_cache_ale_nie_navzdy():
                                         cakanie_s=5) is True
     uvolni.join()
     assert audio_engine.edge_tts is ATRAPA_MODUL and audio_engine.EDGE_VERZIA == NOVA
-    # zamok sa neuvolni - vymena prebehne aj tak (priradenie je atomicke)
+    # the lock is not released - the swap happens anyway (assignment is atomic)
     cache._lock.acquire()
     try:
         assert audio_engine.nastav_edge_tts(object, "9.9.9", True, cache=cache,
@@ -1487,7 +1492,7 @@ def test_vymena_pocka_na_zamok_cache_ale_nie_navzdy():
 
 
 # --------------------------------------------------------------------------
-# Skutocny edge-tts 7.3.1 pod aliasom (bez siete)
+# The real edge-tts 7.3.1 under an alias (no network)
 # --------------------------------------------------------------------------
 
 def _skutocne_subory():
@@ -1506,7 +1511,7 @@ def _skutocne_subory():
 def test_skutocny_edge_tts_pod_aliasom(tmp_path):
     subory = _skutocne_subory()
     assert "communicate.py" in subory and "drm.py" in subory
-    hk.skontroluj_kod(subory)          # 7.3.1 nema absolutny import seba sameho
+    hk.skontroluj_kod(subory)          # 7.3.1 has no absolute import of itself
     priecinok = str(tmp_path / "edge_tts")
     hashe = _zapis_balik(priecinok, subory)
     alias = hk._alias("7.3.1")
@@ -1526,10 +1531,10 @@ def test_skutocny_edge_tts_pod_aliasom(tmp_path):
 
 
 def test_skutocny_wheel_731_prejde_celou_kontrolou(monkeypatch):
-    """Wheel poskladany zo suborov nainstalovaneho 7.3.1 (rovnake polozky ako
-    vo wheeli z PyPI: edge_tts, edge_playback, dist-info) prejde rozbalenim,
-    kontrolou kodu aj METADATA. Skusobne slovo je podvrhnute - skutocny
-    modul by isiel na Microsoft."""
+    """A wheel built from the files of the installed 7.3.1 (the same entries
+    as in the wheel from PyPI: edge_tts, edge_playback, dist-info) passes
+    unpacking, the code check and METADATA. The test word is faked - the
+    real module would go to Microsoft."""
     dist = metadata.distribution("edge-tts")
     verzia = dist.version
     buf = io.BytesIO()
@@ -1547,7 +1552,7 @@ def test_skutocny_wheel_731_prejde_celou_kontrolou(monkeypatch):
     hk.skontroluj_kod(subory)
     assert hk.skontroluj_metadata(meta, verzia) == []
 
-    # cely tok s tymto wheelom ako "novou" verziou (aktivna je starsia)
+    # whole flow with this wheel as the "new" version (the active is older)
     _aktivny_pribaleny(monkeypatch, verzia="7.2.8", modul=object())
     data = _pypi({verzia: [_subor_pypi(verzia, wheel)]})
     _falosna_siet(monkeypatch, {JSON_URL: json.dumps(data).encode(),
@@ -1567,7 +1572,7 @@ def test_skutocny_wheel_731_prejde_celou_kontrolou(monkeypatch):
 
 
 # --------------------------------------------------------------------------
-# Zdrojak: ziadna siet mimo `_otvor`, ziadne spustanie pri instalacii
+# Source: no network outside `_otvor`, nothing runs on install
 # --------------------------------------------------------------------------
 
 def _zdroj(meno):
@@ -1600,7 +1605,7 @@ def test_zdrojak_jedine_miesto_siete_a_ziadne_spustanie():
             assert not (isinstance(f, ast.Attribute) and f.attr in zakazane_os
                         and isinstance(f.value, ast.Name) and f.value.id == "os"), \
                 ast.unparse(uzol)
-            # data appky sa nahradzaju cez paths.nahrad_subor, nie holym os.replace
+            # app data is replaced via paths.nahrad_subor, not a bare os.replace
             assert not (isinstance(f, ast.Attribute) and f.attr == "replace"
                         and isinstance(f.value, ast.Name) and f.value.id == "os")
         if isinstance(uzol, (ast.Import, ast.ImportFrom)):

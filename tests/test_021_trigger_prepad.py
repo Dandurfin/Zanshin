@@ -1,16 +1,18 @@
 # -*- coding: utf-8 -*-
-"""Tolerovaný prepad nie je čas nad prahom (0.2.1).
+"""A tolerated dip is not time above the threshold (0.2.1).
 
-Súvislá cesta natiahnutia sa počítala ako `now - _above_since`, teda
-nástennými hodinami VRÁTANE prepadov kratších než `dip_grace_s` (20 s).
-Vzorec „1 s nad prahom, 19 s pod ním" preto natiahol hlášku po minúte, hoci
-nad prahom boli štyri vzorky. README pritom sľubuje hlášku, keď záťaž nad
-hranicou „strávi dosť času", a SOUL radšej mlčí, než by sa ozval naplano.
+The continuous arming path was counted as `now - _above_since`, i.e. by
+wall-clock time INCLUDING dips shorter than `dip_grace_s` (20 s). The
+pattern "1 s above the threshold, 19 s below it" therefore armed a cue after
+a minute, although only four samples were above the threshold. Yet the
+README promises a cue when the load above the limit "spends enough time",
+and SOUL would rather stay silent than speak up for nothing.
 
-Oprava odpočíta z úseku čas strávený v tolerovaných prepadoch. Tolerancia
-úsek naďalej drží nažive (nerozbije sa na nové behy) a krátke TICHO po
-vzorke nad prahom (menej než `DIERA_S`) sa na súvislej ceste počíta ďalej —
-to je zámerné a zdokumentované (POCTIVO v `note_load`).
+The fix subtracts the time spent in tolerated dips from the stretch. The
+tolerance still keeps the stretch alive (it does not break into new runs)
+and a short SILENCE after a sample above the threshold (less than
+`DIERA_S`) keeps counting on the continuous path - that is deliberate and
+documented (POCTIVO in `note_load`).
 """
 import os
 import random
@@ -46,8 +48,8 @@ def spusti(t0=1000.0, **params):
 
 
 def odohraj(t, h, vzor, limit_s):
-    """Prehrá vzor [(sekund, stress), ...] dookola po 1 s. Vráti
-    (posun natiahnutia od štartu alebo None, počet vzoriek nad prahom)."""
+    """Plays the pattern [(seconds, stress), ...] in a loop at 1 s. Returns
+    (arming offset from start or None, number of samples above threshold)."""
     start = h.t
     nad = 0
     while h.t - start <= limit_s:
@@ -64,21 +66,22 @@ def odohraj(t, h, vzor, limit_s):
 
 
 # --------------------------------------------------------------------------
-# Presne vzorce zo zadania
+# Exact patterns from the spec
 # --------------------------------------------------------------------------
 
 def test_kmitanie_1_nad_19_pod_nenatiahne():
-    """Chyba z revízie: 1 s nad / 19 s pod natiahlo po 60 s so štyrmi
-    vzorkami nad prahom. Za päť minút je nad prahom 15 s - na 45 s držania
-    to nie je ani tretina."""
-    t, h = spusti()                              # predvolené: 45 s, tolerancia 20 s
+    """Bug from the review: 1 s above / 19 s below armed after 60 s with four
+    samples above the threshold. In five minutes 15 s are above the
+    threshold - for 45 s of holding that is not even a third."""
+    t, h = spusti()                              # default: 45 s, tolerance 20 s
     kedy, nad = odohraj(t, h, [(1, NAD), (19, POD)], limit_s=300.0)
     assert kedy is None, f"natiahlo sa po {kedy} s s {nad} s nad prahom"
     assert not t.is_armed
-    # Tolerancia úsek drží nažive (žiadny prepad nie je dlhší než 20 s)...
+    # The tolerance keeps the stretch alive (no dip is longer than 20 s)...
     assert t.behov_nad == 1
     assert t.zrusenych_prepadom == 0
-    # ... ale dĺžka úseku hovorí o čase NAD prahom, nie o nástenných hodinách.
+    # ... but the stretch length is about time ABOVE the threshold, not
+    # wall-clock time.
     assert t.najdlhsi_nad_s <= 16.0, t.najdlhsi_nad_s
 
 
@@ -91,9 +94,10 @@ def test_suvisle_45_s_nad_prahom_stale_natiahne():
 
 
 def test_prepad_10_s_natiahne_az_po_45_s_nad_prahom():
-    """30 s nad, 10 s pod (v tolerancii), potom zas nad. Predtým natiahlo
-    na 45. sekunde nástenných hodín (35 s nad prahom), teraz až keď je nad
-    prahom naozaj 45 s: 30 + 15 = na 55. sekunde."""
+    """30 s above, 10 s below (within tolerance), then above again. Before,
+    it armed at second 45 of wall-clock time (35 s above the threshold),
+    now only when it has really been above the threshold for 45 s:
+    30 + 15 = at second 55."""
     t, h = spusti()
     kedy, nad = odohraj(t, h, [(30, NAD), (10, POD), (1000, NAD)], limit_s=200.0)
     assert kedy == pytest.approx(55.0), kedy
@@ -103,26 +107,27 @@ def test_prepad_10_s_natiahne_az_po_45_s_nad_prahom():
 
 
 def test_dlhy_usek_s_prepadmi_natiahne_suvislou_cestou_az_po_45_s_nad():
-    """10 s nad / 15 s pod: za 90 s kumulatívne okno nikdy nedá 45 s, takže
-    natiahnuť môže len súvislá cesta - a tá smie až po 45 s NAD prahom
-    (4 kolá po 10 s + 5 s piateho). Predtým natiahla na 50. sekunde
-    s 21 vzorkami nad prahom."""
+    """10 s above / 15 s below: in 90 s the cumulative window never gives
+    45 s, so only the continuous path can arm - and only after 45 s ABOVE
+    the threshold (4 rounds of 10 s + 5 s of the fifth). Before, it armed
+    at second 50 with 21 samples above the threshold."""
     t, h = spusti()
     kedy, nad = odohraj(t, h, [(10, NAD), (15, POD)], limit_s=400.0)
     assert kedy == pytest.approx(105.0), kedy
-    assert nad == 46                             # 45 s nad prahom + aktuálna vzorka
+    assert nad == 46                             # 45 s above the threshold + the current sample
     assert t.behov_nad == 1
 
 
 # --------------------------------------------------------------------------
-# Čo sa zmeniť NESMELO
+# What must NOT change
 # --------------------------------------------------------------------------
 
 def test_kratke_ticho_nad_prahom_sa_na_suvislej_ceste_stale_pocita():
-    """POCTIVO v `note_load`: medzera kratšia než `DIERA_S` po vzorke nad
-    prahom sa na súvislej ceste počíta (appka ju inde tiež berie ako
-    „pripojené"). Pri vzorke každých 11 s dá okno len 5 s za vzorku, takže
-    natiahnuť musí súvislá cesta - na 55. sekunde, ako doteraz."""
+    """POCTIVO in `note_load`: a gap shorter than `DIERA_S` after a sample
+    above the threshold is counted on the continuous path (the app also
+    treats it as "connected" elsewhere). With a sample every 11 s the
+    window gives only 5 s per sample, so the continuous path has to arm -
+    at second 55, as before."""
     assert 11.0 < trigger.DIERA_S
     t, h = spusti()
     start = h.t
@@ -137,7 +142,7 @@ def test_kratke_ticho_nad_prahom_sa_na_suvislej_ceste_stale_pocita():
 
 
 def test_dlhy_prepad_usek_stale_zrusi():
-    """Sémantika `dip_grace_s` pre zrušenie úseku ostáva."""
+    """The `dip_grace_s` semantics for cancelling a stretch stay."""
     t, h = spusti(dip_grace_s=20.0)
     odohraj(t, h, [(30, NAD), (25, POD)], limit_s=54.0)
     assert t.zrusenych_prepadom == 1
@@ -146,11 +151,11 @@ def test_dlhy_prepad_usek_stale_zrusi():
 
 
 # --------------------------------------------------------------------------
-# Nový stav sa nuluje všade, kde sa končí úsek
+# The new state is reset everywhere a stretch ends
 # --------------------------------------------------------------------------
 
 def _usek_s_prepadom(t, h):
-    """20 s nad, 10 s tolerovaný prepad, 5 s nad: `_prepady_s` je 10."""
+    """20 s above, a 10 s tolerated dip, 5 s above: `_prepady_s` is 10."""
     for sekund, stress in ((20, NAD), (10, POD), (5, NAD)):
         for _ in range(sekund):
             assert t.note_load(stress, h.t, zona="high") is None
@@ -164,7 +169,8 @@ def test_prepady_sa_nulujú_pri_uspani():
         _usek_s_prepadom(t, h)
         t.suspend(dovod, now=h.t)
         assert t._prepady_s == 0.0, dovod
-        # dĺžka úseku bez prepadu: 20 + 5 s nad prahom (+ držanie poslednej)
+        # stretch length without the dip: 20 + 5 s above the threshold (+
+        # holding the last one)
         assert 24.0 <= t.najdlhsi_nad_s <= 26.0, t.najdlhsi_nad_s
 
 
@@ -203,7 +209,7 @@ def test_prepady_sa_nulujú_pri_natiahnuti_a_plnej_hodine():
         h.posun(1.0)
     assert t._prepady_s == 0.0
 
-    # Plná hodina / vypnuté hlášky: úsek sa počíta odznova od `now`.
+    # Full hour / cues off: the stretch is counted again from `now`.
     t, h = spusti(cues_enabled=False)
     _usek_s_prepadom(t, h)
     for _ in range(40):
@@ -216,9 +222,9 @@ def test_prepady_sa_nulujú_pri_natiahnuti_a_plnej_hodine():
 
 
 def test_novy_usek_nededi_prepady_stareho():
-    """Keby sa `_prepady_s` nevynuloval, ďalší úsek by sa natiahol neskôr,
-    než má (ticho navyše). Pri vzorke každých 11 s rozhoduje súvislá cesta:
-    so zdedenými 15 s by sa natiahlo až na 66. sekunde."""
+    """If `_prepady_s` were not reset, the next stretch would arm later than
+    it should (extra silence). With a sample every 11 s the continuous
+    path decides: with the inherited 15 s it would arm only at second 66."""
     t, h = spusti(dip_grace_s=20.0)
     for sekund, stress in ((20, NAD), (15, POD), (5, NAD)):
         for _ in range(sekund):
@@ -226,7 +232,7 @@ def test_novy_usek_nededi_prepady_stareho():
             h.posun(1.0)
     assert t._prepady_s == pytest.approx(15.0)
     t.suspend(trigger.A_TEP_VYPADOL, now=h.t)
-    h.posun(100.0)                               # staré okno vyprší
+    h.posun(100.0)                               # the old window expires
     t.resume(now=h.t)
     start = h.t
     kedy = None
@@ -239,14 +245,14 @@ def test_novy_usek_nededi_prepady_stareho():
 
 
 # --------------------------------------------------------------------------
-# Cas 0.0 je platny cas
+# Time 0.0 is a valid time
 # --------------------------------------------------------------------------
 
 def test_vzorka_v_case_nula_sa_na_suvislej_ceste_pocita():
-    """`if self._posledny_nad_koniec` bral čas 0.0 ako „chýba". Vzorka nad
-    prahom každých 11 s, posledná presne v čase 0.0: súvislá cesta má 55 s
-    (okno len 5 x 5 s), takže sa natiahne práve v čase 0.0 - nie o vzorku
-    neskôr."""
+    """`if self._posledny_nad_koniec` took time 0.0 as "missing". A sample
+    above the threshold every 11 s, the last one exactly at time 0.0: the
+    continuous path has 55 s (the window only 5 x 5 s), so it arms right
+    at time 0.0 - not one sample later."""
     t, h = spusti(t0=-55.0)
     kedy = None
     for _ in range(10):
@@ -259,14 +265,15 @@ def test_vzorka_v_case_nula_sa_na_suvislej_ceste_pocita():
 
 
 # --------------------------------------------------------------------------
-# Veta po relacii: "najdlhsie X s, treba Y s" nesmie tvrdit X >= Y o useku,
-# ktory sa nenatiahol
+# Post-session sentence: "longest X s, I need Y s" must not claim X >= Y
+# about a stretch that did not arm
 # --------------------------------------------------------------------------
 
 def test_vypadok_cez_appku_nepripise_ticho_do_dlzky_useku():
-    """Appka volá `suspend(A_TEP_VYPADOL)` až po `STALE_AFTER_S` bez dát,
-    teda 12 s po poslednej vzorke. Tie sekundy nikto nemeral: 35 vzoriek nad
-    prahom nesmie v súhrne vyjsť ako 46 s pri potrebných 45 s."""
+    """The app calls `suspend(A_TEP_VYPADOL)` only after `STALE_AFTER_S`
+    without data, i.e. 12 s after the last sample. Nobody measured those
+    seconds: 35 samples above the threshold must not come out in the
+    summary as 46 s when 45 s are needed."""
     t, h = spusti()
     for _ in range(35):
         assert t.note_load(NAD, h.t, zona="high") is None
@@ -279,8 +286,8 @@ def test_vypadok_cez_appku_nepripise_ticho_do_dlzky_useku():
 
 
 def test_dlhy_prepad_tesne_pod_drzanim_netvrdi_drzanie():
-    """45 vzoriek po 1 s: podmienka natiahnutia videla najviac 44 s, takže
-    sa nenatiahlo. Súhrn nesmie tvrdiť 45 s („najdlhšie 45 s, treba 45 s")."""
+    """45 samples at 1 s: the arming condition saw at most 44 s, so it did
+    not arm. The summary must not claim 45 s ("longest 45 s, need 45 s")."""
     t, h = spusti()
     for _ in range(45):
         assert t.note_load(NAD, h.t, zona="high") is None
@@ -294,9 +301,9 @@ def test_dlhy_prepad_tesne_pod_drzanim_netvrdi_drzanie():
 
 
 def test_ridka_kadencia_a_prepad_netvrdia_drzanie():
-    """Kadencia ~2,9 s: 16 vzoriek nad prahom je 43,5 s, nenatiahne sa.
-    Medzera k prvej vzorke pod prahom (2,9 s) sa do úseku pripočítať nesmie -
-    inak by súhrn tvrdil 46 s."""
+    """Cadence ~2,9 s: 16 samples above the threshold are 43,5 s, no arming.
+    The gap to the first sample below the threshold (2,9 s) must not be
+    added to the stretch - otherwise the summary would claim 46 s."""
     t, h = spusti()
     for _ in range(16):
         assert t.note_load(NAD, h.t, zona="high") is None
@@ -310,10 +317,11 @@ def test_ridka_kadencia_a_prepad_netvrdia_drzanie():
 
 
 def test_bez_natiahnutia_najdlhsie_nikdy_nedosiahne_drzanie():
-    """Všeobecná poistka: kým sa nič nenatiahlo, `najdlhsi_nad_s` je vždy
-    pod `stress_hold_s`. Úseky 30-50 s s náhodnou kadenciou (aj redšou, pod
-    `DIERA_S`) a krátkymi prepadmi, ukončené dlhým prepadom, dierou v dátach
-    alebo výpadkom cez appku (`suspend` 12 s po poslednej vzorke)."""
+    """General safeguard: while nothing has armed, `najdlhsi_nad_s` is always
+    below `stress_hold_s`. Stretches of 30-50 s with random cadence (also
+    sparser, below `DIERA_S`) and short dips, ended by a long dip, a gap in
+    the data or a dropout via the app (`suspend` 12 s after the last
+    sample)."""
     drzanie = trigger.default_params()["stress_hold_s"]
     tesne = 0
     for seed in range(300):
@@ -330,14 +338,14 @@ def test_bez_natiahnutia_najdlhsie_nikdy_nedosiahne_drzanie():
             if t.armed_count:
                 break
             sposob = rng.randrange(3)
-            if sposob == 0:                          # dlhý prepad
+            if sposob == 0:                          # long dip
                 for _ in range(25):
                     t.note_load(POD, h.t, zona="high")
                     h.posun(1.0)
-            elif sposob == 1:                        # diera v dátach
+            elif sposob == 1:                        # gap in the data
                 h.posun(trigger.DIERA_S)
                 t.note_load(POD, h.t, zona="high")
-            else:                                    # výpadok cez appku
+            else:                                    # dropout via the app
                 t.suspend(trigger.A_TEP_VYPADOL,
                           now=posledna + trigger.DIERA_S)
                 h.t = posledna + trigger.DIERA_S + 5.0
@@ -350,13 +358,14 @@ def test_bez_natiahnutia_najdlhsie_nikdy_nedosiahne_drzanie():
 
 
 # --------------------------------------------------------------------------
-# Všeobecná poistka: natiahnuté = naozaj 45 s nad prahom
+# General safeguard: armed = really 45 s above the threshold
 # --------------------------------------------------------------------------
 
 def test_natiahnutie_nikdy_bez_45_s_nad_prahom():
-    """Náhodné striedanie nad/pod (1-30 s), vzorka každú sekundu. Nech
-    natiahne ktorákoľvek cesta, vzoriek nad prahom musí byť aspoň 45 -
-    inak sa hláška natiahla na čase, ktorý nad prahom nebol."""
+    """Random alternation above/below (1-30 s), a sample every second.
+    Whichever path arms, there must be at least 45 samples above the
+    threshold - otherwise the cue armed on time that was not above the
+    threshold."""
     natiahnutych = 0
     for seed in range(300):
         rng = random.Random(seed)

@@ -1,32 +1,34 @@
-"""Prijem srdcoveho tepu (BPM) z Wear OS hodiniek cez lokalnu Wi-Fi siet.
+"""Receiving the heart rate (BPM) from a Wear OS watch over the local Wi-Fi.
 
-Pocuva NARAZ dvoma sposobmi na tom istom porte, pretoze appky na hodinkach
-sa delia na dva tabory:
+It listens in TWO ways AT ONCE on the same port, because the watch apps
+fall into two camps:
 
-  TCP  - protokol obs-websocket v5 (viz obs_websocket.py). Takto sa sprava
-         "HeartRateOnStream for OBS": pripoji sa k nam ako keby sme boli
-         OBS a zapisuje tep do "textoveho zdroja". Toto je overene na
-         realnych hodinkach - 872 aktualizacii za 14 minut, raz za sekundu.
-  UDP  - obycajny datagram s cislom (pripadne JSON). Takto posiela viacero
-         jednoduchsich appiek. Na tom istom porte sa prijima aj OSC
-         (binarny protokol appiek pre VRChat) - je to JEDINA cesta, akou
-         sa da tep poslat z iPhonu/Apple Watch na lokalnu adresu bez
-         cloudu, viz `_parse_osc`.
+  TCP  - the obs-websocket v5 protocol (see obs_websocket.py). This is how
+         "HeartRateOnStream for OBS" behaves: it connects to us as if we
+         were OBS and writes the heart rate into a "text source". This is
+         verified on a real watch - 872 updates in 14 minutes, once a second.
+  UDP  - a plain datagram with a number (or JSON). This is how several
+         simpler apps send. OSC (the binary protocol of apps for VRChat)
+         is received on the same port too - it is the ONLY way to send
+         the heart rate from an iPhone/Apple Watch to a local address
+         without the cloud, see `_parse_osc`.
 
-Co pride skor, to plati - indikator tepu je spolocny.
+Whatever comes first counts - the heart-rate indicator is shared.
 
-Dve veci, ktore su tu urobene zamerne inak, nez by clovek cakal:
+Two things that are done differently here on purpose than one would expect:
 
-1) `stop()` NIKDY necaka na vlakna (ziadny join). Callbacky sa z nich
-   dostavaju do GUI cez `root.after`, a to je pri volani z ineho vlakna
-   blokujuce - keby GUI vlakno v `stop()` cakalo na vlakno, ktore samo caka
-   na GUI vlakno, appka zamrzne na cely timeout. Vlakna su daemon a stop()
-   im pod rukami zavrie sockety, takze skoncia okamzite.
+1) `stop()` NEVER waits for the threads (no join). Callbacks get from them
+   into the GUI through `root.after`, and that blocks when called from
+   another thread - if the GUI thread in `stop()` waited for a thread that
+   is itself waiting for the GUI thread, the app would freeze for the whole
+   timeout. The threads are daemons and stop() closes the sockets under
+   their hands, so they end immediately.
 
-2) Kazdy beh dostane vlastne cislo generacie, ktore sa posiela spat v
-   callbackoch. Prijimatel (DandurfApp) tak vie zahodit aktualizacie, ktore
-   uz doleteli od stareho, medzitym zastaveneho behu - inak by indikator
-   zamrzol na "125 BPM" aj po vypnuti senzora.
+2) Every run gets its own generation number, which is sent back in the
+   callbacks. The receiver (DandurfApp) can thus throw away updates that
+   arrive late from an old run that has been stopped in the meantime -
+   otherwise the indicator would freeze at "125 BPM" even after the sensor
+   is switched off.
 """
 
 import errno
@@ -44,45 +46,48 @@ import obs_websocket
 
 log = logging_setup.get_logger("hr")
 
-# Strop sucasnych socketov (listener + UDP + klienti). Bez neho by hocikto
-# z LAN mohol otvorit lubovolne vela TCP spojeni a nafukovat vlakna (DoS).
-# Pri plnom strope sa zahodi len NOVE spojenie a prijem bezi dalej (viz
-# `_serve`); tiche a mrtve spojenia miesto uvolnia samy (casove limity v
-# `obs_websocket`). Proti niekomu v LAN, kto spojenia aktivne drzi, strop
-# nepomoze - port je bez hesla zamerne, viz README.
+# Cap on simultaneous sockets (listener + UDP + clients). Without it anyone
+# on the LAN could open any number of TCP connections and inflate threads
+# (DoS). When the cap is full only the NEW connection is dropped and
+# receiving goes on (see `_serve`); idle and dead connections free their
+# place on their own (time limits in `obs_websocket`). Against someone on
+# the LAN who actively holds connections the cap does not help - the port
+# is without a password on purpose, see README.
 _MAX_LIVE_SOCKETS = 16
 
-# Fyziologicky mozny rozsah tepu. Na sieti sa okrem samotneho BPM daju
-# chytit aj uplne ine cisla (timestampy, ID paketu, sum z ineho zariadenia
-# na tom istom porte) - cokolvek mimo tohto rozsahu preto NIE je tep a
-# zahadzujeme to uz tu, aby sa nezmysel ako "9999 BPM" nikdy nedostal ani
-# na indikator, ani do biofeedback triggera.
+# Physiologically possible heart-rate range. Besides the BPM itself, quite
+# different numbers can be caught on the network (timestamps, packet IDs,
+# noise from another device on the same port) - so anything outside this
+# range is NOT a heart rate and we drop it right here, so that nonsense
+# like "9999 BPM" never reaches the indicator or the biofeedback trigger.
 MIN_PLAUSIBLE_BPM = 25
 MAX_PLAUSIBLE_BPM = 250
 
-# "" = pocuvaj na vsetkych sietovych rozhraniach (0.0.0.0). Toto je jedina
-# hodnota, ktora funguje na kazdom PC bez ohladu na to, aku IP mu prave
-# pridelil router - preto je predvolena.
+# "" = listen on all network interfaces (0.0.0.0). This is the only value
+# that works on every PC regardless of which IP the router has just
+# assigned to it - that is why it is the default.
 ANY_INTERFACE = "0.0.0.0"
 
-# Predvoleny port obs-websocket v5 - presne ten, ktory maju appky pre OBS
-# predvyplneny, takze hrac nemusi menit nic.
+# Default obs-websocket v5 port - exactly the one the apps for OBS have
+# pre-filled, so the player does not have to change anything.
 DEFAULT_PORT = 4455
 
-# Chyby socketu, ktore NIE su dovod ukoncit prijem:
-#   WSAEMSGSIZE (10040)   - datagram bol vacsi nez buffer; socket zostava
-#                           plne funkcny, len o ten jeden paket prideme
-#   WSAECONNRESET (10054) - ICMP "port unreachable" od predosleho prijemcu
+# Socket errors that are NOT a reason to stop receiving:
+#   WSAEMSGSIZE (10040)   - the datagram was bigger than the buffer; the
+#                           socket stays fully working, we just lose that
+#                           one packet
+#   WSAECONNRESET (10054) - ICMP "port unreachable" from a previous receiver
 _RECOVERABLE_ERRNOS = {errno.EMSGSIZE, errno.ECONNRESET, 10040, 10054}
 
-# Chyby, ktore znamenaju "tuto adresu toto PC nema" - typicky ked hrac do
-# policka napise IP hodiniek namiesto IP svojho PC, alebo mu router pridelil
-# inu adresu, nez ma ulozenu.
+# Errors that mean "this PC does not have this address" - typically when
+# the player types the IP of the watch into the field instead of the IP of
+# their PC, or the router assigned a different address than the saved one.
 _NO_SUCH_ADDRESS_ERRNOS = {errno.EADDRNOTAVAIL, 10049}
 
-# Port uz niekto pocuva - druha kopia Zanshinu, alebo bezi OBS, ktore ma
-# 4455 tiez ako predvoleny. Toto nie je "rozbita siet", ale konkretna vec,
-# ktoru vie hrac opravit - preto ma vlastny stav a vlastnu hlasku.
+# Someone is already listening on the port - a second copy of Zanshin, or
+# OBS is running, which also has 4455 as its default. This is not a
+# "broken network" but a specific thing the player can fix - that is why
+# it has its own state and its own message.
 _PORT_BUSY_ERRNOS = {errno.EADDRINUSE, 10048}
 
 
@@ -90,59 +95,67 @@ def _err_no(exc):
     return getattr(exc, "winerror", None) or getattr(exc, "errno", None)
 
 
-# DVA ROZNE TEPY V JEDNOM ZDROJI (0.2.2).
+# TWO DIFFERENT HEART RATES IN ONE SOURCE (0.3).
 #
-# Odmerane u zadavatela: appka na hodinkach zapisovala do JEDNEHO zdroja
-# ("Tep") dva rady tepu prepletene - v tej istej sekunde hodnota z vyssieho
-# radu a hned z nizsieho, jeden rad o 5-10 BPM nizsie nez druhy, pri
-# pokojnom tepe sa zliali. Pre
-# meranie je to jeden tep, ktory skace hore-dole, a hrac to sam nezisti.
-# Appka to preto rozpozna a povie (`DvaRadyTepu`, `_Run.note_bpm`) - na
-# meranie nesiaha, oprava je v nastaveniach appky na hodinkach.
+# Measured at the requester's: the watch app wrote two series of heart
+# rate interleaved into ONE source ("Tep") - in the same second a value
+# from the higher series and right after from the lower one, one series
+# 5-10 BPM below the other; at a calm heart rate they merged. For the
+# measurement this is one heart rate jumping up and down, and the player
+# will not find out on their own. So the app recognises it and says so
+# (`DvaRadyTepu`, `_Run.note_bpm`) - it does not touch the measurement,
+# the fix is in the settings of the watch app.
 #
-# Vzor sa hlada v poslednych DVA_TEPY_OKNO_S sekundach JEDNEHO zdroja a
-# musia platit VSETKY styri veci naraz - kazda odreze iny falosny poplach.
-# Cisla su overene na umelych radoch (tests/test_022_dva_tepy.py) a na
-# simulacii: ani sumny rad pri 1-3 Hz, ani duplikaty, ani jednorazove spicky,
-# ani davky po zaseknutej Wi-Fi nevyvolali poplach, dva rady 5-10 BPM od seba
-# ano - pri 1 Hz do ~15 s, pri paroch sprav kazde 2-4 s do ~35 s.
+# The pattern is looked for in the last DVA_TEPY_OKNO_S seconds of ONE
+# source and ALL four things must hold at once - each one cuts off a
+# different false alarm. The numbers are verified on synthetic series
+# (tests/test_022_dva_tepy.py) and in a simulation: neither a noisy series
+# at 1-3 Hz, nor duplicates, nor one-off spikes, nor batches after a stuck
+# Wi-Fi raised an alarm, two series 5-10 BPM apart did - at 1 Hz within
+# ~15 s, with pairs of messages every 2-4 s within ~35 s.
 DVA_TEPY_OKNO_S = 60.0
-# 1) SPRAV JE VIAC, NEZ STIHA JEDEN SENZOR: aspon 30 % medzier medzi
-#    spravami je kratsich nez 0,65 s. Senzor sa meni ~1x za sekundu, takze
-#    jeden rad ma take medzery len obcas (jitter Wi-Fi); dva rady ich maju
-#    pri kazdom citani (u zadavatela median medzery 0,51 s).
+# 1) MORE MESSAGES THAN ONE SENSOR CAN MANAGE: at least 30 % of the gaps
+#    between messages are shorter than 0.65 s. The sensor changes ~1x per
+#    second, so one series has such gaps only now and then (Wi-Fi jitter);
+#    two series have them on every reading (at the requester's the median
+#    gap was 0.51 s).
 DVA_TEPY_BLIZKO_S = 0.65
 DVA_TEPY_MIN_PODIEL_BLIZKYCH = 0.30
-# 2) CIK-CAK: hodnota odskoci od predoslej o aspon 4 BPM a hned sa o aspon
-#    4 BPM vrati opacnym smerom, a aspon jedna z tych dvoch medzier je
-#    kratka (vyssie). Takych miest musi byt aspon 8 - jedna spicka ich
-#    urobi najviac dve. Pod 4 BPM je bezny sum senzora.
+# 2) ZIGZAG: the value jumps away from the previous one by at least 4 BPM
+#    and right away comes back by at least 4 BPM the opposite way, and at
+#    least one of those two gaps is short (above). There must be at least
+#    8 such spots - one spike makes at most two. Below 4 BPM is normal
+#    sensor noise.
 DVA_TEPY_SKOK_BPM = 4
 DVA_TEPY_MIN_CIKCAKOV = 8
-# 3) NIE JEDNA DAVKA: cik-caky su rozlozene aspon na 10 s. Po zaseknutej
-#    Wi-Fi pride naraz kopa starych sprav jedneho radu - ta nesmie stacit.
+# 3) NOT ONE BATCH: the zigzags are spread over at least 10 s. After a
+#    stuck Wi-Fi a heap of old messages of one series arrives at once -
+#    that must not be enough.
 DVA_TEPY_MIN_ROZPATIE_S = 10.0
-# 4) KAZDA DRUHA HODNOTA PATRI K SEBE: susedne vzorky sa lisia v sucte aspon
-#    2x viac nez vzorky ob jednu. Pri dvoch radoch skace kazdy krok o rozdiel
-#    radov, ob jednu je to ten isty rad; pri jednom rade (aj sumnom, aj s
-#    duplikatmi) je to naopak alebo nastejno. Toto je hlavna poistka proti
-#    sumu - bez nej velmi sumny rad pri 2 Hz v simulacii obcas vyrobil
-#    poplach.
+# 4) EVERY OTHER VALUE BELONGS TOGETHER: neighbouring samples differ in
+#    total at least 2x more than samples one apart. With two series every
+#    step jumps by the difference of the series, one apart it is the same
+#    series; with one series (even a noisy one, even with duplicates) it
+#    is the other way round or the same. This is the main safeguard
+#    against noise - without it a very noisy series at 2 Hz in the
+#    simulation sometimes produced an alarm.
 DVA_TEPY_POMER = 2.0
-# Pod tolko vzoriek v okne je pomer (4) len nahoda.
+# Below this many samples in the window the ratio (4) is just chance.
 DVA_TEPY_MIN_VZORIEK = 16
-# Pamat: mena zdrojov si voli klient, preto najviac tolkoto zdrojov na beh
-# a v kazdom najviac tolkoto vzoriek (60 s aj pri ~4 spravach za sekundu).
+# Memory: the client picks the source names, so at most this many sources
+# per run and in each at most this many samples (60 s even at ~4 messages
+# per second).
 DVA_TEPY_MAX_ZDROJOV = 4
 DVA_TEPY_MAX_VZORIEK = 256
-# Meno zdroja do dennika a app.log skratene, rovnako ako surova sprava v `_emit`.
+# Source name for the journal and app.log, shortened, like the raw message in
+# `_emit`.
 MENO_ZDROJA_MAX = 80
 
 
 def dva_rady_v_okne(vzorky):
-    """True, ked [(cas, bpm)] (stare -> nove) nesie dva prepletene rady tepu.
+    """True when [(cas, bpm)] (old -> new) has two interleaved HR series.
 
-    Ciste pravidla 1-4 vyssie, bez stavu - testuje sa priamo.
+    Pure rules 1-4 above, no state - tested directly.
     """
     n = len(vzorky)
     if n < max(3, DVA_TEPY_MIN_VZORIEK):
@@ -169,16 +182,16 @@ def dva_rady_v_okne(vzorky):
 
 
 class DvaRadyTepu:
-    """Klzave okno tepu z JEDNEHO zdroja pre `dva_rady_v_okne`.
+    """Sliding heart-rate window from ONE source for `dva_rady_v_okne`.
 
-    Nie je vlaknovo bezpecne samo - vola ho `_Run.note_bpm` pod zamkom behu.
+    Not thread-safe by itself - `_Run.note_bpm` calls it under the run lock.
     """
 
     def __init__(self):
         self._vzorky = deque(maxlen=DVA_TEPY_MAX_VZORIEK)
 
     def pridaj(self, bpm, cas):
-        """Prida vzorku a vrati True, ked okno prave nesie dva rady."""
+        """Adds a sample; returns True when the window now has two series."""
         self._vzorky.append((float(cas), float(bpm)))
         hranica = float(cas) - DVA_TEPY_OKNO_S
         while self._vzorky and self._vzorky[0][0] < hranica:
@@ -187,14 +200,15 @@ class DvaRadyTepu:
 
 
 def meno_zdroja_do_dennika(zdroj):
-    """Meno zdroja pre riadok v denniku: bez zalomeni (klient si ho voli sam
-    a novy riadok by v denniku vyrobil falosny zaznam) a skratene."""
+    """Source name for a journal line: without line breaks (the client picks
+    it itself and a new line would create a fake entry in the journal) and
+    shortened."""
     return " ".join(str(zdroj).split())[:MENO_ZDROJA_MAX]
 
 
 class _Run:
-    """Stav jedneho behu prijimaca (jednej generacie). Drzi si vsetky
-    otvorene sockety, aby ich `stop()` vedel okamzite zavriet."""
+    """State of one receiver run (one generation). Keeps all open sockets,
+    so that `stop()` can close them immediately."""
 
     def __init__(self, generation):
         self.generation = generation
@@ -203,27 +217,31 @@ class _Run:
         self._sockets = set()
         self.last_data = None
         self.stale_reported = False
-        # Kolko surovych sprav este zapisat do denniku - na zistenie, co
-        # hodinky pri parovani naozaj posielaju.
+        # How many raw messages to still write to the journal - to find out
+        # what the watch really sends during pairing.
         #
-        # 40 -> 5 V 0.2.1. Kazdy riadok nesie meno zdroja ("[Kroky] '1045'"),
-        # takze aj striedavy vzor (raz tep, raz nieco ine) je vidno uz z
-        # piatich sprav. 40 surovych hodnot tepu pri kazdom spusteni prijmu
-        # bolo o pol minuty zdravotnych dat v denniku viac, nez ladenie
-        # parovania potrebuje.
+        # 40 -> 5 IN 0.2.1. Every line carries the source name
+        # ("[Kroky] '1045'"), so even an alternating pattern (heart rate once,
+        # something else once) is visible from five messages. 40 raw
+        # heart-rate values on every receiver start was half a minute more
+        # health data in the journal than debugging the pairing needs.
         self.log_left = 5
-        # Mena zdrojov, ktore v tomto behu uz nieco poslali. Podla toho sa
-        # rozhoduje, ci sa smie z holeho cisla z NEZNAMEHO zdroja hadat tep
-        # (viz `parse_metrics`). `None` je tiez zaznam - je to UDP kanal.
-        # Viac nez dve sa nepamata (viz `note_source`).
+        # Names of the sources that have already sent something in this run.
+        # This decides whether a heart rate may be guessed from a bare number
+        # from an UNKNOWN source (see `parse_metrics`). `None` is an entry
+        # too - it is the UDP channel. No more than two are remembered (see
+        # `note_source`).
         self.zdroje = set()
-        # Strop spojeni sa do denniku hlasi raz za beh, nie pri kazdom odmietnuti.
+        # The connection cap is reported to the journal once per run, not on every
+        # refusal.
         self.plno_hlasene = False
-        # Kolko klientov obs-websocket prave drzi spojenie po handshake -
-        # "client_gone" sa hlasi az ked odide POSLEDNY (viz `_websocket_client`).
+        # How many obs-websocket clients hold a connection after the handshake
+        # right now - "client_gone" is reported only when the LAST one leaves
+        # (see `_websocket_client`).
         self.klienti = 0
-        # Dva rady tepu v jednom zdroji: okno pre kazdy zdroj zvlast a priznak,
-        # ze sa to v tomto behu uz nahlasilo (RAZ za beh, viz `note_bpm`).
+        # Two heart-rate series in one source: a window for each source
+        # separately and a flag that it has already been reported in this run
+        # (ONCE per run, see `note_bpm`).
         self.dva_tepy = {}
         self.dva_tepy_hlasene = False
 
@@ -232,7 +250,7 @@ class _Run:
             self.klienti += 1
 
     def client_left(self):
-        """Vrati True, ak prave odisiel posledny pripojeny klient."""
+        """Returns True if the last connected client has just left."""
         with self._lock:
             self.klienti -= 1
             return self.klienti <= 0
@@ -242,7 +260,7 @@ class _Run:
             if self.stop_event.is_set():
                 return False
             if len(self._sockets) >= _MAX_LIVE_SOCKETS:
-                return False        # strop spojeni - poistka proti LAN DoS
+                return False        # connection cap - safeguard against LAN DoS
             self._sockets.add(sock)
             return True
 
@@ -261,12 +279,13 @@ class _Run:
                 pass
 
     def note_source(self, zdroj):
-        """Zaznamena zdroj a vrati True, ak je v tomto behu zatial jediny.
+        """Notes the source; True if it is so far the only one in this run.
 
-        Odpoved zavisi len od toho, ci su zdroje ASPON DVA - viac mien si
-        preto pamatat netreba. Doteraz sa pridavalo kazde meno, ktore klient
-        poslal, az do restartu senzora: stale nove mena z LAN = pamat bez
-        stropu (meno si voli klient)."""
+        The answer only depends on whether there are AT LEAST TWO sources -
+        so there is no need to remember more names. Until now every name
+        the client sent was added, until the sensor restarted: ever new
+        names from the LAN = memory without a cap (the client picks the
+        name)."""
         with self._lock:
             if len(self.zdroje) < 2:
                 self.zdroje.add(zdroj)
@@ -278,12 +297,14 @@ class _Run:
             self.stale_reported = False
 
     def note_bpm(self, zdroj, bpm, cas=None):
-        """Tep z pomenovaneho zdroja do okna `DvaRadyTepu`. Vrati True PRAVE
-        RAZ za beh - ked sa v niektorom zdroji prvy raz ukaze vzor dvoch radov.
+        """Heart rate from a named source into the `DvaRadyTepu` window.
+        Returns True EXACTLY ONCE per run - when the two-series pattern first
+        shows up in some source.
 
-        Klucom je len meno zdroja, nie spojenie: dve spojenia, ktore pisu do
-        toho isteho zdroja, rozbiju meranie rovnako. Bez mena (UDP/OSC, klient
-        bez mena zdroja) sa nehlada - hlaska by nemala co pomenovat.
+        The key is only the source name, not the connection: two
+        connections writing into the same source break the measurement just
+        the same. Without a name (UDP/OSC, a client without a source name)
+        nothing is looked for - the message would have nothing to name.
         """
         if zdroj is None or bpm is None:
             return False
@@ -299,70 +320,72 @@ class _Run:
             if not okno.pridaj(bpm, cas):
                 return False
             self.dva_tepy_hlasene = True
-            self.dva_tepy.clear()           # uz netreba, pamat sa uvolni
+            self.dva_tepy.clear()           # no longer needed, the memory is freed
             return True
 
 
 class HeartRateMonitor:
-    """Prijimac tepu.
+    """Heart-rate receiver.
 
-    `on_bpm(bpm, generation)` sa vola pri kazdej prijatej platnej hodnote,
-    `on_status((kind, payload), generation)` pri zmene stavu pripojenia -
-    kind je "connecting" | "disconnected" | "error" | "busy" | "bound_any"
-    | "client" | "client_gone" | "udp_busy" | "udp_error" | "two_series".
-    "udp_busy"/"udp_error" znamenaju "UDP sa neotvorilo, TCP bezi dalej" -
-    beh nekonci. "two_series" (payload = meno zdroja pre dennik) pride
-    najviac raz za beh: do jedneho zdroja chodia dva rozne rady tepu.
-    Oba callbacky pridu z pozadoveho vlakna, volajuci si ich musi sam
-    preplanovat do GUI vlakna (viz DandurfApp.ui_call) a mal by zahodit
-    tie, ktorych `generation` uz nie je aktualna."""
+    `on_bpm(bpm, generation)` is called on every received valid value,
+    `on_status((kind, payload), generation)` on a change of the connection
+    state - kind is "connecting" | "disconnected" | "error" | "busy" |
+    "bound_any" | "client" | "client_gone" | "udp_busy" | "udp_error" |
+    "two_series". "udp_busy"/"udp_error" mean "UDP did not open, TCP keeps
+    running" - the run does not end. "two_series" (payload = source name
+    for the journal) comes at most once per run: two different heart-rate
+    series are arriving into one source. Both callbacks come from a
+    background thread, the caller has to reschedule them into the GUI
+    thread itself (see DandurfApp.ui_call) and should throw away those
+    whose `generation` is no longer current."""
 
     TICK_TIMEOUT_S = 0.5
-    # Po tolkoto sekundach bez vzorky sa hlasi "odpojene".
+    # After this many seconds without a sample "disconnected" is reported.
     #
-    # 3 -> 12 PO TESTOVANOM VECERI 18. 9.
-    # Toto cislo nie je len o indikatore v okne. `app._apply_hr_status`
-    # na "disconnected" vola `_suspend_cue_trigger(A_TEP_VYPADOL)` a ten v
-    # `trigger.suspend()` zahodi cely nazbierany cas nad prahom (vtedy
-    # SUVISLY usek, od 19. 9. aj kumulativne okno), takze kazdy taky vypadok
-    # zacina 45-sekundovy odpocet odznova.
+    # 3 -> 12 AFTER THE TEST EVENING OF 18. 9.
+    # This number is not only about the indicator in the window.
+    # `app._apply_hr_status` on "disconnected" calls
+    # `_suspend_cue_trigger(A_TEP_VYPADOL)` and that, in `trigger.suspend()`,
+    # throws away all the collected time above the threshold (back then the
+    # CONTINUOUS stretch, since 19. 9. also the cumulative window), so every
+    # such dropout starts the 45-second countdown over.
     #
-    # Pri troch sekundach na to stacil bezny jitter domacej Wi-Fi: hodinky
-    # posielali v priemere kazdych ~1,5 s (1405 vzoriek za 2136 s z relacie
-    # 17. 9.), takze 3 s su len dvojnasobok priemernej medzery - jeden
-    # strateny paket a odpocet je prec. V CSV z 18. 9. to vidno ako relaciu
-    # 18:22 (12,2 min, 0,3 min nad hranicou) s NULOU hlasok.
+    # At three seconds ordinary home Wi-Fi jitter was enough for that: the
+    # watch sent on average every ~1.5 s (1405 samples in 2136 s from the
+    # session of 17. 9.), so 3 s is just twice the average gap - one lost
+    # packet and the countdown is gone. In the CSV from 18. 9. this shows as
+    # the 18:22 session (12.2 min, 0.3 min above the limit) with ZERO cues.
     #
-    # Kadencia sa ale meni: od 20. 9. chodi tep kazdych ~2,9 s (v OBS sa
-    # strieda s krokmi), takze jeden strateny paket je uz medzera ~5,6 s.
-    # Preto ma aj spustac tu istu hranicu vypadku - `trigger.DIERA_S` je
-    # rovnake cislo ako toto (test to strazi). Ked sa zmeni jedno, musi sa
-    # zmenit aj druhe.
+    # The cadence changes, though: since 20. 9. the heart rate comes every
+    # ~2.9 s (in OBS it alternates with steps), so one lost packet is already
+    # a ~5.6 s gap. That is why the trigger has the same dropout limit too -
+    # `trigger.DIERA_S` is the same number as this one (a test guards it).
+    # When one changes, the other has to change too.
     #
-    # Nesymetria je jasna: falosne "odpojene" zabije funkciu, pomale
-    # rozpoznanie skutocneho odpojenia znamena len to, ze okno 12 sekund
-    # ukazuje posledny tep. Preto radsej dlhsie.
+    # The asymmetry is clear: a false "disconnected" kills the feature, slow
+    # detection of a real disconnect only means that the window shows the
+    # last heart rate for 12 seconds. So rather longer.
     #
-    # Dlhsi vypadok sa STALE zachyti spravne a `resume()` odpocet spusti
-    # odznova - to je zamer, nie chyba: po pol minute bez dat uz naozaj
-    # nevieme, ci telo ostalo hore.
+    # A longer dropout is STILL caught correctly and `resume()` starts the
+    # countdown over - that is intended, not a bug: after half a minute
+    # without data we really do not know whether the body stayed up.
     STALE_AFTER_S = 12.0
-    # Dost velky buffer aj na ukecany JSON z hodiniek (RR intervaly, ID
-    # zariadenia, casova znacka). Mensi buffer by na Windows nespôsobil
-    # orezanie, ale rovno vynimku WSAEMSGSIZE.
+    # A buffer big enough even for chatty JSON from the watch (RR intervals,
+    # device ID, timestamp). A smaller buffer on Windows would not cause
+    # truncation, but straight away a WSAEMSGSIZE exception.
     RECV_BUFFER_BYTES = 4096
 
     def __init__(self, on_bpm, on_status=None, on_metrics=None):
         self.on_bpm = on_bpm
         self.on_status = on_status
-        # Volitelne: kroky a rychlost z tej istej spravy. Ked ho nikto
-        # nenastavi, appka sa sprava presne ako predtym.
+        # Optional: steps and speed from the same message. When nobody sets
+        # it, the app behaves exactly as before.
         self.on_metrics = on_metrics
         self._run = None
         self._generation = 0
 
     def start(self, host, port):
-        """Spusti novy beh prijimaca a vrati cislo jeho generacie."""
+        """Starts a new receiver run and returns its generation number."""
         self.stop()
         self._generation += 1
         run = _Run(self._generation)
@@ -373,24 +396,27 @@ class HeartRateMonitor:
 
     @property
     def running(self):
-        """Bezi prave prijem? Volajuci sa tym vyhne zbytocnemu restartu.
+        """Is receiving running right now? The caller avoids a needless
+        restart.
 
-        Restart socketu znamena kratke odpojenie hodiniek - a prave kratke
-        vypadky su to, co rozbija pocitanie suvislosti v `trigger.py`.
-        Kto chce len NOVU MERACIU RELACIU, nema dovod sahat na siet.
+        A socket restart means a short disconnect of the watch - and short
+        dropouts are exactly what breaks the continuity counting in
+        `trigger.py`. Whoever only wants a NEW MEASUREMENT SESSION has no
+        reason to touch the network.
         """
         return self._run is not None
 
     def stop(self):
-        """Okamzite (neblokujuco) ukonci bezuci prijem.
+        """Ends the running receiving immediately (without blocking).
 
-        Zamerne sa NEcaka na dobehnutie vlakien - viz poznamka 1) v hlavicke
-        modulu. Zatvorenim socketov sa kazde z nich odblokuje samo."""
+        It deliberately does NOT wait for the threads to finish - see note
+        1) in the module header. Closing the sockets unblocks each of them
+        on its own."""
         run, self._run = self._run, None
         if run is not None:
             run.shutdown()
 
-    # ---------- pozadove vlakna ----------
+    # ---------- background threads ----------
 
     def _notify(self, func, payload, run):
         if func is None or run.stop_event.is_set():
@@ -398,10 +424,12 @@ class HeartRateMonitor:
         try:
             func(payload, run.generation)
         except Exception:
-            # Chyba v spracovani vzorky (on_bpm/on_data/on_status/on_connected)
-            # by inak ticho zhodila KAZDU dalsiu vzorku a tep by "zamrzol" bez
-            # jedinej stopy. Zalogujeme RAZ (dalsie sa uz nevypisu), nech to
-            # z citaceho vlakna nezaplavi log.
+            # An error in processing a sample
+            # (on_bpm/on_data/on_status/on_connected) would otherwise silently
+            # kill EVERY following sample and the heart rate would "freeze"
+            # without a single trace. We log it ONCE (further ones are not
+            # printed), so that it does not flood the log from the reading
+            # thread.
             if not getattr(self, "_notify_warned", False):
                 self._notify_warned = True
                 log.exception("HR: spracovanie vzorky zlyhalo "
@@ -414,52 +442,56 @@ class HeartRateMonitor:
         self._notify(self.on_bpm, bpm, run)
 
     def _emit(self, data, run, zdroj=None):
-        """Jedna prijata sprava: tep von starou cestou, kroky a rychlost novou.
+        """Received message: heart rate the old way, steps/speed the new way.
 
-        `zdroj` je meno OBS zdroja, do ktoreho appka na hodinkach zapisala.
-        Pri UDP ziadne nie je - tam sa metriky nadalej poznavaju z menoviek
-        v texte.
+        `zdroj` is the name of the OBS source the watch app wrote into. With
+        UDP there is none - there the metrics are still recognised from the
+        labels in the text.
 
-        Kroky chodia ZVLAST od tepu zamerne. Sprava ich nemusi obsahovat
-        (zakladna verzia appky na hodinkach ich neposiela) a vtedy sa nesmie
-        tvarit, ze hrac sedi - "nevieme" a "nula krokov" su dve rozne veci.
+        Steps come SEPARATELY from the heart rate on purpose. The message
+        does not have to contain them (the basic version of the watch app
+        does not send them) and then it must not pretend the player is
+        sitting - "we do not know" and "zero steps" are two different
+        things.
         """
         metriky = parse_metrics(data, zdroj, run.note_source(zdroj))
-        # SUROVA SPRAVA DO DENNIKA, prvych par kusov z kazdeho behu.
+        # RAW MESSAGE TO THE JOURNAL, the first few from every run.
         #
-        # Bez toho sa neda zistit, CO hodinky posielaju - a to je prave
-        # otazka, na ktorej stoji detekcia pohybu. Zapisuje sa obmedzeny
-        # pocet: trvaly zapis kazdej spravy by z denniku spravil firehose
-        # (vzorka kazdych ~0,9 az ~2,9 s = zhruba 1200 az 4000 riadkov za
-        # hodinu, viz `trigger.MAX_KROK_S`).
+        # Without it there is no way to find out WHAT the watch sends - and
+        # that is exactly the question movement detection stands on. A limited
+        # number is written: a permanent record of every message would turn the
+        # journal into a firehose (a sample every ~0.9 to ~2.9 s = roughly 1200
+        # to 4000 lines per hour, see `trigger.MAX_KROK_S`).
         if run.log_left > 0:
             run.log_left -= 1
             try:
                 ukazka = data.decode("utf-8", errors="replace")[:200]
             except Exception:
                 ukazka = repr(data[:120])
-            # meno zdroja si voli klient - do denniku len jeho zaciatok
+            # the client picks the source name - only its start to the journal
             log.info("z hodiniek prislo [%s]: %r -> %s",
                      (zdroj or "bez mena")[:80], ukazka, metriky)
         self._emit_bpm(metriky["bpm"], run)
-        # Dva rady tepu v jednom zdroji: raz za beh riadok do app.log a stav
-        # pre appku. Tep ide von vyssie nezmeneny - toto meranie neopravuje.
+        # Two heart-rate series in one source: once per run a line to app.log
+        # and a state for the app. The heart rate goes out above unchanged -
+        # this does not fix the measurement.
         if run.note_bpm(zdroj, metriky["bpm"]):
             meno = meno_zdroja_do_dennika(zdroj)
             log.info("HR: do zdroja [%s] chodia dva rozne rady tepu", meno)
             self._notify(self.on_status, ("two_series", meno), run)
         if self.on_metrics is not None and (metriky["steps"] is not None
                                             or metriky["speed"] is not None):
-            # MENO ZDROJA IDE SPOLU S HODNOTAMI. Bez neho by `hr_stats`
-            # nemalo ako rozoznat, ze ten isty pocet krokov chodi z dvoch
-            # zdrojov naraz - a z ich vzajomneho oneskorenia by pocitalo
-            # kroky, ktore sa nestali.
+            # THE SOURCE NAME GOES ALONG WITH THE VALUES. Without it `hr_stats`
+            # would have no way to recognise that the same step count is coming
+            # from two sources at once - and from their mutual delay it would
+            # count steps that never happened.
             self._notify(self.on_metrics, dict(metriky, zdroj=zdroj), run)
 
     def _serve(self, host, port, run):
-        """Hlavne vlakno behu: otvori TCP (obs-websocket) a UDP, potom
-        prijima spojenia. TCP je povinne - to je cesta, ktorou chodia
-        appky pre OBS; UDP je bonus a jeho zlyhanie beh nezhodi."""
+        """Main thread of the run: opens TCP (obs-websocket) and UDP, then
+        accepts connections. TCP is mandatory - that is the path the apps
+        for OBS use; UDP is a bonus and its failure does not bring the run
+        down."""
         try:
             listener, used_fallback = self._bind(socket.SOCK_STREAM, host, port)
         except OSError as exc:
@@ -493,13 +525,13 @@ class HeartRateMonitor:
                 conn.close()
                 if run.stop_event.is_set():
                     break
-                # PLNO: zahodi sa len TOTO nove spojenie, prijem bezi dalej.
+                # FULL: only THIS new connection is dropped, receiving goes on.
                 #
-                # Doteraz tu bol `break`, takze strop, ktory mal chranit pred
-                # zaplavenim spojeniami, sam zastavil CELY prijem az do
-                # restartu senzora - aj ked sa miesta medzitym uvolnili.
-                # `run.add` vracia False aj pri zastavovani; to rozlisuje
-                # `stop_event` vyssie.
+                # Until now there was a `break` here, so the cap that was meant
+                # to protect against a flood of connections itself stopped ALL
+                # receiving until the sensor restarted - even when places freed
+                # up in the meantime. `run.add` returns False also while
+                # stopping; `stop_event` above tells these apart.
                 if not run.plno_hlasene:
                     run.plno_hlasene = True
                     log.warning("HR: strop %d spojeni, nove spojenie odmietnute "
@@ -514,15 +546,16 @@ class HeartRateMonitor:
             pass
 
     def _websocket_client(self, conn, run):
-        """Jeden pripojeny klient obs-websocket (appka na hodinkach)."""
+        """One connected obs-websocket client (the watch app)."""
         linked = False
         try:
-            # CASOVE LIMITY SI NASTAVUJE `serve_connection` (handshake 10 s,
-            # potom ping po minute ticha). Doteraz tu bolo `settimeout(None)`:
-            # spojenie, ktore nic neposlalo, drzalo jedno miesto pod
-            # `_MAX_LIVE_SOCKETS` navzdy. Mrtve spojenie teraz skonci ako
-            # kazde ine odpojenie (`finally` nizsie). stop() socket zavrie
-            # hned a citanie sa tym odblokuje samo, na limit necaka.
+            # THE TIME LIMITS ARE SET BY `serve_connection` (handshake 10 s,
+            # then a ping after a minute of silence). Until now there was
+            # `settimeout(None)` here: a connection that sent nothing held one
+            # place under `_MAX_LIVE_SOCKETS` forever. A dead connection now
+            # ends like any other disconnect (`finally` below). stop() closes
+            # the socket right away and that unblocks the read on its own, it
+            # does not wait for the limit.
 
             def on_connected():
                 nonlocal linked
@@ -544,41 +577,47 @@ class HeartRateMonitor:
                 conn.close()
             except Exception:
                 pass
-            # "client_gone" AZ KED ODIDE POSLEDNY KLIENT.
+            # "client_gone" ONLY WHEN THE LAST CLIENT LEAVES.
             #
-            # Telefon sa po vypadku Wi-Fi pripoji NOVYM spojenim a stare na
-            # nasej strane visi polootvorene. Kym nebol limit necinnosti,
-            # viselo navzdy a nic nehlasilo; teraz ho limit do dvoch minut
-            # zavrie - a keby to hlasilo "client_gone", appka by uprostred
-            # ziveho tepu z noveho spojenia zahodila odpocet spustaca a
-            # zapisala vypadok, ktory nebol. Tep, ktory naozaj prestal chodit,
-            # aj tak nahlasi `_stale_watchdog` po STALE_AFTER_S.
+            # After a Wi-Fi dropout the phone connects with a NEW connection
+            # and the old one hangs half-open on our side. Before there was an
+            # idle limit it hung forever and reported nothing; now the limit
+            # closes it within two minutes - and if that reported
+            # "client_gone", the app would, in the middle of a live heart rate
+            # from the new connection, throw away the trigger countdown and
+            # record a dropout that did not happen. A heart rate that really
+            # stopped coming is reported anyway by `_stale_watchdog` after
+            # STALE_AFTER_S.
             if linked and run.client_left():
                 self._notify(self.on_status, ("client_gone", None), run)
 
     def _udp_loop(self, host, port, run):
-        """Zaloha pre appky, ktore posielaju obycajne UDP datagramy."""
-        # UZ ZASTAVENY BEH PORT NEBERIE. `_serve` spusta toto vlakno az po
-        # `_notify("connecting")`, ktore z cudzieho vlakna caka na GUI - a
-        # medzitym moze byt beh zastaveny a novy uz otvara ten isty port.
-        # Keby stary beh port chytil (a hned pustil), novy by dostal "port
-        # drzi iny program", hoci ho drzal na chvilu len Zanshin sam.
+        """Fallback for apps that send plain UDP datagrams."""
+        # AN ALREADY STOPPED RUN DOES NOT TAKE THE PORT. `_serve` starts this
+        # thread only after `_notify("connecting")`, which waits for the GUI
+        # from a foreign thread - and in the meantime the run may be stopped
+        # and a new one already opening the same port. If the old run grabbed
+        # the port (and let go right away), the new one would get "the port is
+        # held by another program", although only Zanshin itself held it for a
+        # moment.
         if run.stop_event.is_set():
             return
         try:
             sock, _ = self._bind(socket.SOCK_DGRAM, host, port)
         except OSError as exc:
             if run.stop_event.is_set():
-                return      # zastaveny beh nehlasi nic, ani do app.log
-            # UDP je bonus - jeho zlyhanie beh NEZHODI, TCP (appky pre OBS)
-            # bezi dalej. Ale uz nie potichu: doteraz tu bol holy `return`,
-            # takze hrac s appkou, ktora posiela len UDP/OSC (napr. z iPhonu),
-            # pozeral na "Pripaja sa..." bez jedinej stopy preco. Preto
-            # vlastne druhy "udp_busy"/"udp_error" - nie "busy"/"error", tie
-            # by appka pochopila ako padnuty TCP a zhodila cely prijem.
-            # Hlasi sa RAZ za beh: vazba sa v jednom behu skusa len tu.
-            # Do suboru len port a chyba - adresa PC do app.log nejde
-            # (strazi to tests/test_ip_skryta.py).
+                return      # a stopped run reports nothing, not even to app.log
+            # UDP is a bonus - its failure does NOT bring the run down, TCP
+            # (apps for OBS) keeps running. But no longer silently: until now
+            # there was a bare `return` here, so a player with an app that
+            # sends only UDP/OSC (e.g. from an iPhone) stared at
+            # "Pripaja sa..." (Connecting...) without a single trace of why.
+            # Hence its own kinds "udp_busy"/"udp_error" - not "busy"/"error",
+            # the app would take those as a failed TCP and bring all
+            # receiving down.
+            # Reported ONCE per run: binding is tried only here in one run.
+            # Only the port and the error go into the file - the PC address
+            # does not go into app.log (guarded by tests/test_ip_skryta.py).
             log.warning("HR/UDP: port %d sa nepodarilo otvorit (%s), "
                         "prijem ide len cez TCP", port, exc)
             if _err_no(exc) in _PORT_BUSY_ERRNOS:
@@ -600,16 +639,17 @@ class HeartRateMonitor:
                     if run.stop_event.is_set():
                         break
                     if _err_no(exc) in _RECOVERABLE_ERRNOS:
-                        # prilis velky paket / ICMP od predosleho prijemcu -
-                        # socket je v poriadku, len tento paket zahodime
+                        # packet too big / ICMP from a previous receiver -
+                        # the socket is fine, we just drop this packet
                         continue
                     break
                 try:
                     self._emit(data, run)
                 except Exception:
-                    # Pokazeny/skodlivy paket (napr. OSC float inf/nan) nesmie
-                    # NATRVALO zhodit UDP prijem tepu - rovnako, ako to pre
-                    # svoju vetvu uz robi TCP klient (`_websocket_client`).
+                    # A broken/malicious packet (e.g. OSC float inf/nan) must
+                    # not PERMANENTLY kill UDP heart-rate receiving - just as
+                    # the TCP client (`_websocket_client`) already does for its
+                    # branch.
                     if not getattr(self, "_udp_warned", False):
                         self._udp_warned = True
                         log.exception("HR/UDP: spracovanie paketu zlyhalo "
@@ -622,8 +662,9 @@ class HeartRateMonitor:
                 pass
 
     def _stale_watchdog(self, run):
-        """Ked tep prestane chodit, indikator sa musi vratit na "Odpojene" -
-        bez ohladu na to, ktorym z dvoch kanalov chodil."""
+        """When the heart rate stops coming, the indicator must go back to
+        "Odpojene" (Disconnected) - regardless of which of the two channels
+        it came through."""
         while not run.stop_event.wait(self.TICK_TIMEOUT_S):
             last = run.last_data
             if last is None or run.stale_reported:
@@ -632,13 +673,13 @@ class HeartRateMonitor:
                 run.stale_reported = True
                 self._notify(self.on_status, ("disconnected", None), run)
 
-    # ---------- otvaranie socketov ----------
+    # ---------- opening sockets ----------
 
     def _bind(self, kind, host, port):
-        """Vrati (socket, pouzila_sa_zaloha). Ak zadanu adresu toto PC nema,
-        neskonci chybou, ale zacne pocuvat na vsetkych rozhraniach - inak by
-        hracovi stacilo zle prepisat jedno cislo a funkcia by mu tichom
-        prestala fungovat."""
+        """Returns (socket, pouzila_sa_zaloha). If this PC does not have the
+        given address, it does not end with an error but starts listening on
+        all interfaces - otherwise it would be enough for the player to mistype
+        one number and the feature would silently stop working for them."""
         target = (host or "").strip()
         try:
             return self._bind_to(kind, target, port), False
@@ -662,15 +703,16 @@ class HeartRateMonitor:
 
     @staticmethod
     def _set_exclusive(sock, kind):
-        """POZOR na rozdiel medzi Windows a Linuxom: na Windows by
-        SO_REUSEADDR dovolil DVOM procesom pocuvat na tom istom porte
-        sucasne - spojenia by potom dostal len jeden z nich a druha kopia
-        appky by tichom nedostala nic (a hrac by len pozeral na "Pripaja
-        sa..."). SO_EXCLUSIVEADDRUSE namiesto toho poctivo zlyha s "port je
-        obsadeny", co vieme hracovi povedat.
+        """WATCH OUT for the difference between Windows and Linux: on Windows
+        SO_REUSEADDR would allow TWO processes to listen on the same port
+        at the same time - only one of them would then get the connections
+        and the second copy of the app would silently get nothing (and the
+        player would just stare at "Pripaja sa..." (Connecting...)).
+        SO_EXCLUSIVEADDRUSE instead fails honestly with "port is in use",
+        which we can tell the player.
 
-        Na Linuxe je SO_REUSEADDR pre pocuvaci socket bezpecny a bezny
-        (dva zive listenery nedovoli), takze tam ostava."""
+        On Linux SO_REUSEADDR is safe and common for a listening socket (it
+        does not allow two live listeners), so it stays there."""
         exclusive = getattr(socket, "SO_EXCLUSIVEADDRUSE", None)
         if exclusive is not None:
             sock.setsockopt(socket.SOL_SOCKET, exclusive, 1)
@@ -679,37 +721,38 @@ class HeartRateMonitor:
 
 
 def _plausible(bpm):
-    """None pre vsetko, co nemoze byt ludsky tep (viz MIN/MAX vyssie)."""
+    """None for whatever cannot be a human heart rate (see MIN/MAX above)."""
     if bpm is None:
         return None
     return bpm if MIN_PLAUSIBLE_BPM <= bpm <= MAX_PLAUSIBLE_BPM else None
 
 
 # --------------------------------------------------------------------------
-# OSC - treti format, ktory po UDP prichadza
+# OSC - the third format that arrives over UDP
 # --------------------------------------------------------------------------
 #
-# PRECO TO TU JE: na iPhone/Apple Watch NEEXISTUJE appka, ktora by hovorila
-# obs-websocket. Vsetko, co vie citat Apple Watch (Pulsoid, Stromno,
-# HypeRate, Heartwitch), posiela tep do CLOUDU a vracia odkaz do
-# prehliadaca - k tomuto PC sa nepripoji nikdy. Jedina cesta, ktorou sa z
-# iPhonu da tep poslat na LOKALNU adresu bez cloudu, je OSC (appky pre
-# VRChat, napr. PulseOSC). Na Androide to iste vie HeartOSC.
+# WHY THIS IS HERE: on iPhone/Apple Watch there is NO app that would speak
+# obs-websocket. Everything that can read the Apple Watch (Pulsoid, Stromno,
+# HypeRate, Heartwitch) sends the heart rate to the CLOUD and gives back a
+# link for the browser - it never connects to this PC. The only way to send
+# the heart rate from an iPhone to a LOCAL address without the cloud is OSC
+# (apps for VRChat, e.g. PulseOSC). On Android HeartOSC can do the same.
 #
-# OSC je binarny, nie text, takze cez textovu vetvu nizsie by nepresiel:
-#   sprava = adresa ("/avatar/parameters/HR") + typovy retazec (",i")
-#            + argumenty, vsetko null-ukoncene a doplnene na nasobok 4
-#            bajtov, cisla big-endian
-#   balik  = "#bundle\0" + 8 bajtov casovej znacky + [dlzka][sprava]...
+# OSC is binary, not text, so it would not get through the text branch below:
+#   message = address ("/avatar/parameters/HR") + type tag string (",i")
+#             + arguments, all null-terminated and padded to a multiple
+#             of 4 bytes, numbers big-endian
+#   bundle  = "#bundle\0" + 8 bytes of timestamp + [length][message]...
 #
-# Adresu ZAMERNE neskumame: kazda appka si ju pomenuje inak a hrac si ju
-# vie prepisat. Berieme prve cislo, ktore vyzera ako ludsky tep - a prave
-# to zaroven odfiltruje normalizovane hodnoty 0..1, ktore tie appky
-# posielaju vedla skutocneho BPM (0.36 nie je tep, 72 ano).
+# We DELIBERATELY do not look at the address: every app names it
+# differently and the player can rewrite it. We take the first number that
+# looks like a human heart rate - and that at the same time filters out the
+# normalised 0..1 values those apps send next to the real BPM (0.36 is not
+# a heart rate, 72 is).
 
 def _osc_string(data, pos):
-    """(retazec, pozicia dalsieho pola). OSC retazce su null-ukoncene a
-    doplnene nulami na nasobok styroch bajtov."""
+    """(string, position of the next field). OSC strings are null-terminated
+    and padded with zeros to a multiple of four bytes."""
     end = data.find(b"\0", pos)
     if end < 0:
         return None, len(data)
@@ -717,9 +760,9 @@ def _osc_string(data, pos):
 
 
 def _parse_osc(data):
-    """BPM z OSC spravy alebo balika; None, ak to OSC nie je."""
+    """BPM from an OSC message or bundle; None if it is not OSC."""
     if data.startswith(b"#bundle\0"):
-        pos = 16                      # hlavicka + casova znacka
+        pos = 16                      # header + timestamp
         while pos + 4 <= len(data):
             size = int.from_bytes(data[pos:pos + 4], "big")
             pos += 4
@@ -742,9 +785,9 @@ def _parse_osc(data):
         elif tag == ord("f") and pos + 4 <= len(data):
             value = struct.unpack(">f", data[pos:pos + 4])[0]
             if not math.isfinite(value):
-                return None           # inf/nan v OSC float nie je tep
+                return None           # inf/nan in an OSC float is not a heart rate
         else:
-            return None               # retazce/bloby nepreskakujeme, koncime
+            return None               # we do not skip strings/blobs, we stop
         pos += 4
         bpm = _plausible(int(round(value)))
         if bpm is not None:
@@ -752,12 +795,13 @@ def _parse_osc(data):
     return None
 
 
-# DVE hladania, nie jedna alternacia.
+# TWO searches, not one alternation.
 #
-# `re.search` vracia NAJLAVEJSI vyskyt, nie prvu vyhovujucu vetvu. Pri texte
-# "Tep: 73  Kroky: 1832" sa vzor `(\d+)\s*kroky` chytil na "73  Kroky" -
-# teda precital tep ako pocet krokov - lebo zacinal skor nez "Kroky: 1832".
-# Menovka pred cislom je jednoznacnejsia, tak sa skusa prva.
+# `re.search` returns the LEFTMOST match, not the first matching branch. With
+# the text "Tep: 73  Kroky: 1832" the pattern `(\d+)\s*kroky` caught
+# "73  Kroky" - i.e. it read the heart rate as the step count - because it
+# started earlier than "Kroky: 1832". A label before the number is less
+# ambiguous, so it is tried first.
 _KROKY_PRED = re.compile(
     r"(?:\bsteps?\b|\bkrok(?:y|ov)?\b|\bstep[\s_-]*count\b)[\s:=-]{0,3}(\d{1,6})",
     re.IGNORECASE)
@@ -772,7 +816,7 @@ _RYCHLOST_ZA = re.compile(
 
 
 def _cislo(text, *vzory):
-    """Prve cislo, ktore najde niektory zo vzorov - v poradi, v akom prisli."""
+    """The first number that one of the patterns finds - in the order given."""
     for vzor in vzory:
         m = vzor.search(text)
         if not m:
@@ -784,17 +828,18 @@ def _cislo(text, *vzory):
     return None
 
 
-# MENA ZDROJOV, ktore vieme zaradit. Hrac si ich v appke na hodinkach
-# pomenuje sam, takze tu nemozu byt presne retazce.
+# SOURCE NAMES we can classify. The player names them themselves in the
+# watch app, so there cannot be exact strings here.
 #
-# HRANICE SLOV SU TU NUTNE, nie kozmetika. Povodne sa kluc hladal ako
-# obycajny podretazec a `hr` ma dva znaky: zdroj menom "Threshold" aj "HRV"
-# sa tym padom zaradil ako TEP. Je to presne ten isty omyl ako slovenske
-# "tep" vnutri anglickeho "s-tep-s" - uz tretikrat v tomto subore.
+# WORD BOUNDARIES ARE NECESSARY HERE, not cosmetics. Originally the key was
+# searched for as a plain substring and `hr` has two characters: a source
+# named "Threshold" or "HRV" was therefore classified as HEART RATE. It is
+# exactly the same mistake as the Slovak "tep" inside the English
+# "s-tep-s" - already the third time in this file.
 #
-# Dlhsie kluce su predpony (`krok\w*` chyti "kroky" aj "Denne kroky"),
-# kratke maju hranicu z oboch stran (`hr\b` nechyti "Threshold").
-# Poradie ma vyznam: kroky sa skusaju PRVE.
+# Longer keys are prefixes (`krok\w*` catches "kroky" and "Denne kroky"),
+# short ones have a boundary on both sides (`hr\b` does not catch
+# "Threshold"). The order matters: steps are tried FIRST.
 _ZDROJE_METRIK = (
     ("steps", re.compile(
         r"\b(krok\w*|steps?\b|step[\s_-]*count|schritt\w*|pasos?\b|pas\b"
@@ -807,33 +852,38 @@ _ZDROJE_METRIK = (
         r"|srdc\w*|herzfrequenz|\u5fc3\u62cd)", re.IGNORECASE)),
 )
 
-# Cisto ciselna sprava - "86", "4,2", " 1045 ". Nic ine za hodnotu metriky
-# neberieme: keby sme z lubovolneho textu vytiahli prve cislo, vratili by sme
-# sa presne k chybe, kvoli ktorej sa tep cital z poctu krokov.
+# A purely numeric message - "86", "4,2", " 1045 ". We take nothing else as
+# a metric value: if we pulled the first number out of any text, we would
+# go right back to the bug that made the heart rate get read from the step
+# count.
 _HOLE_CISLO = re.compile(r"^[\s]*([-+]?\d+(?:[.,]\d+)?)[\s]*$")
 
-# POCET KROKOV MA VLASTNY VZOR, lebo znesie oddelovac tisicov.
+# THE STEP COUNT HAS ITS OWN PATTERN, because it tolerates a thousands
+# separator.
 #
-# Hodinky formatuju cislo pre overlay podla locale a do zdroja posielaju
-# "1,085" alebo "1 085". Spolocny vzor vyssie bral ciarku ako desatinnu
-# a z 1085 krokov citaral 1. Rozlisit to na urovni retazca sa neda ("4,2" je
-# platna rychlost), zato na urovni METRIKY ano: krok je vzdy cele cislo,
-# takze pri krokoch je oddelovac vzdy tisicovy a nikdy desatinny.
+# The watch formats the number for the overlay by locale and sends "1,085"
+# or "1 085" into the source. The shared pattern above took the comma as a
+# decimal one and read 1 out of 1085 steps. Telling them apart at string
+# level is impossible ("4,2" is a valid speed), but at METRIC level it is
+# possible: a step is always a whole number, so for steps the separator is
+# always the thousands one and never decimal.
 _HOLY_POCET = re.compile(
     r"^[\s]*([-+]?\d{1,3}(?:[ .,\u00a0]\d{3})+|[-+]?\d+)[\s]*$")
 
-# Kroky su kumulativne za den, rychlost je chodza az beh. Hodnoty mimo
-# toho su chyba prenosu, nie udaj - a chybny udaj je horsi nez ziadny,
-# lebo z neho appka usudzuje, ci hrac sedel pri klavesnici.
+# Steps are cumulative for the day, speed is walking up to running. Values
+# outside that are a transfer error, not data - and wrong data is worse than
+# none, because the app uses it to judge whether the player was sitting at
+# the keyboard.
 MAX_KROKOV = 200000
 MAX_RYCHLOST_KMH = 50.0
 
 
 def metrika_zdroja(meno):
-    """`"bpm"` / `"steps"` / `"speed"` podla mena OBS zdroja, inak `None`.
+    """`"bpm"` / `"steps"` / `"speed"` by OBS source name, otherwise `None`.
 
-    `None` znamena "neviem" a NIE "tep". Sprava z nepomenovaneho zdroja ide
-    starou cestou cez menovky v texte - tam, kde bola doteraz.
+    `None` means "I do not know" and NOT "heart rate". A message from an
+    unnamed source goes the old way through the labels in the text - where
+    it went until now.
     """
     if not meno:
         return None
@@ -845,10 +895,10 @@ def metrika_zdroja(meno):
 
 
 def _hodnota_holeho_cisla(data, ako_pocet=False):
-    """Cislo z cisto ciselnej spravy, inak None.
+    """A number from a purely numeric message, otherwise None.
 
-    `ako_pocet=True` je pre kroky: pripusti oddelovac tisicov a vzdy vrati
-    cele cislo. Pre tep a rychlost ostava ciarka desatinna.
+    `ako_pocet=True` is for steps: it allows a thousands separator and always
+    returns a whole number. For heart rate and speed the comma stays decimal.
     """
     try:
         text = data.decode("utf-8", errors="ignore")
@@ -873,31 +923,33 @@ def _hodnota_holeho_cisla(data, ako_pocet=False):
 
 
 def parse_metrics(data, zdroj=None, jediny_zdroj=True):
-    """Vsetko, co sa z jednej spravy da vytiahnut: tep, kroky, rychlost.
+    """Everything one message can yield: heart rate, steps, speed.
 
-    `zdroj` je meno OBS zdroja, do ktoreho appka na hodinkach prave zapisala.
-    Ked ho pozname, ostro urcuje, co sprava znamena - a zdroj krokov uz NIKDY
-    nemoze vydat tep, aj keby sa pocet krokov nahodou zmestil do rozsahu
-    ludskeho tepu (rano po 140 krokoch presne to hrozilo).
+    `zdroj` is the name of the OBS source the watch app has just written into.
+    When we know it, it strictly decides what the message means - and a step
+    source can NEVER produce a heart rate, even if the step count happened to
+    fit into the human heart-rate range (in the morning after 140 steps
+    exactly that was a risk).
 
-    `jediny_zdroj` hovori, ci do tohto behu zapisal uz aj niekto iny.
-    Zaradit vieme len mena, ktore pozname, a hrac si ich pomenuva sam - takze
-    `Cadence`, `Calories` ci japonske \u6b69\u6570 su pre nas neznama. Pri
-    JEDINOM zdroji je neznamy nazov nadalej tep, nech sa vola akokolvek
-    (predvolene meno zdroja v OBS je "Text 1" a vela ludi ho nepremenuje).
-    Len co pisu ASPON DVA rozne zdroje, klient zjavne rozdeluje metriky podla
-    zdrojov - a vtedy sa z holeho cisla z nepoznaneho zdroja tep uz hadat
-    NESMIE. Inak by sa povodna chyba vratila kazdemu, kto si zdroj krokov
-    pomenoval inak nez my cakame.
+    `jediny_zdroj` says whether someone else has also written into this run.
+    We can only classify the names we know, and the player names them
+    themselves - so `Cadence`, `Calories` or the Japanese \u6b69\u6570 are
+    unknown to us. With a SINGLE source an unknown name is still heart rate,
+    whatever it is called (the default source name in OBS is "Text 1" and
+    many people do not rename it). As soon as AT LEAST TWO different sources
+    write, the client is clearly splitting the metrics by source - and then
+    a heart rate MUST NOT be guessed from a bare number from an unrecognised
+    source any more. Otherwise the original bug would come back for everyone
+    who named their step source differently than we expect.
 
-    Premiova verzia appky na hodinkach vie poslat do toho isteho textu aj
-    kroky a rychlost. Appka ich doteraz zahadzovala - pritom su to jediny
-    PRIAMY signal pohybu, ktory mame. Bez neho sa chodza od hernej zataze
-    odlisit neda: v oboch pripadoch len stupne tep.
+    The premium version of the watch app can also send steps and speed into
+    the same text. The app used to throw them away - yet they are the only
+    DIRECT movement signal we have. Without it walking cannot be told apart
+    from gaming load: in both cases only the heart rate goes up.
 
-    Chybajuca polozka je None, nie nula. "Nevieme" a "nula krokov" su dve
-    rozne veci a zamenit ich by znamenalo tvrdit, ze hrac sedi, vzdy ked
-    hodinky kroky neposielaju.
+    A missing item is None, not zero. "We do not know" and "zero steps" are
+    two different things, and mixing them up would mean claiming the player
+    is sitting whenever the watch does not send steps.
     """
     bpm = _parse_bpm(data)
     try:
@@ -936,17 +988,17 @@ def parse_metrics(data, zdroj=None, jediny_zdroj=True):
     vysledok = {"bpm": bpm, "steps": kroky, "speed": rychlost}
     metrika = metrika_zdroja(zdroj)
     if metrika is None:
-        # NEZNAMY ZDROJ MEDZI VIACERYMI: holé číslo nie je tep.
+        # AN UNKNOWN SOURCE AMONG SEVERAL: a bare number is not a heart rate.
         #
-        # Menovka v texte ("Tep: 86") prejde aj tadialto - potlaca sa len
-        # holé číslo, teda presne ten pripad, kde nemame ako vediet, co to
-        # je, a kde sa doteraz hadalo.
+        # A label in the text ("Tep: 86") gets through here too - only a bare
+        # number is suppressed, i.e. exactly the case where we have no way of
+        # knowing what it is, and where it used to be guessed.
         if not jediny_zdroj and _hodnota_holeho_cisla(data) is not None:
             vysledok["bpm"] = None
         return vysledok
 
-    # Zdroj je pomenovany: ak v texte nebola menovka, cele telo spravy je
-    # hodnotou prave tejto metriky.
+    # The source is named: if there was no label in the text, the whole body
+    # of the message is the value of exactly this metric.
     if vysledok[metrika] is None:
         c = _hodnota_holeho_cisla(data, ako_pocet=(metrika == "steps"))
         if c is not None:
@@ -958,16 +1010,16 @@ def parse_metrics(data, zdroj=None, jediny_zdroj=True):
             elif 0 <= c <= MAX_RYCHLOST_KMH:
                 vysledok["speed"] = c
 
-    # A HLAVNE: zo zdroja krokov ani rychlosti nesmie vypadnut tep. Toto je
-    # cely dovod, preco sa meno zdroja vobec prenasa az sem.
+    # AND ABOVE ALL: no heart rate may come out of a step or speed source.
+    # That is the whole reason the source name is carried all the way here.
     if metrika != "bpm":
         vysledok["bpm"] = None
     return vysledok
 
 
 def _parse_bpm(data):
-    # OSC ide prvy: je binarny a textova vetva nizsie by z neho vytiahla
-    # nahodne cislo z bajtov adresy
+    # OSC goes first: it is binary and the text branch below would pull a
+    # random number out of it from the bytes of the address
     bpm = _parse_osc(data)
     if bpm is not None:
         return bpm
@@ -993,21 +1045,22 @@ def _parse_bpm(data):
                 except (TypeError, ValueError, OverflowError):
                     pass
 
-    # POMENOVANE CISLO MA PREDNOST PRED "PRVYM CISLOM V TEXTE".
+    # A NAMED NUMBER TAKES PRIORITY OVER "THE FIRST NUMBER IN THE TEXT".
     #
-    # Prémiová verzia appky na hodinkach vie do toho isteho textu poslat aj
-    # kroky a rychlost. Doteraz sa bralo proste prve cislo, co pri texte typu
-    # "1832 krokov | 73 bpm" znamena precitat kroky ako tep. `_plausible` by
-    # ich sice odmietol a vratil None, takze by tep NEPRISIEL VOBEC - a v
-    # appke by to vyzeralo ako vypadok hodiniek, nie ako zle precitany text.
+    # The premium version of the watch app can also send steps and speed into
+    # the same text. Until now simply the first number was taken, which with
+    # a text like "1832 krokov | 73 bpm" means reading the steps as the heart
+    # rate. `_plausible` would reject them and return None, so the heart rate
+    # would NOT ARRIVE AT ALL - and in the app it would look like a watch
+    # dropout, not like a misread text.
     #
-    # Preto sa najprv hlada cislo, ktore ma pri sebe menovku tepu, a az ked
-    # ziadne nie je, siahne sa po prvom pravdepodobnom cisle.
+    # So first we look for a number that has a heart-rate label next to it,
+    # and only when there is none do we reach for the first plausible number.
     menovka = re.search(
-        # HRANICE SLOV SU TU NUTNE, nie kozmetika: slovenske "tep" je
-        # vnutri anglickeho "S-tep-s". Bez `\b` sa vzor chytil na "Steps"
-        # a z "Steps: 1832" precital 183 ako tep.
-        # `(?!\d)` zasa brani tomu, aby sa z "1832" vzali prve tri cislice.
+        # WORD BOUNDARIES ARE NECESSARY HERE, not cosmetics: the Slovak "tep"
+        # is inside the English "S-tep-s". Without `\b` the pattern caught
+        # "Steps" and read 183 as the heart rate out of "Steps: 1832".
+        # `(?!\d)` in turn stops "1832" from yielding its first three digits.
         r"(?:\bbpm\b|\bhr\b|\bheart[\s_-]*rate\b|\btep\b|\bpuls\b)"
         r"[\s:=-]{0,3}(\d{1,3})(?!\d)"
         r"|(\d{1,3})(?!\d)\s*(?:\bbpm\b|\btep\b)",
@@ -1018,8 +1071,8 @@ def _parse_bpm(data):
         if hodnota is not None:
             return hodnota
 
-    # Bez menovky: prve cislo, ktore je vobec pravdepodobny tep. Kroky
-    # (tisice) a rychlost (0-20) sa tak preskocia samy.
+    # Without a label: the first number that is a plausible heart rate at all.
+    # Steps (thousands) and speed (0-20) are skipped that way on their own.
     for m in re.finditer(r"\d+", text):
         hodnota = _plausible(int(m.group()))
         if hodnota is not None:

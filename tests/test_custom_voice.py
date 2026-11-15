@@ -1,8 +1,8 @@
-"""Vlastny hlas (nahravka) namiesto TTS + opravy ukladania nahravok (B1-B3).
+"""Custom voice (recording) instead of TTS + recording-saving fixes (B1-B3).
 
-Bez Tk/pygame - rovnako ako test_overlay_features.py sa kontroluje API
-kontrakt a zdroj. Datova cast (DEFAULT_SLOT, normalize_slot) sa overuje aj
-priamo v test_settings_model.py.
+Without Tk/pygame - just like test_overlay_features.py, the API contract
+and the source are checked. The data part (DEFAULT_SLOT, normalize_slot)
+is also checked directly in test_settings_model.py.
 """
 import os
 import sys
@@ -18,20 +18,20 @@ def _read(name):
         return fh.read()
 
 
-# ---- datovy model --------------------------------------------------------
+# ---- data model ----------------------------------------------------------
 
 def test_default_slot_ma_voice_path_a_uid():
     assert "voice_path" in sm.DEFAULT_SLOT
     assert "uid" in sm.DEFAULT_SLOT
 
 
-# ---- prehravanie: nahravka ma prednost pred TTS a hraje cisto ------------
+# ---- playback: the recording goes before TTS and plays clean ------------
 
 def test_speak_text_skusa_nahravku_pred_tts():
-    # prehratie (`_speak_text`) aj jeho zrkadlo pre zaznam (`_slot_zaznie`)
+    # playback (`_speak_text`) and its mirror for the record (`_slot_zaznie`)
     telo = zdroj_metody("_speak_text") + "\n" + zdroj_metody("_slot_zaznie")
     assert "_slot_voice_clip" in telo, "nahravka sa nekontroluje"
-    # nahravka sa musi vyriesit este pred TTS (Edge/SAPI vetvou)
+    # the recording must be resolved before TTS (the Edge/SAPI branch)
     assert telo.index("_play_voice_file") < telo.index("EDGE_AVAILABLE"), \
         "vlastna nahravka ma mat prednost pred TTS"
 
@@ -51,12 +51,12 @@ def test_play_audio_file_ma_prepinac_notch():
 
 def test_emit_pusti_hlas_aj_bez_textu_ak_je_nahravka():
     emit = zdroj_metody("_emit")
-    # COMBO aj cista TTS vetva sa pytaju na _slot_has_voice, nie len text.strip()
+    # COMBO and the pure TTS branch ask _slot_has_voice, not just text.strip()
     assert emit.count("_slot_has_voice(slot)") >= 2, \
         "nahravka s prazdnym textom by sa inak neprehrala"
 
 
-# ---- B1: mena nahravok podla stabilneho uid, nie podla poradia -----------
+# ---- B1: recording names by a stable uid, not by order -------------------
 
 def test_b1_nahravka_ma_meno_podla_uid():
     dialogs = _read("ui_dialogs.py")
@@ -66,7 +66,7 @@ def test_b1_nahravka_ma_meno_podla_uid():
     assert "voice_{self.slot.uid}.wav" in dialogs
 
 
-# ---- B2: vybrany subor sa kopiruje do priecinka audio/ -------------------
+# ---- B2: the chosen file is copied into the audio/ folder ----------------
 
 def test_b2_vybrany_subor_sa_kopiruje_do_ulozne():
     dialogs = _read("ui_dialogs.py")
@@ -77,17 +77,17 @@ def test_b2_vybrany_subor_sa_kopiruje_do_ulozne():
         "choose_file uz nesmie drzat cudziu cestu tak ako je (B2)"
 
 
-# ---- B3: ukladanie nahravky je atomicke ----------------------------------
+# ---- B3: saving a recording is atomic ------------------------------------
 
 def test_b3_stop_and_save_je_atomicke():
     audio = _read("audio_engine.py")
     sas = audio[audio.index("    def stop_and_save(self"):audio.index("    def cancel(self")]
-    # `nahrad_subor` = os.replace s opakovanim pri kratkom zamku (paths.py)
+    # `nahrad_subor` = os.replace with a retry on a short lock (paths.py)
     assert ".part" in sas and "nahrad_subor(" in sas, \
         "nahravka sa ma ulozit najprv do .part a atomicky presunut (B3)"
 
 
-# ---- serializacia --------------------------------------------------------
+# ---- serialisation -------------------------------------------------------
 
 def test_to_dict_ma_voice_path_a_uid():
     dialogs = _read("ui_dialogs.py")
@@ -96,7 +96,7 @@ def test_to_dict_ma_voice_path_a_uid():
     assert '"uid": self.uid' in td
 
 
-# ---- UI: dialog hlasu ma nahravanie vlastneho hlasu ----------------------
+# ---- UI: the voice dialog has custom voice recording ---------------------
 
 def test_dialog_hlasu_ma_vlastnu_nahravku():
     dialogs = _read("ui_dialogs.py")
@@ -107,7 +107,7 @@ def test_dialog_hlasu_ma_vlastnu_nahravku():
     assert "dialog.voice_rec_label" in dialog
 
 
-# ---- i18n: vsetky nove kluce maju vsetky jazyky ---------------------------
+# ---- i18n: all new keys have all languages ---------------------------------
 
 def test_nove_i18n_kluce_maju_vsetky_jazyky():
     import i18n

@@ -1,14 +1,20 @@
 # -*- coding: utf-8 -*-
-"""Stav prijmu tepu mimo okna parovania (0.2.2, audit "Cakam na tep cely
-vecer", "Cakam na hodinky aj vtedy, ked nemozu prist", "Pole IP 0.0.0.0").
+"""Heart-rate receiving state outside the pairing window (0.3, audit
+"Waiting for heart rate all evening", "Waiting for the watch even when it
+cannot come", "IP field 0.0.0.0").
 
-  * pas aj stred Dnes maju vlastny stav "Telefon sa nepripojil" s radou,
-  * text vpravo v hlavicke "Tep a zataz" hovori podla stavu prijmu,
-  * karta "Hodinky a tep": prijem -> stav -> navod -> az potom sietove polia,
-    pole adresy je "pokrocile" a "Ukazat IP" sa pri 0.0.0.0 neukazuje,
-  * QR popisy a rada pod polom posielaju do navodu, nie "IP tohto PC".
+  * both the bar and the centre of Today have their own "The phone didn't
+    connect" state with advice,
+  * the text on the right of the "Heart rate and load" header speaks by
+    the receiving state,
+  * the "Watch and heart rate" card: receiving -> state -> guide -> only
+    then the network fields; the address field is "advanced" and "Show
+    IP" is not shown at 0.0.0.0,
+  * the QR descriptions and the hint under the field point to the guide,
+    not to "IP of this PC".
 
-Testy bezia bez Tk: skutocne metody `DandurfApp` sa volaju na atrape.
+The tests run without Tk: the real `DandurfApp` methods are called on a
+dummy.
 """
 import os
 import re
@@ -42,7 +48,7 @@ def _nic(*_a, **_k):
 
 
 # --------------------------------------------------------------------------
-# Pas a stred Dnes: "Telefon sa nepripojil"
+# The bar and the centre of Today: "The phone didn't connect"
 # --------------------------------------------------------------------------
 
 def _kamae(**kw):
@@ -83,8 +89,8 @@ def test_bez_prijmu_posiela_na_ikonu_nie_na_prepinac():
 
 
 def test_ikona_hodiniek_vlavo_naozaj_existuje_a_otvara_navod():
-    """Vety posielaju na "ikonu hodiniek vlavo" - bocny panel ju musi mat a
-    klik musi zapnut prijem a otvorit navod."""
+    """The sentences point to "the watch icon on the left" - the side panel
+    must have it, and a click must turn receiving on and open the guide."""
     src = zdroj_appky()
     assert "on_pair_watch=self.open_watch_pairing" in src
     shell = zdroj_suboru("ui_shell.py")
@@ -133,7 +139,7 @@ def test_vypnutie_prijmu_prepise_dnes_aj_pas():
 
 
 # --------------------------------------------------------------------------
-# Dnes: text vpravo v hlavicke "Tep a zataz"
+# Today: the text on the right of the "Heart rate and load" header
 # --------------------------------------------------------------------------
 
 def _text(**kw):
@@ -156,19 +162,19 @@ def test_text_podla_stavu_prijmu():
 
 
 def test_dnes_text_berie_z_funkcie_modulu():
-    """Funkcia modulu, nie metoda - `_refresh_dnes_stats` bezi v testoch aj
-    na atrapach, ktore by novu metodu nemali."""
+    """A module function, not a method - `_refresh_dnes_stats` also runs on
+    dummies in the tests, which would not have a new method."""
     telo = zdroj_metody("_refresh_dnes_stats")
     assert "_text_bez_tepu(self)" in telo
     assert 'tr("dnes.hr_waiting")' not in telo
 
 
 # --------------------------------------------------------------------------
-# Karta "Hodinky a tep"
+# The "Watch and heart rate" card
 # --------------------------------------------------------------------------
 
 def _riadok(karta, kotva):
-    """Cislo riadku mriezky prvku, ktory zacina na `kotva`."""
+    """Grid row number of the element that starts at `kotva`."""
     i = karta.index(kotva)
     m = re.search(r"row=(\d+)", karta[i:])
     return int(m.group(1))
@@ -184,7 +190,7 @@ def test_poradie_karty_prijem_stav_navod_az_potom_siet():
     port = int(re.search(r'_hr_entry\(inner, pal, (\d+), tr\("settings.hr_port_label"\)',
                          karta).group(1))
     assert prijem < stav < navod < adresa < port
-    # aj poradie vytvarania (Tab chodi v poradi vytvarania)
+    # the creation order too (Tab goes in creation order)
     assert (karta.index('tr("settings.hr_enable_switch")') < karta.index('tr("hr.pair_button")')
             < karta.index('tr("settings.hr_ip_label")'))
 
@@ -215,7 +221,7 @@ def test_qr_uz_neradi_ip_tohto_pc():
 
 
 # --------------------------------------------------------------------------
-# "Ukazat IP" pri poli adresy - len ked je co odkryt
+# "Show IP" by the address field - only when there is something to reveal
 # --------------------------------------------------------------------------
 
 class _Var:
@@ -282,17 +288,17 @@ def test_pri_skutocnej_adrese_sa_ukaze_a_maska_plati_dalej():
     a.set_show_ip(True)
     assert a.hr_ip_entry.show == "" and a.hr_ip_show_switch.manager == "pack"
     assert a.hr_ip_show_switch.pakovania == 1, "uz zobrazeny sa znova nepakuje"
-    # hrac vrati 0.0.0.0 - prepinac zmizne
+    # the player sets 0.0.0.0 back - the toggle disappears
     a.hr_ip_var.set("0.0.0.0")
     a._apply_hr_ip_mask()
     assert a.hr_ip_show_switch.manager == ""
 
 
 def test_karta_prepinac_nepakuje_sama():
-    """O zobrazeni rozhoduje len `_apply_hr_ip_mask` - karta ho len vytvori."""
+    """Only `_apply_hr_ip_mask` shows/hides it - the card just creates it."""
     karta = zdroj_metody("_build_heart_rate_card")
     vytvorenie = karta[karta.index("def _prepinac_ip"):karta.index("self.hr_ip_entry =")]
-    # jeden prepinac appky (`ui_kit.switch`, 0.2.2 audit UX)
+    # the app's one switch widget (`ui_kit.switch`, 0.3 UX audit)
     assert "self.hr_ip_show_switch = ui_kit.switch(" in vytvorenie
     assert ".pack(" not in vytvorenie
     assert "self.hr_ip_show_switch = None" in zdroj_metody("__init__")

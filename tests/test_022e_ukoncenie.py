@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
-"""Druhe "Ukoncit" nad dotaznikom a casovac pokusov o vazbu (0.2.2, davka 4).
+"""Second "Quit" over the questionnaire, the bind-retry timer (0.3, batch 4).
 
-* Druhe "Ukoncit" (lista) pocas otvoreneho dotaznika: ked sa hrac dotkol
-  aspon jednej odpovede, ulozia sa (ako "Ulozit") a appka skonci; ked nie,
-  dotaznik sa zavrie ako "Preskocit". Jeden riadok do dennika.
-* `_hr_retry_job` (pokus po obsadenom porte) sa rusi pri vypnuti senzora,
-  novom behu (iny port), chybe vazby aj ukonceni a nikdy nebezia dva."""
+* A second "Quit" (tray) while the questionnaire is open: when the player has
+  touched at least one answer, they are saved (like "Save") and the app quits;
+  when not, the questionnaire closes like "Skip". One line to the journal.
+* `_hr_retry_job` (the attempt after a busy port) is cancelled on sensor
+  switch-off, a new run (another port), a binding error and quitting, and two
+  never run."""
 import types
 
 import app as app_mod
@@ -99,7 +100,8 @@ def test_bolo_vyplnene_vidi_kazdu_odpoved():
     assert _dotaznik(cue_verdict="helped").bolo_vyplnene() is True
     assert _dotaznik(note_box=_Text("  dlhy den  \n")).bolo_vyplnene() is True
     assert _dotaznik(note_box=_Text("   \n")).bolo_vyplnene() is False
-    # cip "len nastavovanie" predvyplneny appkou nie je odpoved - az klik
+    # the "Just setting up the app" chip pre-filled by the app is not an
+    # answer - only a click is
     assert _dotaznik(summary={"setup": True}, setup=True).bolo_vyplnene() is False
     assert _dotaznik(summary={"setup": True}, setup=False).bolo_vyplnene() is True
 
@@ -144,7 +146,7 @@ def test_obsadeny_port_nikdy_nenaplanuje_dva_pokusy():
     port._stav(a, "busy", 4455)
     prvy = a._hr_retry_job
     assert list(root.ulohy) == [prvy]
-    # dalsie "busy" skor, nez stary pokus dobehol (napr. dve spravy z vlakna)
+    # another "busy" before the old attempt ran (e.g. two thread messages)
     port._stav(a, "busy", 4455)
     assert root.zrusene == [prvy]
     assert list(root.ulohy) == [a._hr_retry_job] and a._hr_retry_job != prvy
@@ -177,5 +179,5 @@ def test_zmena_portu_aj_ukoncenie_rusia_pokus():
     assert "start_heart_rate_monitor()" in zdroj_metody("on_hr_config_change")
     quit_ = zdroj_metody("_quit")
     assert '"_hr_retry_job"' in quit_ and "after_cancel(job)" in quit_
-    # `_open_hr_session` pokus uz nezahadzuje bez zrusenia
+    # `_open_hr_session` no longer discards the attempt without cancelling it
     assert "self._hr_retry_job = None" not in zdroj_metody("_open_hr_session")

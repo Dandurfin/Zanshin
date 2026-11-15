@@ -1,31 +1,35 @@
 # -*- coding: utf-8 -*-
-"""0.2.2: Dandurf.spec bali poistku pre edge-tts stiahnuty appkou.
+"""0.3: Dandurf.spec bundles a safeguard for edge-tts downloaded by the app.
 
-PRECO: tlacidlo "Aktualizovat hlas" (hlas_kniznica.py) vie za behu nacitat
-novsi edge-tts z PyPI - len jeho vlastny kod. Ten sa importuje cez Python
-zabaleny v exe, a ten ma len moduly, ktore PyInstaller pri builde videl.
-Novsi edge-tts moze siahnut po module, ktory dnesny nepouziva - import by
-zlyhal a appka by aktualizaciu odmietla ("incompatible", treba novy
-Zanshin). Preto spec bali zavislosti edge-tts cele a rozumny zoznam
-standardnej kniznice.
+WHY: the "Update voice" button (hlas_kniznica.py) can load a newer
+edge-tts from PyPI at runtime - only its own code. That is imported
+through the Python packaged in the exe, and that one has only the modules
+PyInstaller saw at build time. A newer edge-tts may reach for a module
+that today's does not use - the import would fail and the app would
+refuse the update ("incompatible", a new Zanshin is needed). That is why
+the spec bundles edge-tts's dependencies whole, plus a sensible list of
+the standard library.
 
-Co strazi tento test:
-  * zavislosti edge-tts (aiohttp a jeho zavislosti, tabulate,
-    typing_extensions; certifi a edge_tts ako doteraz) idu cez collect_all
-    - podmoduly, data, kniznice aj metadata (appka podla dist-info overi
-    verzie, ktore novy edge-tts ziada) - bez .py ako dat, bez __main__ a
-    bez testovacich modulov aiohttp (pytest_plugin by dotiahol pytest),
-  * zoznam pokryva CELY strom Requires-Dist nainstalovaneho edge-tts (bez
-    extra) - keby novy aiohttp pridal zavislost, test to povie,
-  * balik, ktory na PC nie je, build nezhodi (len sa preskoci),
-  * zoznam standardnej kniznice su naozaj moduly standardnej kniznice
-    tohto Pythonu, baliky su baliky, __main__ sa vynecha a pokryva kazdy
-    import standardnej kniznice v nainstalovanom edge-tts,
-  * vsetko z toho naozaj dojde do Analysis (datas, binaries, hiddenimports).
+What this test guards:
+  * the dependencies of edge-tts (aiohttp and its dependencies, tabulate,
+    typing_extensions; certifi and edge_tts as before) go through
+    collect_all - submodules, data, libraries and metadata (via
+    dist-info the app checks the versions the new edge-tts requires) -
+    without .py as data, without __main__ and without the aiohttp test
+    modules (pytest_plugin would pull in pytest),
+  * the list covers the WHOLE Requires-Dist tree of the installed
+    edge-tts (without extras) - if a new aiohttp added a dependency, the
+    test says so,
+  * a package that is not on the PC does not break the build (it is just
+    skipped),
+  * the standard library list really is modules of this Python's
+    standard library, packages are packages, __main__ is skipped, and it
+    covers every standard library import in the installed edge-tts,
+  * all of that really reaches Analysis (datas, binaries, hiddenimports).
 
-Spec sa spusti s falosnym PyInstaller.utils.hooks a falosnym Analysis -
-nic sa nebuilduje, ziadny podproces, ziadna siet. Kod edge-tts sa len
-cita cez ast, nespusta sa.
+The spec is run with a fake PyInstaller.utils.hooks and a fake Analysis -
+nothing is built, no subprocess, no network. The edge-tts code is only
+read via ast, not run.
 """
 import ast
 import importlib.util
@@ -48,7 +52,7 @@ def _read(meno):
 
 
 class _Hooky:
-    """Falosny PyInstaller.utils.hooks: zapise volania, vrati znackove data."""
+    """Fake PyInstaller.utils.hooks: records calls, returns marker data."""
 
     def __init__(self):
         self.collect_all = {}
@@ -81,9 +85,10 @@ class _Hooky:
 
 
 def _spusti_spec(monkeypatch, chyba=()):
-    """Vykona Dandurf.spec -> (globaly specu, kwargs Analysis, hooky).
-    `chyba` = baliky, ktore 'nie su nainstalovane'; ostatne su (aj ked na
-    tomto PC nie su - test nezavisi od prostredia)."""
+    """Runs Dandurf.spec -> (spec globals, Analysis kwargs, hooks).
+    `chyba` = packages that are 'not installed'; the others are (even if
+    they are not on this PC - the test does not depend on the
+    environment)."""
     hooky = _Hooky()
     monkeypatch.setitem(sys.modules, "PyInstaller", types.ModuleType("PyInstaller"))
     monkeypatch.setitem(sys.modules, "PyInstaller.utils", types.ModuleType("PyInstaller.utils"))
@@ -103,7 +108,7 @@ def _spusti_spec(monkeypatch, chyba=()):
 
 
 # --------------------------------------------------------------------------
-# Zavislosti edge-tts
+# edge-tts dependencies
 # --------------------------------------------------------------------------
 
 def test_spec_bali_zavislosti_edge_tts_cele(monkeypatch):
@@ -113,12 +118,12 @@ def test_spec_bali_zavislosti_edge_tts_cele(monkeypatch):
                               analysis["binaries"])
     for balik in ZAVISLOSTI:
         volanie = hooky.collect_all[balik]
-        # bytecode v PYZ staci - .py zdrojaky ako data netreba
+        # bytecode in the PYZ is enough - .py sources as data are not needed
         assert volanie["include_py_files"] is False, balik
         filtr = volanie["filter_submodules"]
         assert filtr(balik) and filtr(balik + ".sub"), balik
         assert not filtr(balik + ".__main__"), balik
-        # vsetko z collect_all dojde do Analysis
+        # everything from collect_all reaches Analysis
         assert ("data:" + balik, ".") in data, balik
         assert ("bin:" + balik, ".") in kniznice, balik
         assert balik + ".sub" in skryte and balik + ".__main__" not in skryte, balik
@@ -128,18 +133,18 @@ def test_spec_bali_zavislosti_edge_tts_cele(monkeypatch):
     for treba in ("aiohttp.client", "aiohttp.client_ws", "aiohttp._websocket.reader_c",
                   "aiohttp.web", "aiohttp.resolver"):
         assert filtr(treba), treba
-    # typing_extensions je jeden modul: hiddenimport + metadata (dist-info)
+    # typing_extensions is one module: hiddenimport + metadata (dist-info)
     assert "typing_extensions" in skryte
     assert hooky.metadata == ["typing_extensions"]
     assert ("meta:typing_extensions", ".") in data
-    # edge_tts a certifi cele ako doteraz (s .py - nemenime)
+    # edge_tts and certifi whole as before (with .py - we do not change that)
     for balik in ("edge_tts", "certifi"):
         assert hooky.collect_all[balik]["include_py_files"] is True, balik
         assert ("data:" + balik, ".") in data and balik + ".sub" in skryte, balik
 
 
 def test_spec_bez_chybajuceho_balika_nespadne(monkeypatch):
-    """Starsi aiohttp nemal napr. propcache - build ho preskoci."""
+    """An older aiohttp lacked e.g. propcache - the build skips it."""
     _g, analysis, hooky = _spusti_spec(monkeypatch, chyba={"propcache", "typing_extensions"})
     assert "propcache" not in hooky.collect_all
     assert "typing_extensions" not in analysis["hiddenimports"]
@@ -148,8 +153,8 @@ def test_spec_bez_chybajuceho_balika_nespadne(monkeypatch):
 
 
 def _strom_zavislosti(koren):
-    """Mena distribucii, ktore `koren` naozaj ziada (Requires-Dist bez extra,
-    znacky vyhodnotene pre tento Python), rekurzivne."""
+    """Names of the distributions `koren` really requires (Requires-Dist
+    without extras, markers evaluated for this Python), recursively."""
     from importlib import metadata
     req = pytest.importorskip("packaging.requirements")
     utils = pytest.importorskip("packaging.utils")
@@ -194,14 +199,14 @@ def test_spec_pokryva_cely_strom_zavislosti_nainstalovaneho_edge_tts(monkeypatch
 
 
 # --------------------------------------------------------------------------
-# Standardna kniznica
+# Standard library
 # --------------------------------------------------------------------------
 
 def test_spec_zoznam_standardnej_kniznice(monkeypatch):
     g, analysis, hooky = _spusti_spec(monkeypatch)
     moduly, baliky = g["_STDLIB_MODULY"], g["_STDLIB_BALIKY"]
     assert len(set(moduly)) == len(moduly) and len(set(baliky)) == len(baliky)
-    # odporucany zoznam z rozhodnutia o tlacidle Aktualizovat hlas
+    # the recommended list from the decision on the Update voice button
     for meno in ("asyncio", "email", "json", "http", "urllib", "xml", "html",
                  "concurrent", "logging"):
         assert meno in baliky, meno
@@ -223,7 +228,7 @@ def test_spec_zoznam_standardnej_kniznice(monkeypatch):
 
 def test_zoznam_su_naozaj_moduly_standardnej_kniznice(monkeypatch):
     g, _analysis, _hooky = _spusti_spec(monkeypatch)
-    monkeypatch.undo()          # skutocne find_spec, bez falosneho PyInstalleru
+    monkeypatch.undo()          # real find_spec, without the fake PyInstaller
     for meno in g["_STDLIB_MODULY"] + g["_STDLIB_BALIKY"]:
         assert meno.split(".")[0] in sys.stdlib_module_names, meno
         spec = importlib.util.find_spec(meno)
@@ -233,7 +238,7 @@ def test_zoznam_su_naozaj_moduly_standardnej_kniznice(monkeypatch):
 
 
 def _importy_standardnej_kniznice(priecinok):
-    """Absolutne importy standardnej kniznice v .py suboroch (len ast)."""
+    """Absolute standard library imports in .py files (ast only)."""
     mena = set()
     for subor in sorted(os.listdir(priecinok)):
         if not subor.endswith(".py"):
@@ -264,10 +269,10 @@ def test_zoznam_pokryva_importy_nainstalovaneho_edge_tts(monkeypatch):
 
 def test_spec_poistku_vysvetli():
     spec = _read("Dandurf.spec")
-    assert "Poistka pre edge-tts stiahnuty appkou" in spec
+    assert "Safety net for edge-tts downloaded by the app" in spec
     assert "hlas_kniznica.py" in spec and '"incompatible"' in spec
-    assert "pytest_plugin by do buildu" in spec
-    assert "Velkost: nemerana" in spec
-    # komentare specu po slovensky bez diakritiky (okrem starej hlavicky)
-    nove = spec[spec.index("# Poistka pre edge-tts"):spec.index("extra_datas = []")]
+    assert "pytest_plugin would pull all of pytest into the build" in spec
+    assert "Size: not measured" in spec
+    # the spec's new comments are plain ASCII (except the old header)
+    nove = spec[spec.index("# Safety net for edge-tts"):spec.index("extra_datas = []")]
     assert nove.isascii()

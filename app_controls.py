@@ -1,24 +1,25 @@
-"""Ovladanie appky - cast hlavnej appky (DandurfApp z app.py).
+"""App controls - part of the main app (DandurfApp from app.py).
 
-ControlsMixin je mixin DandurfApp: app.py ho dedi a cely stav (paleta,
-"teraz nie", dennik, sloty, ovladac, overlay) zije na DandurfApp. Tu su len
-metody, ktore s nim pracuju cez `self` - mixin nema __init__ ani vlastne
-atributy.
+ControlsMixin is a mixin of DandurfApp: app.py inherits it and all the state
+(palette, "not now", journal, slots, controller, overlay) lives on
+DandurfApp. Here are only the methods that work with it through `self` - the
+mixin has no __init__ and no attributes of its own.
 
-Styri sekcie presunute z app.py bez zmeny:
-  * command palette (Ctrl+K) - paleta akcii a opakovanie uvodu,
-  * rychly dock - "teraz nie" (prepinac zo skratky aj z listy, odlozenie
-    hlasok, bodka stavu) a zbalenie dennika. Registracia skratky
-    (`start_snooze_hotkey` / `stop_snooze_hotkey`) ostala v app.py pri
-    liste - cita TRAY_AVAILABLE, ktore sa pocita v app.py,
-  * rebind - len znacka, rebind odisiel vo faze 3,
-  * gamepad (uz NIE ako spustac) - aktivita z ovladaca a rucne spustenie
-    hlasky (tlacidlo Test, klik v HUD nahlade).
+Four sections moved from app.py unchanged:
+  * command palette (Ctrl+K) - the action palette and replaying the
+    introduction,
+  * quick dock - "not now" (toggle from the shortcut and from the tray,
+    snoozing cues, status dot) and collapsing the journal. Registering the
+    shortcut (`start_snooze_hotkey` / `stop_snooze_hotkey`) stayed in app.py
+    next to the tray - it reads TRAY_AVAILABLE, which is computed in app.py,
+  * rebind - only a marker, rebind left in phase 3,
+  * gamepad (NO LONGER as a trigger) - activity from the controller and
+    firing a cue manually (Test button, click in the HUD preview).
 
-Pozor v testoch: `_start_snooze`, `_snooze_do`, `_zapocitaj_snooze` a
-`fire_slot` citaju `time` z tohto modulu (`fire_slot` aj `threading`) -
-falosne hodiny treba podstrcit aj tu (`app_controls.time`), nie len na
-module app.
+WARNING for tests: `_start_snooze`, `_snooze_do`, `_zapocitaj_snooze` and
+`fire_slot` read `time` from this module (`fire_slot` also `threading`) - a
+fake clock has to be injected here too (`app_controls.time`), not only on the
+app module.
 """
 
 import os
@@ -37,37 +38,39 @@ from app_spolocne import SNOOZE_HOTKEY_MINUTES, app_log
 
 
 class ControlsMixin:
-    """Paleta prikazov, "teraz nie", dennik a ovladac (mixin DandurfApp)."""
+    """Command palette, "not now", journal, controller (DandurfApp mixin)."""
 
     # ---------- command palette (Ctrl+K) ----------
 
     def open_command_palette(self):
-        """Vytvori paletu s aktualnym zoznamom akcii nanovo pri kazdom
-        otvoreni - takto nikdy nezastara ani po zmene slotov/profilov
-        mimo plneho _build_ui (add_slot/switch_profile ho nevolaju)."""
-        # Predosla paleta sa musi zavriet, inak ostane visiet navrchu vsetkeho
-        # (je topmost) a uz ju nic nezavrie - instancia sa predtym zahodila
-        # do lokalnej premennej, takze jej vlastna poistka na jedinu instanciu
-        # nemala co strazit.
+        """Builds the palette with the current list of actions anew on every
+        opening - so it never goes stale, not even after slots/profiles
+        change outside the full _build_ui (add_slot/switch_profile do not
+        call it)."""
+        # The previous palette has to be closed, otherwise it stays hanging on
+        # top of everything (it is topmost) and nothing closes it anymore - the
+        # instance used to be thrown away into a local variable, so its own
+        # guard for a single instance had nothing to guard.
         previous = getattr(self, "_palette", None)
         if previous is not None:
             try:
                 previous.close()
             except Exception:
                 pass
-        # `pal=self.pal`: bez nej sa paleta farbila z moduloveho SHELL_PAL,
-        # teda z inej farebnej rodiny nez zvysok okna (viz CommandPalette).
+        # `pal=self.pal`: without it the palette took its colours from the
+        # module's SHELL_PAL, i.e. from a different colour family than the rest
+        # of the window (see CommandPalette).
         self._palette = CommandPalette(self.root, self._command_palette_items(),
                                        pal=self.pal,
                                        placeholder=tr("palette.placeholder"))
         self._palette.open()
 
     def _command_palette_items(self):
-        # Vsetky texty palety idu cez i18n - predtym tu boli natvrdo po
-        # slovensky, takze anglicky hrac videl v inak anglickom okne
-        # "Navigácia" a "Pomoc". Sprievodca sa vola rovnako ako jeho panel
-        # (guide.panel_title). Ten uz emoji nema (0.2.2 davka 4, strazi
-        # test_022e_nastavenia), takze ho netreba odstranovat.
+        # All palette texts go through i18n - they used to be hard-coded in
+        # Slovak here, so an English player saw "Navigácia" and "Pomoc" in an
+        # otherwise English window. The guide is named the same as its panel
+        # (guide.panel_title). That one has no emoji anymore (0.3 batch 4,
+        # guarded by test_022e_nastavenia), so there is no need to strip it.
         pomoc = tr("palette.cat.help")
         navigacia = tr("palette.cat.nav")
         appka = tr("palette.cat.app")
@@ -79,23 +82,24 @@ class ControlsMixin:
             (tr("nav.historia"), navigacia, lambda: self.sidebar._select("historia")),
             (tr("nav.spustace"), navigacia, lambda: self.sidebar._select("spustace")),
             (tr("nav.zvuk"), navigacia, lambda: self.sidebar._select("zvuk")),
-            # vo svete Praca "Hodinky a obrazovka" (`_nazov_vhre`, 0.2.2)
+            # in the "Work" world "Watch and screen" (`_nazov_vhre`, 0.3)
             (self._nazov_vhre(dlhy=True), navigacia, lambda: self.sidebar._select("vhre")),
             (tr("nav.nastavenia"), navigacia, lambda: self.sidebar._select("nastavenia")),
             (sprievodca, pomoc, self.open_guide_panel),
             (tr("common.prepare_voices"), tr("palette.cat.sound"),
              lambda: self.pregenerate(force=True)),
-            # "Aktualizovat hlas" (0.2.2) - len pri prirodzenom hlase, rovnako
-            # ako tlacidlo (hlas z Windows nic neposiela, ani skusobne slovo).
-            # Prejde na Nastavenia → Zvuk, kde je stav aktualizacie a pripadny
-            # odkaz na nove vydanie. Pocas sledovania na siet nejde
-            # (`aktualizuj_hlas`); samo sa nespusti nikdy.
+            # "Update voice" (0.3) - only with the natural voice, same as the
+            # button (the Windows voice sends nothing, not even a test word).
+            # Goes to Settings → Sound, where the update status is and a
+            # possible link to a new release. While watching it does not go to
+            # the network (`aktualizuj_hlas`); it never starts by itself.
             *([(tr("edge.update.btn"), tr("palette.cat.sound"),
                 lambda: (self.sidebar._select("zvuk"), self.aktualizuj_hlas()))]
               if getattr(self, "engine", None) == ENGINE_EDGE else []),
-            # Polozka hovori, co sa po vybere STANE - tie iste slova ako
-            # tlacidlo v pase a ponuka v liste (0.2.2 davka 4). Paleta sa
-            # stavia pri kazdom otvoreni, takze stav sedi.
+            # The item says what WILL HAPPEN once it is picked - the same
+            # words as the button in the bar and the menu in the tray (0.3
+            # batch 4). The palette is built on every opening, so the state
+            # is right.
             (tr("tray.stop") if getattr(self, "listening", False) else tr("tray.start"),
              appka, self.toggle_listening),
             (tr("common.minimize"), appka, self.minimize_to_tray),
@@ -106,29 +110,31 @@ class ControlsMixin:
                           lambda n=name: (self.sidebar._select("spustace"),
                                           self.switch_profile(n))))
         for slot in self.slots:
-            # Bez klavesu v zatvorke: hlasku uz nespusta stlacenie, takze
-            # "Slot [c]" by ukazovalo pismeno, ktore nic nerobi.
+            # No key in brackets: a key press no longer fires the cue, so
+            # "Slot [c]" would show a letter that does nothing.
             label = slot.text_value.strip() or mode_labels().get(slot.mode, "")
             items.append((tr("palette.slot", label=label), profily,
                           lambda: self.sidebar._select("spustace")))
         return items
 
     def replay_onboarding(self):
-        """Znova ukaze Onboarding Wizard (rovnaky ako pri prvom spusteni).
-        Na rozdiel od prveho behu NEPREPISUJE zapnutie/vypnutie existujucich
-        slotov podla diagnostiky (self._apply_diagnostics) - je to len
-        prehliadka appky, nie reset uz nastavenych slotov.
+        """Shows the Onboarding Wizard again (the same as on the first start).
+        Unlike the first run it does NOT OVERWRITE the enabling/disabling of
+        existing slots according to the diagnostics
+        (self._apply_diagnostics) - it is only a tour of the app, not a
+        reset of slots that are already set up.
 
-        Svet a hlasitost sa predvyplnia AKTUALNE - kto uvod len preklikne,
-        ostane tam, kde bol (napr. v Praci, kde hlasky nehovoria nahlas)."""
+        World and volume are pre-filled with the CURRENT values - whoever
+        just clicks through the introduction stays where they were (e.g. in
+        Work, where cues do not speak out loud)."""
         wizard = OnboardingWizard(self.root, choice=self.theme_key,
                                   volume=self.volume_value)
         self.root.wait_window(wizard.top)
         if not wizard.confirmed:
             return
-        # Krok 4 vybera hlavny svet (B3-worlds); tema ide s nim. Okno sa
-        # nizsie stavia cele znova, takze staci zmenit stav - historia a
-        # postrehy sa prepocitaju az na konci.
+        # Step 4 picks the main world (B3-worlds); the theme goes with it. The
+        # window is rebuilt whole below, so changing the state is enough -
+        # history and insights are recomputed only at the end.
         novy_svet = theme_mod.theme_world(wizard.choice)
         svet_sa_zmenil = novy_svet != self.world
         if svet_sa_zmenil:
@@ -140,12 +146,12 @@ class ControlsMixin:
         self.pal = theme_mod.tokens(self.theme_key)
         self.overlay_manager.set_colors(self.pal["accent"], self.pal["danger"])
         self.volume_value = wizard.volume_value
-        # Krok 5 (styl hlasky). Kto na nic neklikol, nechava si svoj styl.
+        # Step 5 (cue style). Whoever clicked nothing keeps their own style.
         self._prevezmi_styl_z_onboardingu(wizard)
         self._recompute_volumes()
         self._apply_volumes()
         self.save_settings()
-        # appka uz bezi - ak si zvolil parovanie, otvor ho hned
+        # the app is already running - if you chose pairing, open it right away
         if getattr(wizard, "wants_pairing", False):
             self.sidebar._select("vhre")
             self.root.after(300, self.open_watch_pairing)
@@ -160,69 +166,75 @@ class ControlsMixin:
         self.log(tr("log.theme_switched", theme=tr(f"theme.{self.theme_key}.label")))
         if svet_sa_zmenil:
             self.run_hr_analysis()
-        # Svet aj styl hlasky rozhoduju, ci sa hlasky pre Edge pripravuju.
+        # Both the world and the cue style decide whether cues for Edge get
+        # prepared.
         self.schedule_pregenerate(200)
 
-    # ---------- rychly dock (mute / stiszit / rychly profil / stop) ----------
+    # ---------- quick dock (mute / quieten / quick profile / stop) ----------
 
-    # POZN: tu bolo `_dock_on_mute(muted)` - prepinac 🔊/🔇 z rychleho
-    # doku, ktory stiahol hlasitost na nulu a spat. Odislo s dokom;
-    # hlasitost sa nastavuje posuvnikom v Nastaveniach -> Zvuk.
+    # NOTE: here used to be `_dock_on_mute(muted)` - the 🔊/🔇 toggle from the
+    # quick dock, which pulled the volume down to zero and back. It left with
+    # the dock; volume is set with the slider in Settings -> Sound.
 
     def _on_snooze_hotkey(self):
-        """Prislo stlacenie. Bezi to na VLASTNOM vlakne `hotkey.py`, takze
-        sa vsetko musi preniest do Tk cez `ui_call` - rovnako ako callbacky
-        z hodiniek."""
+        """The key press came in. This runs on the OWN thread of `hotkey.py`, so
+        everything has to be carried over to Tk through `ui_call` - same as
+        the callbacks from the watch."""
         self.ui_call(self._toggle_snooze_from_hotkey)
 
     def _toggle_snooze_from_hotkey(self):
-        """Prepinac, nie jednosmerka: druhe stlacenie ticho zrusi.
+        """A toggle, not one-way: the second press quietly cancels it.
 
-        Hrac sa ku klavesnici v hre casto nedostane rychlo a nechat ho
-        cakat 30 minut na nieco, co si omylom zapol, by bolo horsie nez
-        samotne hlasky.
+        In a game the player often cannot get to the keyboard quickly, and
+        making them wait 30 minutes for something they turned on by mistake
+        would be worse than the cues themselves.
 
-        Vola ho aj polozka "Teraz nie" v ponuke listy (`setup_tray`, 0.2.1) -
-        ta ista vec, len bez klavesu, ked skratku drzi ina appka.
+        It is also called by the "Not now" item in the tray menu
+        (`setup_tray`, 0.2.1) - the same thing, just without the key, when
+        another app holds the shortcut.
         """
         if getattr(self, "_snooze_job", None) is not None:
             self._cancel_snooze()
         else:
             self._start_snooze(SNOOZE_HOTKEY_MINUTES)
 
-    # POZN: tu bolo `_dock_on_snooze()` - klik na 😴 v doku, ktory
-    # rozbalil vyber dlzky (5/20/40/60 min). Tlacidlo odislo s dokom.
-    # Odlozenie sa teraz zapina globalnou skratkou na PEVNYCH
-    # `SNOOZE_HOTKEY_MINUTES` minut a `_toggle_snooze_menu` tym ostalo
-    # bez spustaca - viz poznamka pri nom.
+    # NOTE: here used to be `_dock_on_snooze()` - a click on 😴 in the dock,
+    # which unfolded the length picker (5/20/40/60 min). The button left with
+    # the dock. Snooze is now switched on by the global shortcut for a FIXED
+    # `SNOOZE_HOTKEY_MINUTES` minutes, and that left `_toggle_snooze_menu`
+    # without a trigger - see the note next to it.
 
     def _start_snooze(self, minutes):
-        """"Teraz nie": stisi HLASKY na `minutes` minut - a nic viac.
+        """"Not now": silences CUES for `minutes` minutes - and nothing more.
 
-        ROZHODNUTIE ZADAVATELA (24. 9.): pocuva a meria sa DALEJ. Relacia
-        ostava otvorena, tep sa zapisuje, dotaznik nepride; len spustac je
-        pozastaveny s dovodom `A_SNOOZE` (ten sa neratá ako vypadok) a po
-        vyprsani alebo zruseni sa zdvihne. Doteraz sa tu volalo
-        `stop_listening`, ktore relaciu zatvorilo a otvorilo dotaznik -
-        "teraz nie" tak znamenalo "koniec merania", a to hrac nechcel.
-        Zastavit pocuvanie je samostatny, vedomy krok (pas, lista).
+        THE REQUESTER'S DECISION (24. 9.): listening and measuring CONTINUE.
+        The session stays open, heart rate is recorded, the questionnaire
+        does not come; only the trigger is paused with the reason
+        `A_SNOOZE` (that one does not count as a dropout) and it is lifted
+        when it expires or is cancelled. Until now `stop_listening` was
+        called here, which closed the session and opened the questionnaire
+        - so "not now" meant "end of measuring", and the player did not
+        want that. Stopping listening is a separate, deliberate step (bar,
+        tray).
 
-        Dlzka je pevna zo skratky (`SNOOZE_HOTKEY_MINUTES`); menu s vyberom
-        (`_toggle_snooze_menu`) dnes spustac nema."""
+        The length is fixed by the shortcut (`SNOOZE_HOTKEY_MINUTES`); the
+        menu with a picker (`_toggle_snooze_menu`) has no trigger today."""
         if getattr(self, "_snooze_job", None) is not None:
             self._cancel_snooze()
         now = time.time()
-        # "Teraz nie" kratko po hlaske je signal pre rebrik hlasky. Relacia
-        # po nom bezi dalej, takze `_close_hr_session` zapise skutocny cas,
-        # ktory sa este hralo (`snooze_then_s`).
+        # "Not now" shortly after a cue is a signal for the cue ladder. The
+        # session keeps running after it, so `_close_hr_session` records the
+        # real time that was still played (`snooze_then_s`).
         self._zapis_snooze_po_hlaske(now)
-        # Kolko z relacie platilo "teraz nie" (`snoozed_s` v suhrne). Relacia
-        # ho teraz v sebe nesie a pocitadla spustaca ho nevidia - dotaznik by
-        # inak ticho vysvetlil "zataz sa ani raz nedostala nad hranicu".
+        # How much of the session "not now" was in effect for (`snoozed_s` in
+        # the summary). The session now carries it itself and the trigger
+        # counters do not see it - otherwise the questionnaire would quietly
+        # explain it as "the load never once got above the threshold".
         if getattr(self, "_hr_session_open", False):
             self._snooze_rel_od = now
-        # Senzor tepu bezi dalej a relacia tiez - bez tohto riadku by hlaska
-        # prisla aj tak. To je presne ten zly moment, pred ktorym snooze chrani.
+        # The heart rate sensor keeps running and so does the session - without
+        # this line the cue would come anyway. That is exactly the bad moment
+        # snooze protects against.
         self._suspend_cue_trigger(trigger.A_SNOOZE)
         self.log(tr("log.snooze_started", minutes=minutes))
 
@@ -230,7 +242,7 @@ class ControlsMixin:
             self._zapocitaj_snooze()
             self._snooze_job = None
             self._snooze_until = None
-            # Pocuvanie sa tu uz NESPUSTA - "teraz nie" ho nezastavilo.
+            # Listening is NOT started here now - "not now" did not stop it.
             self._resume_cue_trigger()
             self.log(tr("log.snooze_ended"))
             self._refresh_snooze_indicator()
@@ -240,10 +252,10 @@ class ControlsMixin:
         self._refresh_snooze_indicator()
 
     def _snooze_do(self):
-        """Dokedy "teraz nie" plati, ako 'HH:MM' ('' ked nebezi).
+        """Until when "not now" lasts, as 'HH:MM' ('' when it is not running).
 
-        Cas konca, nie zvysne minuty: text sa nastavi raz a "zostava 30 min"
-        by po piatich minutach klamal."""
+        The end time, not the remaining minutes: the text is set once and
+        "30 min left" would be lying after five minutes."""
         do = getattr(self, "_snooze_until", None)
         if do is None or getattr(self, "_snooze_job", None) is None:
             return ""
@@ -253,11 +265,11 @@ class ControlsMixin:
             return ""
 
     def _zapocitaj_snooze(self, now=None):
-        """Pripocita beziaci usek "teraz nie" k otvorenej relacii
-        (`_snooze_rel_s`). Vola sa pri konci a zruseni snooze; zatvorenie
-        relacie (`_close_hr_session`) si beziaci usek dopocita samo a dalej
-        sa uz nic nepripocita - cas mimo relacie (zastavene pocuvanie) sa
-        nerata."""
+        """Adds the running "not now" stretch to the open session
+        (`_snooze_rel_s`). Called when snooze ends or is cancelled; closing
+        the session (`_close_hr_session`) adds the running stretch itself,
+        and nothing more is added after that - time outside a session
+        (stopped listening) does not count."""
         od = getattr(self, "_snooze_rel_od", None)
         if od is None:
             return
@@ -267,15 +279,16 @@ class ControlsMixin:
         self._snooze_rel_od = None
 
     def _zapis_snooze_po_hlaske(self, now):
-        """Prislo "teraz nie" do `rebrik.SNOOZE_PO_HLASKE_S` po poslednej
-        dorucenej automatickej hlaske? Zapise sa k hlaske (`snooze_after_s`,
-        ide do okna) a do relacie (`_close_hr_session`: `snooze_after_cue_s`
-        a `snooze_then_s` = kolko relacia po nom este bezala).
+        """Did "not now" come within `rebrik.SNOOZE_PO_HLASKE_S` after the last
+        delivered automatic cue? It is recorded on the cue (`snooze_after_s`,
+        goes into the window) and in the session (`_close_hr_session`:
+        `snooze_after_cue_s` and `snooze_then_s` = how long the session
+        kept running after it).
 
-        Rebrik ho rata, len ked relacia potom bezala aspon
-        `rebrik.SNOOZE_POTOM_S` a verdikt nie je "sadla" - "teraz nie" na
-        konci hrania znamena skor "koncim" nez "prekazala si". Zapisuje sa
-        len prvy v relacii."""
+        The ladder counts it only when the session then ran for at least
+        `rebrik.SNOOZE_POTOM_S` and the verdict is not "sadla" (it landed) -
+        "not now" at the end of playing means "I'm done" rather than "you
+        got in my way". Only the first one in a session is recorded."""
         if not getattr(self, "_hr_session_open", False):
             return
         if getattr(self, "_snooze_po_hlaske", None) is not None:
@@ -306,31 +319,35 @@ class ControlsMixin:
         self._zapocitaj_snooze()
         self._snooze_job = None
         self._snooze_until = None
-        # Pocuvanie "teraz nie" nezastavilo, takze ho tu netreba spustat.
+        # "Not now" did not stop listening, so it does not need starting here.
         self._resume_cue_trigger()
         self.log(tr("log.snooze_cancelled"))
         self._refresh_snooze_indicator()
 
     def _refresh_snooze_indicator(self):
-        """Da bodkou v bocnom rade najavo, ci odlozenie prave bezi.
+        """Shows with a dot in the side rail whether snooze is running right now.
 
-        POZN K HISTORII: stav nosila najprv textova popiska v Nastaveniach
-        ('20m'), potom farba ikony 😴 v rychlom doku. Dok z panela odisiel
-        (viz `_build_ui`) a odlozenie sa zapina globalnou skratkou - keby
-        stav nemal kam ist, hrac by appku odlozil a NIKDE by nevidel, ze je
-        odlozena. Bodka stavu uz je na kazdej stranke, cize je to jedine
-        miesto, kde to nezmizne pri prepnuti stranky.
+        NOTE ON HISTORY: the state was first carried by a text label in
+        Settings ('20m'), then by the colour of the 😴 icon in the quick
+        dock. The dock left the panel (see `_build_ui`) and snooze is
+        switched on by a global shortcut - if the state had nowhere to go,
+        the player would snooze the app and see NOWHERE that it is snoozed.
+        The status dot is already on every page, so it is the only place
+        where it does not disappear when the page is switched.
 
-        Cas konca nesie tooltip: farba povie "nieco je inak", cas povie
-        dokedy, a na to v 64px rade textovy popisok nie je.
+        The end time is carried by the tooltip: the colour says "something
+        is different", the time says until when, and a 64px rail has no
+        room for a text label.
 
-        Od 24. 9. appka pocas "teraz nie" pocuva dalej, takze aj stred
-        stranky Dnes musi povedat, ze sa neozve (`_kamae_state_text`) -
-        "cakam na spravnu chvilu" by klamalo."""
+        Since 24. 9. the app keeps listening during "not now", so the
+        centre of the Today page also has to say that it will not speak up
+        (`_kamae_state_text`) - "waiting for a good moment" would be
+        lying."""
         self._refresh_dnes_state_text()
-        # Fajka pri "Teraz nie" v ponuke listy (`setup_tray`). Pystray menu
-        # postavi znova len pri `update_menu` - a klik v liste prepina az cez
-        # `ui_call`, teda PO jeho vlastnom prestaveni; skratka ho nevola vobec.
+        # The tick next to "Not now" in the tray menu (`setup_tray`). Pystray
+        # rebuilds the menu only on `update_menu` - and a click in the tray
+        # toggles only through `ui_call`, i.e. AFTER its own rebuild; the
+        # shortcut does not call it at all.
         ikona = getattr(self, "tray_icon", None)
         if ikona is not None:
             try:
@@ -366,25 +383,26 @@ class ControlsMixin:
 
     # ---------- rebind ----------
 
-    # ---------- gamepad (uz NIE ako spustac) ----------
+    # ---------- gamepad (NO LONGER as a trigger) ----------
     #
-    # FAZA 3: klavesove a mysacie listenery su PREC. Bolo to jedine miesto
-    # v appke, ktore vyzeralo ako keylogger - globalny WH_KEYBOARD_LL hook
-    # cez pynput. Hlasku teraz spusta telo (`trigger.CueTrigger`) a to, ci
-    # je hrac aktivny, sa zistuje z `GetLastInputInfo`, co vracia jedine
-    # pocet milisekund od posledneho vstupu. Ktora klavesa to bola sa appka
-    # nema ako dozvediet, ani keby chcela.
+    # PHASE 3: the keyboard and mouse listeners are GONE. It was the only place
+    # in the app that looked like a keylogger - a global WH_KEYBOARD_LL hook
+    # via pynput. The cue is now fired by the body (`trigger.CueTrigger`), and
+    # whether the player is active is found out from `GetLastInputInfo`, which
+    # returns only the number of milliseconds since the last input. Which key
+    # it was, the app has no way to learn, not even if it wanted to.
     #
-    # Gamepad listener ostava, ale UZ NESPUSTA NIC - sluzi ako druhy zdroj
-    # detekcie aktivity vedla GetLastInputInfo (viz MERANIE_GAMEPAD.md:
-    # na tomto Windowse 11 ho GetLastInputInfo vidi, ale je to jeden
-    # pocitac a tiche zlyhanie na inom by sa neprejavilo ako chyba).
+    # The gamepad listener stays, but it NO LONGER FIRES ANYTHING - it serves
+    # as a second source of activity detection next to GetLastInputInfo (see
+    # MERANIE_GAMEPAD.md: on this Windows 11 GetLastInputInfo sees it, but it
+    # is one computer and a silent failure on another one would not show up
+    # as an error).
 
     def on_gamepad_button(self, label):
-        """Aktivita na ovladaci (tlacidlo, d-pad, pacicka alebo spust za
-        mrtvou zonou - aj drzane). Uz nespusta hlasku - len potvrdi, ze hrac
-        je aktivny. `label` je vzdy "activity"; ktory prvok to bol, listener
-        nepovie (`gamepad.py`)."""
+        """Activity on the controller (button, d-pad, stick or trigger past the
+        dead zone - also when held). It no longer fires a cue - it only
+        confirms that the player is active. `label` is always "activity";
+        which element it was, the listener does not say (`gamepad.py`)."""
         self.activity.note_external_input()
 
     def on_gamepad_status(self, message):
@@ -394,73 +412,78 @@ class ControlsMixin:
             self.log_threadsafe(tr("log.gamepad_disconnected"))
 
     def fire_slot(self, slot, ignore_cooldown=False, source="trigger"):
-        """RUCNE spustenie hlasky - tlacidlo Test na karte a klik v HUD nahlade.
+        """MANUAL firing of a cue - the Test button on the card and a click in
+        the HUD preview.
 
-        Sama od seba appka tadialto NECHODI. `_fire_somatic_cue` vola `_emit`
-        priamo, lebo o tom, KEDY sa ozve, rozhoduje zataz tela
-        (`trigger.CueTrigger`) a nie cislo na karte hlasky. Vlastny cooldown,
-        oneskorenie, "kazde N-te" a rozptyl tu preto do 18. 9. sedeli ako
-        nastavenia, ktore ovplyvnovali jedine tieto dve tlacidla - a pritom
-        vyzerali, ze riadia celu appku. Zmizli.
+        The app NEVER goes through here on its own. `_fire_somatic_cue`
+        calls `_emit` directly, because WHEN it speaks up is decided by the
+        body load (`trigger.CueTrigger`) and not by a number on the cue
+        card. Its own cooldown, delay, "every N-th" and spread therefore sat
+        here until 18. 9. as settings that affected only these two buttons
+        - and yet they looked like they controlled the whole app. They are
+        gone.
 
-        Ostal globalny odstup, aby sa dve rychlo po sebe iduce kliknutia
-        neprekryli v jednom zvuku.
+        What stayed is the global gap, so that two clicks in quick
+        succession do not overlap in one sound.
         """
         if not ignore_cooldown:
             now = time.time()
             if now - slot.last_triggered < self.cooldown_value:
                 return
-            # Kym neuplynie odstup od POSLEDNEJ rucne spustenej hlasky
-            # (hocijakej), nesmie sa spustit dalsia - inak sa dva rychle
-            # kliky na Test prekryju v jednom zvuku.
+            # Until the gap since the LAST manually fired cue (any one) has
+            # passed, another one must not fire - otherwise two quick
+            # clicks on Test overlap in one sound.
             if now - self.last_global_trigger_time < self.cooldown_value:
                 return
             self.last_global_trigger_time = now
             slot.last_triggered = now
         if 0 <= slot.index < 4:
             self.ui_call(lambda i=slot.index: self.overlay_manager.trigger(i))
-            # Zaznam pre meracie okno. Musi ist cez `ui_call` - `fire_slot`
-            # bezi na vlakne listenera, kym `HeartStats` sa smie dotykat len
-            # GUI vlakno. Klavesove spustace vo faze 3 zaniknu; dovtedy su
-            # najrychlejsi sposob, ako overit, ze merania naozaj chodia.
+            # A record for the measurement window. It has to go through
+            # `ui_call` - `fire_slot` runs on the listener thread, while only
+            # the GUI thread may touch `HeartStats`. The key triggers go away
+            # in phase 3; until then they are the quickest way to check that
+            # the measurements really come in.
             self.ui_call(lambda i=slot.index, s=source: self._note_cue(i, s))
         threading.Thread(target=self._deliver, args=(slot, ignore_cooldown, source),
                          daemon=True).start()
 
     def _note_cue(self, slot_index, source="trigger"):
-        """RUCNE spustena hlaska sa do merania NEZAPISUJE.
+        """A MANUALLY fired cue is NOT recorded in the measurement.
 
-        Zapisovala sa - a to bola chyba, ktora tichým spôsobom kazila presne
-        tu vec, kvoli ktorej appka meria. `fire_slot` dnes spusta jedine
-        tlacidlo Test na karte hlasky a klik v HUD nahlade. Oboje sa deje
-        pri nastavovani, casto viackrat za sebou, a hrac pri tom nehra.
-        `measure.by_category` pritom filtruje len podla `valid` a `arm` -
-        `source` necita vobec - takze kazdy klik na Test sa zaratal do grafu
-        "ktora hlaska zabera" a jeho cas zabral refrakternu zonu skutocnej
-        hlaske, ktora mohla prist o par sekund neskor.
+        It used to be - and that was a bug that silently spoiled exactly
+        the thing the app measures for. `fire_slot` today is fired only by
+        the Test button on the cue card and a click in the HUD preview. Both
+        happen while setting things up, often several times in a row, and
+        the player is not playing then. `measure.by_category` meanwhile
+        filters only by `valid` and `arm` - it does not read `source` at
+        all - so every click on Test was counted into the "which cue works"
+        chart, and its time took the refractory zone of a real cue that
+        could come a few seconds later.
 
-        Automaticku hlasku zapisuje `_fire_somatic_cue` sam, cez
-        `hr_stats.note_trigger(..., source="auto")`. Tadialto teda uz
-        nemusi ist nic.
+        The automatic cue is recorded by `_fire_somatic_cue` itself, via
+        `hr_stats.note_trigger(..., source="auto")`. So nothing needs to go
+        through here anymore.
 
-        Metoda ostava (a vola sa), aby bolo z kodu vidno, ze sa o tom
-        rozhodlo - a aby sa sem dalo vratit pocitadlo, ktore meranie neruší.
+        The method stays (and is called) so that the code shows this was
+        decided - and so that a counter that does not disturb the
+        measurement could be brought back here.
         """
         return
 
     def _deliver(self, slot, immediate, source):
-        # Jedno prehratie, ziadne oneskorenie ani opakovanie: hlaska ma
-        # pristat vtedy, ked na nu clovek klikol.
+        # One playback, no delay or repetition: the cue should arrive at the
+        # moment the person clicked on it.
         self._emit(slot)
         label = slot.text_value or (os.path.basename(slot.audio_path)
                                     if slot.audio_path else mode_labels()[slot.mode])
         self.log_threadsafe(f"Slot {slot.index + 1} ({source}): \"{label}\"")
         if source == "trigger" and 0 <= slot.index < 4:
-            # POCITADLO PATRI TK VLAKNU. `_deliver` bezi na vlastnom vlakne a
-            # `start_listening` medzitym `session_counts` vymiena za novy
-            # slovnik - prirastok odtialto by mohol skoncit v starom slovniku
-            # alebo sa pobit s prekreslenim riadku. Preto cez `ui_call`,
-            # rovnako ako `_note_cue` vo `fire_slot`.
+            # THE COUNTER BELONGS TO THE TK THREAD. `_deliver` runs on its
+            # own thread and `start_listening` meanwhile swaps `session_counts`
+            # for a new dict - an increment from here could end up in the old
+            # dict or clash with the row being redrawn. Hence through
+            # `ui_call`, same as `_note_cue` in `fire_slot`.
             def zarataj(index=slot.index):
                 self.session_counts[index] = self.session_counts.get(index, 0) + 1
                 self.update_session_label()

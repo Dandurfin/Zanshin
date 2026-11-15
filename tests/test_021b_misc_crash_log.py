@@ -1,18 +1,20 @@
 # -*- coding: utf-8 -*-
-"""Pad pri importe app konci v crash.log (review 0.2.1, bug 5).
+"""A crash during the app import ends up in crash.log (review 0.2.1, bug 5).
 
-main() predtym najprv importoval app a az potom nastavil sys.excepthook a
-threading.excepthook. Import app nataha desiatky modulov; chyba v ktoromkolvek
-z nich (chybajuca zavislost, preklep) v appke bez konzoly nezanechala crash.log:
-pythonw ju zahodil, zabaleny .exe (console=False) ju ukazal len v okne
-PyInstalleru, ktore po zatvoreni zmizne.
+main() used to import app first and only then set sys.excepthook and
+threading.excepthook. Importing app pulls in dozens of modules; an error
+in any of them (a missing dependency, a typo) left no crash.log in an app
+without a console: pythonw threw it away, the packaged .exe
+(console=False) showed it only in a PyInstaller window, which disappears
+once closed.
 
-Druhy test: pad v konstruktore DandurfApp je v crash.log raz, nie dvakrat
-(main() ho zapisoval sam a potom este sys.excepthook).
+Second test: a crash in the DandurfApp constructor is in crash.log once,
+not twice (main() wrote it itself and then sys.excepthook did as well).
 
-Test spusti main.py v samostatnom procese ako zabaleny build (sys.frozen,
-%APPDATA% presmerovane do tmp), s falosnym app.py, ktory pri importe spadne.
-Skutocne logs/ projektu ani skutocny %APPDATA% sa nedotkne.
+The test runs main.py in a separate process like a packaged build
+(sys.frozen, %APPDATA% redirected to tmp), with a fake app.py that
+crashes on import. It does not touch the project's real logs/ or the real
+%APPDATA%.
 """
 import ast
 import os
@@ -22,8 +24,9 @@ import textwrap
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
-# Spustac: sprava sa ako zabaleny build a GUI moduly nahradi prazdnymi, aby
-# test nemenil DPI rezim procesu ani neotvaral okno.
+# Launcher: behaves like a packaged build and replaces the GUI modules
+# with empty ones, so the test does not change the process's DPI mode or
+# open a window.
 _SPUSTAC = textwrap.dedent("""
     import os, runpy, sys, types
     sys.dont_write_bytecode = True
@@ -39,8 +42,8 @@ _SPUSTAC = textwrap.dedent("""
     runpy.run_path(os.path.join(ROOT, "main.py"), run_name="__main__")
 """)
 
-# Falosny app.py: pad vo vlakne (threading.excepthook) a potom chybajuca
-# zavislost (sys.excepthook) - obe pocas importu app.
+# Fake app.py: a crash in a thread (threading.excepthook) and then a
+# missing dependency (sys.excepthook) - both during the app import.
 _FALOSNA_APP = textwrap.dedent("""
     import threading
 
@@ -70,8 +73,8 @@ def test_chyba_pri_importe_app_zapise_crash_log(tmp_path):
     (falosne / "app.py").write_text(_FALOSNA_APP, encoding="utf-8")
     spustac = tmp_path / "spustac.py"
     spustac.write_text(_SPUSTAC, encoding="utf-8")
-    # Stara instalacia pod predoslym menom: migracia musi prebehnut aj teraz,
-    # ked logging_setup (a s nim paths) ide pred app.
+    # An old installation under the previous name: the migration must run
+    # now too, when logging_setup (and paths with it) goes before app.
     stara = appdata / "Zanshin DojoSync"
     stara.mkdir(parents=True)
     (stara / "dandurf_settings.json").write_text("{}", encoding="utf-8")
@@ -91,23 +94,24 @@ def test_chyba_pri_importe_app_zapise_crash_log(tmp_path):
     crash = data / "logs" / "crash.log"
     assert crash.is_file(), vysledok.stderr
     text = crash.read_text(encoding="utf-8")
-    # hlavne vlakno: sys.excepthook bol nastaveny pred importom app
+    # main thread: sys.excepthook was set before the app import
     assert "ModuleNotFoundError" in text
     assert "zanshin_test_chybajuca_zavislost" in text
-    # vlakno spustene pocas importu app: threading.excepthook tiez
+    # a thread started during the app import: threading.excepthook too
     assert "simulovany pad vlakna pocas importu app" in text
-    # konzola (vyvoj zo zdrojakov) dostane traceback ako predtym
+    # the console (development from source) gets the traceback as before
     assert "zanshin_test_chybajuca_zavislost" in vysledok.stderr
-    # migracia starych dat prebehla (priecinok logs/ ju nepredbehol)
+    # the migration of old data ran (the logs/ folder did not get ahead of it)
     assert (data / "dandurf_settings.json").is_file()
-    # skutocne logy projektu ostali netknute
+    # the project's real logs stayed untouched
     assert [_stav(c) for c in projekt_logy] == pred
 
 
 def test_pad_v_konstruktore_je_v_crash_logu_raz(tmp_path):
-    """main() mal okolo DandurfApp(root) vlastny try/except s log_crash a
-    vynimku potom pustil dalej do sys.excepthook, ktory ju zapisal znova.
-    Tester, co posle crash.log, by videl dva pady namiesto jedneho."""
+    """main() had its own try/except with log_crash around DandurfApp(root)
+    and then let the exception through to sys.excepthook, which wrote it
+    again. A tester sending crash.log would have seen two crashes instead
+    of one."""
     appdata = tmp_path / "appdata"
     falosne = tmp_path / "falosne"
     falosne.mkdir()
@@ -130,7 +134,7 @@ def test_pad_v_konstruktore_je_v_crash_logu_raz(tmp_path):
     crash = appdata / "Zanshin" / "logs" / "crash.log"
     assert crash.is_file(), vysledok.stderr
     text = crash.read_text(encoding="utf-8")
-    # kazdy zaznam zacina riadkom "==== <cas> ====" (logging_setup.log_crash)
+    # each record starts with "==== <time> ====" (logging_setup.log_crash)
     assert text.count("\n==== ") == 1, text
     assert text.count("RuntimeError: simulovany pad v konstruktore") == 1, text
     assert "simulovany pad v konstruktore" in vysledok.stderr
@@ -149,7 +153,7 @@ def _funkcia(strom, meno):
 
 
 def test_hooky_su_pred_importom_app():
-    """Poradie v main(): najprv hooky, potom `from app import ...`."""
+    """Order in main(): hooks first, then `from app import ...`."""
     telo = _funkcia(_main_py_strom(), "main").body
     hooky = next(i for i, u in enumerate(telo)
                  if "_install_crash_hooks" in ast.dump(u))
@@ -169,8 +173,8 @@ def test_install_crash_hooks_nastavi_oba_hooky():
 
 
 def test_app_sa_neimportuje_na_urovni_modulu():
-    """Tazke moduly sa nesmu natiahnut skor nez treba: app ostava lenivy
-    import vnutri main(), na urovni modulu nie."""
+    """Heavy modules must not be loaded earlier than needed: app stays a
+    lazy import inside main(), not at module level."""
     for uzol in _main_py_strom().body:
         if isinstance(uzol, ast.Import):
             assert "app" not in [a.name for a in uzol.names]
@@ -179,8 +183,9 @@ def test_app_sa_neimportuje_na_urovni_modulu():
 
 
 def test_logging_setup_je_lahky():
-    """logging_setup ide teraz pred app - nesmie so sebou tahat GUI ani
-    ine tazke zavislosti (inak by sme len presunuli pomaly import)."""
+    """logging_setup now goes before app - it must not drag in the GUI or
+    other heavy dependencies (otherwise we would just have moved the slow
+    import)."""
     kod = ("import sys; sys.dont_write_bytecode = True; "
            "sys.path.insert(0, sys.argv[1]); import logging_setup; "
            "tazke = ('tkinter', 'customtkinter', 'app', 'pygame', 'edge_tts', "

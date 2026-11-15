@@ -1,20 +1,21 @@
 # -*- coding: utf-8 -*-
-"""0.2.1c: gui_harness_auto.py neprida o historiu tepu ani po preruseni.
+"""0.2.1c: gui_harness_auto.py keeps the heart rate history even when cut off.
 
-Harness bezi nad datami Zanshinu zo zdrojakov vedla main.py. Historiu tepu
-(hr_sessions.json, hr_insights.json) odkladal len v PAMATI a posledny
-`finally` ju nevracal - Ctrl+C, zavretie okna ci pad medzi odlozenim a
-vratenim ju zmazali navzdy. Zalohu nastaveni zas dalsi beh prepisal
-nastaveniami, ktore zmenil preruseny beh.
+The harness runs on the Zanshin data of the sources next to main.py. It
+put the heart rate history (hr_sessions.json, hr_insights.json) aside only
+in MEMORY and the last `finally` did not restore it - Ctrl+C, closing the
+window or a crash between putting aside and restoring deleted it forever.
+The settings backup, in turn, was overwritten by the next run with
+settings that the interrupted run had changed.
 
-Teraz sa vsetky tri subory pred prvym dotykom kopiruju na disk vedla
-originalu (`<subor>.pred-harnessom`), vracaju sa na kazdej ceste von a po
-tvrdom zabiti ich vrati dalsi beh hned na zaciatku - bez toho, aby naslepo
-prepisal subor, ktory medzitym zapisala appka.
+Now all three files are copied to disk next to the original before the
+first touch (`<subor>.pred-harnessom`), restored on every way out, and
+after a hard kill the next run restores them right at the start - without
+blindly overwriting a file that the app wrote in the meantime.
 
-Harness sa v testoch spustit neda (Tk okno, realna mys). Testy preto z
-jeho zdrojaku vyberu len funkcie zalohy (ast) a spustia ich nad docasnym
-priecinkom - ozajstnych dat projektu sa nedotknu.
+The harness cannot be started in tests (Tk window, real mouse). So the
+tests pick only the backup functions out of its source (ast) and run them
+over a temporary folder - they do not touch the project's real data.
 """
 import ast
 import fnmatch
@@ -40,7 +41,7 @@ def _zdroj():
 
 
 def _kod_zalohy():
-    """Len definicie zalohy z harnessu - bez Tk, appky a zmeny priecinka."""
+    """Only the harness backup definitions - no Tk, app or folder change."""
     src = _zdroj()
     uzly = []
     for uzol in ast.parse(src).body:
@@ -61,7 +62,7 @@ def _zaloha():
 
 
 def _data(tmp_path):
-    """Docasne "data hraca": nastavenia a historia, insights pred behom nie su."""
+    """Temp "player data": settings and history; no insights before the run."""
     nastavenia = tmp_path / "dandurf_settings.json"
     relacie = tmp_path / "hr_sessions.json"
     postrehy = tmp_path / "hr_insights.json"
@@ -75,8 +76,9 @@ def _cesty(tmp_path):
 
 
 def _beh_harnessu_po_zalohe(nastavenia, relacie, postrehy):
-    """To, co harness robi s datami: doplni temu/tour_seen, test prazdnej
-    historie subory zmaze, potom zapise synteticke relacie a postrehy."""
+    """What the harness does with the data: fills in theme/tour_seen, the empty
+    history test deletes the files, then writes synthetic sessions and
+    insights."""
     nastavenia.write_text('{"theme": "zen", "tour_seen": true}', encoding="utf-8")
     os.remove(relacie)
     relacie.write_text('[{"synteticka": true}]', encoding="utf-8")
@@ -88,7 +90,7 @@ def _zostatky(tmp_path):
 
 
 # --------------------------------------------------------------------------
-# Zaloha je na disku skor, nez sa harness cohokolvek dotkne
+# The backup is on disk before the harness touches anything
 # --------------------------------------------------------------------------
 
 def test_zaloha_je_na_disku_a_normalny_koniec_ju_vrati(tmp_path):
@@ -111,15 +113,16 @@ def test_zaloha_je_na_disku_a_normalny_koniec_ju_vrati(tmp_path):
     assert _zostatky(tmp_path) == [], "po normalnom konci nic neostane"
     assert not list(tmp_path.glob("*.tmp"))
 
-    # `finish()`, `finally` aj `atexit` ho mozu zavolat po sebe.
+    # `finish()`, `finally` and `atexit` may call it one after another.
     z["vrat_zalohy"](cesty)
     for p in cesty[:2]:
         assert open(p, "rb").read() == povodne[p], p
 
 
 def test_vratenie_uprostred_behu_zalohu_necha(tmp_path):
-    """Po teste historie (`_vrat_historiu_tepu`) sa historia vrati, ale
-    zaloha ostava - appka do suborov este pise a koniec behu vracia znova."""
+    """After the history test (`_vrat_historiu_tepu`) the history is restored,
+    but the backup stays - the app still writes to the files and the end of
+    the run restores again."""
     z = _zaloha()
     nastavenia, relacie, postrehy = _data(tmp_path)
     cesty = [str(relacie), str(postrehy)]
@@ -133,11 +136,11 @@ def test_vratenie_uprostred_behu_zalohu_necha(tmp_path):
 
 
 # --------------------------------------------------------------------------
-# Preruseny beh: data sa vratia
+# Interrupted run: the data comes back
 # --------------------------------------------------------------------------
 
 def _spusti(skript, tmp_path):
-    """Skript v samostatnom procese nad docasnym priecinkom."""
+    """Script in a separate process over a temporary folder."""
     subor = tmp_path / "beh.py"
     subor.write_text(skript, encoding="utf-8")
     return subprocess.run([sys.executable, str(subor)], cwd=str(tmp_path),
@@ -145,9 +148,10 @@ def _spusti(skript, tmp_path):
 
 
 def test_tvrde_zabitie_medzi_odlozenim_a_vratenim_dalsi_beh_vrati(tmp_path):
-    """Proces skonci `os._exit` uprostred testu historie - nebezi `finally`
-    ani `atexit`, presne ako pri zabiti z Task Managera. Historia v pamati
-    by bola prec; zaloha na disku ju dalsiemu behu vrati."""
+    """The process ends with `os._exit` in the middle of the history test -
+    neither `finally` nor `atexit` runs, exactly as with a kill from Task
+    Manager. A history in memory would be gone; the backup on disk gives
+    it back to the next run."""
     nastavenia, relacie, postrehy = _data(tmp_path)
     povodne_n = nastavenia.read_bytes()
     povodne_r = relacie.read_bytes()
@@ -167,7 +171,7 @@ def test_tvrde_zabitie_medzi_odlozenim_a_vratenim_dalsi_beh_vrati(tmp_path):
     assert not relacie.exists(), "zabitie naozaj preskocilo vratenie"
     assert os.path.exists(str(relacie) + ".pred-harnessom")
 
-    # Dalsi beh: najprv vrati, co ostalo.
+    # Next run: first it restores what was left.
     z = _zaloha()
     vratene = z["obnov_po_prerusenom_behu"](
         [str(nastavenia), str(relacie), str(postrehy)], znacka="T")
@@ -175,20 +179,22 @@ def test_tvrde_zabitie_medzi_odlozenim_a_vratenim_dalsi_beh_vrati(tmp_path):
     assert nastavenia.read_bytes() == povodne_n
     assert not postrehy.exists()
     assert sorted(vratene) == sorted([str(nastavenia), str(relacie), str(postrehy)])
-    # Nastavenia zmenene prerusenym behom sa neprepisali naslepo - su vedla.
+    # Settings changed by the interrupted run were not overwritten blindly -
+    # they are set aside next to it.
     bokom = tmp_path / "dandurf_settings.json.pred-obnovou-T"
     assert json.loads(bokom.read_text(encoding="utf-8")) == {
         "theme": "zen", "tour_seen": True}
     assert _zostatky(tmp_path) == ["dandurf_settings.json.pred-obnovou-T"]
 
-    # A novy beh si moze zalozit cerstvu zalohu z vratenych dat.
+    # And the new run can make a fresh backup from the restored data.
     z["zaloz_zalohy"]([str(nastavenia), str(relacie), str(postrehy)])
     assert (tmp_path / "hr_sessions.json.pred-harnessom").read_bytes() == povodne_r
 
 
 def test_ctrl_c_alebo_pad_pred_mainloop_vrati_cez_atexit(tmp_path):
-    """Vynimka (KeyboardInterrupt, pad pri stavbe okna) mimo `try` okolo
-    mainloop: interpreter konci normalne a `atexit` subory vrati hned."""
+    """An exception (KeyboardInterrupt, a crash while building the window)
+    outside the `try` around mainloop: the interpreter ends normally and
+    `atexit` restores the files right away."""
     nastavenia, relacie, postrehy = _data(tmp_path)
     povodne_r = relacie.read_bytes()
     skript = _kod_zalohy() + textwrap.dedent("""
@@ -211,17 +217,17 @@ def test_ctrl_c_alebo_pad_pred_mainloop_vrati_cez_atexit(tmp_path):
 
 
 def test_novsi_subor_z_appky_sa_naslepo_neprepise(tmp_path):
-    """Po prerusenom behu hrac spusti appku skor nez harness a odohra
-    relaciu - zapise sa do hr_sessions.json. Dalsi harness vrati historiu
-    spred harnessu, ale novsi subor neprepise: necha ho vedla, nic sa
-    nestrati."""
+    """After an interrupted run the player starts the app before the harness
+    and plays a session - it is written to hr_sessions.json. The next
+    harness restores the history from before the harness, but does not
+    overwrite the newer file: it leaves it next to it, nothing is lost."""
     z = _zaloha()
     nastavenia, relacie, postrehy = _data(tmp_path)
     cesty = [str(nastavenia), str(relacie), str(postrehy)]
     povodne_r = relacie.read_bytes()
     z["zaloz_zalohy"](cesty)
     _beh_harnessu_po_zalohe(nastavenia, relacie, postrehy)
-    # ... zabitie; potom appka zapise novu ozajstnu relaciu:
+    # ... kill; then the app writes a new real session:
     relacie.write_text('[{"synteticka": true}, {"started": 99, "nova": true}]',
                        encoding="utf-8")
 
@@ -229,13 +235,14 @@ def test_novsi_subor_z_appky_sa_naslepo_neprepise(tmp_path):
     assert relacie.read_bytes() == povodne_r
     bokom = tmp_path / "hr_sessions.json.pred-obnovou-T"
     assert '"nova": true' in bokom.read_text(encoding="utf-8")
-    # insights pred behom neboli - to, co je na ich mieste, tiez ide vedla
+    # insights did not exist before the run - what is in their place
+    # goes aside too
     assert (tmp_path / "hr_insights.json.pred-obnovou-T").exists()
     assert not postrehy.exists()
 
 
 def test_zhodny_subor_sa_neodklada(tmp_path):
-    """Beh zabity skor, nez nieco zmenil: vratenie netreba drzat vedla."""
+    """Run killed before it changed anything: nothing needs to be set aside."""
     z = _zaloha()
     _nastavenia, relacie, _postrehy = _data(tmp_path)
     z["zaloz_zalohy"]([str(relacie)])
@@ -245,8 +252,9 @@ def test_zhodny_subor_sa_neodklada(tmp_path):
 
 
 def test_nevratena_zaloha_sa_neprepise(tmp_path):
-    """Ked sa zaloha z preruseneho behu vratit nepodari (napr. zamknuty
-    subor), novy beh cez nu nezapise novu - to bola strata nastaveni."""
+    """When the backup from an interrupted run cannot be restored (e.g. a
+    locked file), a new run does not write a new one over it - that was
+    how settings got lost."""
     z = _zaloha()
     _nastavenia, relacie, _postrehy = _data(tmp_path)
     (tmp_path / "hr_sessions.json.pred-harnessom").write_text("POVODNE", encoding="utf-8")
@@ -257,14 +265,14 @@ def test_nevratena_zaloha_sa_neprepise(tmp_path):
 
 
 # --------------------------------------------------------------------------
-# Harness to naozaj pouziva - a mena zaloh nejdu na GitHub
+# The harness really uses this - and the backup names do not go to GitHub
 # --------------------------------------------------------------------------
 
 def test_harness_zalohuje_skor_nez_sa_dotkne_dat_a_vracia_na_kazdej_ceste():
     src = _zdroj()
     strom = ast.parse(src)
-    # Len kod, ktory bezi pri spusteni skriptu (nie tela funkcii - tie bezia
-    # az ked ich niekto zavola).
+    # Only code that runs when the script is started (not function bodies -
+    # those run only when someone calls them).
     hore = [u for s in strom.body
             if not isinstance(s, (ast.FunctionDef, ast.ClassDef))
             for u in ast.walk(s)]
@@ -286,12 +294,12 @@ def test_harness_zalohuje_skor_nez_sa_dotkne_dat_a_vracia_na_kazdej_ceste():
                        if isinstance(u, ast.ImportFrom) and u.module == "app")
     assert obnov < zaloz < zapis_nastaveni < import_appky
     assert "atexit.register(vrat_zalohy, ODLOZENE)" in src
-    # 0.2.2 davka 4: aj relacie, ktore sa nedali ulozit (hr_session_pending.json)
+    # 0.3 batch 4: also sessions that failed to save (hr_session_pending.json)
     assert ("ODLOZENE = (SETTINGS, HR_SESSIONS, HR_INSIGHTS, HR_SESSION_OPEN, "
             "SETTINGS_BAK,\n            HR_SESSION_PENDING)") in src
     assert 'HR_SESSION_PENDING = os.path.join(PROJ, "hr_session_pending.json")' in src
 
-    # posledny `finally` aj `finish()` (os._exit preskoci finally aj atexit)
+    # the last `finally` and `finish()` (os._exit skips finally and atexit)
     posledny_try = [u for u in strom.body if isinstance(u, ast.Try)][-1]
     assert "vrat_zalohy(ODLOZENE)" in ast.get_source_segment(
         src, posledny_try.finalbody[0])
@@ -299,7 +307,8 @@ def test_harness_zalohuje_skor_nez_sa_dotkne_dat_a_vracia_na_kazdej_ceste():
                   if isinstance(u, ast.FunctionDef) and u.name == "finish")
     assert "vrat_zalohy(ODLOZENE)" in ast.get_source_segment(src, finish)
 
-    # test historie maze len subor so zalohou na disku; nic v pamati
+    # the history test deletes only a file that has a backup on disk;
+    # nothing in memory
     assert "_hr_backups" not in src
     odloz = next(u for u in strom.body
                  if isinstance(u, ast.FunctionDef) and u.name == "_odloz_historiu_tepu")

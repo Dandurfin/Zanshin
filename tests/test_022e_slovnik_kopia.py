@@ -1,21 +1,26 @@
 # -*- coding: utf-8 -*-
-"""0.2.2 (UX audit, davka 4): texty existujucich klucov vo vsetkych 11 jazykoch.
+"""0.3 (UX audit, batch 4): texts of existing keys in all 11 languages.
 
-Co stráži tento test:
-  * jedno slovo pre to, co appka posle (zh 提示, ja 合図, ru подсказка,
-    de Hinweis, pt aviso, fr rappel) a pre obrazok v hre (sk/cs „obrázkom“),
-  * hranica / limit = len tep v BPM, prah / threshold = len zataz - aj v
-    japoncine, cinstine, rustine a francuzstine,
-  * oslovenie hraca bez rodu (ru „ты включил“, bg „Добре дошъл“, es
-    „Bienvenido“, pt „Bem-vindo“),
-  * krok 2 parovania neposle majitela iPhonu okolo kroku 3 (adresa a port),
-  * texty metrik a postrehov hovoria v prvej osobe ako ostatne,
-  * uvod povie, co hrac na prvy tep potrebuje (`ob.step1.need`),
-  * stlpce CSV exportu su gramaticky (sk „verdikt pripomienky“),
-  * pocitadlo relacie menuje styri pripomienky rovnako ako hra,
-  * dennik hovori o prijme tepu a o telefone, nie o „monitorovani“ a hodinkach.
+What this test guards:
+  * one word for what the app sends (zh 提示, ja 合図, ru подсказка,
+    de Hinweis, pt aviso, fr rappel) and for the in-game picture (sk/cs
+    "obrázkom"),
+  * hranica / limit = heart rate in BPM only, prah / threshold = load
+    only - also in Japanese, Chinese, Russian and French,
+  * addressing the player without gender (ru "ты включил", bg "Добре
+    дошъл", es "Bienvenido", pt "Bem-vindo"),
+  * pairing step 2 does not send an iPhone owner past step 3 (address and
+    port),
+  * the texts of metrics and insights speak in the first person like the
+    others,
+  * the introduction says what the player needs for the first heart rate
+    (`ob.step1.need`),
+  * the CSV export columns are grammatical (sk "verdikt pripomienky"),
+  * the session counter names the four cues the same way as the game,
+  * the journal talks about receiving the heart rate and about the phone,
+    not about "monitorovani" and watches.
 
-Synteticke data: ziadne - test cita len slovnik a zdrojaky.
+Synthetic data: none - the test reads only the dictionary and the sources.
 """
 import ast
 import os
@@ -41,7 +46,7 @@ def _vsetky(jazyk):
 
 
 # --------------------------------------------------------------------------
-# Jedno slovo pre pripomienku a pre obrazok
+# One word for the cue and for the picture
 # --------------------------------------------------------------------------
 
 def test_obrazok_sa_vola_obrazok_aj_v_cestine_a_japoncine():
@@ -56,13 +61,13 @@ def test_obrazok_sa_vola_obrazok_aj_v_cestine_a_japoncine():
 
 
 def test_pripomienka_ma_v_kazdom_jazyku_jedno_slovo():
-    # zh: 提醒 ostava len ako sloveso ("我提醒了你"), podstatne meno je 提示
+    # zh: 提醒 stays only as a verb ("我提醒了你"), the noun is 提示
     for kluc in ("dev.param.min_gap_s", "history.effect_empty", "session.context.why",
                  "palette.slot", "slots.unnamed", "dev.silent"):
         assert "提示" in S[kluc]["zh"], kluc
     for zle in ("提醒间隔", "提醒响起", "提醒没用", "提醒之间"):
         assert not [k for k, v in _vsetky("zh") if zle in v], zle
-    # cinska pomlcka "——" bez medzier ako vo vsetkych zh textoch (0.2.2 davka 4b)
+    # Chinese dash "——" without spaces as in all zh texts (0.3 batch 4b)
     assert S["palette.slot"]["zh"] == "提示——{label}"
     assert not [k for k, v in _vsetky("de") if "Erinnerung" in v]
     assert not [k for k, v in _vsetky("ru") if re.search(r"[Рр]еплик", v)]
@@ -84,7 +89,7 @@ def test_francuzstina_ma_pre_relaciu_jedno_slovo():
 
 
 # --------------------------------------------------------------------------
-# Hranica = tep (BPM), prah = zataz - aj v dalsich jazykoch
+# Limit = heart rate (BPM), threshold = load - in other languages too
 # --------------------------------------------------------------------------
 
 HRANICA = {"ja": "上限", "zh": "上限", "ru": "границ", "fr": "limite"}
@@ -98,7 +103,7 @@ def test_hranica_tepu_nie_je_prah_ani_v_dalsich_jazykoch():
             text = S[kluc][jazyk]
             assert slovo in text, (kluc, jazyk)
             assert PRAH[jazyk] not in text, (kluc, jazyk)
-    # texty, ktore menuju oboje, menuju kazde svojim slovom
+    # texts that name both name each with its own word
     for kluc in ("data.import.flagged", "settings.world_sub"):
         for jazyk in HRANICA:
             assert HRANICA[jazyk] in S[kluc][jazyk], (kluc, jazyk)
@@ -106,8 +111,8 @@ def test_hranica_tepu_nie_je_prah_ani_v_dalsich_jazykoch():
 
 
 def test_stlpce_o_zatazi_nad_prahom_hovoria_o_prahu():
-    """`above_runs` a `longest_above_s` su o zatazi nad prahom pripomienky
-    (`trigger`), nie o tepe nad hranicou."""
+    """`above_runs` and `longest_above_s` are about load above the cue
+    threshold (`trigger`), not about heart rate above the limit."""
     for kluc in ("history.export_col.above_runs", "history.export_col.longest_above_s"):
         assert "prahom" in S[kluc]["sk"] and "hranic" not in S[kluc]["sk"], kluc
         assert "prahem" in S[kluc]["cs"] and "hranic" not in S[kluc]["cs"], kluc
@@ -115,26 +120,27 @@ def test_stlpce_o_zatazi_nad_prahom_hovoria_o_prahu():
 
 
 # --------------------------------------------------------------------------
-# Oslovenie bez rodu
+# Addressing without gender
 # --------------------------------------------------------------------------
 
 def test_oslovenie_hraca_bez_rodu():
-    # ru: "ты ...л" (minuly cas muzskeho rodu) v osloveni hraca
+    # ru: "ты ...л" (masculine past tense) when addressing the player
     assert not [k for k, v in _vsetky("ru")
                 if re.search(r"\b[Тт]ы\s+(?:уже\s+)?[а-яё]+л(?:ся)?\b", v)]
-    # bg: "си ...л" / "...л си" (muzsky rod) a muzske "Добре дошъл"
+    # bg: "си ...л" / "...л си" (masculine) and the masculine "Добре дошъл"
     assert not [k for k, v in _vsetky("bg")
                 if re.search(r"\bси\s+[а-я]+л\b|\b[а-я]+л\s+си\b|дошъл", v)]
     assert "Bienvenido" not in S["onboarding.welcome"]["es"]
     assert "Bem-vindo" not in S["onboarding.welcome"]["pt"]
     for jazyk in JAZYKY:
         assert "{app}" in S["onboarding.welcome"][jazyk], jazyk
-    # cipy v dotazniku: podstatne mena, nie pridavne mena o hracovi
+    # chips in the questionnaire: nouns, not adjectives about the player
     assert S["session.context.chill"]["es"] != "relajado"
     assert S["session.context.chill"]["pt"] != "tranquilo"
-    # es "agitarse" znamena rozrusit sa, nie pohyb pred hranim
+    # es "agitarse" means getting worked up, not exercise before playing
     assert "agit" not in S["session.context.exercise_before"]["es"]
-    # Sprievodca: "tazko byt uvolneny" mal muzsky rod - veta je teraz o tele
+    # Guide: "tazko byt uvolneny" (hard to be relaxed) was masculine - the
+    # sentence is now about the body
     filozofia = S["guide.philosophy.block3_text"]
     assert "uvoľnené" in filozofia["sk"] and "uvoľnený a" not in filozofia["sk"]
     assert "uvolněné" in filozofia["cs"] and "uvolněný a" not in filozofia["cs"]
@@ -145,7 +151,7 @@ def test_oslovenie_hraca_bez_rodu():
 
 
 # --------------------------------------------------------------------------
-# Krok 2 parovania: iPhone nepreskoci adresu a port
+# Pairing step 2: an iPhone does not skip the address and port
 # --------------------------------------------------------------------------
 
 def test_krok_2_neposle_iphone_okolo_adresy_a_portu():
@@ -159,13 +165,13 @@ def test_krok_2_neposle_iphone_okolo_adresy_a_portu():
     assert "krok 4 preskoč" in sk
     assert "Both apps need the address and port (step 3)" in en
     assert "skip step 4" in en
-    # kroky, na ktore veta odkazuje, su naozaj tieto
+    # the steps the sentence refers to really are these
     assert "adresu a port" in S["hr.step3_body"]["sk"]
     assert "scénu" in S["hr.step4_body"]["sk"]
 
 
 # --------------------------------------------------------------------------
-# Prva osoba v metrikach a postrehoch
+# First person in metrics and insights
 # --------------------------------------------------------------------------
 
 APPKA = {"sk": "appka", "cs": "appka", "en": "the app", "ja": "アプリ", "zh": "应用",
@@ -186,7 +192,7 @@ def test_metriky_a_postrehy_hovoria_v_prvej_osobe():
 
 
 # --------------------------------------------------------------------------
-# Uvod: co hrac potrebuje
+# Introduction: what the player needs
 # --------------------------------------------------------------------------
 
 def test_uvod_povie_co_hrac_na_prvy_tep_potrebuje():
@@ -198,8 +204,9 @@ def test_uvod_povie_co_hrac_na_prvy_tep_potrebuje():
         assert "Wi‑Fi" in text or "WLAN" in text, jazyk
         if jazyk != "en":
             assert text != zaznam["en"], jazyk
-    # 0.2.2 davka 4b: hodinky s appkou v telefone ako README ("Getting your
-    # heart rate in"); hrudny pas nikto neoveril, tak ho uvod nesluby
+    # 0.3 batch 4b: a watch with an app on the phone, like the README ("Getting
+    # your heart rate in"); nobody has verified a chest strap, so the
+    # introduction does not promise it
     assert "hodinky" in zaznam["sk"] and "telefóne" in zaznam["sk"]
     assert "domácej sieti" in zaznam["sk"]
     assert "smartwatch" in zaznam["en"] and "phone app" in zaznam["en"]
@@ -222,7 +229,7 @@ def test_krok_1_uvodu_ukaze_co_treba_pod_uvodom():
 
 
 # --------------------------------------------------------------------------
-# Export, pocitadlo relacie, dennik
+# Export, session counter, journal
 # --------------------------------------------------------------------------
 
 def test_stlpce_exportu_su_gramaticky():
@@ -254,7 +261,8 @@ def test_dennik_hovori_o_prijme_tepu_a_telefone():
     assert S["log.hr_socket_error"]["sk"].startswith("Príjem tepu")
     assert not [k for k, v in _vsetky("sk") if re.search(r"[Mm]onitorovan", v)]
     assert not [k for k, v in _vsetky("en") if re.search(r"[Mm]onitoring", v)]
-    # klient, ktory sa odpoji, je appka v telefone - rovnako ako ten, co sa pripojil
+    # the client that disconnects is the app on the phone - same as the one
+    # that connected
     for jazyk in ("sk", "en", "cs"):
         assert ("Telef" in S["log.hr_client_gone"][jazyk]
                 or "phone" in S["log.hr_client_gone"][jazyk]), jazyk

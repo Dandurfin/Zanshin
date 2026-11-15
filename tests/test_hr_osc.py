@@ -1,11 +1,12 @@
-"""Prijem tepu protokolom OSC (appky pre VRChat).
+"""Heart-rate receiving over the OSC protocol (apps for VRChat).
 
-Preco to appka vie: na iPhone/Apple Watch neexistuje appka, ktora by
-hovorila obs-websocket - vsetko ostatne (Pulsoid, Stromno, HypeRate)
-posiela tep do cloudu a k tomuto PC sa nikdy nepripoji. OSC je jediny
-sposob, akym sa z iPhonu da tep poslat na LOKALNU adresu bez cloudu.
+Why the app can do it: on iPhone/Apple Watch there is no app that would
+speak obs-websocket - everything else (Pulsoid, Stromno, HypeRate) sends
+the heart rate to the cloud and never connects to this PC. OSC is the
+only way to send the heart rate from an iPhone to a LOCAL address without
+a cloud.
 
-Testy stavaju OSC pakety presne tak, ako ich tie appky posielaju.
+The tests build OSC packets exactly the way those apps send them.
 """
 import os
 import struct
@@ -17,7 +18,7 @@ import heart_rate
 
 
 def _osc_str(text):
-    """OSC retazec: null-ukonceny, doplneny na nasobok styroch bajtov."""
+    """OSC string: null-terminated, padded to a multiple of four bytes."""
     raw = text.encode() + b"\0"
     return raw + b"\0" * (-len(raw) % 4)
 
@@ -36,7 +37,7 @@ def _bundle(*messages):
 
 
 # --------------------------------------------------------------------------
-# sprava
+# message
 # --------------------------------------------------------------------------
 
 def test_int_je_tep():
@@ -48,8 +49,9 @@ def test_float_je_tep_ked_vyzera_ako_tep():
 
 
 def test_normalizovana_hodnota_nie_je_tep():
-    """Tie iste appky posielaju vedla BPM aj hodnotu 0..1 (percento z
-    rozsahu 1-200). 0.36 nie je tep a na indikator sa dostat nesmie."""
+    """The same apps also send, next to BPM, a 0..1 value (a percentage of
+    the 1-200 range). 0.36 is not a heart rate and must not get onto the
+    indicator."""
     assert heart_rate._parse_bpm(_msg("/avatar/parameters/HRPercent", "f", 0.36)) is None
 
 
@@ -59,8 +61,8 @@ def test_nezmyselne_cislo_neprejde():
 
 
 def test_na_nazve_adresy_nezalezi():
-    """Kazda appka si adresu pomenuje inak a hrac si ju vie prepisat -
-    appka sa preto riadi hodnotou, nie nazvom."""
+    """Every app names the address differently and the player can change it -
+    so the app goes by the value, not the name."""
     for adresa in ("/hr", "/avatar/parameters/Heartrate", "/zanshin/bpm"):
         assert heart_rate._parse_bpm(_msg(adresa, "i", 64)) == 64
 
@@ -72,7 +74,7 @@ def test_adresa_bez_zarovnania_nezhodi_parser():
 
 
 # --------------------------------------------------------------------------
-# balik
+# bundle
 # --------------------------------------------------------------------------
 
 def test_balik_najde_tep_medzi_inymi_spravami():
@@ -87,7 +89,7 @@ def test_prazdny_balik():
 
 
 # --------------------------------------------------------------------------
-# regresia: OSC nesmie rozbit povodne dva formaty
+# regression: OSC must not break the original two formats
 # --------------------------------------------------------------------------
 
 def test_holy_text_a_json_stale_funguju():
@@ -97,18 +99,19 @@ def test_holy_text_a_json_stale_funguju():
 
 
 def test_text_zacinajuci_lomkou_padne_do_textovej_vetvy():
-    """Sprava, ktora OSC nie je, sa nesmie na prvej vetve stratit."""
+    """A message that is not OSC must not get lost on the first branch."""
     assert heart_rate._parse_bpm(b"/status 77") == 77
 
 
 def test_obsadeny_port_neuklada_vypnutie():
-    """Obsadený port je dočasný stav, nie rozhodnutie hráča.
+    """A busy port is a temporary state, not the player's decision.
 
-    Appka padala pri `busy` do tej istej vetvy ako pri `error`: vypla
-    `hr_monitoring_enabled` a hneď to uložila na disk. Z kolízie, ktorá trvá
-    pár sekúnd (druhá spustená kópia appky), sa tak stalo trvalé nastavenie —
-    senzor ostal vypnutý aj po uvoľnení portu a jediný signál bol riadok
-    v denníku, ktorý je predvolene zabalený.
+    On `busy` the app fell into the same branch as on `error`: it turned
+    `hr_monitoring_enabled` off and saved it to disk right away. A
+    collision lasting a few seconds (a second running copy of the app)
+    thus became a permanent setting — the sensor stayed off even after the
+    port was freed, and the only signal was a line in the journal, which
+    is collapsed by default.
     """
     import inspect
     import app as app_mod
@@ -117,10 +120,12 @@ def test_obsadeny_port_neuklada_vypnutie():
     assert "_retry_hr_bind" in busy, "vazba sa neskusa znova"
     assert "HR_BIND_RETRIES" in busy, "chyba strop pokusov"
 
-    # Kym sa este skusa, NESMIE sa nic ukladat. A od 0.2.2 ani po vzdani:
-    # ani vtedy to nie je rozhodnutie hraca - druha spustena kopia appky tak
-    # prvej natrvalo vypinala prijem tepu. Vypnute je len v pamati
-    # (`_senzor_vypla_chyba`), dalsi start skusi znova (tests/test_022b_instance_port.py).
+    # While it is still retrying, NOTHING may be saved. And since 0.3 not
+    # even after giving up: even then it is not the player's decision - a
+    # second running copy of the app was thereby permanently turning off the
+    # first one's heart-rate receiving. It is off only in memory
+    # (`_senzor_vypla_chyba`), the next start tries again
+    # (tests/test_022b_instance_port.py).
     pokusy = busy[busy.index("if self._hr_bind_retries <="):]
     pokusy = pokusy[:pokusy.index("else:")]
     assert "save_settings" not in pokusy,         "vypnutie sa uklada uz pocas opakovania"
@@ -129,7 +134,7 @@ def test_obsadeny_port_neuklada_vypnutie():
 
 
 def test_obsadeny_port_je_vidno_pri_prepinaci():
-    """Nesmie sa tváriť ako obyčajné „Odpojené"."""
+    """Must not pass for an ordinary "Disconnected"."""
     import inspect
     import app as app_mod
     telo = inspect.getsource(app_mod.DandurfApp._hr_status_display)
@@ -137,11 +142,12 @@ def test_obsadeny_port_je_vidno_pri_prepinaci():
 
 
 def test_tep_sa_najde_aj_ked_hodinky_posielaju_kroky_a_rychlost():
-    """Prémiová appka na hodinkách vie posielať aj kroky a rýchlosť.
+    """A premium app on the watch can also send steps and speed.
 
-    Parser bral „prvé číslo v texte", takže pri „Steps: 1832  HR: 73" čítal
-    kroky. `_plausible` ich odmietol a vrátil None — v appke by to vyzeralo
-    ako výpadok hodiniek, nie ako zle prečítaný text.
+    The parser took "the first number in the text", so with
+    "Steps: 1832  HR: 73" it read the steps. `_plausible` rejected them and
+    returned None — in the app it would look like a watch dropout, not
+    like misread text.
     """
     import heart_rate
     for text in ("73",
@@ -158,10 +164,11 @@ def test_tep_sa_najde_aj_ked_hodinky_posielaju_kroky_a_rychlost():
 
 
 def test_slovo_tep_je_vnutri_slova_steps():
-    """Pasca, ktorá to spôsobila — nech sa nevráti.
+    """The trap that caused it — so it does not come back.
 
-    Slovenské „tep" je podreťazec anglického „S-tep-s". Bez hraníc slov sa
-    vzor chytil na „Steps" a z „1832" vzal prvé tri číslice.
+    The Slovak "tep" (heart rate) is a substring of the English "S-tep-s".
+    Without word boundaries the pattern caught on "Steps" and took the
+    first three digits of "1832".
     """
     import heart_rate
     assert heart_rate._parse_bpm(b"Steps: 1832") is None, \
@@ -170,10 +177,11 @@ def test_slovo_tep_je_vnutri_slova_steps():
 
 
 def test_kroky_a_rychlost_sa_vytiahnu_z_roznych_formatov():
-    """Prémiová appka na hodinkách posiela aj kroky a rýchlosť.
+    """A premium app on the watch also sends steps and speed.
 
-    Sú to jediný PRIAMY signál pohybu, ktorý máme — bez neho sa chôdza od
-    hernej záťaže odlíšiť nedá, v oboch prípadoch len stúpne tep.
+    They are the only DIRECT movement signal we have — without it walking
+    cannot be told apart from gaming load; in both cases only the heart
+    rate rises.
     """
     import heart_rate
     for text in ('{"bpm": 73, "steps": 1832, "speed": 4.2}',
@@ -188,10 +196,11 @@ def test_kroky_a_rychlost_sa_vytiahnu_z_roznych_formatov():
 
 
 def test_chybajuca_metrika_je_none_nie_nula():
-    """„Nevieme" a „nula krokov" sú dve rôzne veci.
+    """The "we don't know" and "zero steps" cases are two different things.
 
-    Zameniť ich by znamenalo tvrdiť, že hráč sedí, vždy keď hodinky kroky
-    neposielajú — a práve na tom by potom stála detekcia pohybu.
+    Mixing them up would mean claiming the player is sitting whenever the
+    watch does not send steps — and movement detection would then rest on
+    exactly that.
     """
     import heart_rate
     m = heart_rate.parse_metrics(b"73 bpm")
@@ -200,12 +209,13 @@ def test_chybajuca_metrika_je_none_nie_nula():
 
 
 def test_menovka_sa_nespoji_s_cislom_za_oddelovacom():
-    """Pasce, ktoré to spôsobili — nech sa nevrátia.
+    """The traps that caused it — so they do not come back.
 
-    1) „1832 steps | 4.2 km/h" spájalo menovku „steps" s číslom AŽ ZA „|"
-       a čítalo kroky ako 4.
-    2) „Tep: 73  Kroky: 1832" sa chytilo na „73  Kroky" a čítalo tep ako
-       počet krokov — `re.search` vracia najľavejší výskyt, nie prvú vetvu.
+    1) "1832 steps | 4.2 km/h" joined the label "steps" with the number
+       only AFTER the "|" and read the steps as 4.
+    2) "Tep: 73  Kroky: 1832" caught on "73  Kroky" and read the heart
+       rate as the step count — `re.search` returns the leftmost match,
+       not the first alternative.
     """
     import heart_rate
     m = heart_rate.parse_metrics(b"1832 steps | 4.2 km/h")

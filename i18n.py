@@ -1,25 +1,26 @@
-"""Preklady rozhrania - Slovencina / Anglictina / Japoncina / Cinstina
-(zjednodusena) / Rustina / Spanielcina / Nemcina / Francuzstina /
-Portugalcina (Brazilia) / Cestina / Bulharcina.
+"""Interface translations - Slovak / English / Japanese / Chinese
+(Simplified) / Russian / Spanish / German / French /
+Portuguese (Brazil) / Czech / Bulgarian.
 
-Sada jazykov = rozhranie appky (SK/EN/JA) + najpopularnejsie jazyky
-hracov na Steame (Steam Hardware & Software Survey + Valve GDC'25 data)
-+ cestina a bulharcina (0.2).
+The language set = the app's interface (SK/EN/JA) + the most popular
+languages of players on Steam (Steam Hardware & Software Survey + Valve
+GDC'25 data) + Czech and Bulgarian (0.2).
 
-Cele UI sa po prepnuti jazyka prekresli odznova (rovnaky princip ako pri
-prepnuti vizualnej temy), takze staci menit `_lang["code"]` a znova
-zavolat `tr()` pri stavbe widgetov - ziadny widget si preklad
-nepamataeta trvalo.
+The whole UI is redrawn from scratch after a language switch (the same
+principle as when switching the visual theme), so it is enough to change
+`_lang["code"]` and call `tr()` again while building the widgets - no
+widget remembers a translation permanently.
 
-POZNAMKA K PREKLADOM: appka je pisana po slovensky; ostatne jazyky su
-preklady s pomocou AI (Claude) a rodeny hovoriaci ich este nekontroloval
-(appka to hovori aj sama - `settings.language_note` pod vyberom jazyka).
-Odporucame pred sirokym vydanim appky necha' ich prejst rodenym
-hovoriacim, najma obsah v guide.* (biomechanika/dychove techniky), kde
-presnost formulacie ma realny vyznam.
+NOTE ON TRANSLATIONS: the app is written in Slovak; the other languages
+are translations made with the help of AI (Claude) and a native speaker
+has not checked them yet (the app says so itself -
+`settings.language_note` under the language picker). We recommend having
+them reviewed by native speakers before a wide release of the app,
+especially the content in guide.* (biomechanics/breathing techniques),
+where the precision of the wording really matters.
 
-Cestina a bulharcina maju preklad v samostatnom module `i18n_cs_bg.py` -
-vklada sa na konci tohto suboru.
+Czech and Bulgarian have their translation in a separate module
+`i18n_cs_bg.py` - it is inserted at the end of this file.
 """
 
 LANG_SK = "sk"
@@ -45,12 +46,12 @@ def set_lang(code):
 
 
 def _pick(entry, code, msg_key):
-    """Text zaznamu v jazyku `code`; ked chyba, anglictina, potom slovencina.
+    """Entry text in language `code`; if missing, English, then Slovak.
 
-    Kazdy kluc ma mat vsetky jazyky (strazi to tests/test_i18n_keys.py) -
-    toto je poistka, aby neuplny zaznam (napr. plny slovnik s deviatimi
-    jazykmi pri cestine a bulharcine) nikdy nezhodil okno ani neukazal
-    slovencinu hracovi, ktory si vybral iny jazyk.
+    Every key should have all languages (tests/test_i18n_keys.py guards
+    that) - this is a safety net so that an incomplete entry (e.g. a full
+    dict with nine languages for Czech and Bulgarian) never brings down a
+    window or shows Slovak to a player who chose another language.
     """
     for kod in (code, LANG_EN, DEFAULT_LANG):
         if kod in entry:
@@ -59,11 +60,12 @@ def _pick(entry, code, msg_key):
 
 
 def _format(entry, code, text, kwargs):
-    """`text.format(**kwargs)` - pri chybnom preklade anglicky zdroj.
+    """`text.format(**kwargs)` - the English source if a translation is broken.
 
-    Zle opisany {placeholder} v preklade nesmie zhodit okno. Placeholdery
-    v zdroji strazi check_before_run.py; ked zlyha aj anglictina, je to
-    chyba volania, nie prekladu - ta sa ukaze.
+    A mistyped {placeholder} in a translation must not bring down the
+    window. Placeholders in the source are guarded by check_before_run.py;
+    when English fails too, it is a mistake in the call, not in the
+    translation - that one is shown.
     """
     if not kwargs:
         return text
@@ -83,19 +85,20 @@ def tr(msg_key, **kwargs):
     return _format(entry, code, _pick(entry, code, msg_key), kwargs)
 
 
-# CISLO VO VETE (0.2.2, audit UX, davka 4). "trend -2.0 BPM/týždeň" bola
-# anglicka bodka a spojovnik v slovenskej vete. Desatinnu bodku pisu len
-# anglictina, japoncina a cinstina; ostatnych osem jazykov appky pise
-# ciarku. Zaporne cislo dostane skutocny znak minus (U+2212), nie
-# spojovnik; `sign=True` necha aj plus (trend "+1,5").
+# NUMBER IN A SENTENCE (0.3, UX audit, batch 4). "trend -2.0 BPM/týždeň"
+# had an English point and a hyphen in a Slovak sentence. Only English,
+# Japanese and Chinese write a decimal point; the other eight languages
+# of the app write a comma. A negative number gets a real minus sign
+# (U+2212), not a hyphen; `sign=True` keeps the plus too (trend "+1,5").
 _DESATINNA_BODKA = frozenset({LANG_EN, LANG_JA, LANG_ZH})
 ZNAK_MINUS = "−"
 
 
 def cislo(x, decimals=0, sign=False, lang=None):
-    """Cislo `x` s `decimals` desatinnymi miestami pre vetu v jazyku appky
-    (alebo `lang`). Co nie je cislo, vrati ako text; nekonecno a NaN "—".
-    Nula sa nikdy nepise so znamienkom minus ("−0,0" by klamalo)."""
+    """Number `x` with `decimals` decimal places for a sentence in the app's
+    language (or `lang`). What is not a number is returned as text;
+    infinity and NaN as "—". Zero is never written with a minus sign
+    ("−0,0" would lie)."""
     try:
         hodnota = float(x)
     except (TypeError, ValueError):
@@ -107,22 +110,23 @@ def cislo(x, decimals=0, sign=False, lang=None):
     if (lang or _lang["code"]) not in _DESATINNA_BODKA:
         text = text.replace(".", ",")
     if float(text.replace(",", ".")) == 0.0:
-        return text           # po zaokruhleni nula: ziadne "+0,0" ani "−0,0"
+        return text           # zero after rounding: no "+0,0" and no "−0,0"
     if hodnota < 0:
         return ZNAK_MINUS + text
     return ("+" + text) if sign else text
 
 
-# Zvlastna hodnota pre "jazyk v hre" - drz sa jazyka rozhrania.
+# Special value for "In-game language" - stick to the interface language.
 LANG_SAME_AS_APP = "app"
 
 
 def _win_locale():
-    """Kod locale prihlaseneho uzivatela, napr. 'de-DE'. Prazdny = neznamy.
+    """Locale code of the logged-in user, e.g. 'de-DE'. Empty = unknown.
 
-    Oddelene od `system_lang()` kvoli testom - toto je jediny kus, ktory
-    sa pyta operacneho systemu, takze sa da v teste vymenit a zvysok
-    mapovania overit na vsetkych jazykoch (tests/test_i18n_cs_bg.py).
+    Separate from `system_lang()` because of tests - this is the only
+    piece that asks the operating system, so it can be swapped in a test
+    and the rest of the mapping checked on all languages
+    (tests/test_i18n_cs_bg.py).
     """
     try:
         import ctypes
@@ -139,37 +143,38 @@ def _win_locale():
 
 
 def system_lang(default=LANG_EN):
-    """Jazyk Windowsu prelozeny na jeden z nasich jedenastich.
+    """Windows language mapped to one of our eleven.
 
-    PRECO TO EXISTUJE: pri prvom spusteni sa appka nastavovala na
-    SLOVENCINU - lebo tak ju pisal autor. Stiahne si ju ale aj Nemec,
-    Brazilcan alebo Japonec a prve, co uvidi, je jazyk, ktoremu nerozumie,
-    a musi ho hladat v nastaveniach. Preto sa pri prvom starte berie jazyk
-    systemu, a ked ho medzi nasimi jedenastimi nemame, anglictina - nie
-    slovencina.
+    WHY THIS EXISTS: on the first start the app used to set itself to
+    SLOVAK - because that is what the author wrote it in. But a German, a
+    Brazilian or a Japanese person downloads it too, and the first thing
+    they see is a language they do not understand, and they have to look
+    for it in the settings. That is why on the first start the system
+    language is taken, and when we do not have it among our eleven,
+    English - not Slovak.
 
-    Ulozena volba hraca ma vzdy prednost; toto sa pyta len vtedy, ked
-    este ziadna nie je.
+    The player's saved choice always takes precedence; this is only asked
+    when there is none yet.
     """
     kod = _win_locale() or ""
     primarny = kod.replace("_", "-").lower().split("-")[0]
-    # Cesky Windows dostaval do 0.2 slovencinu (cestina medzi jazykmi
-    # nebola); od 0.2 ma cestina vlastny preklad, bulharcina tiez.
+    # A Czech Windows got Slovak until 0.2 (Czech was not among the
+    # languages); since 0.2 Czech has its own translation, Bulgarian too.
     if primarny in LANGUAGES:
         return primarny
     return default
 
 
 def tr_lang(code, msg_key, **kwargs):
-    """Preklad do KONKRETNEHO jazyka, nezavisle od jazyka rozhrania.
+    """Translation into a SPECIFIC language, regardless of the UI language.
 
-    Je to pre to, co appka kresli DO HRY (HUD vlavo dole, popisky pod
-    vizualmi). Tie nevidi len hrac - vidia ich diváci na streame a
-    kupujuci na screenshotoch v obchode. Rozhranie teda moze byt po
-    slovensky a v hre moze byt anglictina.
+    It is for what the app draws INTO THE GAME (the HUD bottom left, the
+    labels under the visuals). Those are not seen only by the player -
+    viewers on a stream and buyers on store screenshots see them too. So
+    the interface can be in Slovak and the game can have English.
 
-    `code` mimo `LANGUAGES` (typicky `LANG_SAME_AS_APP`) znamena "pouzi
-    jazyk rozhrania".
+    `code` outside `LANGUAGES` (typically `LANG_SAME_AS_APP`) means "use
+    the interface language".
     """
     entry = STRINGS.get(msg_key)
     if entry is None:
@@ -751,8 +756,9 @@ STRINGS = {
         'fr': 'Main et regard',
         'pt': 'Mão e olhar',
     },
-    # Cyklus uz nie je pevny (viz overlay.breath_seconds nizsie), preto bez
-    # "20 s" - presnu dlzku vidiet priamo v posuvnikoch pod tymto nadpisom.
+    # The cycle is no longer fixed (see overlay.breath_seconds below), hence
+    # no "20 s" - the exact length is visible right in the sliders under
+    # this heading.
     'overlay.slot.3': {
         'sk': 'Dych',
         'en': 'Breath',
@@ -885,8 +891,8 @@ STRINGS = {
         'fr': 'Capteur de fréquence cardiaque (Wi-Fi)',
         'pt': 'Sensor de frequência cardíaca (Wi-Fi)',
     },
-    # 0.2.2: "(pokrocile)" - pole nie je adresa do telefonu. Ako
-    # "IP adresa" zvadzalo prepisat 0.0.0.0 do telefonu (audit).
+    # 0.3: "(advanced)" - the field is not an address for the phone. As
+    # "IP address" it tempted people to type 0.0.0.0 into the phone (audit).
     'settings.hr_ip_label': {
         'sk': 'Sieťová adresa (pokročilé)',
         'en': 'Network address (advanced)',
@@ -953,8 +959,9 @@ STRINGS = {
         'fr': 'Connexion en cours...',
         'pt': 'Conectando...',
     },
-    # Stav "linked": TCP spojenie drzi appka v TELEFONE, hodinky este nic
-    # nemusia posielat (0.2.2 davka 4b) - preto telefon, nie hodinky.
+    # State "linked": the TCP connection is held by the app on the PHONE,
+    # the watch may not be sending anything yet (0.3 batch 4b) - hence
+    # phone, not watch.
     'settings.hr_status_waiting': {
         'sk': 'Telefón pripojený — čakám na tep…',
         'en': 'Phone connected — waiting for heart rate…',
@@ -1010,9 +1017,10 @@ STRINGS = {
         'fr': 'Réception du pouls désactivée.',
         'pt': 'Recepção do pulso desligada.',
     },
-    # 0.2.2: veta menuje castu pricinu (OBS s WebSocket serverom na 4455) a
-    # opravu, ktora funguje vzdy - iny port. Zmena portu v poli senzor po
-    # vzdani sama znova spusti (`on_hr_config_change`).
+    # 0.3: the sentence names a common cause (OBS with a WebSocket server on
+    # 4455) and the fix that always works - another port. Changing the port
+    # in the field restarts the sensor by itself after it gave up
+    # (`on_hr_config_change`).
     'log.hr_port_busy': {
         'sk': 'Port {port} už používa iný program — často OBS so zapnutým WebSocket serverom alebo druhá kópia Zanshinu. Na stránke „{page}“ zmeň port (napr. na 4456) a rovnaké číslo zadaj v appke na telefóne.',
         'en': 'Port {port} is already used by another program — often OBS with its WebSocket server on, or a second copy of Zanshin. On the “{page}” page change the port (e.g. to 4456) and enter the same number in the phone app.',
@@ -1035,10 +1043,11 @@ STRINGS = {
         'fr': "Impossible de démarrer la réception du pouls (IP/port) : {err}",
         'pt': 'Não foi possível iniciar a recepção do pulso (IP/porta): {err}',
     },
-    # Uz sa nikam nelogguje - spustac z fazy 1 (tep nad kritickou 5 s ->
-    # dychovy kruh) je zmazany (app.py, B28). Cita ho len ilustracia HUD v
-    # onboardingu (ui_dialogs.py, krok 3, rez [:40]) - preto kratky pravdivy
-    # text, ktory sa do 40 znakov zmesti cely.
+    # No longer logged anywhere - the trigger from phase 1 (heart rate above
+    # critical for 5 s -> breathing circle) is deleted (app.py, B28). Only
+    # the HUD illustration in the onboarding reads it (ui_dialogs.py, step 3,
+    # slice [:40]) - hence a short true text that fits whole into 40
+    # characters.
     'log.hr_breathing_triggered': {
         'sk': 'Tep {bpm} BPM — záťaž drží hore',
         'en': 'Heart rate {bpm} BPM — load holding up',
@@ -1083,11 +1092,12 @@ STRINGS = {
         'fr': "La détection automatique du jeu n'est pas disponible (bibliothèque 'psutil' manquante). Installe-la avec :  pip install psutil",
         'pt': "A detecção automática de jogo não está disponível (biblioteca 'psutil' ausente). Instale com:  pip install psutil",
     },
-    # Uz nie "Anti-Cheat Safe Mode": zaruku voci anti-cheatu moze dat len
-    # jeho vyrobca, a "ziadne blokovanie" nebola pravda - skratku "teraz nie"
-    # si appka registruje (`hotkey.py`, RegisterHotKey), takze tu kombinaciu
-    # hra nedostane. Skratka sa da zmenit (alebo vypnut) v subore nastaveni,
-    # preto veta hovori o skratke "teraz nie" a Ctrl+Alt+Z len ako predvolbe.
+    # No longer "Anti-Cheat Safe Mode": only its maker can give a guarantee
+    # about an anti-cheat, and "no blocking" was not true - the app registers
+    # the "not now" shortcut (`hotkey.py`, RegisterHotKey), so the game does
+    # not get that combination. The shortcut can be changed (or turned off)
+    # in the settings file, so the sentence talks about the "not now"
+    # shortcut and mentions Ctrl+Alt+Z only as the default.
     'log.safe_mode': {
         'sk': 'Ktoré klávesy stláčaš, nevidím — len kedy prišiel posledný vstup. Sama nič nestláčam. Jedinú skratku si rezervujem pre seba: „teraz nie“ (predvolene Ctrl+Alt+Z) — hra ju preto nedostane.',
         'en': 'I can’t see which keys you press — only when your last input came. I press nothing myself. I reserve one shortcut for myself: “not now” (Ctrl+Alt+Z by default) — so the game won’t get it.',
@@ -1594,8 +1604,9 @@ STRINGS = {
         'fr': 'Lancée, mais sans pouls',
         'pt': 'Iniciada, mas sem pulso',
     },
-    # 0.2.2: posiela na ikonu hodiniek (zapne prijem a otvori navod),
-    # nie na holy prepinac - bez parovania by prepinac nepomohol.
+    # 0.3: points to the watch icon (turns reception on and opens the
+    # guide), not to the bare switch - without pairing the switch would not
+    # help.
     'kamae.no_watch_sub': {
         'sk': 'Bez hodiniek neviem, kedy ti záťaž stúpa, tak mlčím. Spáruj ich — ikona hodiniek vľavo.',
         'en': 'Without a watch I can’t tell when your load rises, so I stay quiet. Pair it — the watch icon on the left.',
@@ -1607,10 +1618,11 @@ STRINGS = {
         'fr': 'Sans montre, je ne sais pas quand ta charge monte, alors je me tais. Connecte-la — l’icône de la montre à gauche.',
         'pt': 'Sem relógio, não sei quando a sua carga sobe, então fico calada. Pareie o relógio — o ícone do relógio à esquerda.',
     },
-    # Senzor POCUVA, ale tep nechodi (vypadok, obsadeny port, este sa nic
-    # nepripojilo). Odlisene od `kamae.no_watch`, co je vypnuty senzor.
-    # Pas doteraz v tomto stave klamal "Sledujem tep a cakam..." len podla
-    # prepinaca - najvacsi prvok okna tvrdil nepravdu (bug A2).
+    # The sensor is LISTENING, but heart rate is not coming in (dropout,
+    # busy port, nothing has connected yet). Distinct from `kamae.no_watch`,
+    # which is a sensor turned off. In this state the bar used to falsely
+    # claim "Watching your heart rate, waiting..." based only on the switch -
+    # the biggest element of the window was telling an untruth (bug A2).
     'kamae.no_hr': {
         'sk': 'Čakám na tep',
         'en': 'Waiting for heart rate',
@@ -1622,9 +1634,10 @@ STRINGS = {
         'fr': 'Waiting for heart rate',
         'pt': 'Waiting for heart rate',
     },
-    # 0.2: tep ide hodinky -> telefon (Bluetooth) -> Wi-Fi -> pocitac, nie
-    # z hodiniek rovno na Wi-Fi. Stare preklady (_DOPLNENE_PREKLADY) zmazane,
-    # aby stare znenie neprezilo v ziadnom jazyku; nove su z fazy jazykov.
+    # 0.2: heart rate goes watch -> phone (Bluetooth) -> Wi-Fi -> computer,
+    # not from the watch straight to Wi-Fi. Old translations
+    # (_DOPLNENE_PREKLADY) deleted, so that the old wording does not survive
+    # in any language; the new ones are from the languages phase.
     'kamae.no_hr_sub': {
         'sk': 'Príjem tepu je zapnutý, ale z hodiniek zatiaľ nič nechodí. Skontroluj, či hodinky merajú a sú pri telefóne (Bluetooth) a či je telefón na tej istej Wi‑Fi ako počítač.',
         'en': 'Heart-rate receiving is on, but nothing is coming from the watch yet. Check that the watch is measuring and near the phone (Bluetooth), and that the phone is on the same Wi‑Fi as the PC.',
@@ -1636,9 +1649,10 @@ STRINGS = {
         'fr': 'La réception du pouls est activée, mais rien n’arrive encore de la montre. Vérifie que la montre mesure et qu’elle est près du téléphone (Bluetooth), et que le téléphone est sur le même Wi‑Fi que le PC.',
         'pt': 'A recepção do pulso está ligada, mas ainda não chega nada do relógio. Confira se o relógio está medindo e perto do celular (Bluetooth) e se o celular está no mesmo Wi‑Fi que o PC.',
     },
-    # Prijem bezi, ale za ~20 s sa nikto nepripojil (`_hr_no_client`).
-    # "Cakam na tep" by cakalo cely vecer bez rady - pricina je takmer
-    # vzdy v sieti, tak veta povie ktora a kde je postup (0.2.2).
+    # Reception is running, but nobody connected within ~20 s
+    # (`_hr_no_client`). "Waiting for heart rate" would wait the whole
+    # evening without advice - the cause is almost always in the network,
+    # so the sentence says which one and where the steps are (0.3).
     'kamae.no_client': {
         'sk': 'Telefón sa nepripojil',
         'en': 'The phone didn’t connect',
@@ -1683,9 +1697,10 @@ STRINGS = {
         'fr': "Le moment d'un rappel est venu, mais ils sont tous désactivés — je me tais.",
         'pt': 'Chegou o momento de um aviso, mas estão todos desligados — fico calada.',
     },
-    # 0.2.2: bez "byva to druha kopia appky" - druha kopia sa od 0.2.2 k portu
-    # nedostane (main.py, jedna kopia). Pricinu a opravu povie az
-    # `log.hr_port_busy`, ked sa pokusy minu.
+    # 0.3: without "it is usually a second copy of the app" - since 0.3 a
+    # second copy does not get to the port (main.py, single instance). The
+    # cause and the fix are only given by `log.hr_port_busy`, once the
+    # attempts run out.
     'log.hr_port_busy_retry': {
         'sk': 'Port {port} drží iný program — skúšam znova ({n}/{z}).',
         'en': 'Port {port} is held by another program — retrying ({n}/{z}).',
@@ -1708,8 +1723,9 @@ STRINGS = {
         'fr': 'Port occupé — nouvel essai',
         'pt': 'Porta ocupada — tentando de novo',
     },
-    # Pocuvame, ale za ~20 s sa nikto nepripojil (najcastejsie firewall alebo
-    # ina Wi-Fi). Iny problem nez "Pripaja sa…", tak to aj hovori (B2).
+    # We are listening, but nobody connected within ~20 s (most often a
+    # firewall or a different Wi-Fi). A different problem from
+    # "Connecting...", so it says so (B2).
     'settings.hr_status_no_client': {
         'sk': 'Príjem zapnutý — telefón sa zatiaľ nepripojil',
         'en': 'Receiving on — the phone hasn’t connected yet',
@@ -1721,8 +1737,9 @@ STRINGS = {
         'fr': 'Réception activée — le téléphone ne s’est pas encore connecté',
         'pt': 'Recepção ligada — o celular ainda não se conectou',
     },
-    # Po vycerpani pokusov sa senzor VZDAL. Doteraz stav ostal "busy" a
-    # stitok navzdy tvrdil "skusam znova", hoci to uz nikto neskusa (B3).
+    # After the attempts are used up the sensor GIVES UP. Until now the state
+    # stayed "busy" and the label forever claimed "retrying", although nobody
+    # is trying any more (B3).
     'settings.hr_status_busy_gave_up': {
         'sk': 'Port je obsadený — senzor vypnutý',
         'en': 'Port is busy — sensor turned off',
@@ -2537,8 +2554,9 @@ STRINGS = {
         'fr': 'Quitter',
         'pt': 'Sair',
     },
-    # 0.2.2: druhe spustenie appky (main.py, jedna kopia). Ukaze sa len ked
-    # beziaca kopia nedostala znamenie "ukaz okno" - inak sa okno ukaze samo.
+    # 0.3: a second launch of the app (main.py, single instance). Shown only
+    # when the running copy did not get the "show window" signal - otherwise
+    # the window shows itself.
     'tray.already_running': {
         'sk': 'Zanshin už beží — nájdeš ho v lište pri hodinách (ak ikonu nevidíš, klikni na šípku ^).',
         'en': 'Zanshin is already running — you’ll find it in the tray by the clock (if you don’t see the icon, click the ^ arrow).',
@@ -2583,8 +2601,8 @@ STRINGS = {
         'fr': "La bibliothèque edge-tts n'est pas installée.\n\nInstalle-la avec :\n    pip install edge-tts",
         'pt': 'A biblioteca edge-tts não está instalada.\n\nInstale com:\n    pip install edge-tts',
     },
-    # Bez 📖 (0.2.2, davka 4): emoji bol v okne Sprievodca jediny farebny
-    # symbol v nadpise - audit: ziadne emoji v popiskoch.
+    # Without 📖 (0.3, batch 4): the emoji was the only coloured symbol in a
+    # heading in the Guide window - audit: no emoji in labels.
     'guide.panel_title': {
         'sk': 'Sprievodca / Čo je za tým',
         'en': 'Guide / What’s behind it',
@@ -2684,8 +2702,9 @@ STRINGS = {
         'fr': "Quand le corps se plie vers l'écran",
         'pt': 'Quando o corpo se dobra para a frente, para o monitor',
     },
-    # 0.2: popis toho, co sa pri cviku deje s drzanim tela - nie tvrdenie
-    # o "aktivacii stabilizacneho systemu" bez zdroja.
+    # 0.2: a description of what happens to how the body is held during the
+    # exercise - not a claim about "activating the stabilisation system"
+    # without a source.
     'guide.grounding.physiology': {
         'sk': 'Chrbtica sa vzpriami a váha sa presunie na sedacie kosti a chodidlá.',
         'en': 'The spine straightens and your weight settles onto your sit bones and feet.',
@@ -2697,13 +2716,15 @@ STRINGS = {
         'fr': 'La colonne se redresse et le poids se pose sur les ischions et les pieds.',
         'pt': 'A coluna se endireita e o peso se assenta sobre os ísquios e os pés.',
     },
-    # Poctivost (KNOWN_ISSUES.md bod 4): texty pod „Prečo to môže pomôcť“ uz
-    # netvrdia mechanizmy ako fakt. Studia sa cituje len tam, kde je v
-    # PHILOSOPHY_SOURCES (guide_content.py) a jej popisok to naozaj kryje;
-    # inak text povie, ze ide o prax / tradiciu, a pozve hraca vyskusat to na
-    # sebe („skús, či…“) - o hracoch nemame data, tak nehovorime „mnohým pomôže“.
-    # Ostatne jazyky su z jazykovej fazy 0.2 (predtym docasne = en).
-    # Strazi to tests/test_guide_honesty.py (vsetky jazyky).
+    # Honesty (KNOWN_ISSUES.md point 4): the texts under "Why it may help"
+    # no longer claim mechanisms as fact. A study is cited only where it is
+    # in PHILOSOPHY_SOURCES (guide_content.py) and its label really covers
+    # it; otherwise the text says it is practice / tradition and invites the
+    # player to try it on themselves („skús, či…“ - try whether...) - we
+    # have no data about players, so we do not say „mnohým pomôže“ (it will
+    # help many). The other languages are from the 0.2 language phase
+    # (before that temporarily = en). Guarded by tests/test_guide_honesty.py
+    # (all languages).
     'guide.grounding.science': {
         'sk': 'Keď hra pritlačí, ľahko sa nevedomky zosunieš k monitoru — hlava vpredu, ramená hore („turtle neck“). Neskôr to môžeš cítiť v krku a ramenách. Keď si všimneš sedacie kosti a chodidlá na zemi, máš sa o čo oprieť — skús, či ti to pomôže povoliť. Toto je z praxe, nie z laboratória.',
         'en': 'When a game gets tense, it’s easy to drift toward the monitor without noticing — head forward, shoulders up (the “turtle neck”). You may feel it later in your neck and shoulders. Noticing your sit bones and your feet on the floor gives you something to lean on — see whether it helps you let go. This comes from practice, not from a lab.',
@@ -3320,8 +3341,9 @@ STRINGS = {
         'fr': 'Portugais (Brésil)',
         'pt': 'Português (Brasil)',
     },
-    # cestina a bulharcina (0.2) - log „Jazyk rozhrania prepnuty na: …“ cita
-    # `lang.{kod}` pre kazdy jazyk z LANGUAGES (cs/bg texty su v i18n_cs_bg.py)
+    # Czech and Bulgarian (0.2) - the log „Jazyk rozhrania prepnuty na: …“
+    # reads `lang.{kod}` for every language in LANGUAGES (the cs/bg texts
+    # are in i18n_cs_bg.py)
     'lang.cs': {
         'sk': 'Čeština',
         'en': 'Czech',
@@ -3347,10 +3369,11 @@ STRINGS = {
 }
 
 # --------------------------------------------------------------------------
-# FAZA 3: in-game HUD, popisky vizualov a vyber monitora.
-# sk/en su prelozene rucne; ostatne jazyky zatial dostavaju anglicku
-# verziu (lepsie nez slovensky fallback) - na dopreklad rovnako ako
-# zvysok suboru, viz poznamka v hlavicke modulu.
+# PHASE 3: in-game HUD, labels of visuals and monitor selection.
+# sk/en are translated by hand; the other languages get the English
+# version for now (better than the Slovak fallback) - for later
+# translation like the rest of the file, see the note in the module
+# header.
 # --------------------------------------------------------------------------
 
 STRINGS.update({
@@ -3574,9 +3597,10 @@ STRINGS.update({
         'fr': 'High',
         'pt': 'High',
     },
-    # Najvyssie pasmo (tep nad hracovou vlastnou hranicou vysokeho tepu).
-    # Zobrazovane meno je pokojne slovo bez zdravotneho ci poplasneho
-    # nadychu ("Kriticka" znela ako diagnoza). Interny kluc ostava critical.
+    # The highest zone (heart rate above the player's own high heart rate
+    # limit). The displayed name is a calm word without a medical or alarm
+    # undertone ("Kriticka" (Critical) sounded like a diagnosis). The
+    # internal key stays critical.
     'hud.zone.critical': {
         'sk': 'Špička',
         'en': 'Peak',
@@ -3643,10 +3667,11 @@ STRINGS.update({
         'fr': 'Session saved - average {avg} BPM, peak {max} BPM, load peak {peak}.',
         'pt': 'Session saved - average {avg} BPM, peak {max} BPM, load peak {peak}.',
     },
-    # 0.2.2: relacia z minula, ktora sa neulozila (pad, Spravca uloh,
-    # vypadok prudu) - obnovena z kontrolneho bodu (`hr_stats.obnov_rozpracovanu`).
-    # Druha veta je poctivost: kontrolny bod je kazdych 5 minut. cs/bg v
-    # `i18n_cs_bg.py` hned pri 'log.hr_session_saved'.
+    # 0.3: a session from last time that was not saved (crash, Task Manager,
+    # power cut) - recovered from the checkpoint
+    # (`hr_stats.obnov_rozpracovanu`). The second sentence is honesty: the
+    # checkpoint is every 5 minutes. cs/bg in `i18n_cs_bg.py` right by
+    # 'log.hr_session_saved'.
     'log.hr_session_recovered': {
         'sk': 'Obnovila som reláciu z {time}, ktorá sa minule neuložila. Posledné minúty v nej môžu chýbať.',
         'en': 'I recovered the session from {time} that didn’t get saved last time. Its last few minutes may be missing.',
@@ -3658,9 +3683,9 @@ STRINGS.update({
         'fr': 'J’ai récupéré la séance du {time}, qui n’avait pas été enregistrée la dernière fois. Ses dernières minutes peuvent manquer.',
         'pt': 'Recuperei a sessão de {time}, que da última vez não foi salva. Os últimos minutos podem estar faltando.',
     },
-    # 0.2.2: dandurf_settings.json sa nedal precitat - pokazeny subor je
-    # odlozeny ako .corrupt-<cas> (`app_prefs.nacitaj_nastavenia`); {name} je
-    # len meno suboru, cesta v %APPDATA% nesie meno uctu.
+    # 0.3: dandurf_settings.json could not be read - the broken file is put
+    # aside as .corrupt-<time> (`app_prefs.nacitaj_nastavenia`); {name} is
+    # only the file name, the path in %APPDATA% carries the account name.
     'log.settings_restored_backup': {
         'sk': 'Nastavenia sa nedali načítať. Pôvodný súbor som odložila ako {name} a obnovila som poslednú zálohu.',
         'en': 'Your settings couldn’t be read. I set the original file aside as {name} and restored the last backup.',
@@ -3683,9 +3708,10 @@ STRINGS.update({
         'fr': 'Impossible de lire les réglages. J’ai mis le fichier d’origine de côté sous le nom {name} et je repars des réglages par défaut.',
         'pt': 'Não foi possível ler as configurações. Guardei o arquivo original à parte como {name} e vou começar com os padrões.',
     },
-    # 0.2.2: nainstalovana 0.2 (instalacka) zdiela %APPDATA%\Zanshin so ZIP
-    # verziou a jej odinstalator pri "Nie" zmaze cely priecinok. Raz, viz
-    # `app_data._upozorni_na_staru_instalaciu`; {version} z registra.
+    # 0.3: an installed 0.2 (installer) shares %APPDATA%\Zanshin with the
+    # ZIP version and its uninstaller deletes the whole folder on "No".
+    # Once, see `app_data._upozorni_na_staru_instalaciu`; {version} from the
+    # registry.
     'data.old_installer': {
         'sk': 'Máš ešte nainštalovanú verziu {version}. Keď ju budeš odinštalovať, na otázku o dátach odpovedz Áno — inak zmaže aj históriu tejto verzie.',
         'en': 'You still have version {version} installed. When you uninstall it, answer Yes to the question about your data — otherwise it deletes this version’s history too.',
@@ -3700,17 +3726,18 @@ STRINGS.update({
 })
 
 # --------------------------------------------------------------------------
-# REDIZAJN: stranky Dnes / Spustace / V hre, dychajuci pas, nova struktura
-# Nastaveni. sk/en rucne, ostatne jazyky zatial anglicky - na dopreklad.
+# REDESIGN: the Today / Cues / In game pages, the breathing bar, the new
+# structure of Settings. sk/en by hand, other languages in English for
+# now - for later translation.
 # --------------------------------------------------------------------------
 
 STRINGS.update({
     'app.version_short': {
-        # drz v sulade s MyAppVersion v Dandurf.iss (instalator)
+        # keep in sync with MyAppVersion in Dandurf.iss (installer)
         #
-        # "alfa 0.2", nie "2.1": cislovanie 2.x bolo z casov, ked appka
-        # mierila na Steam ako pokracovanie predchodcu. Na GitHub ide ako
-        # to, cim naozaj je - prva verejna alfa.
+        # "alfa 0.2", not "2.1": the 2.x numbering was from the days when
+        # the app was aimed at Steam as a sequel to its predecessor. It goes
+        # to GitHub as what it really is - the first public alpha.
         'sk': 'alfa 0.3',
         'en': 'alpha 0.3',
         'ja': 'alpha 0.3',
@@ -3743,8 +3770,9 @@ STRINGS.update({
         'fr': 'Rappels',
         'pt': 'Avisos',
     },
-    # Uz to nie je len "v hre": senzor tepu sa presunul na tuto stranku
-    # hore. Bez hodiniek nema widget co kreslit, takze patria k sebe.
+    # It is no longer just "in game": the heart rate sensor moved to the top
+    # of this page. Without a watch the widget has nothing to draw, so they
+    # belong together.
     'nav.vhre': {
         'sk': 'Hodinky a v hre',
         'en': 'Watch and in-game',
@@ -3767,10 +3795,12 @@ STRINGS.update({
         'fr': 'En jeu',
         'pt': 'No jogo',
     },
-    # POZN: tu boli 'kamae.bar_title' ("Hlavný vypínač") a 'kamae.bar_sub'
-    # ("Klikni ▶ vľavo...") - nadpis a navod k malej ikone ▶ v pase. Pas ma
-    # od 0.2.2 (davka 4) jedno tlacidlo s textom (`dock.start`/`dock.stop`)
-    # a tichu vetu `kamae.bar_hint`; navod k ikone uz netreba.
+    # NOTE: here were 'kamae.bar_title' ("Hlavný vypínač", Main switch) and
+    # 'kamae.bar_sub' ("Klikni ▶ vľavo...", Click ▶ on the left...) - a
+    # heading and instructions for the small ▶ icon in the bar. Since 0.3
+    # (batch 4) the bar has one button with text (`dock.start`/`dock.stop`)
+    # and a quiet sentence `kamae.bar_hint`; the instructions for the icon
+    # are no longer needed.
     'session.zanshin.title': {
         'sk': "Kruh sa uzavrel",
         'en': "The circle is complete",
@@ -3815,8 +3845,9 @@ STRINGS.update({
         'fr': 'Watching your heart rate, waiting for a good moment.',
         'pt': 'Watching your heart rate, waiting for a good moment.',
     },
-    # Styri stavy bodky v poradi, v akom ich `ui_shell._StateDot._redraw`
-    # kresli (0.2.2 davka 4 pridala trojuholnik: sleduje, ale tep vypadol).
+    # Four states of the dot in the order `ui_shell._StateDot._redraw`
+    # draws them (0.3 batch 4 added the triangle: watching, but heart rate
+    # dropped out).
     'sidebar.state_tip': {
         'sk': 'Plná zelená bodka — sledujem. Trojuholník — sledujem, ale tep z hodiniek vypadol. Jantárová bodka v krúžku — „teraz nie“, neozvem sa. Prázdny krúžok — som zastavená; spustíš ma tlačidlom ▶ na stránke Dnes.',
         'en': 'Solid green dot — I’m watching. Triangle — I’m watching, but the heart rate from the watch dropped out. Amber dot in a ring — “not now”, I won’t speak up. Hollow ring — I’m stopped; start me with ▶ on the Today page.',
@@ -3883,9 +3914,9 @@ STRINGS.update({
         'fr': 'Stopped',
         'pt': 'Stopped',
     },
-    # 0.2.2: prvy start caka so sledovanim, kym sa pripravi prirodzeny hlas
-    # (`app._zacni_sledovat_po_priprave_hlasu`, najviac 15 s). Bez vyzvy
-    # klikat - klik by pripravu zastavil.
+    # 0.3: the first start holds back watching until the natural voice is
+    # prepared (`app._zacni_sledovat_po_priprave_hlasu`, at most 15 s).
+    # Without a prompt to click - a click would stop the preparation.
     'kamae.voice_prep': {
         'sk': 'Pripravujem hlas',
         'en': 'Preparing the voice',
@@ -3908,13 +3939,14 @@ STRINGS.update({
         'fr': 'Je commence à surveiller toute seule dans un instant.',
         'pt': 'Daqui a pouco começo a acompanhar sozinha.',
     },
-    # DVE ZNENIA, nie jedno. Appka sa vie spustit sama pri starte hry, ale
-    # len ked je zapnute automaticke prepinanie profilov - inak by veta
-    # slubovala nieco, co sa nestane.
-    # --- sekcia "O appke" (Nastavenia -> Vseobecne, hned pod Datami) ---
-    # Je to OSOBNY text autora, nie popis funkcie. Preto je aj v anglictine
-    # v jeho vlastnom zneni a neprekladá sa do dalsich jazykov - prelozeny
-    # osobny text uz nie je ten isty text.
+    # TWO WORDINGS, not one. The app can start by itself when a game starts,
+    # but only when automatic profile switching is on - otherwise the
+    # sentence would promise something that will not happen.
+    # --- the "About" section (Settings -> General, right under Your data) ---
+    # It is the author's PERSONAL text, not a description of a feature. That
+    # is why it is in his own wording in English too and is not translated
+    # into the other languages - a translated personal text is no longer the
+    # same text.
     'about.title': {
         'sk': 'O appke',
         'en': 'About',
@@ -3952,9 +3984,10 @@ STRINGS.update({
         'sk': 'Pre toho, kto číta medzi riadkami:\n\nTáto appka nemeria stres. Meria medzeru — medzi tým, čo hovorí tvoj tep, a tým, čo naozaj cítiš. Číslo je povrch; ty si hĺbka.\n\nA keď sa naučíš počúvať tú medzeru v sebe, začneš ju počuť aj inde — v tom, čo ľudia píšu a čo myslia, čo si žiadajú a čo potrebujú.\n\nNič sa nestráca. Len sa to premieňa — aj pozornosť. Drž dlaň otvorenú.',
         'en': 'For the one who reads between the lines:\n\nThis app does not measure stress. It measures the gap — between what your heart rate says and what you truly feel. The number is the surface; you are the depth.\n\nAnd once you learn to hear that gap in yourself, you will start to hear it elsewhere too — in what people write and what they mean, in what they ask for and what they need.\n\nNothing is lost. It only transforms — attention too. Keep your palm open.',
     },
-    # 0.2: zdrojak v instalatore nie je (len skompilovany build) - veta
-    # "ide s nim aj zdrojovy kod" preto neplatila. Oficialny zdroj a
-    # oznacenie upravenych verzii podla LICENSE-DESIGN.md (GPLv3 7c/7e).
+    # 0.2: the source code is not in the installer (only the compiled
+    # build) - so the sentence "the source code comes with it" was not
+    # true. The official source and the marking of modified versions per
+    # LICENSE-DESIGN.md (GPLv3 7c/7e).
     'about.copyright': {
         'sk': '© 2026 Dandurfin · GNU GPLv3 · Zanshin {version}\nTento program je slobodný softvér. Jeho zdrojový kód je voľne dostupný na github.com/Dandurfin/Zanshin — používať, študovať, upravovať a šíriť ho smie ktokoľvek pod tou istou licenciou. Oficiálny Zanshin je len odtiaľ; kópia odinakiaľ nie je od autora. Ikona a obrázok dojo sú autorove (LICENSE-DESIGN.md). Bez záruky.',
         'en': "© 2026 Dandurfin · GNU GPLv3 · Zanshin {version}\nThis program is free software. Its source code is freely available at github.com/Dandurfin/Zanshin — anyone may use, study, modify and share it under the same licence. The official Zanshin comes only from there; a copy from anywhere else is not from the author. The icon and the dojo picture are the author's own (LICENSE-DESIGN.md). With no warranty.",
@@ -3999,11 +4032,11 @@ STRINGS.update({
         'fr': 'Je n’enregistre pas de séance et je ne me manifeste pas. Lance-moi avec le bouton ci-dessus.',
         'pt': 'Não gravo a sessão nem aviso. Você me inicia com o botão acima.',
     },
-    # POZN: tu boli 'kamae.meta_time', 'kamae.meta_triggers' a
-    # 'kamae.meta_bpm' - popisky troch cisel vpravo v dychajucom pase.
-    # Cisla z pasu odisli (viz `ui_kit.KamaeBar`), takze kluce uz nemal co
-    # citat a boli by to len tri dalsie retazce na prekladanie do vsetkych
-    # jazykov.
+    # NOTE: here were 'kamae.meta_time', 'kamae.meta_triggers' and
+    # 'kamae.meta_bpm' - labels of the three numbers on the right in the
+    # breathing bar. The numbers left the bar (see `ui_kit.KamaeBar`), so
+    # the keys had nothing left to read and would only be three more
+    # strings to translate into all languages.
     'dnes.hr_title': {
         'sk': 'Tep a záťaž',
         'en': 'Heart rate and load',
@@ -4015,7 +4048,7 @@ STRINGS.update({
         'fr': 'Heart rate and load',
         'pt': 'Heart rate and load',
     },
-    # tep chodi cez spojenie appky v telefone (0.2.2 davka 4b)
+    # heart rate comes via the app's connection on the phone (0.3 batch 4b)
     'dnes.hr_connected': {
         'sk': 'telefón pripojený',
         'en': 'phone connected',
@@ -4159,11 +4192,11 @@ STRINGS.update({
         'fr': 'Language',
         'pt': 'Language',
     },
-    # Do 0.2.1 tu stalo "Meni sa aj jazyk ukazkovych hlasok" - nepravda.
-    # Prepnutie jazyka texty hlasok v existujucich profiloch neprepise:
-    # zabudovane slova sa beru v jazyku appky len pri zalozeni profilu
-    # (`settings_model.default_slots`, pre sk/cs anglicke). Veta preto
-    # hovori, co sa naozaj stane.
+    # Until 0.2.1 this said "The language of the sample cues changes too" -
+    # not true. Switching the language does not rewrite the cue texts in
+    # existing profiles: the built-in words are taken in the app's language
+    # only when a profile is created (`settings_model.default_slots`,
+    # English for sk/cs). So the sentence says what really happens.
     'settings.language_sub': {
         'sk': 'Texty pripomienok, ktoré už máš, sa nezmenia.',
         'en': 'Cues you already have keep their wording.',
@@ -4276,7 +4309,7 @@ STRINGS.update({
     },
 })
 
-# --- hromadny vyber a odstranenie spustacov ---
+# --- bulk selection and removal of triggers ---
 STRINGS.update({
     'slots.remove_selected': {
         'sk': 'Odstrániť označené',
@@ -4335,7 +4368,7 @@ STRINGS.update({
     },
 })
 
-# --- navod na sparovanie hodiniek (WatchPairingDialog) ---
+# --- watch pairing guide (WatchPairingDialog) ---
 STRINGS.update({
     'hr.pair_button': {
         'sk': 'Ako spárovať hodinky…',
@@ -4372,8 +4405,9 @@ STRINGS.update({
     },
     'hr.pair_this_pc': {
         'sk': 'ADRESA A PORT TOHTO POČÍTAČA — prepíš do telefónu',
-        # 0.2.2: en mal v zdroji zdvojene lomitko pred u2019, takze okno
-        # ukazovalo doslova lomitko a 'u2019'. ja..pt doplna _tr7 nizsie.
+        # 0.3: en had a doubled backslash before u2019 in the source, so the
+        # window showed a literal backslash and 'u2019'. ja..pt are filled in
+        # by _tr7 below.
         'en': 'THIS PC’S ADDRESS AND PORT — enter it in the phone app',
     },
     'hr.pair_ip_unknown': {
@@ -4474,7 +4508,7 @@ STRINGS.update({
     },
 })
 
-# --- "preco to funguje" na stranke Dnes ---
+# --- "why it works" on the Today page ---
 STRINGS.update({
     'dnes.why_line': {
         'sk': 'Telo v hre stuhne skôr, než si to všimneš — Zanshin na to naviaže krátky reset.',
@@ -4500,10 +4534,10 @@ STRINGS.update({
     },
 })
 
-# --- drag-test vizualov, farba piktogramu, Guide v menu ---
+# --- drag test of visuals, pictogram colour, Guide in the menu ---
 STRINGS.update({
     'nav.cmdk_hint': {
-        # tlacidlo v bocnom paneli (Ctrl+K) - bolo hardcodovane po slovensky
+        # button in the side panel (Ctrl+K) - it was hard-coded in Slovak
         'sk': 'Hľadať a prepínať',
         'en': 'Search & switch',
         'ja': '検索と切替',
@@ -4581,7 +4615,7 @@ STRINGS.update({
     },
 })
 
-# --- prepracovany onboarding (4 kroky s obrazom; od 0.2 piaty: styl hlasky) ---
+# --- reworked onboarding (4 steps with images; from 0.2 a fifth: cue style) ---
 STRINGS.update({
     'ob.step1.kicker': {
         'sk': 'KROK 1 z 5',
@@ -4605,8 +4639,8 @@ STRINGS.update({
         'fr': 'This is what the app reminds you of, mid-game',
         'pt': 'This is what the app reminds you of, mid-game',
     },
-    # 0.2: appka ucinok nepotvrdzuje (tiche rameno ho ma len zistit) -
-    # "chce ti pomoct", nie "trenuje ta".
+    # 0.2: the app does not confirm the effect (the silent arm is only meant
+    # to find it out) - "wants to help you", not "trains you".
     'ob.step1.body': {
         'sk': 'Pri clutchi telo stuhne skôr, než si to všimneš — zovretá čeľusť, zadržaný dych, kŕč v ruke. Zanshin netrénuje aim; chce ti pomôcť dohrať s pokojnejšou hlavou, než s akou začínaš.',
         'en': "In a clutch your body tightens before you notice — a clenched jaw, a held breath, a cramped hand. Zanshin doesn't train your aim; it's meant to help you leave the match calmer than you entered it.",
@@ -4862,7 +4896,7 @@ STRINGS.update({
     },
 })
 
-# --- guided tour (prehliadka appky) ---
+# --- guided tour (app tour) ---
 STRINGS.update({
     'tour.step_of': {
         'sk': 'KROK {n} z {total}',
@@ -4941,9 +4975,10 @@ STRINGS.update({
         'fr': 'Rappels',
         'pt': 'Avisos',
     },
-    # 0.2 (stress-gate): uz nie „v najbližšej prestávke" - hlas ide len v
-    # prestávke, keď záťaž nestúpa, a v kritickom pásme mlčí. Ostatných 7
-    # jazykov je zatiaľ anglicky (rovnako ako `_sk_en`, ktorý tu ešte nie je).
+    # 0.2 (stress-gate): no longer "at the next break" - the voice comes only
+    # in a break when load is not rising, and in the critical zone it stays
+    # silent. The other 7 languages are in English for now (same as `_sk_en`,
+    # which is not here yet).
     'tour.triggers.body': {
         'sk': 'Tu nastavíš, ČO poviem — slová, hlas a zvuk. KEDY, rozhoduje tvoj tep: keď záťaž chvíľu drží hore, ozvem sa v pauze, v ktorej už nestúpa; v pásme Špička mlčím. Šípka pri každej pripomienke ukáže, prečo práve táto.',
         'en': 'Here you set WHAT I say — the words, the voice and the sound. WHEN is up to your heart rate: when your load holds up for a while, I speak up in a pause in which it is no longer climbing; in the peak zone I stay quiet. The arrow at each cue shows why this one.',
@@ -4955,14 +4990,16 @@ STRINGS.update({
         'fr': 'Ici, tu règles CE QUE je dis — les mots, la voix et le son. QUAND, c’est ton pouls qui décide : si ta charge reste haute un moment, je me manifeste pendant une pause où elle ne monte plus ; dans la zone Pic, je me tais. La flèche de chaque rappel montre pourquoi celui-ci.',
         'pt': 'Aqui você define O QUE eu digo — as palavras, a voz e o som. QUANDO, quem decide é o seu pulso: se a carga fica alta por um tempo, aviso numa pausa em que ela já não está subindo; na zona Pico fico calada. A seta em cada aviso mostra por que justamente esse.',
     },
-    # Krok o znacke (enso na strede Dnes; kluc "dock" ostal z cias QuickDocku).
-    # 0.2.2: text tvrdil zelene/cervene enso, lenze kod ho kresli vzdy vo
-    # farbe akcentu temy (`hud_paint.render_enso`) - stav nesie POHYB: pri
-    # sledovani dycha, zastavene stoji, natiahnuty spustac = vnutorny
-    # prstenec. Klik na enso naozaj prepina (`_dnes_canvas_click`) a bodka
-    # stavu je hore v bocnom paneli (`_StateDot`). Farbu bodky text zamerne
-    # nemenuje. `_sk_en` este nie je v tomto bode suboru definovane, preto
-    # plny slovnik; ostatne jazyky tu su = en a preklad dava `_tr7` nizsie.
+    # The step about the mark (the enso in the centre of Today; the key "dock"
+    # stayed from the QuickDock days). 0.3: the text claimed a green/red
+    # enso, but the code always draws it in the theme's accent colour
+    # (`hud_paint.render_enso`) - the state is carried by MOTION: while
+    # watching it breathes, stopped it stands still, an armed trigger = an
+    # inner ring. A click on the enso really toggles (`_dnes_canvas_click`)
+    # and the status dot is at the top of the side panel (`_StateDot`). The
+    # text deliberately does not name the colour of the dot. `_sk_en` is not
+    # defined yet at this point of the file, hence a full dict; the other
+    # languages here are = en and `_tr7` below gives the translation.
     'tour.dock.title': {
         'sk': 'Ensō — stav appky',
         'en': "The ensō — the app's state",
@@ -5055,17 +5092,20 @@ STRINGS.update({
 
 
 def _sk_en(sk, en):
-    """sk + en rucne, ostatne jazyky zatial anglicky (na dopreklad -
-    zoznam v preklad_TODO.csv). Rovnaka konvencia ako doteraz, len bez
-    jedenastich riadkov na kazdy kluc. Preklad do ja..pt doplna `_tr7`,
-    cestinu a bulharcinu modul `i18n_cs_bg.py` (koniec suboru)."""
+    """sk + en by hand, the other languages in English for now (to be
+    translated - list in preklad_TODO.csv). The same convention as
+    before, just without eleven lines per key. The translation into ja..pt
+    is filled in by `_tr7`, Czech and Bulgarian by the module
+    `i18n_cs_bg.py` (end of file)."""
     return {"sk": sk, "en": en, "ja": en, "zh": en, "ru": en, "es": en,
             "de": en, "fr": en, "pt": en, "cs": en, "bg": en}
 
 
-# --- historia relacii tepu, metriky z pulzu, odporucania, zdroje k tepu ---
-# Texty metrik su presne znenie zo zadania (pre hraca, nie pre lekara).
-# Nikde "HRV" ako nieco, co appka meria; nikde zdravotna diagnoza.
+# --- heart rate session history, metrics from the pulse,
+# recommendations, sources on heart rate ---
+# The metric texts are the exact wording from the spec (for the player,
+# not for a doctor). Nowhere "HRV" as something the app measures; nowhere
+# a medical diagnosis.
 STRINGS.update({
     'nav.historia': _sk_en('História', 'History'),
     'history.title': _sk_en('História relácií', 'Session history'),
@@ -5078,8 +5118,9 @@ STRINGS.update({
     'history.insights_title': _sk_en(
         'Čo som si všimla',
         'What I noticed'),
-    # B3-worlds: postrehy sa rataju len zo sveta, ktory je prave zapnuty -
-    # "z celej historie" by uz nebola pravda (stare preklady zmazane).
+    # B3-worlds: insights are computed only from the world that is currently
+    # on - "from the whole history" would no longer be true (old
+    # translations deleted).
     'history.insights_note': _sk_en(
         'Počíta sa na pozadí z histórie tohto sveta. Sú to postrehy a tipy, nie diagnózy.',
         "Computed in the background from this world's history. Observations and tips, not diagnoses."),
@@ -5091,9 +5132,9 @@ STRINGS.update({
                                      'Resting baseline (BPM) per session — oldest on the left'),
     'history.trend_avg': _sk_en('Priemerný tep (BPM) po reláciách — staršie vľavo',
                                 'Average heart rate (BPM) per session — oldest on the left'),
-    # {slope} je hotovy text z `i18n.cislo` (desatinna ciarka podla jazyka,
-    # znak minus U+2212), nie format {slope:+.1f} - ten daval "-2.0" aj v
-    # slovencine (0.2.2, davka 4).
+    # {slope} is ready-made text from `i18n.cislo` (decimal comma by
+    # language, minus sign U+2212), not the format {slope:+.1f} - that gave
+    # "-2.0" in Slovak too (0.3, batch 4).
     'history.trend_delta': _sk_en('{first} → {last} BPM, trend {slope} BPM/týždeň',
                                   '{first} → {last} BPM, trend {slope} BPM/week'),
     'history.trend_need_more': _sk_en(
@@ -5107,12 +5148,13 @@ STRINGS.update({
     'history.period.month': _sk_en('Mesiac', 'Month'),
     'history.period.year': _sk_en('Rok', 'Year'),
 
-    # POZN: tu bolo 14 klucov 'settings.dojo_*' - nadpis, popis, krajne
-    # popisky posuvnika a pasma zivej spatnej vazby ("Vypnuté/Jemné/
-    # Stredné/Výrazné/Plné" + hlasky o citatelnosti) pre panel "Pozadie
-    # dojo". Panel aj fotopas nad titulkovou listou boli odstranene, takze
-    # tieto kluce uz nic nevolalo - ostali by len ako 14 dalsich retazcov
-    # na dopreklad do 7 jazykov v preklad_TODO.csv.
+    # NOTE: there were 14 keys 'settings.dojo_*' here - heading, description,
+    # the slider's end labels and the live feedback bands
+    # ("Vypnuté/Jemné/Stredné/Výrazné/Plné" - Off/Subtle/Medium/Strong/Full -
+    # + messages about readability) for the "Dojo background" panel. The
+    # panel and the photo strip above the title bar were removed, so nothing
+    # called these keys any more - they would only remain as 14 more strings
+    # to translate into 7 languages in preklad_TODO.csv.
     'history.sessions_title': _sk_en('Relácie', 'Sessions'),
     'history.col_date': _sk_en('Dátum', 'Date'),
     'history.col_duration': _sk_en('Dĺžka', 'Length'),
@@ -5133,11 +5175,12 @@ STRINGS.update({
         'Persist.'),
     'history.info_more': _sk_en('ⓘ čo to znamená', 'ⓘ what it means'),
     'history.info_less': _sk_en('ⓘ skryť', 'ⓘ hide'),
-    # „Ako to vzniklo“ (0.2, slová autora) - panel v Historii aj koniec karty
-    # „Plť cez rieku“ v Sprievodcovi. Nahradil dlhý zoznam štúdií: žiadna z
-    # nich netestuje Zanshin ani jeho hlášky, celý zoznam je v ZDROJE.md.
-    # Pod textom idú tri príklady (guide_content.PHILOSOPHY_SOURCES).
-    # „Postavil som ho“ hovorí AUTOR, nie appka - preto mužský rod.
+    # "How it came about" (0.2, the author's words) - a panel in History and
+    # the end of the "A raft across the river" card in the Guide. It replaced
+    # a long list of studies: none of them tests Zanshin or its cues, the
+    # full list is in ZDROJE.md. Three examples go under the text
+    # (guide_content.PHILOSOPHY_SOURCES). „Postavil som ho“ (I built it) is
+    # said by the AUTHOR, not the app - hence the masculine form.
     'origin.title': _sk_en('Ako to vzniklo', 'How it came about'),
     'origin.text': _sk_en(
         'Vyrástol som s hrami ako mnohí z mojej generácie. Za očami sa v nás deje viac, než vidno. Zanshin je môj pokus skúsiť to v mieri: niečo, čo si všimne, nič nechce a nič nepredáva.\n\nZanshin nevymyslel nič nové. Stojí na verejnom výskume o tepe, strese a dýchaní a na nástrojoch, ktoré iní nechali otvorené. Postavil som ho pomocou AI a ladil na vlastných večeroch pri hraní. Je to alfa a stále sa testuje — aj preto sa ťa appka po relácii pýta, či pripomienka sadla, a na začiatku asi každá štvrtá, neskôr každá desiata pripomienka zámerne mlčí, aby sa dalo porovnať, či pripomienky naozaj pomáhajú. Záťaž je priznaná zloženina troch vecí, ktoré sa z tepu naozaj dajú zistiť: o koľko si nad svojím pokojom, ako rýchlo tep stúpa a ako dlho ostáva hore. Hranice si appka po prvých pár večeroch počíta z tvojich vlastných relácií. Nie je to zdravotnícka pomôcka a nikto ju klinicky neoveroval.',
@@ -5147,17 +5190,18 @@ STRINGS.update({
     'origin.full_list': _sk_en('Celý zoznam zdrojov je na GitHube v ZDROJE.md.',
                                'The full list of sources is on GitHub in ZDROJE.md.'),
 
-    # --- metriky: kratky text (veta pri cisle) + "co to znamena" (2-3 vety) ---
+    # --- metrics: a short text (the sentence by the number) +
+    # "what it means" (2-3 sentences) ---
     'metric.bpm.title': _sk_en('Tep teraz', 'Heart rate now'),
     'metric.bpm.short': _sk_en('Koľko úderov za minútu ti bije srdce práve teraz.',
                                'How many times per minute your heart is beating right now.'),
     'metric.bpm.more': _sk_en(
         'Základná hodnota. Sama o sebe nič nehovorí — dôležité je, ako sa mení oproti tvojmu pokoju a ako rýchlo klesá, keď sa upokojíš.',
         'The base number. On its own it says little — what matters is how it moves against your resting level and how fast it drops when you calm down.'),
-    # Jednoslovny popisok karty na stranke Dnes. Karta ukazuje VELKE
-    # cislo a pod nim tento popisok - `title` by tam bol privelmi
-    # dlhy a v nemcine, francuzstine a rustine by rozsiril cely pravy
-    # stlpec na ukor stredu (odmerane: az o 105 px).
+    # One-word label of a card on the Today page. The card shows a BIG
+    # number and this label under it - `title` would be far too long there
+    # and in German, French and Russian it would widen the whole right
+    # column at the expense of the centre (measured: by up to 105 px).
     'metric.baseline.tag': _sk_en(
         'pokojový tep',
         'resting HR'),
@@ -5172,9 +5216,10 @@ STRINGS.update({
     'metric.max.tag': _sk_en('maximum', 'highest'),
     'metric.peak.tag': _sk_en('špička záťaže', 'peak load'),
     'metric.week.tag': _sk_en('týždeň', 'this week'),
-    # 0.2 (widgets-history). Ziadna karta nesmie byt sirsia nez "nad
-    # hranicou" s 12:34 (odmerane: 195 px pri 150 %) - inak rozsiri stlpec
-    # na ukor stredu. Preto "cítené/merané" bez medzier (194, s " · " 200).
+    # 0.2 (widgets-history). No card may be wider than "nad hranicou" (over
+    # HR limit) with 12:34 (measured: 195 px at 150 %) - otherwise it widens
+    # the column at the expense of the centre. That is why "cítené/merané"
+    # has no spaces (194, with " · " 200).
     'metric.session_len.tag': _sk_en('relácia', 'session'),
     'metric.last_cue.tag': _sk_en(
         'od pripomienky',
@@ -5190,11 +5235,13 @@ STRINGS.update({
         'Počítam si ju z tvojich najpokojnejších chvíľ. Keď stúpa deň za dňom, telo môže byť unavené alebo v strese — nie nutne z hrania (spánok, kofeín, choroba). Preto ju sledujem v čase, nie ako jedno číslo.',
         'I derive it from your calmest moments. When it climbs day after day, your body may be tired or stressed — not necessarily from gaming (sleep, caffeine, illness). That is why I track it over time, not as a single number.'),
     'metric.load.title': _sk_en('Záťaž', 'Load'),
-    # C2 (0.2): stara veta "ako velmi ta hra zatazuje" slubovala viac, nez
-    # appka vie - pokoj sa berie aj z predoslych vecerov, takze pruh ukaze
-    # aj kavu ci unavu, nielen hru. Slovo nad pruhom je od 0.2 tep voci
-    # pokoju (HeartStats.zone), nie zataz, a hlasku nespusta. Od 0.2
-    # (stress-gate) ju ale v kritickom pasme zastavi - veta to hovori.
+    # C2 (0.2): the old sentence "how much the game loads you" promised more
+    # than the app can do - the resting level is also taken from previous
+    # evenings, so the bar shows coffee or tiredness too, not just the game.
+    # Since 0.2 the word above the bar is heart rate against rest
+    # (HeartStats.zone), not load, and it does not trigger a cue. Since 0.2
+    # (stress-gate) it does, however, stop it in the critical zone - the
+    # sentence says so.
     'metric.load.short': _sk_en('Ako ďaleko je tvoj tep nad tvojím pokojom, ako rýchlo stúpa a ako dlho tam drží — z tepu, nie z HRV.',
                                 'How far your pulse is above your calm, how fast it climbs and how long it stays there — from heart rate, not HRV.'),
     'metric.load.more': _sk_en(
@@ -5229,26 +5276,27 @@ STRINGS.update({
     'metric.zones.high': _sk_en('vysoká', 'high'),
     'metric.zones.critical': _sk_en('špička', 'peak'),
 
-    # --- vybratelne statistiky na Dnes (2x2 mriezka, "Sumi noc" redizajn) ---
+    # --- selectable stats on Today (2x2 grid, "Sumi noc" redesign) ---
     'dashboard.stats_title': _sk_en('Moje štatistiky', 'My stats'),
     'dashboard.edit_stats': _sk_en('✎ upraviť', '✎ edit'),
     'dashboard.picker_title': _sk_en('Čo chceš vidieť', 'What you want to see'),
-    # tichy riadok na spodku vyberu: strop kariet + ako menit poradie
+    # quiet line at the bottom of the picker: card limit + how to reorder
     'dashboard.picker_hint': _sk_en(
         'Na Dnes sa zmestia 4 karty. Poradie zmeníš potiahnutím karty na inú — vymenia si miesto.',
         'Today has room for 4 cards. Drag a card onto another to swap their places.'),
-    # kratky nazov pre kartu na Dnes (metric.zones.title je dlhsi, pre
-    # rozbalitelnu vedu v Historii - obsah vysvetlenia (.short/.more) je
-    # spolocny, len tento titulok je vlastny)
+    # short name for the card on Today (metric.zones.title is longer, for
+    # the expandable science in History - the content of the explanation
+    # (.short/.more) is shared, only this title is its own)
     'metric.over.more': _sk_en(
         'Koľko času tvoj tep strávil nad hranicou vysokého tepu. Tú nenastavuješ — počítam si ju z tvojich relácií a pomaly ju dolaďujem (vidíš ju na stránke „{page}“ v karte „Hodinky a tep“). Nie je to známka — krátke špičky patria k hre. Zaujímavé je to, keď číslo večer čo večer rastie pri rovnako dlhom hraní — vtedy sa skús pozrieť, čo sa v tie večery zmenilo.',
         'How long your heart rate stayed above your high heart-rate limit. You do not set it — I compute it from your sessions and slowly fine-tune it (you can see it on the “{page}” page, in the “Watch and heart rate” card). It is not a grade — short spikes are part of playing. It matters when the number grows evening after evening at the same playtime — then see whether something changed on those evenings.'),
     'metric.over.title': _sk_en(
         'Čas nad hranicou tepu',
         'Time over HR limit'),
-    # Kluc 'breath' je historicky (z cias jedneho dychoveho slotu). Pocita
-    # VSETKY automaticke hlasky - styri kategorie z measure.CATEGORIES sa
-    # striedaju (app._dalsi_cue_slot) - preto text nesmie hovorit o dychani.
+    # The key 'breath' is historical (from the days of a single breathing
+    # slot). It counts ALL automatic cues - the four categories from
+    # measure.CATEGORIES alternate (app._dalsi_cue_slot) - so the text must
+    # not talk about breathing.
     'metric.breath.title': _sk_en(
         'Pripomienky',
         'Cues'),
@@ -5286,10 +5334,10 @@ STRINGS.update({
     'metric.week.more': _sk_en(
         'Týždeň sa počíta od pondelka a rátajú sa len relácie sveta, v ktorom práve si (Hra alebo Práca). Slúži len na prehľad, koľko som toho tento týždeň zaznamenala.',
         'The week counts from Monday, and only sessions of the world you are in (Play or Work) count. It is just an overview of how much I have logged this week.'),
-    # --- 0.2 (widgets-history): pat novych kariet. Kazda hovori, co meria
-    # aj co NEmeria; ziadne skore, znamka ani seria. Tie iste texty ukazuje
-    # Historia (pod grafom dlzka, pokoj a signal; citene/merane pod
-    # tabulkou), preto `short` nehovori len o zivej karte.
+    # --- 0.2 (widgets-history): five new cards. Each says what it measures
+    # and what it does NOT measure; no score, grade or streak. History shows
+    # the same texts (under the chart length, rest and signal; felt/measured
+    # under the table), so `short` does not talk only about the live card.
     'metric.session_len.title': _sk_en('Dĺžka relácie', 'Session length'),
     'metric.session_len.short': _sk_en(
         'Ako dlho relácia trvá — odkedy som začala sledovať.',
@@ -5341,17 +5389,21 @@ STRINGS.update({
     'dashboard.unit.calm_time': _sk_en('v pokoji za reláciu', 'in calm this session'),
     'dashboard.unit.signal': _sk_en('času s tepom', 'of the time with a pulse'),
     'dashboard.unit.felt_vs_measured': _sk_en('cítené · merané, 0–10', 'felt · measured, 0–10'),
-    # Tvar cisla na kartach a v detaile relacie - ako kluc, aby ho jazykova
-    # faza vedela prelozit (napr. 分). {m} prichadza uz ako dve cifry.
+    # Number format on the cards and in the session detail - as a key, so
+    # that the language phase can translate it (e.g. 分). {m} already comes
+    # as two digits.
     'dashboard.fmt.min': _sk_en('{n} min', '{n} min'),
     'dashboard.fmt.h_min': _sk_en('{h} h {m} min', '{h} h {m} min'),
     'dashboard.fmt.pct': _sk_en('{n} %', '{n}%'),
 
-    # --- odporucania z analyzy na pozadi (postrehy, nie diagnozy) ---
-    # Odporucania o TICHU. Jedine, ktore hracovi hovoria, co ma urobit -
-    # preto stoja na cislach zo spustaca, nie na dojme z tepu.
-    # {n} = priemer za posledné večery (`hr_insights`), nie súčet. Rada je
-    # tá istá ako v `session.end.none_dropouts` — jedna pravdivá reťaz.
+    # --- recommendations from the background analysis (insights, not
+    # diagnoses) ---
+    # Recommendations about SILENCE. The only ones that tell the player what
+    # to do - so they rest on numbers from the trigger, not on an impression
+    # from heart rate.
+    # {n} = the average over the last evenings (`hr_insights`), not the sum.
+    # The advice is the same as in `session.end.none_dropouts` - one truthful
+    # chain.
     'insight.cue_dropouts': _sk_en(
         'Tep ti v posledných reláciách vypadával priemerne {n}× na reláciu práve počas počítania a počítanie sa zakaždým začalo odznova — preto môže byť pripomienok menej. Tep ide z hodiniek do telefónu cez Bluetooth a z telefónu cez Wi‑Fi do počítača — maj hodinky pri telefóne a telefón blízko Wi‑Fi routra. Keď odchádzaš od počítača, vezmi telefón so sebou.',
         'In your recent sessions your heart rate dropped out {n}× per session on average while I was counting, and each time the count started over — so there may be fewer cues. It goes from the watch to the phone over Bluetooth, and from the phone to the PC over Wi‑Fi — keep the watch near the phone and the phone near the Wi‑Fi router. When you step away from the PC, take the phone with you.'),
@@ -5391,9 +5443,10 @@ STRINGS.update({
         'V {n} reláciách som si zatiaľ nič nevšimla.',
         "I haven't noticed anything across {n} sessions so far."),
 
-    # --- tri zdroje v appke (guide_content.PHILOSOPHY_SOURCES) ---
-    # 0.2: popisky su autorove priklady pod textom „Ako to vzniklo“, nie nazvy
-    # studii. Ostatne zdroje (source1-9, 13-17) z appky odisli do ZDROJE.md.
+    # --- three sources in the app (guide_content.PHILOSOPHY_SOURCES) ---
+    # 0.2: the labels are the author's examples under the "How it came
+    # about" text, not study titles. The other sources (source1-9, 13-17)
+    # left the app for ZDROJE.md.
     'guide.philosophy.source12': _sk_en(
         'pri výdychu sa tep prirodzene spomalí (Lehrer & Gevirtz, 2014)',
         'your heart naturally slows as you breathe out (Lehrer & Gevirtz, 2014)'),
@@ -5404,12 +5457,12 @@ STRINGS.update({
         'súťažné hranie spúšťa skutočnú stresovú reakciu srdca (Ketelhut & Nigg, 2024)',
         'competitive play triggers a real stress response in the heart (Ketelhut & Nigg, 2024)'),
 
-    # --- onboarding krok 3: druhy dovod pre hodinky (historia) ---
+    # --- onboarding step 3: a second reason for the watch (history) ---
     'ob.step3.body2': _sk_en(
         'Appka si pamätá každú reláciu. Po pár týždňoch ti ukáže tvoje trendy, napríklad ako rýchlo sa po vypätí upokojuješ — orientačne, z hodiniek, nie ako diagnóza.',
         'The app remembers every session. After a few weeks it shows your trends, like how fast you settle after a tense moment — a rough guide from the watch, not a diagnosis.'),
 
-    # --- parovanie: viac adries ---
+    # --- pairing: more addresses ---
     'hr.pair_other_ips': _sk_en(
         'Ďalšie adresy tohto PC (ak hodinky prvú nevidia, skús tieto — každá je iná sieť/adaptér): {ips}',
         'Other addresses of this PC (if the watch cannot reach the first one, try these — each is a different network/adapter): {ips}'),
@@ -5424,12 +5477,13 @@ STRINGS.update({
 })
 
 
-# --- UX feedback z live testu: jednotny priatelsky ton (tykanie), kratsie
-# parovanie, nove menu (Nastavenia ako skupina), dock. Prepisy PREPISUJU
-# starsie formalne znenia vyssie (STRINGS.update) - sk/en rucne, ostatnych 7
-# jazykov zatial anglicky (preklad_TODO.csv). Stale vecne a jasne, len ludske.
+# --- UX feedback from a live test: a uniform friendly tone (informal
+# "you"), shorter pairing, new menu (Settings as a group), dock. The
+# rewrites OVERWRITE the older formal wordings above (STRINGS.update) -
+# sk/en by hand, the other 7 languages in English for now
+# (preklad_TODO.csv). Still factual and clear, just human.
 STRINGS.update({
-    # --- navigacia: 3 hlavne polozky, zvysok su karty v Nastaveniach ---
+    # --- navigation: 3 main items, the rest are tabs in Settings ---
     'nav.nastavenia_tabs.spustace': _sk_en(
         'Pripomienky',
         'Cues'),
@@ -5437,18 +5491,20 @@ STRINGS.update({
     'nav.nastavenia_tabs.vhre': _sk_en('V hre', 'In game'),
     'nav.nastavenia_tabs.guide': _sk_en('Sprievodca', 'Guide'),
     'nav.nastavenia_tabs.vseobecne': _sk_en('Všeobecné', 'General'),
-    # POZN: 'dock.mute_tip', 'dock.unmute_tip', 'dock.snooze_tip' a
-    # 'dock.profile_tip' odisli s rychlym dokom (viz app.py, `_build_ui`).
-    # Tieto dva zostali - nesie ich bodka stavu v rade a kontrolka tepu.
-    # 24. 9.: text nesie cas konca, nie zvysne minuty - nastavi sa raz a
-    # "zostava 30 min" by o chvilu klamalo. O merani nic: skratka ide aj
-    # ked appka nepocuva, a vtedy by "merám ďalej" klamalo.
+    # NOTE: 'dock.mute_tip', 'dock.unmute_tip', 'dock.snooze_tip' and
+    # 'dock.profile_tip' left with the quick dock (see app.py, `_build_ui`).
+    # These two stayed - the status dot in the row and the heart rate
+    # indicator carry them. 24. 9.: the text carries the end time, not the
+    # remaining minutes - it is set once and "zostava 30 min" (30 min left)
+    # would soon be wrong. Nothing about measuring: the shortcut works even
+    # when the app is not listening, and then "merám ďalej" (I keep
+    # measuring) would be a lie.
     'dock.snooze_active_tip': _sk_en('Teraz nie — do {until} sa neozvem',
                                      "Not now — I won't speak up until {until}"),
     'dock.pulse_live_tip': _sk_en('Tep z hodiniek beží', 'Heart rate is live'),
-    # Hlavny vypinac na Dnes (0.2.2 davka 4): jedno tlacidlo s textom v
-    # dychajucom pase (`ui_kit.KamaeBar`). Tie iste slova ako v ponuke
-    # ikony v liste (`tray.start` / `tray.stop`), len so znakom.
+    # Main switch on Today (0.3 batch 4): one button with text in the
+    # breathing bar (`ui_kit.KamaeBar`). The same words as in the tray icon
+    # menu (`tray.start` / `tray.stop`), just with a symbol.
     'dock.start': _sk_en('▶ Spustiť sledovanie', '▶ Start watching'),
     'dock.stop': _sk_en('■ Zastaviť sledovanie', '■ Stop watching'),
     'dock.start_tip': {
@@ -5465,16 +5521,19 @@ STRINGS.update({
     'dock.stop_tip': _sk_en(
         'Zastav sledovanie — neozvem sa, kým ma znova nespustíš.',
         'Stop watching — I won’t speak up until you start me again.'),
-    # Tlačidlo 😴 už neštíši natvrdo na 20 minút — otvára výber dĺžky.
-    # POZN: 'dnes.empty_title' ("Tu uvidíš svoj tep") odisiel s nahladom HUD-u
-    # z prazdneho stavu (0.2.2 davka 4) - prazdny stav je jedna veta a jedna
-    # akcia (`ui_kit.EmptyState`), nadpis nad nou len opakoval nadpis panela.
+    # The 😴 button no longer silences for a hard 20 minutes - it opens a
+    # choice of length.
+    # NOTE: 'dnes.empty_title' ("Tu uvidíš svoj tep", Here you will see your
+    # heart rate) left with the HUD preview from the empty state (0.3 batch
+    # 4) - the empty state is one sentence and one action
+    # (`ui_kit.EmptyState`), the heading above it only repeated the panel
+    # heading.
     'dnes.empty_body': _sk_en(
         'Keď spáruješ hodinky, budem ti sem kresliť tep a záťaž — a keď ti záťaž chvíľu drží hore, ozvem sa sama pripomienkou.',
         'Once you pair your watch, I’ll draw your heart rate and load here — and when your load holds up for a while, I’ll give you a cue on my own.'),
     'dnes.empty_btn': _sk_en('Spárovať hodinky', 'Pair your watch'),
 
-    # --- Zvuk a hlas: bez skratiek (TTS, SFX, SAPI5) v popiskoch ---
+    # --- Sound and voice: no abbreviations (TTS, SFX, SAPI5) in labels ---
     'settings.title': _sk_en('Zvuk a hlas', 'Sound and voice'),
     'settings.volume': _sk_en('Hlasitosť:', 'Volume:'),
     'settings.balance': _sk_en('Pomer zvuk ↔ hlas:', 'Sound ↔ voice mix:'),
@@ -5496,22 +5555,24 @@ STRINGS.update({
     'mode.sfx': _sk_en('Zvuk', 'Sound'),
     'mode.combo': _sk_en('Hlas + zvuk', 'Voice + sound'),
 
-    # --- Spustace ---
-    # FAZA 3: klaves uz nic nespusta, takze povodny text ("viac spustacov
-    # moze mat rovnaky klaves") by klamal. Prekreslenie celej stranky je
-    # faza 5; toto je minimum, aby appka nehovorila nepravdu.
+    # --- Cues ---
+    # PHASE 3: the key no longer triggers anything, so the original text
+    # ("several triggers can have the same key") would be a lie. Redrawing
+    # the whole page is phase 5; this is the minimum so that the app does
+    # not tell untruths.
     'slots.title': _sk_en(
         'Čo poviem',
         'What I say'),
-    # 0.2 (stress-gate): to isté načasovanie ako `tour.triggers.body`.
+    # 0.2 (stress-gate): the same timing as `tour.triggers.body`.
     'slots.hint': _sk_en(
         'Kedy sa ozvem, rozhoduje tvoj tep: keď záťaž chvíľu drží hore, počkám na pauzu, v ktorej už nestúpa; v pásme Špička mlčím. Tu nastavíš, čo poviem.',
         'Your heart rate decides when I speak up: when your load holds up for a while, I wait for a pause in which it is no longer climbing; in the peak zone I stay quiet. Here you set what I say.'),
     'settings.auto_profile': _sk_en(
         'Pri známej hre sama prepnem profil a spustím sledovanie',
         'When a game I know is running, I switch the profile and start watching by myself'),
-    # Presne, co prepinac robi - a ze pri vypnutom sa procesy necitaju vobec
-    # (`GameProcessWatcher` vtedy nebezi). {games} = `game_profiles.known_games`.
+    # Exactly what the switch does - and that when it is off the processes
+    # are not read at all (`GameProcessWatcher` does not run then). {games}
+    # = `game_profiles.known_games`.
     'settings.auto_profile_sub': _sk_en(
         'Hry, ktoré poznám: {games}. Každých pár sekúnd pozriem len názvy bežiacich programov. Keď hru nájdem, prepnem na jej profil a spustím sa; keď ju zavrieš, zastavím sa (ak som sa spustila sama). Vypnuté = názvy programov nečítam.',
         'Games I know: {games}. Every few seconds I look only at the names of running programs. When I find a game, I switch to its profile and start; when you close it, I stop (if I started by myself). Off = I don’t read program names.'),
@@ -5519,7 +5580,7 @@ STRINGS.update({
         'Automatické prepínanie podľa hry teraz nejde (chýba knižnica psutil)',
         'Automatic switching by game is unavailable right now (psutil library missing)'),
 
-    # --- V hre ---
+    # --- In game ---
     'overlay.dialog_title': _sk_en(
         'Obrázky v hre',
         'In-game pictures'),
@@ -5530,15 +5591,18 @@ STRINGS.update({
     'hud.section_title': _sk_en('Panel s tepom v hre', 'Heart-rate panel in game'),
     'hud.enable': _sk_en('Ukázať panel v hre — pre stream',
                          'Show the panel in game — for streaming'),
-    # FAZA 3: panel ostava, ale popis hovori, PRE KOHO je. Trvale zobrazeny
-    # tep pocas hrania rusi - lista sa vnima periferne, ale cislo sa musi
-    # citat, a to je presne ta pozornost, ktoru appka ma setrit. Divakovi na
-    # streame naopak dava zmysel. Preto je vypnuty a preto to tu stoji.
+    # PHASE 3: the panel stays, but the description says WHO it is FOR. A
+    # permanently shown heart rate while playing is distracting - a bar is
+    # perceived peripherally, but a number has to be read, and that is
+    # exactly the attention the app is supposed to save. For a viewer on a
+    # stream, on the other hand, it makes sense. That is why it is off and
+    # why this is written here.
     'hud.hint': _sk_en(
         'Malý panel v rohu: tvoj tep, krivka za posledné 3 minúty, záťaž a priebeh relácie. Divákom na streame dáva zmysel; tebe počas hrania skôr uberá pozornosť, preto je vypnutý. Klik cezeň prejde do hry a v Alt+Tab ho neuvidíš.',
         'A small corner panel: your heart rate, the last 3 minutes, load and session progress. It makes sense for stream viewers; while you play it mostly costs you attention, which is why it is off. Clicks pass through to the game and it never shows in Alt+Tab.'),
-    # Prvych ~30 vzoriek relacie appka este nema tvoju zakladnu. Namiesto
-    # zataze voci hrubemu odhadu ukaze HUD aj Dnes toto (hud_paint.render_hud).
+    # For the first ~30 samples of a session the app does not have your
+    # baseline yet. Instead of load against a rough estimate, the HUD and
+    # Today show this (hud_paint.render_hud).
     'hud.calibrating': _sk_en('kalibrujem…', 'calibrating…'),
     'settings.hr_section_title': _sk_en('Hodinky a tep', 'Watch and heart rate'),
     'settings.hr_enable_switch': _sk_en(
@@ -5551,26 +5615,28 @@ STRINGS.update({
         'Nechaj 4455 — to isté číslo zadáš v appke v telefóne.',
         'Leave 4455 — you enter the same number in the phone app.'),
 
-    # --- Sprievodca ---
+    # --- Guide ---
     'guide.panel_subtitle': _sk_en(
         'Čo sa ti v tele deje pri každej pripomienke a čo s tým spraviť, keď sa appka ozve.',
         'What happens in your body at each cue and what to do about it when the app speaks up.'),
     'guide.block.physiology': _sk_en('Čo sa deje v tele', 'What happens in your body'),
-    # Nie „Čo na to veda“: blok je z casti prax, z casti par citovanych studii -
-    # nadpis nesmie slubovat viac, nez text pod nim dava.
+    # Not „Čo na to veda“ (What science says): the block is partly practice,
+    # partly a few cited studies - the heading must not promise more than
+    # the text under it gives.
     'guide.block.science': _sk_en('Prečo to môže pomôcť', 'Why it may help'),
     'guide.block.instruction': _sk_en(
         'Čo môžeš urobiť',
         'What you can do'),
-    # KNOWN_ISSUES.md #5: "nie je to zdravotnicka pomocka" uz nie len v
-    # README. Jedna ticha veta, nie varovanie - ten isty ton ako
-    # 'history.insights_note' („postrehy a tipy, nie diagnózy“).
+    # KNOWN_ISSUES.md #5: "it is not a medical device" no longer only in
+    # the README. One quiet sentence, not a warning - the same tone as
+    # 'history.insights_note' („postrehy a tipy, nie diagnózy“ - insights
+    # and tips, not diagnoses).
     'guide.not_medical_note': _sk_en(
         'Sú to všeobecné tipy pre pohodu, nie lekárska rada — Zanshin nie je zdravotnícka pomôcka. Ak máš ťažkosti so srdcom alebo s dýchaním, najprv sa poraď s lekárom.',
         'These are general wellbeing tips, not medical advice — Zanshin is not a medical device. If you have heart or breathing problems, check with a doctor first.'),
     'settings.guide_row': _sk_en('Prečo práve čeľusť, ťažisko a dych', 'Why jaw, balance and breath'),
 
-    # --- parovanie hodiniek: kroky ostavaju, text kratsi (bola stena textu) ---
+    # --- watch pairing: steps stay, text shorter (it was a wall of text) ---
     'hr.pair_intro': _sk_en(
         'Tep ti do počítača pošle appka v telefóne. Zanshin sa jej tvári ako OBS — samotné OBS inštalovať nemusíš.',
         'The app on your phone sends your heart rate to this PC. To it, Zanshin looks like OBS — you don’t need to install OBS itself.'),
@@ -5587,10 +5653,11 @@ STRINGS.update({
     'hr.step5_body': _sk_en(
         'Otvorením tohto návodu sa príjem tepu zapol — netreba nič prepínať. Keď pod adresou uvidíš tep v BPM, je hotovo.',
         'Opening this guide switched heart-rate receiving on — no need to flip anything. When you see your heart rate in BPM under the address, you’re done.'),
-    # 0.2.2: telefon sa VOBEC nepripoji - iny pripad nez trouble_*
-    # (pripoji sa, tep nechodi). Mena ponuk: sk overene v slovenskych
-    # Windows 11 (Nastavenia, Windows Zabezpecenie), ostatne jazyky
-    # podla terminologie Microsoftu - pri hlaseni od hraca opravit.
+    # 0.3: the phone does not connect AT ALL - a different case from
+    # trouble_* (connects, heart rate does not come). Menu names: sk
+    # verified on a Slovak Windows 11 (Settings, Windows Security), the
+    # other languages according to Microsoft terminology - fix when a
+    # player reports it.
     'hr.noconnect_title': _sk_en(
         'Hodinky sa vôbec nepripoja?',
         'Watch won’t connect at all?'),
@@ -5604,14 +5671,16 @@ STRINGS.update({
                                 'Other addresses of this PC (if the first does not work): {ips}'),
     'hr.pair_ip_note': _sk_en('V nastaveniach nechaj 0.0.0.0 — toto číslo ide len do telefónu.',
                               'Keep 0.0.0.0 in settings — this number only goes into the phone.'),
-    # 0.2 skryta IP: adresa PC sa na obrazovke neukaze sama (stream,
-    # screenshot) - az na klik, a len do restartu appky (netinfo.mask_ip).
+    # 0.2 hidden IP: the PC's address is not shown on screen by itself
+    # (stream, screenshot) - only on a click, and only until the app restarts
+    # (netinfo.mask_ip).
     'hr.ip_show': _sk_en('Ukázať IP', 'Show IP'),
     'hr.ip_hide': _sk_en('Skryť IP', 'Hide IP'),
     'hr.ip_hidden_note': _sk_en(
         'Adresu skrývam, aby ju nebolo vidno na streame ani na screenshote. Do telefónu ju prepíšeš po kliku na „Ukázať IP“.',
         'I keep the address hidden so it does not show up on a stream or in a screenshot. Click “Show IP” to copy it into the phone.'),
-    # 0.2.2: zivy stav pod adresou v okne parovania (`ui_dialogs.stav_parovania`).
+    # 0.3: live status under the address in the pairing window
+    # (`ui_dialogs.stav_parovania`).
     'hr.pair_status_waiting': _sk_en(
         '● Čakám, kým sa telefón pripojí…',
         '● Waiting for the phone to connect…'),
@@ -5634,26 +5703,27 @@ STRINGS.update({
         '✕ Príjem tepu sa nezapol. Zavri toto okno a otvor ho znova — skúsim to ešte raz.',
         '✕ Heart-rate receiving didn’t start. Close this window and open it again — I’ll try once more.'),
 
-    # --- dychovy cyklus nastavitelny v sekundach (Vizuály v hre -> slot Dych) ---
+    # --- breath cycle adjustable in seconds (In-game visuals -> Breath slot) ---
     'overlay.breath_seconds': _sk_en('Dychový cyklus (v sekundách)',
                                      'Breathing cycle (in seconds)'),
     'overlay.breath_inhale': _sk_en('Dĺžka nádychu (s)', 'Inhale length (s)'),
     'overlay.breath_exhale': _sk_en('Dĺžka výdychu (s)', 'Exhale length (s)'),
 
-    # POZN: cela sekcia 'minimalisticky rezim' tu bola - 'settings.minimal_mode',
-    # 'settings.minimal_mode_sub', 'minimal.expand_tip' aj
-    # 'log.minimal_mode_on/off'. Celoappkovy prepinac bol odstraneny, takze
-    # tieto kluce uz nic nevolalo (osirely balast, ktory sa navyse tahal do
-    # preklad_TODO.csv ako 3 dalsie retazce na dopreklad do 7 jazykov).
-    # Rovnaka funkcia (BPM + 4 ikonky) je teraz sucastou HUD panela v hre
-    # ("Ukazat panel v hre" vo Vizualoch), nie prepnutie celeho okna appky.
-    # Viz 'hud.trigger_row.*' nizsie.
-    # POZN: 'hud.trigger_row.title' znelo povodne "Ukázať panel v hre" -
-    # DOSLOVA to iste ako 'hud.enable' o kus vyssie na tej istej stranke.
-    # Na obrazovke tak boli pod sebou tri rovnake popisky a DVA rozne
-    # prepinace: jeden zapinal HUD s tepom, druhy riadok ikoniek, a nedalo
-    # sa rozoznat ktory je ktory. Nazov karty preto hovori, CO to je
-    # (ikonky funkcii), a prepinac zvlast, CO robi.
+    # NOTE: the whole 'minimalist mode' section was here -
+    # 'settings.minimal_mode', 'settings.minimal_mode_sub', 'minimal.expand_tip'
+    # and 'log.minimal_mode_on/off'. The app-wide switch was removed, so
+    # nothing called these keys any more (orphaned ballast that on top of that
+    # was dragged into preklad_TODO.csv as 3 more strings to translate into 7
+    # languages). The same function (BPM + 4 icons) is now part of the HUD
+    # panel in game ("Show the panel in game" in the visuals), not a switch
+    # of the whole app window. See 'hud.trigger_row.*' below.
+    # NOTE: 'hud.trigger_row.title' originally read "Ukázať panel v hre" -
+    # LITERALLY the same as 'hud.enable' a bit higher up on the same page.
+    # So on the screen there were three identical labels one under another
+    # and TWO different switches: one turned on the HUD with heart rate, the
+    # other the row of icons, and you could not tell which was which. That
+    # is why the card name says WHAT it is (feature icons), and the switch
+    # separately what it DOES.
     'hud.trigger_row.title': _sk_en(
         'Ikonky pripomienok v hre',
         'Cue icons in-game'),
@@ -5663,20 +5733,21 @@ STRINGS.update({
         'Shows the icons of your four cues under the heart-rate panel. They are only for show and do not replace the in-game pictures — a cue needs at least one of those turned on.'),
     'hud.trigger_row.color': _sk_en('Farba ikoniek', 'Icon colour'),
     'hud.trigger_row.color_theme': _sk_en('Farba témy', 'Theme colour'),
-    # POZN: 'hud.snooze.title' ("Stíšiť appku na…") tu bolo ako nadpis
-    # riadku s ozubeným kolieskom na stránke V hre. Výber dĺžky sa presunul
-    # do doku (tlačidlo 😴), kde nadpis netreba — nesie ho tooltip.
+    # NOTE: 'hud.snooze.title' ("Stíšiť appku na…", Silence the app for…) was
+    # here as the heading of the row with the cog wheel on the In game page.
+    # The choice of length moved into the dock (the 😴 button), where no
+    # heading is needed - the tooltip carries it.
     'hud.snooze.5min': _sk_en('5 minút', '5 minutes'),
     'hud.snooze.20min': _sk_en('20 minút', '20 minutes'),
     'hud.snooze.40min': _sk_en('40 minút', '40 minutes'),
     'hud.snooze.60min': _sk_en('60 minút', '60 minutes'),
     'hud.snooze.cancel': _sk_en('Zrušiť stíšenie', 'Cancel snooze'),
     'log.hotkey_on': _sk_en('Klávesová skratka {combo} je pripravená — stíši ma na pol hodiny', 'Hotkey {combo} is ready — it will quiet me for half an hour'),
-    # 24. 9.: "teraz nie" uz nie je zastavenie - spinac v pase a ikona v
-    # lište zastavia aj meranie, tak to veta hovori narovinu.
-    # 0.2.1: tato veta ide do dennika uz len BEZ ikony v liste (chyba
-    # pystray/PIL) - s listou ide `log.hotkey_failed_tray`. Ikonu v liste
-    # preto nemenuje: tam, kde sa ukaze, ziadna nie je.
+    # 24. 9.: "not now" is no longer a stop - the switch in the bar and the
+    # icon in the tray stop measuring too, so the sentence says it plainly.
+    # 0.2.1: this sentence goes into the journal only WITHOUT a tray icon
+    # (pystray/PIL error) - with the tray it is `log.hotkey_failed_tray`. So
+    # it does not name the tray icon: where it is shown, there is none.
     'log.hotkey_failed': _sk_en('Skratku {combo} drží iná aplikácia, takže „teraz nie“ nepôjde. Umlčať ma vieš zastavením v páse hore — tým však prestanem aj merať.', 'Another app holds {combo}, so “not now” won’t work. You can still stop me in the top bar — but then I stop measuring too.'),
     'log.snooze_started': _sk_en(
         'Teraz nie: {minutes} minút sa neozvem. Sledovanie to nezastaví.',
@@ -5686,9 +5757,10 @@ STRINGS.update({
 })
 
 
-# --- Grafy na stránkach Dnes a História -----------------------------------
-# Stopa relácie, rozdelenie času v pásmach, odchýlka na kartách, osi a
-# mriežka dní. Ton je rovnaký ako inde: čo vidíme, nie čo to o tebe hovorí.
+# --- Charts on the Today and History pages --------------------------------
+# The session trace, time split across zones, the deviation on cards,
+# axes and the day grid. The tone is the same as elsewhere: what we see,
+# not what it says about you.
 STRINGS.update({
     'dnes.trace_title': _sk_en('Stopa relácie', 'Session trace'),
     'dnes.trace_meta': _sk_en(
@@ -5703,19 +5775,21 @@ STRINGS.update({
         'How much of the session you spent in each zone. Zones are measured '
         'against your own resting baseline, not against a chart value.'),
 
-    # Kratko zamerne: karta je siroka asi 200 px a dlhsia veta sa v nej
-    # orezala uprostred slova. Z kolkych relacii je priemer, ukazuje aj
-    # mikrograf vedla cisla.
-    # POZN: tu boli 'dashboard.delta_up/down/same' - veta o odchylke pod
-    # cislom na karte ("▲ 3 oproti priemeru z 8"). Odisli s mikrografom;
-    # dovod je v app.py pri `_dashboard_stat_value`.
+    # Short on purpose: the card is about 200 px wide and a longer sentence
+    # was cut off mid-word in it. How many sessions the average is from is
+    # also shown by the micro-chart next to the number.
+    # NOTE: here were 'dashboard.delta_up/down/same' - the sentence about the
+    # deviation under the number on a card ("▲ 3 oproti priemeru z 8", ▲ 3
+    # vs the average of 8). They left with the micro-chart; the reason is in
+    # app.py at `_dashboard_stat_value`.
 
-    # --- stránka Zvuk (prestavaná na SettingRow) -------------------------
-    # Názvy bez dvojbodky: v riadku nastavenia stojí názov nad vysvetlením,
-    # nie pred poľom. Vysvetlenia sú to hlavné — pôvodná stránka bola jediná
-    # v appke, ktorá pri ovládačoch nemala ani vetu.
-    # Panel sa nevolá "Hlas": riadok v ňom sa volá tiež "Hlas" a nadpis
-    # zhodný s položkou pod sebou sa číta ako preklep.
+    # --- the Sound page (rebuilt on SettingRow) ----------------------------
+    # Names without a colon: in a settings row the name stands above the
+    # explanation, not before the field. The explanations are the main
+    # thing - the original page was the only one in the app that did not
+    # have a single sentence by its controls.
+    # The panel is not called "Voice": a row in it is also called "Voice"
+    # and a heading identical to the item under it reads as a typo.
     'settings.audio_voice_title': _sk_en(
         'Hlas pripomienok',
         'Cue voice'),
@@ -5736,13 +5810,15 @@ STRINGS.update({
         'Prirodzený hlas znie lepšie, ale texty pripomienok (nikdy nie tep) posiela na prevod službe Microsoft — len keď nesledujem. Hlas z Windows nič neposiela.',
         'The natural voice sounds better, but it sends the text of your cues (never your heart rate) to Microsoft to be turned into speech — only while I’m not watching. The Windows voice sends nothing.'),
     'settings.voice': _sk_en('Hlas', 'Voice'),
-    # Pocas pocuvania appka na Microsoft nechodi (`_speak_text`): chybajuca
-    # hlaska zaznie hlasom z Windows a pripravi sa az po `stop_listening`.
+    # While listening the app does not go to Microsoft (`_speak_text`): a
+    # missing cue is spoken with the Windows voice and prepared only after
+    # `stop_listening`.
     'log.edge_not_cached_later': _sk_en(
         'Táto pripomienka ešte nemá pripravený prirodzený hlas — tentoraz hovorím hlasom z Windows. Počas sledovania ho nepripravujem; pripravím ho, keď sledovanie zastavíš.',
         'This cue’s natural voice isn’t ready yet — speaking with the Windows voice this time. I don’t prepare it while watching; I’ll do it when you stop watching.'),
-    # To iste pre celu pripravu (`pregenerate`): auto-profil pri starte hry,
-    # prepnutie profilu ci zmena hlasu pocas pocuvania sa odlozia na po hre.
+    # The same for the whole preparation (`pregenerate`): the auto-profile
+    # at game start, a profile switch or a voice change while listening are
+    # postponed until after the game.
     'edge.after_game': _sk_en(
         'Hlas pripomienok pripravím, keď zastavíš sledovanie.',
         'I’ll prepare the cue voice when you stop watching.'),
@@ -5758,7 +5834,8 @@ STRINGS.update({
         'Prehrá prvú pripomienku presne tak, ako zaznie v hre — s týmto hlasom, hlasitosťou aj pomerom.',
         'Plays the first cue exactly as it will sound in-game — with this voice, volume and mix.'),
     'settings.preview_btn': _sk_en('Vyskúšať', 'Try it'),
-    # Slová pri posuvníkoch: "5.0 s" ani "-4" samy nepovedia, či je to veľa.
+    # Words by the sliders: "5.0 s" or "-4" alone do not say whether
+    # that is a lot.
     'settings.pace_often': _sk_en('často', 'often'),
     'settings.pace_balanced': _sk_en('vyvážene', 'balanced'),
     'settings.pace_rare': _sk_en('zriedka', 'rarely'),
@@ -5772,7 +5849,7 @@ STRINGS.update({
         'Volume, mix and speech speed go back to the values the '
         'app shipped with. Your chosen voice stays.'),
     'settings.audio_reset_btn': _sk_en('Vrátiť', 'Restore'),
-    # --- export relacii do tabulky ----------------------------------------
+    # --- session export to a spreadsheet ----------------------------------
     'history.export_btn': _sk_en('Exportovať do tabuľky', 'Export to a spreadsheet'),
     'history.export_filetype': _sk_en('Tabuľka pre Excel (CSV)', 'Excel spreadsheet (CSV)'),
     'history.export_local': _sk_en(
@@ -5796,7 +5873,7 @@ STRINGS.update({
     'history.export_failed': _sk_en('Export sa nepodaril: {err}', 'Export failed: {err}'),
     'log.sessions_exported': _sk_en('Export: {n} relácií do tabuľky',
                                     'Export: {n} sessions to a spreadsheet'),
-    # nazvy stlpcov v tabulke
+    # column names in the table
     'history.export_col.date': _sk_en('Dátum', 'Date'),
     'history.export_col.start': _sk_en('Začiatok', 'Start'),
     'history.export_col.duration_min': _sk_en('Dĺžka (min)', 'Length (min)'),
@@ -5805,8 +5882,8 @@ STRINGS.update({
     'history.export_col.max_bpm': _sk_en('Najvyšší tep', 'Highest BPM'),
     'history.export_col.baseline_bpm': _sk_en('Pokojová základňa', 'Resting baseline'),
     'history.export_col.over_min': _sk_en('Nad hranicou (min)', 'Over limit (min)'),
-    # Kluc stlpca 'breathing' (hr_stats.CSV_COLUMNS) ostava kvoli datam;
-    # obsah je auto_triggers = vsetky automaticke hlasky, nie len dych.
+    # The column key 'breathing' (hr_stats.CSV_COLUMNS) stays because of the
+    # data; the content is auto_triggers = all automatic cues, not just breath.
     'history.export_col.breathing': _sk_en(
         'Pripomienky od appky',
         'Cues from the app'),
@@ -5819,22 +5896,24 @@ STRINGS.update({
     'history.export_col.raised_min': _sk_en('Zvýšená (min)', 'Raised (min)'),
     'history.export_col.high_min': _sk_en('Vysoká (min)', 'High (min)'),
     'history.export_col.critical_min': _sk_en('Špička (min)', 'Peak (min)'),
-    # 0.2: pokrytie signalu (hr_stats.pokrytie_signalu)
+    # 0.2: signal coverage (hr_stats.pokrytie_signalu)
     'history.export_col.signal': _sk_en('signál %', 'signal %'),
-    # 0.2: svet relacie, vypadky tepu, slepy cas a pauzy vo vstupe - na konci
+    # 0.2: session world, heart rate dropouts, blind time and pauses in
+    # input - at the end
     'history.export_col.world': _sk_en('svet', 'world'),
     'history.export_col.dropouts': _sk_en('výpadky tepu', 'heart-rate dropouts'),
     'history.export_col.blind_s': _sk_en('bez signálu (s)', 'without signal (s)'),
     'history.export_col.pause_episodes': _sk_en('pauzy vo vstupe', 'input pauses'),
 
-    # uistenie o lokalnych datach - aj v onboardingu, hned pri anti-cheate
+    # reassurance about local data - in the onboarding too, right by the
+    # anti-cheat
     'ob.step2.tag_local': _sk_en(
         'Tep aj relácie zostávajú v tvojom počítači — a kedykoľvek si ich '
         'vyexportuješ do tabuľky',
         'Heart rate and sessions stay on your computer — and you can export '
         'them to a spreadsheet any time'),
 
-    # --- prehliadka: tepova polovica appky + pokracovanie -----------------
+    # --- tour: the heart rate half of the app + continuing ----------------
     'tour.sensor.title': _sk_en('Hodinky a tep', 'Watch and heart rate'),
     'tour.sensor.body': _sk_en(
         'Tu prijímam tvoj tep z telefónu. Keď ho mám, ozvem sa sama, keď ti záťaž chvíľu drží hore — nemusíš si na to v zápale hry spomenúť ty. Bez hodiniek mlčím.',
@@ -5862,43 +5941,45 @@ STRINGS.update({
                                    'App tour — step {n} of {total}'),
     'settings.tour_resume': _sk_en('Pokračovať', 'Continue'),
 
-    # --- QR na appku do telefonu ------------------------------------------
-    # Kod je navonok skryty za znackou (biely stvorec v tmavom paneli kricí
-    # a kto appku uz ma, ten ho nechce vidiet) - popisky su preto pre
-    # prepinac, nie pre obrazok.
+    # --- QR for the phone app ---------------------------------------------
+    # The code is hidden behind a mark by default (a white square in a dark
+    # panel screams, and whoever already has the app does not want to see
+    # it) - so the labels are for the switch, not for the picture.
     'hr.qr_show': _sk_en('Naskenovať telefónom', 'Scan with your phone'),
     'hr.qr_hide': _sk_en('Skryť kódy', 'Hide the codes'),
     'hr.qr_android': _sk_en(
         'Android / Wear OS\n„HeartRateOnStream for OBS“ (zdarma).\nAdresu a port nájdeš v „Ako spárovať hodinky…“.',
         'Android / Wear OS\n"HeartRateOnStream for OBS" (free).\nThe address and port are in “How to pair your watch…”.'),
-    # iPhone (0.2): cesta je v kode, ale nevyskusana - autor nema zariadenie
-    # od Apple a PulseOSC je platena. Hrac si ju nesmie kupit na zaklade
-    # vety, ktoru nikto neoveril.
+    # iPhone (0.2): the path is in the code, but untested - the author has
+    # no Apple device and PulseOSC is paid. A player must not buy it on the
+    # strength of a sentence nobody has verified.
     'hr.qr_ios': _sk_en(
         'iPhone / Apple Watch\n„PulseOSC“ (platená).\nZatiaľ nevyskúšané.\nAdresu a port nájdeš v „Ako spárovať hodinky…“.',
         'iPhone / Apple Watch\n"PulseOSC" (paid).\nNot tested yet.\nThe address and port are in “How to pair your watch…”.'),
-    # Posledny riadok oboch popisov QR v SAMOTNOM navode na parovanie
-    # (`ui_dialogs._qr_popis`): odkaz na „Ako sparovat hodinky…“ by tam
-    # posielal na tlacidlo, ktore toto okno otvorilo.
+    # Last line of both QR descriptions IN the pairing guide ITSELF
+    # (`ui_dialogs._qr_popis`): a link to "How to pair your watch…" would
+    # point there to the button that opened this window.
     'hr.qr_addr_above': _sk_en(
         'Adresu a port nájdeš v rámiku hore.',
         'The address and port are in the box above.'),
-    # Povodny text sluboval "HeartRateOnStream (Google Play / App Store)" -
-    # lenze tá appka na App Store nie je a na iPhone ziadna appka
-    # protokolom obs-websocket nehovori. Na iOS treba OSC (PulseOSC).
+    # The original text promised "HeartRateOnStream (Google Play / App
+    # Store)" - but that app is not on the App Store and on iPhone no app
+    # speaks the obs-websocket protocol. iOS needs OSC (PulseOSC).
     'hr.step2_body': _sk_en(
         'Android / Wear OS: „HeartRateOnStream for OBS“ z Google Play (zdarma). iPhone / Apple Watch: „PulseOSC“ z App Store (platená, zatiaľ nevyskúšaná — autor nemá Apple). Adresu a port (krok 3) zadáš v oboch appkách. Heslo, scéna a zdroj platia len pre appku na Androide — na iPhone krok 4 preskoč. Naskenuj kód nižšie a prepoj appku s hodinkami.',
         'Android / Wear OS: “HeartRateOnStream for OBS” from Google Play (free). iPhone / Apple Watch: “PulseOSC” from the App Store (paid, untested so far — the author has no Apple device). Both apps need the address and port (step 3). The password, scene and source apply to the Android app only — on an iPhone, skip step 4. Scan a code below and connect the app to your watch.'),
 
-    # --- onboarding: opravy prvych styroch krokov -------------------------
-    # Stvrty piktogram (appka instaluje STYRI spustace, krok ukazoval tri),
-    # veta o mechanizme (nikde v uvode nebolo, ze to visi na klavesoch, ktore
-    # hrac aj tak tlaci) a CTA, ktore nesluboval vstup do hry.
+    # --- onboarding: fixes to the first four steps ------------------------
+    # A fourth pictogram (the app installs FOUR triggers, the step showed
+    # three), a sentence about the mechanism (nowhere in the introduction
+    # did it say that it hangs on keys the player presses anyway) and a CTA
+    # that did not promise getting into the game.
     'ob.step1.cap_release': _sk_en(
         'Pusti stisk',
         'Loosen your grip'),
-    # 0.2 (stress-gate): „v najbližšej prestávke" už neplatí - preklady,
-    # ktoré to sľubovali, sú preč (dopĺňajú sa v jazykovej fáze).
+    # 0.2 (stress-gate): "at the next break" no longer applies - the
+    # translations that promised it are gone (they are filled in in the
+    # language phase).
     'ob.step1.how': _sk_en(
         'Nemusíš nič stláčať ani si nič pamätať — appka sleduje tvoju záťaž a ozve sa sama v krátkej pauze, keď už záťaž nestúpa. Kým je tvoj tep v pásme Špička, radšej mlčí.',
         'You do not have to press or remember anything — the app watches your load and speaks up by itself in a break, once the load has stopped climbing. While your pulse is in the peak zone, it stays quiet.'),
@@ -5917,20 +5998,22 @@ STRINGS.update({
     'history.unit.hrr': _sk_en('BPM za minútu', 'BPM per minute'),
     'history.unit.over': _sk_en('minúty', 'minutes'),
     'history.unit.peak': _sk_en('z 0–100', 'of 0-100'),
-    # 0.2: bod grafu je priemer NA RELACIU v danom dni / mesiaci
+    # 0.2: a chart point is the average PER SESSION on the given day / month
     'history.unit.session_len': _sk_en('minúty na reláciu', 'minutes per session'),
     'history.unit.calm_time': _sk_en('minúty na reláciu', 'minutes per session'),
     'history.unit.signal': _sk_en('% času s tepom', '% of the time with a pulse'),
     'history.unit.breath': _sk_en('priemer na reláciu', 'average per session'),
 
-    # 0.2: nadpis netvrdi, ze hlaska "zabera" - graf je len posun tepu po
-    # hlaske a hint pod nim hovori, ze to nie je dokaz.
+    # 0.2: the heading does not claim that a cue "works" - the chart is only
+    # the shift of heart rate after a cue and the hint below it says it is
+    # not proof.
     'history.effect_title': _sk_en(
         'Ako sa hýbal tep po pripomienke',
         'How your pulse moved after a cue'),
-    # 0.2 (rebrik + brana): hlaska chodi az ked zataz nestupa, takze pokles
-    # po nej je ciastocne vstavany - veta to musi povedat. Stary _tr7
-    # preklad zmazany, aby stare znenie neprezilo v ziadnom jazyku.
+    # 0.2 (ladder + gate): a cue comes only when load is not rising, so the
+    # drop after it is partly built in - the sentence has to say so. The old
+    # _tr7 translation deleted, so that the old wording does not survive in
+    # any language.
     'history.effect_hint': _sk_en(
         'Posun tepu po pripomienke, ktorá zaznela (len hra). Vľavo od stredu znamená, že tep klesol — ale tep klesá aj sám a pripomienka teraz chodí, až keď záťaž už nestúpa, takže pokles po nej nie je dôkaz, že zabrala. Tenká čiarka je rozsah, v ktorom sa skutočná hodnota pravdepodobne nachádza — kým presahuje stred, rozdiel môže byť aj opačný.',
         'How your pulse moved after a cue that made a sound (play only). Left of centre means it dropped — but your pulse also drops on its own, and cues now come only once your load has stopped climbing, so a drop after a cue is no proof it worked. The thin line is the range the true value likely sits in — while it crosses the centre, the difference could go either way.'),
@@ -5946,12 +6029,13 @@ STRINGS.update({
         'grip & gaze'),
     'cue.category.breath': _sk_en('dych', 'breath'),
     'history.rhythm_title': _sk_en('Pravidelnosť', 'Consistency'),
-    # Pocet dni, NIE neprerusena seria. Seria z appky vypadla zamerne:
-    # je to jediny prvok, ktory sa da pretrhnut, a appka ma upokojovat.
-    # Toto cislo hovori to iste ("chodis na to"), ale nic sa v nom neda
-    # stratit jednym vynechanym vecerom.
-    # {weeks} = kolko tyzdnov mriezka ukazuje (najviac 26, 0.2.2 davka 4) -
-    # cislo dni je z tych istych tyzdnov, nie z celeho roka.
+    # The number of days, NOT an unbroken streak. The streak was dropped
+    # from the app on purpose: it is the only element that can be broken,
+    # and the app is meant to calm. This number says the same thing ("you
+    # keep coming back to it"), but nothing in it can be lost by one
+    # skipped evening.
+    # {weeks} = how many weeks the grid shows (at most 26, 0.3 batch 4) -
+    # the number of days is from the same weeks, not from the whole year.
     'history.days_played': _sk_en('Dní s reláciou · {weeks} týž.',
                                   'Days with a session · {weeks} wk'),
     'history.grid_less': _sk_en('menej', 'less'),
@@ -5966,8 +6050,8 @@ STRINGS.update({
     'history.detail_hrpi': _sk_en(
         'Výdrž',
         'Persistence'),
-    # 0.2: detail ukazuje vsetky hodnoty relacie; ostatne popisky su slova
-    # z tabulky (history.col_*)
+    # 0.2: the detail shows all values of the session; the other labels are
+    # words from the table (history.col_*)
     'history.detail_calm': _sk_en('V pokoji', 'In calm'),
     'history.detail_signal': _sk_en('Signál', 'Signal'),
     'history.detail_felt': _sk_en('Cítené · merané', 'Felt · measured'),
@@ -5984,28 +6068,30 @@ STRINGS.update({
 
 
 # ==========================================================================
-# DOPREKLAD do ja / zh / ru / es / de / fr / pt
+# TRANSLATION into ja / zh / ru / es / de / fr / pt
 # ==========================================================================
 #
-# Kluce definovane cez `_sk_en()` maju ostatnych sedem jazykov docasne po
-# anglicky. Tu sa dopĺňajú - `_tr7` prepise len tych sedem a sk/en necha
-# tak, takze sa zdrojove znenie neduplikuje a nemoze sa rozist.
+# Keys defined via `_sk_en()` have the other seven languages temporarily
+# in English. Here they are filled in - `_tr7` overwrites only those
+# seven and leaves sk/en alone, so the source wording is not duplicated
+# and cannot drift apart.
 #
-# POZN: preklady su strojove (Claude). Pre siroke vydanie, najma obsah v
-# `guide.*` (biomechanika a dychove techniky, kde presnost formulacie ma
-# realny vyznam), odporucame necha' ich prejst rodenym hovoriacim.
+# NOTE: the translations are machine-made (Claude). For a wide release,
+# especially the content in `guide.*` (biomechanics and breathing
+# techniques, where the precision of the wording really matters), we
+# recommend having them reviewed by native speakers.
 
 def _tr7(key, ja, zh, ru, es, de, fr, pt):
-    """Doplni sedem jazykov ku klucu, ktory uz ma sk a en."""
+    """Adds seven languages to a key that already has sk and en."""
     entry = STRINGS.get(key)
     if entry is None:
         return
     entry.update({"ja": ja, "zh": zh, "ru": ru, "es": es, "de": de,
                   "fr": fr, "pt": pt})
 
-# --- davka 1: navigacia, dok, onboarding, spustace ------------------------
-# „alpha" sa nechava v anglickom tvare aj v ostatnych jazykoch - je to
-# zauzivane oznacenie stadia, nie slovo na prekladanie.
+# --- batch 1: navigation, dock, onboarding, triggers ----------------------
+# "alpha" is kept in its English form in the other languages too - it is
+# an established label for a stage, not a word to translate.
 _tr7('app.version_short', 'alpha 0.3', 'alpha 0.3', 'alpha 0.3', 'alpha 0.3', 'Alpha 0.3', 'alpha 0.3', 'alpha 0.3')
 _tr7('common.open', '開く', '打开', 'Открыть', 'Abrir', 'Öffnen', 'Ouvrir', 'Abrir')
 _tr7('dialog.timing_title', 'タイミング', '时机', 'Тайминг', 'Tiempos', 'Timing', 'Rythme', 'Tempo')
@@ -6342,10 +6428,10 @@ _tr7('history.export_col.raised_min', 'やや上昇（分）', '略高（分钟�
 _tr7('history.export_col.high_min', '高い（分）', '偏高（分钟）', 'Высокая (мин)', 'Alta (min)', 'Hoch (Min)', 'Haute (min)', 'Alta (min)')
 _tr7('history.export_col.critical_min', 'ピーク（分）', '高峰（分钟）', 'Пик (мин)', 'Pico (min)', 'Spitze (Min)', 'Pic (min)', 'Pico (min)')
 
-# --- jazyk toho, co appka kresli DO HRY --------------------------------
-# Samostatny od jazyka okna: HUD vlavo dole a popisky pod vizualmi koncia
-# na streame a na screenshotoch v obchode, kde ich citaju aj ludia, ktori
-# jazyk rozhrania nevedia.
+# --- language of what the app draws INTO THE GAME ----------------------
+# Separate from the window language: the HUD bottom left and the labels
+# under the visuals end up on a stream and on store screenshots, where
+# people who do not know the interface language read them too.
 STRINGS.update({
     'settings.game_lang': _sk_en('Jazyk v hre', 'In-game language'),
     'settings.game_lang_same': _sk_en('Rovnaký ako appka', 'Same as the app'),
@@ -6358,25 +6444,29 @@ _tr7('settings.game_lang', 'ゲーム中の言語', '游戏中的语言', 'Яз�
 _tr7('settings.game_lang_same', 'アプリと同じ', '与应用相同', 'Как в приложении', 'El mismo que la app', 'Wie die App', 'Comme l’app', 'O mesmo do app')
 _tr7('settings.game_lang_sub', '私がゲーム中に描く文字の言語 — 心拍パネルと画像の下の説明。これはストリームの視聴者にも見えるので、アプリ自体が別の言語でも既定は英語。', '我绘制到游戏里的文字语言——心率面板和图片下方的说明。直播观众也会看到，所以即使应用本身不是英文，默认也用英文。', 'Язык текста, который я рисую в игре, — панель пульса и подписи под картинками. Это видят и зрители на стриме, поэтому по умолчанию английский, даже если само приложение на другом языке.', 'El idioma del texto que dibujo dentro del juego: el panel de pulso y los rótulos bajo las imágenes. Tus espectadores también lo ven, por eso el inglés es el valor por defecto aunque la app no lo esté.', 'Die Sprache des Textes, den ich ins Spiel zeichne — das Puls-Panel und die Beschriftungen unter den Bildern. Das sehen auch deine Stream-Zuschauer, deshalb ist Englisch die Vorgabe, selbst wenn die App es nicht ist.', 'La langue du texte que je dessine dans le jeu — le panneau de pouls et les légendes sous les images. Tes spectateurs le voient aussi, c’est pourquoi l’anglais est la valeur par défaut même si l’app ne l’est pas.', 'O idioma do texto que eu desenho dentro do jogo — o painel de pulso e as legendas embaixo das imagens. Os seus espectadores também o veem, por isso o inglês é o padrão mesmo quando o app em si não está em inglês.')
 
-# --- stranka Ucinnost --------------------------------------------------
-# POZOR: stranka Ucinnost este NEEXISTUJE - je to nova obrazovka z fazy 5.
-# Tento jediny retazec tu lezi dopredu zamerne: je to rozhodnuta formulacia
-# a rozhodnute formulacie sa medzi sedeniami stracaju lahsie nez kod.
+# --- the Effectiveness page ---------------------------------------------
+# WARNING: the Effectiveness page does NOT EXIST yet - it is a new screen
+# from phase 5. This single string lies here in advance on purpose: it is
+# a decided wording, and decided wordings get lost between sessions more
+# easily than code.
 #
-# Patri na prazdny stav tej stranky, ktory bude prve tyzdne NORMALNY stav,
-# nie chyba. Prazdne stavy, ktore appka uz ma ("Zatiaľ žiadna relácia.
-# Zapni senzor tepu..."), su konkretnejsie a nemenia sa - tento je iny
-# pripad: relacie uz su, len ich zatial nie je dost na porovnanie. Preto
-# neodkazuje na ziadne tlacidlo; jedina odpoved je hrat dalej.
+# It belongs on the empty state of that page, which will be the NORMAL
+# state for the first weeks, not an error. The empty states the app
+# already has ("Zatiaľ žiadna relácia. Zapni senzor tepu...", No session
+# yet. Turn on the heart rate sensor...) are more specific and do not
+# change - this one is a different case: sessions already exist, there
+# are just not enough of them yet for a comparison. That is why it does
+# not point to any button; the only answer is to keep playing.
 STRINGS.update({
     'efficacy.empty': _sk_en(
         'Zatiaľ nič. Nazbiera sa to hraním, nie čakaním.',
         'Nothing yet. This builds up by playing, not by waiting.'),
 
-    # Riadok do logu po doručenej hláške. ROVNAKÝ v oboch ramenách —
-    # v hlasnom aj v tichom. Hráč aj tak počuje, či niečo zaznelo, takže
-    # zaslepiť sa to nedá, ale log nemá byť ďalším miestom, kde sa ramená
-    # rozchádzajú. Preto tu nie je ani slovo o tom, či sa hovorilo.
+    # Log line after a delivered cue. The SAME in both arms - in the loud
+    # and in the silent one. The player hears anyway whether something
+    # sounded, so it cannot be blinded, but the log should not be yet
+    # another place where the arms differ. That is why there is not a word
+    # here about whether anything was spoken.
     'log.cue_delivered': _sk_en(
         'Ozvala som sa: {label}',
         'I spoke up: {label}'),
@@ -6385,17 +6475,18 @@ STRINGS.update({
         'The in-game picture didn’t draw — this cue won’t count in the measurement.'),
 })
 
-# --- výpadok tepu: ticho a pravdivo --------------------------------------
-# Tep, ktorý appka počula, prestal chodiť (po 12 s ticha alebo keď hodinky
-# pustia spojenie). Nie je to „ešte nič neprišlo" — preto vlastná veta pod
-# nadpisom „Čakám na tep" a vlastný štítok na Dnes. Žiadny zvuk, okno ani
-# nový text v hre: HUD ukáže „--" ako doteraz.
-# Reťaz, ktorou tep ide, je hodinky → telefón (Bluetooth) → Wi‑Fi → počítač;
-# rady pri výpadku (`insight.cue_dropouts`, `session.end.none_dropouts`)
-# hovoria tú istú.
+# --- heart rate dropout: quiet and truthful --------------------------------
+# Heart rate the app was hearing stopped coming (after 12 s of silence or
+# when the watch drops the connection). This is not "nothing has arrived
+# yet" - hence its own sentence under the heading "Waiting for heart rate"
+# and its own label on Today. No sound, window or new text in the game:
+# the HUD shows "--" as before.
+# The chain heart rate travels is watch → phone (Bluetooth) → Wi‑Fi →
+# computer; the advice on a dropout (`insight.cue_dropouts`,
+# `session.end.none_dropouts`) says the same one.
 STRINGS.update({
     'dnes.hr_lost': _sk_en('tep vypadol', 'heart rate lost'),
-    # 0.2.2: namiesto "cakam na hodinky" tam, kde hodinky prist nemozu
+    # 0.3: instead of "waiting for the watch" where the watch cannot come
     # (`app_today._text_bez_tepu`).
     'dnes.hr_off': _sk_en('príjem tepu vypnutý', 'heart-rate receiving off'),
     'dnes.hr_busy': _sk_en('port je obsadený', 'port is busy'),
@@ -6407,15 +6498,16 @@ STRINGS.update({
                           'Heart rate is back after {s} s without signal.'),
 })
 
-# --- koniec relácie: kontext, nie hodnotenie ----------------------------
-# Nepýta sa, ako sa hráč cítil. Pýta sa, ČO SA DIALO — aby sa dali
-# odfiltrovať večery, keď dve hodiny rozprával. Rozprávanie je najhorší
-# konfunder v tomto meraní: mení sa dych a tep ide hore, takže hláška
-# vyzerá neúčinne, hoci s tým nemá nič spoločné.
+# --- end of session: context, not a rating -------------------------------
+# It does not ask how the player felt. It asks WHAT WAS GOING ON - so
+# that evenings when they talked for two hours can be filtered out.
+# Talking is the worst confounder in this measurement: breathing changes
+# and heart rate goes up, so a cue looks ineffective, although it has
+# nothing to do with it.
 #
-# „Preskočiť" musí byť rovnako veľké tlačidlo ako „Uložiť". Keby bolo
-# menšie, raz sa odklikne naslepo — a to sú horšie dáta, než keby človek
-# nevyplnil nič.
+# "Skip" must be a button as big as "Save". If it were smaller, at some
+# point it gets clicked away blindly - and that is worse data than if
+# the person filled in nothing.
 STRINGS.update({
     'session.end.title': _sk_en(
         'Za tebou je {time} hrania.',
@@ -6423,38 +6515,44 @@ STRINGS.update({
     'session.end.cues': _sk_en(
         'Ozvala som sa {n}×.',
         'I spoke up {n}×.'),
-    # Preco sa neozvala. Bez toho je 'neozvala som sa' konstatovanie, z
-    # ktoreho hrac nevie, ci je appka pokazena, ci bol pokojny, alebo ci
-    # mu vypadavali hodinky. Tri velmi rozne veci s velmi roznym riesenim.
-    # Len fakt o hranici, nie verdikt o tele: záťaž pod hranicou neznamená,
-    # že bolo telo „v pohode" — appka to nevie a nemá to tvrdiť.
+    # Why it did not speak up. Without this, 'neozvala som sa' (I did not
+    # speak up) is a statement from which the player cannot tell whether the
+    # app is broken, whether they were calm, or whether their watch kept
+    # dropping out. Three very different things with very different fixes.
+    # Only a fact about the limit, not a verdict about the body: load below
+    # the limit does not mean the body was "fine" - the app does not know
+    # that and must not claim it.
     'session.end.none_never': _sk_en(
         'Záťaž sa ani raz nedostala nad prah — nemala som prečo sa ozvať.',
         'Your load never crossed the threshold — I had no reason to speak up.'),
     'session.end.none_short': _sk_en(
         'Záťaž hore bola, ale najdlhšie {najdlhsie} s v kuse — potrebujem {treba} s.',
         'Your load did rise, but the longest stretch was {najdlhsie} s — I need {treba} s.'),
-    # {n} = koľkokrát výpadok tepu prerušil rozbehnuté počítanie (nie počet
-    # všetkých výpadkov). Rada je tá istá ako v `insight.cue_dropouts`:
-    # tep ide z hodiniek cez telefón, nie z hodiniek rovno do počítača.
+    # {n} = how many times a heart rate dropout interrupted counting that
+    # had got going (not the number of all dropouts). The advice is the same
+    # as in `insight.cue_dropouts`: heart rate goes from the watch via the
+    # phone, not from the watch straight to the computer.
     'session.end.none_dropouts': _sk_en(
         'Tep {n}× vypadol práve počas počítania a počítanie sa zakaždým začalo odznova. Tep ide z hodiniek do telefónu cez Bluetooth a z telefónu cez Wi‑Fi do počítača — maj hodinky pri telefóne a telefón blízko Wi‑Fi routra.',
         'Your heart rate dropped out {n}× while I was counting, and each time the count started over. It goes from the watch to the phone over Bluetooth, and from the phone to the PC over Wi‑Fi — keep the watch near the phone and the phone near the Wi‑Fi router.'),
-    # BRÁNA HLÁŠKY (0.2). Za reláciu (aspoň 5 min) ani jedna pauza vo vstupe:
-    # hláška nemala kedy prísť (veta nehovorí „hlas“ - v práci ide bez neho).
-    # Presne toto sa ukázalo na skutočnom ovládači so zapnutým gyrom - nie je
-    # to vina hráča a veta ho z ničoho neobviňuje.
+    # CUE GATE (0.2). Not a single pause in input for the session (at least
+    # 5 min): the cue had no moment to come (the sentence does not say
+    # "voice" - at work it goes without it). Exactly this showed up on a
+    # real controller with the gyro on - it is not the player's fault and
+    # the sentence does not blame them for anything.
     'session.end.none_nopause': _sk_en(
         'Celý čas som nezachytila ani jednu pauzu vo vstupe — ani pár sekúnd bez klávesnice, myši či ovládača. A práve na ňu čakám, než sa ozvem. Niečo možno hlási vstup bez prestávky, napríklad pohybový senzor ovládača (gyro) alebo páčka bez mŕtvej zóny. Ak hráš s ovládačom, skús v ňom vypnúť gyro.',
         "The whole time I did not catch a single pause in your input — not even a few seconds without keyboard, mouse or controller. And that is exactly what I wait for before I speak up. Something may be reporting input nonstop, such as a controller's motion sensor (gyro) or a stick without a deadzone. If you play with a controller, try turning its gyro off."),
-    # Appka sa natiahla, ale brána ju nepustila (záťaž ešte stúpala alebo
-    # tep bol v kritickom pásme). Rozhodla ona, nie hráč.
+    # The app armed itself, but the gate did not let it through (load was
+    # still rising or heart rate was in the critical zone). It decided, not
+    # the player.
     'session.end.none_withheld': _sk_en(
         'Záťaž bola hore dosť dlho, ale vhodná chvíľa neprišla — buď ešte stúpala, alebo bol tep v pásme Špička. Radšej som mlčala.',
         'Your load was up long enough, but the right moment never came — it was still climbing, or your pulse was in the peak zone. I chose to stay quiet.'),
     'session.end.cues_none': _sk_en('Dnes som sa neozvala ani raz.',
                                     'I did not speak at all today.'),
-    # Co mal hrac v sebe - najvacsi vysvetlitelny zdroj rozptylu v meraní.
+    # What the player had in their body - the biggest explainable source of
+    # variance in the measurement.
     'session.context.body_question': _sk_en('Bolo v tvojom tele niečo z tohto?',
                                             'Did you have any of these in you?'),
     'session.context.save_failed': _sk_en(
@@ -6480,7 +6578,7 @@ STRINGS.update({
     'session.context.chill': _sk_en('chill', 'chill'),
     'session.end.skip': _sk_en('Preskočiť', 'Skip'),
 
-    # --- dáta: mazanie, export, import ---------------------------------
+    # --- data: deletion, export, import --------------------------------
     'data.title': _sk_en('Tvoje dáta', 'Your data'),
     'data.hint': _sk_en(
         'Tvoj tep, relácie a postrehy ostávajú na tomto počítači. Nastavenia tiež, okrem textu pripomienok: keď hovoria prirodzeným hlasom (Edge, predvolený), pošlem ich text službe Microsoft na prevod do reči. Hlas z Windows nepošle nič.',
@@ -6499,19 +6597,20 @@ STRINGS.update({
         'vyslovené pripomienky (cache)',
         'spoken cues (cache)'),
     'data.delete.backup': _sk_en('záloha', 'backup'),
-    # 0.2.2: kontrolny bod otvorenej relacie (hr_session_open.json).
+    # 0.3: checkpoint of the open session (hr_session_open.json).
     'data.delete.open_session': _sk_en('rozpracovaná relácia', 'session in progress'),
     'data.delete.logs': _sk_en('logy', 'logs'),
     'data.delete.empty': _sk_en('(prázdne)', '(empty)'),
-    # Kopie historie v starych priecinkoch po migracii (paths.legacy_data_dirs)
-    # - jeden riadok na priecinok, len meno priecinka (cesta nesie meno uctu).
+    # Copies of the history in old folders after migration
+    # (paths.legacy_data_dirs) - one row per folder, only the folder name
+    # (the path carries the account name).
     'data.delete.legacy': _sk_en('kópie zo staršej verzie appky (priečinok „{folder}“)',
                                  'copies left by an older version of the app (folder “{folder}”)'),
     'data.delete.confirm': _sk_en('Zmazať', 'Delete'),
     'data.delete.done': _sk_en('Zmazané ({n} položiek).', 'Deleted ({n} items).'),
-    # 0.2: balik nesie relacie, meracie okna a postrehy - nie nastavenia,
-    # profily, nahravky ani zaznamy hlasok. "Vsetko" slubovalo prenos na
-    # iny PC, pri ktorom by sa zvysok stratil.
+    # 0.2: the bundle carries sessions, measurement windows and insights -
+    # not settings, profiles, recordings or cue records. "Everything"
+    # promised a move to another PC in which the rest would be lost.
     'data.export.btn': _sk_en('Exportovať históriu (JSON)', 'Export history (JSON)'),
     'data.export.hint': _sk_en(
         'Celá história aj meracie okná v jednom súbore — na prenos na iný počítač.',
@@ -6523,9 +6622,10 @@ STRINGS.update({
                                 'The file has {sessions} sessions and {windows} measurement windows.'),
     'data.import.dropped': _sk_en('{n} záznamov sa nedalo prečítať a preskočili sa.',
                                   '{n} records could not be read and were skipped.'),
-    # Presne podla kodu: `imported` preskakuju hr_stats.ciste_relacie
-    # (zakladna, hranica vysokeho tepu, prah), rebrik, hr_insights, measure
-    # (graf ucinku) a hr_stats.posledna_relacia (karta poslednej relacie).
+    # Exactly per the code: `imported` is skipped by hr_stats.ciste_relacie
+    # (baseline, high heart rate limit, threshold), the ladder, hr_insights,
+    # measure (the effect chart) and hr_stats.posledna_relacia (the last
+    # session card).
     'data.import.flagged': _sk_en(
         'Importované záznamy sa označia ako cudzie. V Histórii ich uvidíš, ale neučím sa z nich: nevstúpia do tvojej pokojovej základne, hranice vysokého tepu ani prahu, od ktorého sa ozývam, do postrehov, grafu o pripomienkach, karty poslednej relácie, ani do toho, či sa ozývam hlasom, obrázkom, alebo si dám pauzu. Platí to aj pre tvoj vlastný export z iného počítača.',
         'Imported records are marked as not yours. You will see them in History, but I do not learn from them: they stay out of your resting baseline, your high heart-rate limit and the threshold I speak up at, the insights, the cue chart, the last-session card, and whether I speak up with voice, a picture or take a pause. That goes for your own export from another computer too.'),
@@ -6533,8 +6633,8 @@ STRINGS.update({
                                    'Merge them with yours, or replace yours with them?'),
     'data.import.merge': _sk_en('Zlúčiť s mojimi', 'Merge with mine'),
     'data.import.replace': _sk_en('Nahradiť moje', 'Replace mine'),
-    # NAHRADIT je nevratne voci aktualnym suborom - az na druhy klik a so
-    # zalohou (data_io.zaloha_pred_importom).
+    # REPLACE is irreversible against the current files - only on a second
+    # click and with a backup (data_io.zaloha_pred_importom).
     'data.import.replace_confirm': _sk_en(
         'Nahradiť prepíše tvoju históriu relácií a meracie okná obsahom '
         'súboru. Predtým ich odložím ako zálohu vedľa pôvodných súborov (s '
@@ -6559,9 +6659,10 @@ STRINGS.update({
     'data.import.empty': _sk_en('V súbore nie sú žiadne použiteľné záznamy.',
                                 'The file contains no usable records.'),
 
-    # --- vývojárska vrstva (§3.2) --------------------------------------
-    # Čísla zo zadania §2 sú odhady z literatúry, nie z tela tohto hráča.
-    # Bez možnosti otočiť ich za behu by sa muselo rebuildovať každý večer.
+    # --- developer overlay (§3.2) --------------------------------------
+    # The numbers from spec §2 are estimates from the literature, not from
+    # this player's body. Without being able to turn them at runtime it
+    # would have to be rebuilt every evening.
     'dev.title': _sk_en('Ladenie', 'Tuning'),
     'dev.hint': _sk_en(
         'Čísla z literatúry, nie z tvojho tela. Menia sa len medzi reláciami — uprostred by sa meral pohyblivý cieľ. Každé meracie okno si pamätá, s akými hodnotami vzniklo.',
@@ -6655,18 +6756,20 @@ _tr7('log.game_lang', 'ゲーム中の言語：{lang}', '游戏中的语言：{l
 
 
 # --------------------------------------------------------------------------
-# Doplnene preklady (final i18n) - realne chybajuce retazce do 7 jazykov.
-# Patchuje existujuce zaznamy v STRINGS (nemeni sk/en).
+# Added translations (final i18n) - strings really missing in 7 languages.
+# Patches existing entries in STRINGS (does not change sk/en).
 # --------------------------------------------------------------------------
-# --- 0.2.2 davka 4: Dnes, hlavny vypinac, bocny panel, prazdne stavy ---
-# Hlavny vypinac je jedno tlacidlo s textom (`dock.start` / `dock.stop`,
-# prepisane vyssie). Veta "Klikni ▶ vlavo" pod nim stratila zmysel; ostala
-# len ta, preco pas dycha (`kamae.bar_hint`). Bocny panel ma kratke popisky
-# aj pri hodinkach a lupe, stranka "V hre" sa vo svete Praca vola
-# "Obrazovka". `dnes.learning` je ticha veta, kym si appka uci hranicu
-# tepu a prah zataze (`hr_stats.KRITICKY_MIN_RELACII` hernych relacii po
-# aspon 5 min) - {celkom} je vzdy aspon 2, takze podstatne meno za "z/of/из"
-# ma v kazdom jazyku ten isty tvar (genitiv mnozneho cisla).
+# --- 0.3 batch 4: Today, main switch, side panel, empty states ---
+# The main switch is one button with text (`dock.start` / `dock.stop`,
+# rewritten above). The sentence "Klikni ▶ vlavo" (Click ▶ on the left)
+# under it lost its meaning; only the one about why the bar breathes
+# remained (`kamae.bar_hint`). The side panel has short labels for the
+# watch and the magnifier too, and the "In game" page is called "Screen"
+# in the Work world. `dnes.learning` is a quiet sentence while the app is
+# learning the heart rate limit and the load threshold
+# (`hr_stats.KRITICKY_MIN_RELACII` play sessions of at least 5 min) -
+# {celkom} is always at least 2, so the noun after "z/of/из" has the same
+# form in every language (genitive plural).
 STRINGS.update({
     'kamae.bar_hint': _sk_en('Kým sledujem, pás dýcha — inak stojí.',
                              'While I’m watching, this bar breathes; otherwise it rests.'),
@@ -6699,17 +6802,18 @@ _tr7('kamae.port_busy', 'ポート {port} が使用中です', '端口 {port} �
 _tr7('kamae.port_busy_sub', '別のプログラムがこのポートを使っています。よくあるのは WebSocket サーバーをオンにした OBS です。OBS でそのサーバーをオフにするか、「{page}→{card}」でポートを変えて、同じ番号を電話のアプリにも入力してください。', '另一个程序占用了这个端口，常见的是开启了 WebSocket 服务器的 OBS。在 OBS 里关掉这个服务器，或在“{page}→{card}”中更改端口，并在手机应用里填入相同的号码。','Его держит другая программа — часто OBS с включённым WebSocket-сервером. Выключи этот сервер в OBS или смени порт в «{page} → {card}» и введи то же число в приложении на телефоне.', 'Otro programa lo está usando: a menudo OBS con su servidor WebSocket activado. Apaga ese servidor en OBS o cambia el puerto en «{page} → {card}» e introduce el mismo número en la app del móvil.', 'Ein anderes Programm belegt ihn — oft OBS mit eingeschaltetem WebSocket-Server. Schalte diesen Server in OBS aus oder ändere den Port unter „{page} → {card}“ und gib dieselbe Zahl in der Handy-App ein.', 'Un autre programme l’occupe — souvent OBS avec son serveur WebSocket activé. Désactive ce serveur dans OBS, ou change le port dans « {page} → {card} » et saisis le même numéro dans l’app du téléphone.', 'Outro programa está usando a porta — muitas vezes o OBS com o servidor WebSocket ligado. Desligue esse servidor no OBS ou mude a porta em “{page} → {card}” e digite o mesmo número no app do celular.')
 
 
-# --- 0.2.2 davka 4: dialogy appky, Historia, Nastavenia, dotaznik ---
-# Okna appky namiesto systemovych (`ui_kit.notify` / `confirm` / `choose`),
-# dialog pri prvom × (dve jasne tlacidla namiesto Ano/Nie), popisky
-# mriezky Pravidelnost (mesiace a dni podla jazyka appky, nie Windowsu) a
-# veta v dotazniku, ked hra zaberala celu obrazovku.
+# --- 0.3 batch 4: app dialogs, History, Settings, questionnaire ---
+# App windows instead of system ones (`ui_kit.notify` / `confirm` /
+# `choose`), a dialog on the first × (two clear buttons instead of
+# Yes/No), the labels of the Consistency grid (months and days by the
+# app's language, not Windows') and a sentence in the questionnaire when
+# the game filled the whole screen.
 STRINGS.update({
     'dialog.ok': _sk_en('OK', 'OK'),
     'tray.keep_running': _sk_en('Nechať bežať v lište', 'Keep running in the tray'),
     'tray.quit_app': _sk_en('Ukončiť Zanshin', 'Quit Zanshin'),
     'profile.delete_btn': _sk_en('Odstrániť profil', 'Delete profile'),
-    # 12 skratiek mesiacov a 7 dni (pondelok prvy), oddelene medzerou
+    # 12 month abbreviations and 7 days (Monday first), space-separated
     'history.grid_months': _sk_en(
         'jan feb mar apr máj jún júl aug sep okt nov dec',
         'Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec'),
@@ -6727,15 +6831,17 @@ _tr7('history.grid_months', '1月 2月 3月 4月 5月 6月 7月 8月 9月 10月 
 _tr7('history.grid_weekdays', '月 火 水 木 金 土 日', '一 二 三 四 五 六 日', 'пн вт ср чт пт сб вс', 'lu ma mi ju vi sá do', 'Mo Di Mi Do Fr Sa So', 'lun mar mer jeu ven sam dim', 'seg ter qua qui sex sáb dom')
 _tr7('session.end.fullscreen_note', 'ゲームが画面全体を占めていました — 画像が見えなかったら「ボーダーレス / Borderless」に切り替えて。声はどちらでも届きます。', '游戏占满了整个屏幕——如果没看到图片，请把它切换到“无边框 / Borderless”。声音照常可用。', 'Игра занимала весь экран — если картинок не было видно, переключи её в «Без рамки / Borderless». Голос работает в любом случае.', 'El juego ocupaba toda la pantalla: si no se veían las imágenes, cámbialo a «Sin bordes / Borderless». La voz funciona igual.', 'Das Spiel hat den ganzen Bildschirm gefüllt — waren die Bilder nicht zu sehen, stell es auf „Randlos / Borderless“ um. Die Stimme funktioniert so oder so.', 'Le jeu occupait tout l’écran — si les images ne s’affichaient pas, passe-le en « Sans bordure / Borderless ». La voix fonctionne de toute façon.', 'O jogo ocupava a tela inteira — se as imagens não apareceram, mude-o para “Sem bordas / Borderless”. A voz funciona de qualquer jeito.')
 
-# --- 0.2.2 davka 4: logika a okrajove pripady (skratka, spanok PC, data, hlas, VPN) ---
-# Skratka "teraz nie" (zrazka s AltGr, vyber v Nastaveniach -> Vseobecne,
-# veta v prehliadke), relacia rozdelena po uspani PC, zmazanie jednej
-# relacie v Historii, relacia, ktoru sa nepodarilo ulozit, priecinok s
-# datami, strop historie pri importe, chyby prirodzeneho hlasu, svet pocas
-# relacie, VPN/virtualne adaptery a druhe "Ukoncit" nad dotaznikom.
-# Pocty su vzdy "{n} min" alebo "(pocet: {n})" - tvar podstatneho mena sa
-# tak s cislom nemeni v ziadnom jazyku. `kamae.snoozed_sub` (s {combo}) je
-# prepisane priamo pri jeho definicii nizsie (blok "24. 9.").
+# --- 0.3 batch 4: logic and edge cases (shortcut, PC sleep, data, voice, VPN) ---
+# The "not now" shortcut (clash with AltGr, choice in Settings -> General,
+# a sentence in the tour), a session split after the PC went to sleep,
+# deleting one session in History, a session that could not be saved,
+# the data folder, the history cap on import, natural voice errors, the
+# world during a session, VPN/virtual adapters and a second "Quit" over
+# the questionnaire.
+# Counts are always "{n} min" or "(count: {n})" - so the form of the noun
+# does not change with the number in any language. `kamae.snoozed_sub`
+# (with {combo}) is rewritten directly at its definition below (the
+# "24. 9." block).
 STRINGS.update({
     'settings.snooze_hotkey_title': _sk_en('Skratka „Teraz nie“', 'The “Not now” shortcut'),
     'settings.snooze_hotkey': _sk_en('Klávesová skratka', 'Keyboard shortcut'),
@@ -6818,9 +6924,10 @@ STRINGS.update({
         'či je na disku miesto a či priečinok s dátami nie je zamknutý.',
         'Couldn’t save the session ({err}), and couldn’t set it aside either — check that '
         'the disk has free space and the data folder isn’t locked.'),
-    # Pravidlo je `hr_stats.je_ulozitelna`: aspon 60 s A aspon 10 hodnot tepu.
-    # Riadok ide, ked relacia trvala minutu, ale hodnot prislo menej (0.2.2
-    # davka 4b) - "ani minuta tepu" tvrdilo ine pravidlo, nez ake plati.
+    # The rule is `hr_stats.je_ulozitelna`: at least 60 s AND at least 10
+    # heart rate values. The line goes out when the session lasted a minute,
+    # but fewer values arrived (0.3 batch 4b) - "not even a minute of heart
+    # rate" claimed a different rule from the one that applies.
     'log.hr_session_no_data': _sk_en(
         'Relácia sa neuložila — prišlo menej než 10 hodnôt tepu. Ukladám relácie, ktoré '
         'trvajú aspoň minútu a majú aspoň 10 hodnôt tepu.',
@@ -6839,11 +6946,12 @@ STRINGS.update({
         'Your originals are in the backup, and the imported ones stay in the imported file.'),
     'data.import.backup_where': _sk_en('Nájdeš ich cez „Otvoriť priečinok s dátami“.',
                                        'You’ll find them via “Open the data folder”.'),
-    # Trvale odmietnutie byva zastarany edge-tts v tejto verzii Zanshinu
-    # (Microsoft od novembra 2026 odmieta starsie verzie, HTTP 403). Od
-    # "Aktualizovat hlas" (0.2.2) veta radi najprv to tlacidlo (je hned pod
-    # nou, meno presne ako na nom - `edge.update.btn`) a az potom nove
-    # vydanie z oficialneho GitHubu, bez URL.
+    # A permanent refusal is usually an outdated edge-tts in this version of
+    # Zanshin (since November 2026 Microsoft refuses older versions, HTTP
+    # 403). Since "Update voice" (0.3) the sentence first recommends that
+    # button (it is right under it, the name exactly as on it -
+    # `edge.update.btn`) and only then a new release from the official
+    # GitHub, without a URL.
     'edge.partial_refused': _sk_en(
         '! hlas má len {ok}/{total} pripomienok — služba Microsoftu požiadavku odmietla. '
         'Najprv klikni nižšie na „Aktualizovať hlas“. Ak to nepomôže, táto verzia '
@@ -6856,9 +6964,9 @@ STRINGS.update({
     'edge.partial_other': _sk_en(
         '! hlas má len {ok}/{total} pripomienok — príprava zlyhala. Skús to znova.',
         '! only {ok}/{total} cues have their voice — preparing it failed. Try again.'),
-    # Tlacidlo sa neopakuje ("skusis to znova tlacidlom Skusit znova") a
-    # {page} je cesta, ktoru hrac naozaj vidi - Nastavenia → Zvuk (0.2.2
-    # davka 4b, `AudioMixin._edge_priprava_zlyhala`).
+    # The button is not repeated ("try again with the Try again button")
+    # and {page} is the path the player really sees - Settings → Sound (0.3
+    # batch 4b, `AudioMixin._edge_priprava_zlyhala`).
     'log.edge_failed_offline': _sk_en(
         'Prirodzený hlas sa nepodarilo pripraviť pre všetky pripomienky — služba Microsoftu '
         'je teraz nedostupná (internet alebo DNS). Zvyšok povie hlas z Windows. Keď '
@@ -6890,7 +6998,7 @@ STRINGS.update({
         'Bežiaca relácia ostáva vo svete {world} — {new} platí od ďalšieho spustenia sledovania.',
         'The running session stays in {world} — {new} applies from the next time you start '
         'watching.'),
-    # stitok stoji pri ADRESE (adresa = zensky rod), 0.2.2 davka 4b
+    # the label stands by the ADDRESS (adresa = feminine gender), 0.3 batch 4b
     'hr.ip_virtual': _sk_en('(VPN/virtuálna)', '(VPN/virtual)'),
     'hr.ip_virtual_note': _sk_en(
         'Táto adresa patrí VPN alebo virtuálnemu adaptéru — telefón sa na ňu väčšinou '
@@ -6954,13 +7062,14 @@ _tr7('settings.hr_ip_virtual_note', 'この欄のアドレスは VPN か仮想�
 _tr7('log.quit_questionnaire_saved', '終了するときに、アンケートに記入済みの回答を保存しました。', '退出时，我保存了问卷里已经填写的回答。', 'При выходе я сохранила ответы, уже отмеченные в опросе.', 'Al salir, guardé las respuestas que ya estaban en el cuestionario.', 'Beim Beenden habe ich die bereits ausgefüllten Antworten des Fragebogens gespeichert.', 'En quittant, j’ai enregistré les réponses déjà remplies dans le questionnaire.', 'Ao sair, salvei as respostas já preenchidas no questionário.')
 _tr7('log.quit_questionnaire_skipped', '終了するときに、未記入のアンケートを閉じました — セッションは回答なしで保存されています。', '退出时，我关闭了空白的问卷——记录已保存，只是没有回答。', 'При выходе я закрыла пустой опрос — сессия сохранена без ответов.', 'Al salir, cerré el cuestionario vacío: la sesión queda guardada sin respuestas.', 'Beim Beenden habe ich den leeren Fragebogen geschlossen — die Sitzung bleibt ohne Antworten gespeichert.', 'En quittant, j’ai fermé le questionnaire vide — la séance reste enregistrée sans réponses.', 'Ao sair, fechei o questionário vazio — a sessão continua salva sem respostas.')
 
-# --- 0.2.2 davka 4: slovnik a kopia existujucich klucov (onboarding krok 1) ---
-# Uvod sa doteraz nikde nespytal, co hrac na prvy tep potrebuje. Veta je
-# pravdiva k tomu, co appka vie: chytre hodinky so sprievodnou appkou v
-# telefone, ktora tep posle priamo do tohto PC (OSC, UDP, obs-websocket -
-# README "Getting your heart rate in"), a telefon aj PC v jednej domacej
-# sieti. Hrudny pas tu bol do davky 4b - cestu s nim nikto neoveril a README
-# hovori o hodinkach.
+# --- 0.3 batch 4: dictionary and copy of existing keys (onboarding step 1) ---
+# Until now the introduction nowhere asked what the player needs for the
+# first heart rate reading. The sentence is true to what the app knows: a
+# smartwatch with a companion app on the phone that sends heart rate
+# straight to this PC (OSC, UDP, obs-websocket - README "Getting your
+# heart rate in"), and the phone and PC on one home network. A chest
+# strap was here until batch 4b - nobody verified the path with it and
+# the README talks about watches.
 STRINGS.update({
     'ob.step1.need': _sk_en(
         'Čo budeš potrebovať: chytré hodinky, ktoré merajú tep, k nim appku v telefóne, ktorá tep pošle do tohto počítača, a telefón aj počítač v tej istej domácej sieti (Wi‑Fi).',
@@ -6968,11 +7077,12 @@ STRINGS.update({
 })
 _tr7('ob.step1.need', '必要なもの：心拍を測るスマートウォッチ、その心拍をこのPCに送る電話のコンパニオンアプリ、そして同じ家庭内ネットワーク（Wi‑Fi）につながった電話とPC。', '你需要：一块能测心率的智能手表、一个把心率发送到这台电脑的配套手机应用，以及连在同一个家庭网络（Wi‑Fi）上的手机和电脑。', 'Что понадобится: умные часы, которые измеряют пульс, приложение-компаньон на телефоне, которое отправит пульс на этот компьютер, и телефон с компьютером в одной домашней сети (Wi‑Fi).', 'Qué necesitas: un reloj inteligente que mida el pulso, su app complementaria en el móvil que envíe el pulso a este PC, y el móvil y el PC en la misma red de casa (Wi‑Fi).', 'Was du brauchst: eine Smartwatch mit Pulsmessung, die passende App auf dem Handy, die den Puls an diesen PC schickt, und Handy und PC im selben Heimnetz (WLAN).', 'Ce qu’il te faut : une montre connectée qui mesure le pouls, son app compagnon sur le téléphone qui envoie le pouls à ce PC, et le téléphone et le PC sur le même réseau domestique (Wi‑Fi).', 'Do que você precisa: um smartwatch que meça o pulso, o app complementar no celular que envie o pulso para este PC, e o celular e o PC na mesma rede de casa (Wi‑Fi).')
 
-# --- 0.2.2 davka 4b: VPN/hotspot a dotaznik po relacii v Praci ---
-# Mobilny hotspot Windowsu (Wi-Fi Direct) nie je VPN: telefon pripojeny na
-# hotspot sa na jeho adresu dostane - neutralny stitok, ziadne varovanie
-# (`netinfo.druh_adaptera`). Stopa relacie v dotazniku vo svete Praca
-# nehovori "hralo sa" (`SessionEndDialog`, ako `session.end.title_work`).
+# --- 0.3 batch 4b: VPN/hotspot and the post-session questionnaire in Work ---
+# The Windows mobile hotspot (Wi-Fi Direct) is not a VPN: a phone
+# connected to the hotspot can reach its address - a neutral label, no
+# warning (`netinfo.druh_adaptera`). The session trace in the
+# questionnaire in the Work world does not say "you played"
+# (`SessionEndDialog`, like `session.end.title_work`).
 STRINGS.update({
     'hr.ip_hotspot': _sk_en('(hotspot)', '(hotspot)'),
     'session.end.trace_hint_work': _sk_en(
@@ -7046,7 +7156,7 @@ _DOPLNENE_PREKLADY = {
     },
     "data.delete.backup": {"ja": "バックアップ", "zh": "备份", "ru": "резервная копия", "es": "copia de seguridad", "de": "Sicherung", "fr": "sauvegarde", "pt": "cópia de segurança"},
     "history.col_minmax": {"ja": "最小 / 最大", "zh": "最小 / 最大", "ru": "Мин / макс", "es": "Min / max", "de": "Min / max", "fr": "Min / max", "pt": "Mín / máx"},
-    # --- Kontext relacie: cinnost (hral/pracoval) + vlastna poznamka ---
+    # --- Session context: activity (played/worked) + own note ---
     "session.context.activity_question": {
         'sk': 'Hra, alebo práca?',
         'en': 'Were you playing or working?',
@@ -7080,12 +7190,14 @@ _DOPLNENE_PREKLADY = {
         'fr': 'Je travaillais',
         'pt': 'Trabalhando',
     },
-    # 0.2.2: relacia, v ktorej sa appka len nastavovala, sa z prahov neuci
-    # (`hr_stats.ciste_relacie`, `setup`). Po uvode je cip zapnuty od appky.
+    # 0.3: a session in which the app was only being set up is not learnt
+    # from for the thresholds (`hr_stats.ciste_relacie`, `setup`). After the
+    # introduction the chip is turned on by the app.
     "session.context.setup": {"sk": "Len nastavovanie appky", "en": "Just setting up the app", "ja": "アプリの設定だけ", "zh": "只是在设置应用", "ru": "Только настройка приложения", "es": "Solo configurando la app", "de": "Nur die App eingerichtet", "fr": "Juste la configuration de l'app", "pt": "Só configurando o app"},
     "session.context.setup_hint": {"sk": "Z takej relácie sa neučím, čo je u teba pokoj a záťaž. V histórii ostane.", "en": "I won't learn your calm or your load from it. It stays in History.", "ja": "このセッションからは、あなたの平静や負荷を学びません。履歴には残ります。", "zh": "我不会从这次记录里学习你的平静和负荷。它仍会留在历史中。", "ru": "По такой сессии я не учусь, что для тебя покой и нагрузка. В истории она останется.", "es": "De una sesión así no aprendo tu calma ni tu carga. Se queda en el historial.", "de": "Aus so einer Sitzung lerne ich weder deine Ruhe noch deine Belastung. Im Verlauf bleibt sie.", "fr": "Je n’apprends ni ton calme ni ta charge d’une telle séance. Elle reste dans l’historique.", "pt": "Com uma sessão assim, não aprendo sua calma nem sua carga. Ela continua no histórico."},
-    # Ta ista veta, ked cip zapla appka sama (prva relacia po uvode): hrac
-    # musi vediet preco - a ze ho ma vypnut, ak pritom naozaj hral.
+    # The same sentence when the app turned the chip on by itself (the first
+    # session after the introduction): the player must know why - and that
+    # they should turn it off if they really played during it.
     "session.context.setup_hint_first": {"sk": 'Prvú reláciu po úvode som označila sama: neučím sa z nej, čo je u teba pokoj a záťaž, a v histórii ostane. Ak sa v nej naozaj hralo, odznač to.', "en": "I marked the first session after the intro myself: I won't learn your calm or your load from it, and it stays in History. If you actually played, untick it.", "ja": "案内のあとの最初のセッションは、私が自分で印を付けました。ここからはあなたの平静や負荷を学ばず、履歴には残ります。実際に遊んでいたなら、印を外してください。", "zh": "介绍之后的第一次记录是我自己标记的：我不会从中学习你的平静和负荷，它仍会留在历史中。如果你其实在玩，请取消标记。", "ru": 'Первую сессию после вступления я отметила сама: по ней я не учусь, что для тебя покой и нагрузка, а в истории она останется. Если в ней на самом деле шла игра, сними отметку.', "es": "La primera sesión después de la introducción la marqué yo misma: no aprendo de ella tu calma ni tu carga, y se queda en el historial. Si en realidad jugaste, desmárcala.", "de": "Die erste Sitzung nach der Einführung habe ich selbst markiert: Aus ihr lerne ich weder deine Ruhe noch deine Belastung, und im Verlauf bleibt sie. Wenn du wirklich gespielt hast, nimm die Markierung weg.", "fr": "J’ai marqué moi-même la première séance après l’intro : je n’en apprends ni ton calme ni ta charge, et elle reste dans l’historique. Si tu as vraiment joué, décoche-la.", "pt": "Marquei sozinha a primeira sessão depois da introdução: não aprendo com ela sua calma nem sua carga, e ela continua no histórico. Se você jogou de verdade, desmarque."},
     "session.context.note_label": {"sk": "Vlastná poznámka (nepovinné)", "en": "Your own note (optional)", "ja": "自由メモ（任意）", "zh": "自己的备注（可选）", "ru": "Своя заметка (необязательно)", "es": "Nota propia (opcional)", "de": "Eigene Notiz (optional)", "fr": "Note perso (facultatif)", "pt": "Sua nota (opcional)"},
     "hud.quick_label": {
@@ -7102,7 +7214,7 @@ _DOPLNENE_PREKLADY = {
     "history.export_col.activity": {"sk": "činnosť", "en": "activity", "ja": "活動", "zh": "活动", "ru": "активность", "es": "actividad", "de": "Aktivität", "fr": "activité", "pt": "atividade"},
     "history.export_col.hud_seen": {"sk": "HUD videný %", "en": "HUD seen %", "ja": "HUD表示率", "zh": "HUD可见%", "ru": "HUD виден %", "es": "HUD visto %", "de": "HUD sichtbar %", "fr": "HUD vu %", "pt": "HUD visto %"},
     "history.export_col.note": {"sk": "poznámka", "en": "note", "ja": "メモ", "zh": "备注", "ru": "заметка", "es": "nota", "de": "Notiz", "fr": "note", "pt": "nota"},
-    # --- 1. kolo premenných: choroba/šport-pred, spánok, subjektívna vrstva ---
+    # --- round 1 of variables: illness/sport before, sleep, subjective ---
     "session.context.illness": {
         'sk': 'choroba / necítim sa dobre',
         'en': 'feeling ill / off',
@@ -7225,16 +7337,18 @@ STRINGS.setdefault("app.version_short", {}).update({
     "es": "alfa 0.3", "pt": "alfa 0.3",
 })
 
-# --- 0.2 B3-worlds: dva svety, jedno telo ----------------------------------
-# Hra a praca maju oddelenu historiu, postrehy aj vzhlad; pokojova zakladna
-# je spolocna. SK/EN rucne, ostatne jazyky: _tr7 na konci suboru.
-# Otazka v dotazniku (hral/pracoval) pouziva existujuce kluce
-# `session.context.activity*` - nic nove.
+# --- 0.2 B3-worlds: two worlds, one body -------------------------------------
+# Play and work have separate history, insights and look; the resting
+# baseline is shared. SK/EN by hand, the other languages: _tr7 at the end
+# of the file.
+# The question in the questionnaire (played/worked) uses the existing
+# keys `session.context.activity*` - nothing new.
 #
-# Styri kluce nizsie (hranica vysokeho tepu, prah hlasky) tu maju NOVE
-# znenie: od B3-worlds sa rataju len z HERNYCH relacii, takze veta "po
-# dalsich N relaciach" by pri pracovnych veceroch klamala. Stare znenia aj
-# ich preklady boli zmazane, aby stare znenie neprezilo v ziadnom jazyku.
+# The four keys below (high heart rate limit, cue threshold) have a NEW
+# wording here: since B3-worlds they are computed only from PLAY
+# sessions, so the sentence "after N more sessions" would be a lie on
+# work evenings. The old wordings and their translations were deleted,
+# so that the old wording does not survive in any language.
 STRINGS.update({
     'world.play': _sk_en('Hra', 'Play'),
     'world.work': _sk_en('Práca', 'Work'),
@@ -7245,23 +7359,24 @@ STRINGS.update({
     'settings.world_sub': _sk_en(
         'Hra je Sumi, práca Aizome. Každý svet má vlastnú históriu a postrehy. V práci sa ozývam len obrázkom — bez hlasu a zvuku. Pokojová základňa je spoločná, telo je jedno; hranicu vysokého tepu aj prah záťaže počítam len z hrania.',
         'Play is Sumi, work is Aizome. Each world keeps its own history and insights. At work I only show pictures — no voice, no sound. The resting baseline is shared, it is one body; the high heart-rate limit and the load threshold are learned from play only.'),
-    # 0.2 (rebrik): graf ucinnosti rata len hlasky, ktore zazneli - v praci
-    # je hlaska len obrazom, takze tam neostalo co ratat.
+    # 0.2 (ladder): the effectiveness chart counts only cues that sounded -
+    # at work a cue is only a picture, so there is nothing left to count.
     'history.world_note': _sk_en(
         'Svet: {world}. Staršie relácie bez štítku patria do Hry. Graf „{chart}“ ráta len pripomienky z hry, ktoré zazneli — v práci sa ozývam len obrázkom.',
         'World: {world}. Older unlabelled sessions count as Play. The “{chart}” chart counts only play cues that made a sound — at work I only show a picture.'),
     'ob.step4.title': _sk_en('Vyber si hlavný svet', 'Pick your main world'),
-    # 0.2.2: posledna veta - hranicu aj prah appka rata len z Hry
-    # (`DandurfApp.ALGORITMUS_SVET`), Praca ich nikdy neuci.
+    # 0.3: the last sentence - the app computes the limit and the threshold
+    # only from Play (`DandurfApp.ALGORITMUS_SVET`), Work never teaches them.
     'ob.step4.body': _sk_en(
         'Prepneš ho kedykoľvek vpravo hore. Každý svet má vlastnú históriu '
         'aj vzhľad. Vlastné hranice sa učím len z Hry.',
         'Switch it any time at the top right. Each world keeps its own history '
         'and look. I learn your own limits from Play only.'),
     'ob.world.play.title': _sk_en('Hra · 墨 Sumi', 'Play · 墨 Sumi'),
-    # „väčšinou“: asi desatina hlášok naschvál mlčí (porovnanie) a hláška,
-    # ktorej pauza nepríde, je len obrazom — „s hlasom aj obrazom“ sľubovalo
-    # viac, než appka robí.
+    # „väčšinou“ (mostly): about a tenth of the cues stay silent on purpose
+    # (comparison) and a cue whose pause does not come is only a picture -
+    # „s hlasom aj obrazom“ (with voice and picture) promised more than the
+    # app does.
     'ob.world.play.desc': _sk_en(
         'Keď hráš. Pripomienky v pauzách, väčšinou s hlasom.\nAtrament so zlatom.',
         'For playing. Cues in the pauses, mostly with voice.\nInk with gold.'),
@@ -7289,10 +7404,11 @@ STRINGS.update({
         'For now I use average-player numbers: I speak up when your load stays above the threshold of {prah}/100 for {hold} s. I’ll compute your own threshold from your play sessions.'),
 })
 
-# --- 0.2 rebrik hlasky: appka sa sama stisi ------------------------------
-# hlas -> obraz -> pauza (`rebrik.py`). Jedna ticha veta v Historii, len ked
-# je rebrik pod vrcholom, a s dovodom. Appka o sebe v zenskom rode. SK/EN
-# rucne, ostatne jazyky: _tr7 na konci suboru.
+# --- 0.2 cue ladder: the app turns itself down ---------------------------
+# voice -> picture -> pause (`rebrik.py`). One quiet sentence in History,
+# only when the ladder is below the top, and with the reason. The app
+# speaks of itself in the feminine. SK/EN by hand, the other languages:
+# _tr7 at the end of the file.
 STRINGS.update({
     'session.felt.cue.agitated': _sk_en('rozhodila ma', 'it wound me up'),
     'history.rebrik.visual': _sk_en(
@@ -7327,11 +7443,13 @@ STRINGS.update({
         'Watching your heart rate, but cues are off for now — History says why.'),
 })
 
-# --- 0.2 styl hlasky: otazka v onboardingu a riadok v Nastaveniach ---------
-# Otazku aj styri odpovede schvalil zadavatel doslovne. Tie iste tri vety
-# (bez "neviem") su hodnoty v Nastaveniach -> Zvuk, aby jedna volba nemala
-# dve mena. Kicker kroku 1-4 sa zmenil na "z 5" (ich _tr7 riadky zmazane).
-# SK/EN rucne, ostatne jazyky: _tr7 na konci suboru.
+# --- 0.2 cue style: question in the onboarding and row in Settings ----------
+# The question and the four answers were approved word for word by the
+# client. The same three sentences (without "I don't know") are the
+# values in Settings -> Sound, so that one choice does not have two
+# names. The kicker of steps 1-4 changed to "of 5" (their _tr7 lines
+# deleted). SK/EN by hand, the other languages: _tr7 at the end of the
+# file.
 STRINGS.update({
     'ob.step5.kicker': _sk_en('KROK 5 z 5', 'STEP 5 of 5'),
     'ob.cue.title': _sk_en(
@@ -7347,8 +7465,9 @@ STRINGS.update({
     'ob.cue.note': _sk_en(
         'Zmeníš to v Nastaveniach → Zvuk. Stíšiť sa viem aj sama, hlasnejšie nikdy. Zo začiatku asi každú štvrtú pripomienku schválne ukážem len obrázkom — na porovnanie.',
         'You can change this in Settings → Sound. I can go quieter on my own, never louder. At first, about one cue in four is picture-only on purpose — for comparison.'),
-    # Tichy riadok pod otazkou: co z volby "hlasom" odchadza z pocitaca.
-    # Rovnaka pravda ako `data.hint`; nazov karty = nav.nastavenia_tabs.zvuk.
+    # Quiet line under the question: what leaves the computer with the choice
+    # "by voice". The same truth as `data.hint`; tab name =
+    # nav.nastavenia_tabs.zvuk.
     'ob.cue.online_note': _sk_en(
         'Prirodzený hlas je online: texty pripomienok (nikdy nie tep) sa pošlú službe Microsoft na prevod do reči. Hlas z Windows neposiela nič — prepneš naň v Nastaveniach → Zvuk.',
         'The natural voice is online: the text of your cues (never your heart rate) is sent to Microsoft to be turned into speech. The Windows voice sends nothing — switch to it in Settings → Sound.'),
@@ -7402,12 +7521,12 @@ STRINGS.update({
         'This is the most I’ll use — never louder. When cues get in the way (the questionnaire after play, or “not now”), I go quieter on my own. At work, pictures only.'),
 })
 
-# --- 0.2 ovladac: vstup bez jedinej pauzy -----------------------------------
-# Gyroskop ovladaca alebo pacicka bez mrtvej zony hlasi Windowsu vstup bez
-# prestania a appka nenajde pauzu (odmerane u zadavatela). Tichy riadok na
-# Dnes raz za relaciu (`_tick_nonstop_input`) a tip v navode k parovaniu.
-# Rovnaka rada ako `session.end.none_nopause`. SK/EN rucne, ostatne
-# jazyky: _tr7 na konci suboru.
+# --- 0.2 controller: input without a single pause ----------------------------
+# A controller's gyroscope or a stick without a dead zone reports input to
+# Windows non-stop and the app finds no pause (measured at the client's).
+# A quiet line on Today once per session (`_tick_nonstop_input`) and a tip
+# in the pairing guide. The same advice as `session.end.none_nopause`.
+# SK/EN by hand, the other languages: _tr7 at the end of the file.
 STRINGS.update({
     'dnes.nonstop_input': _sk_en(
         'Už {min} minút som nezachytila ani krátku pauzu vo vstupe — možno ho '
@@ -7425,15 +7544,16 @@ STRINGS.update({
         'report input nonstop and I find no pause to speak up in.'),
 })
 
-# --- 24. 9. rozhodnutia zadavatela -------------------------------------------
-# "Teraz nie" stisi len hlasky a meria sa dalej (stav v strede stranky Dnes).
-# Ukazka "Ako to znie" ide za stylom hlasky - veta pod nou hovori, co naozaj
-# urobi. SK/EN rucne, ostatne jazyky: _tr7 na konci suboru.
+# --- 24. 9. the client's decisions -------------------------------------------
+# "Not now" silences only cues and measuring goes on (state in the middle
+# of the Today page). The "How it sounds" preview follows the cue style -
+# the sentence under it says what it will really do. SK/EN by hand, the
+# other languages: _tr7 at the end of the file.
 STRINGS.update({
     'kamae.snoozed': _sk_en('Mlčím', 'Keeping quiet'),
-    # {combo} = skratka, ktora naozaj plati (0.2.2, davka 4); bez nej
-    # `kamae.snoozed_sub_tray`. "Tou istou skratkou" klamalo, ked
-    # registracia zlyhala alebo bola skratka vypnuta.
+    # {combo} = the shortcut that really applies (0.3, batch 4); without it
+    # `kamae.snoozed_sub_tray`. "Tou istou skratkou" (With the same shortcut)
+    # was a lie when the registration failed or the shortcut was turned off.
     'kamae.snoozed_sub': _sk_en(
         '„Teraz nie“ platí do {until} — dovtedy sa neozvem, tep však merám '
         'ďalej. Skôr to zrušíš skratkou {combo} alebo v ponuke ikony v lište.',
@@ -7446,13 +7566,14 @@ STRINGS.update({
     'settings.preview_sub_visual': _sk_en(
         'Máš nastavený len obrázok, takže v hre nič nezaznie — pripomienka sa len ukáže. Tlačidlo ukáže obrázok prvej pripomienky.',
         'You chose just a picture, so nothing plays in-game — the cue is only shown. The button shows the first cue’s picture.'),
-    # Ukazka v style "zvuk"/"obraz", ked ziadna zapnuta pripomienka nema
-    # obrazok v hre - v hre by vtedy neprisla ziadna hlaska.
+    # Preview in the "sound"/"picture" style when no enabled cue has a
+    # picture in game - in game no cue would come then.
     'log.preview_no_picture': _sk_en(
         'Ukážka: žiadna zapnutá pripomienka nemá zapnutý obrázok v hre, takže v tomto štýle by som sa v hre neozvala vôbec.',
         'Preview: no enabled cue has its in-game picture turned on, so in this style I would not show up in-game at all.'),
-    # Dotaznik po relacii bez hlasky, v ktorej platilo "teraz nie" - vtedy
-    # automat spal a ostatne vety o ticho by mohli klamat (`_preco_ticho`).
+    # Post-session questionnaire after a session without a cue in which "not
+    # now" applied - the automaton was asleep then and the other sentences
+    # about the silence could be lies (`_preco_ticho`).
     'session.end.none_snoozed': _sk_en(
         '{min} min z relácie platilo tvoje „teraz nie“ — vtedy som mlčala, '
         'presne podľa tvojho želania.',
@@ -7460,26 +7581,27 @@ STRINGS.update({
         'then, as you asked.'),
 })
 
-# --- × v titulkovej liste (0.2) ----------------------------------------------
-# Krizik appku neukonci, len ju schova do listy - port pre telefon ostava
-# otvoreny a tep sa dalej meria. Prvy raz to appka povie a da na vyber
-# (`DandurfApp.on_close`). SK/EN rucne, ostatnych 7 jazykov pride vo faze
-# jazykov.
+# --- × in the title bar (0.2) ----------------------------------------------
+# The cross does not quit the app, it only hides it in the tray - the
+# port for the phone stays open and heart rate is still measured. The
+# first time the app says so and offers a choice (`DandurfApp.on_close`).
+# SK/EN by hand, the other 7 languages will come in the languages phase.
 STRINGS.update({
-    # Veta stoji NAD dvoma tlacidlami (Nechat bezat v liste / Ukoncit
-    # Zanshin, 0.2.2 davka 4) - hrac este nevybral, takze nie "bezim dalej",
-    # ale co plati, KED ma necha bezat (0.2.2 davka 4b).
+    # The sentence stands ABOVE two buttons (Keep running in the tray / Quit
+    # Zanshin, 0.3 batch 4) - the player has not chosen yet, so not "I keep
+    # running", but what applies IF they let it run (0.3 batch 4b).
     'tray.close_first': _sk_en(
         'Ak ma necháš bežať v lište, ikona bude pri hodinách — ak ju nevidíš, je pod šípkou ^. Kým je zapnutý príjem tepu, port {port} ostáva otvorený pre telefón; kým som spustená (▶ na stránke Dnes), tep ďalej meriam a ukladám. Úplne ma potom vypneš pravým klikom na ikonu → Ukončiť.',
         'If you keep me running in the tray, my icon sits by the clock — if you don’t see it, it’s under the ^ arrow. While heart-rate receiving is on, port {port} stays open for your phone; while I’m started (▶ on the Today page), I keep measuring and saving your heart rate. To quit me completely later, right-click the icon → Quit.'),
 })
 
-# --- paleta prikazov (Ctrl+K) a veta o prekladoch (0.2, faza jazykov) -------
-# Paleta mala texty natvrdo po slovensky (`_command_palette_items`,
-# `ui_shell.CommandPalette`) - anglicky hrac v nej videl „Navigácia“ a
-# „Pomoc“. Polozka sprievodcu sa vola ako jeho panel (guide.panel_title).
-# Veta pod vyberom jazyka hovori, co je zdroj a co preklad; ukazuje sa vo
-# vsetkych jazykoch. SK/EN rucne, ostatne jazyky: _tr7 na konci suboru.
+# --- command palette (Ctrl+K) and translations note (0.2, languages phase) ---
+# The palette had its texts hard-coded in Slovak (`_command_palette_items`,
+# `ui_shell.CommandPalette`) - an English player saw „Navigácia“ and
+# „Pomoc“ in it. The guide item is named like its panel
+# (guide.panel_title). The sentence under the language picker says what
+# is the source and what a translation; it shows in all languages. SK/EN
+# by hand, the other languages: _tr7 at the end of the file.
 STRINGS.update({
     'palette.placeholder': _sk_en(
         'Napíš názov stránky, profilu alebo pripomienky…',
@@ -7501,19 +7623,20 @@ STRINGS.update({
 
 
 # ==========================================================================
-# 0.2 FAZA JAZYKOV - preklad klucov z `_sk_en` do ja / zh / ru / es / de /
-# fr / pt
+# 0.2 LANGUAGES PHASE - translation of the keys from `_sk_en` into ja / zh /
+# ru / es / de / fr / pt
 # ==========================================================================
 #
-# Kluce so sk/en rucne (`_sk_en`) mali ostatnych 7 jazykov po anglicky -
-# tu je ich preklad (zdroj je SK, EN pomaha s vyznamom). Kluce, ktore su
-# v STRINGS ako plny slovnik, maju preklad priamo v nom a
-# `history.export_extra` ma opraveny riadok v davke vyssie (predtym doslovne
-# lomitko+n namiesto noveho riadku). Ziadny z tychto klucov nema iny
-# `_tr7` riadok, aby stary preklad nemohol potichu prezit pod novym.
+# Keys with sk/en by hand (`_sk_en`) had the other 7 languages in English
+# - here is their translation (the source is SK, EN helps with the
+# meaning). Keys that are in STRINGS as a full dict have the translation
+# right in it, and `history.export_extra` has a fixed line in the batch
+# above (before, a literal backslash+n instead of a new line). None of
+# these keys has another `_tr7` line, so that an old translation could
+# not silently survive under the new one.
 #
-# Preklady su s pomocou AI (Claude) a rodeny hovoriaci ich este
-# nekontroloval (`settings.language_note`).
+# The translations are made with the help of AI (Claude) and a native
+# speaker has not checked them yet (`settings.language_note`).
 
 _tr7('settings.auto_profile', '知っているゲームが動いていたら、自分でプロファイルを切り替えて見守りを始める', '遇到我认识的游戏时，我会自己切换配置文件并开始关注', 'При знакомой игре сама переключу профиль и начну наблюдение', 'Con un juego que conozco, cambio de perfil y empiezo a observar yo sola', 'Bei einem Spiel, das ich kenne, wechsle ich selbst das Profil und starte die Beobachtung', 'Avec un jeu que je connais, je change de profil et je lance l’observation toute seule', 'Com um jogo que eu conheço, troco de perfil e começo a observar sozinha')
 _tr7('slots.hint', 'いつ合図を出すかは、あなたの心拍が決めます：負荷がしばらく高いまま続いたら、もう上がっていない合間を待ちます。「ピーク」ゾーンでは黙っています。ここでは、私が話す内容を設定します。', '什么时候提醒你，由你的心率决定：负荷持续偏高一阵子后，我会等它不再上升的停顿；在“高峰”区间我保持安静。这里设置的是我要说什么。', 'Когда подать знак, решает твой пульс: если нагрузка какое-то время держится высокой, я жду паузу, в которой она уже не растёт; в зоне «Пик» я молчу. Здесь ты задаёшь, что я скажу.', 'Cuándo aviso lo decide tu pulso: si la carga se mantiene alta un rato, espero una pausa en la que ya no suba; en la zona Pico me callo. Aquí eliges qué digo.', 'Wann ich mich melde, entscheidet dein Puls: Bleibt deine Last eine Weile oben, warte ich auf eine Pause, in der sie nicht mehr steigt; in der Zone Spitze schweige ich. Hier stellst du ein, was ich sage.', 'C’est ton pouls qui décide quand je me manifeste : si ta charge reste haute un moment, j’attends une pause où elle ne monte plus ; dans la zone Pic, je me tais. Ici, tu règles ce que je dis.', 'Quem decide quando eu aviso é o seu pulso: se a carga fica alta por um tempo, espero uma pausa em que ela já não esteja subindo; na zona Pico fico calada. Aqui você define o que eu digo.')
@@ -7702,15 +7825,17 @@ _tr7('ob.cue.online_note', '自然な音声はオンラインです：合図の�
 _tr7('settings.language_note', 'アプリはスロバキア語で書かれています。ほかの言語は AI の助けを借りた翻訳で、まだネイティブスピーカーの確認を受けていません — 間違いを見つけたら教えてください。', '本应用以斯洛伐克语编写。其他语言是借助 AI 翻译的，尚未经过母语者校对——如果你发现错误，请告诉我。', 'Приложение написано на словацком. Остальные языки — переводы с помощью ИИ, и носитель языка их ещё не проверял; если заметишь ошибку, дай знать.', 'La app está escrita en eslovaco. Los demás idiomas son traducciones hechas con ayuda de IA que todavía no ha revisado ningún hablante nativo — si ves un error, avísame.', 'Die App ist auf Slowakisch geschrieben. Die anderen Sprachen sind KI-gestützte Übersetzungen, die noch nicht von Muttersprachlern geprüft wurden — wenn du einen Fehler siehst, sag Bescheid.', 'L’app est écrite en slovaque. Les autres langues sont des traductions faites avec l’aide de l’IA, pas encore relues par un locuteur natif — si tu vois une erreur, dis-le-moi.', 'O app foi escrito em eslovaco. Os outros idiomas são traduções feitas com ajuda de IA e ainda não foram revisados por um falante nativo — se encontrar um erro, avise.')
 
 
-# --- 0.2.1: "teraz nie" aj v ponuke ikony v liste --------------------------
-# Ked skratku (Ctrl+Alt+Z) drzi ina appka, `RegisterHotKey` zlyha a hlasky
-# sa dali stisit jedine zastavenim pocuvania - co zastavi aj meranie. Od
-# 0.2.1 je "teraz nie" aj polozka v ponuke ikony v liste (`setup_tray`) a
-# riadok v denniku pri zlyhani skratky hraca posle tam (`start_snooze_hotkey`).
-# Veta o zlyhani slubuje len to, co plati vzdy ("pocuvanie to nezastavi"),
-# nie meranie - stisenie sa da zapnut aj v zastavenej appke, a vtedy sa
-# nemeria (rovnako ako `log.snooze_started`). SK/EN rucne, 7 jazykov hned
-# pod nimi, cestina a bulharcina v `i18n_cs_bg.py`.
+# --- 0.2.1: "not now" also in the tray icon menu --------------------------
+# When another app holds the shortcut (Ctrl+Alt+Z), `RegisterHotKey`
+# fails and cues could only be silenced by stopping listening - which
+# stops measuring too. Since 0.2.1 "not now" is also an item in the tray
+# icon menu (`setup_tray`) and the journal line on a shortcut failure
+# sends the player there (`start_snooze_hotkey`). The sentence about the
+# failure promises only what always applies ("it does not stop
+# listening"), not measuring - snoozing can be turned on even in a
+# stopped app, and then nothing is measured (same as
+# `log.snooze_started`). SK/EN by hand, 7 languages right under them,
+# Czech and Bulgarian in `i18n_cs_bg.py`.
 STRINGS.update({
     'tray.snooze': _sk_en('Teraz nie ({minutes} min)', 'Not now ({minutes} min)'),
     'log.hotkey_failed_tray': _sk_en(
@@ -7721,12 +7846,13 @@ _tr7('tray.snooze', '今はいい（{minutes} 分）', '现在不要（{minutes}
 _tr7('log.hotkey_failed_tray', '別のアプリが {combo} を使っているため、このショートカットは使えません。「今はいい」はトレイアイコンのメニュー（右クリック）にもあります — 見守りは止まりません。', '{combo} 被另一个应用占用，所以这个快捷键用不了。“现在不要”也在托盘图标的菜单里（右键）——它不会停止关注。', 'Сочетание {combo} занято другим приложением, поэтому оно не сработает. «Не сейчас» есть и в меню значка в трее (правый клик) — наблюдение это не останавливает.', 'Otra app tiene {combo}, así que el atajo no funcionará. «Ahora no» también está en el menú del icono de la bandeja (clic derecho): no detiene la observación.', 'Eine andere App belegt {combo}, daher funktioniert das Kürzel nicht. „Jetzt nicht“ findest du auch im Menü des Symbols im Infobereich (Rechtsklick) — die Beobachtung stoppt es nicht.', 'Une autre app occupe {combo}, donc le raccourci ne marchera pas. « Pas maintenant » est aussi dans le menu de l’icône de la zone de notification (clic droit) — ça n’arrête pas l’observation.', 'Outro app está usando {combo}, então o atalho não vai funcionar. “Agora não” também está no menu do ícone da bandeja (clique direito) — isso não para a observação.')
 
 
-# --- 0.2.1: UDP na porte tepu sa neotvorilo ----------------------------------
-# Kym `heart_rate._udp_loop` pri zlyhani vazby ticho skoncil, appka posielajuca
-# len UDP/OSC (iPhone) nemala ako prist a hrac nevidel preco. TCP (appky pre
-# OBS) pritom bezi dalej - preto riadok v denniku hovori aj to, co funguje, a
-# stitok pri prepinaci "len cez TCP" (`_hr_status_display`), nie "obsadeny
-# port" ako pri TCP. SK/EN rucne, 7 jazykov pod nimi, cs/bg v `i18n_cs_bg.py`.
+# --- 0.2.1: UDP on the heart rate port did not open --------------------------
+# While `heart_rate._udp_loop` silently ended on a bind failure, an app
+# sending only UDP/OSC (iPhone) had no way to get through and the player
+# did not see why. TCP (apps for OBS) meanwhile keeps running - so the
+# journal line also says what works, and the label by the switch says
+# "TCP only" (`_hr_status_display`), not "busy port" as with TCP. SK/EN
+# by hand, 7 languages under them, cs/bg in `i18n_cs_bg.py`.
 STRINGS.update({
     'log.hr_udp_busy': _sk_en(
         'UDP port {port} drží iný program, takže tep cez OSC (napr. z iPhonu cez PulseOSC) nepríde. Appka pre Android (HeartRateOnStream) funguje ďalej. Zavri ten program a „Prijímať tep z telefónu“ vypni a zapni.',
@@ -7743,13 +7869,14 @@ _tr7('log.hr_udp_error', 'ポート {port} の UDP を開けませんでした�
 _tr7('settings.hr_status_udp_off', 'Android は接続できます。iPhone（PulseOSC）はできません', 'Android 可以连接，iPhone（PulseOSC）不行', 'Android подключится, iPhone (PulseOSC) — нет', 'Android se conecta; iPhone (PulseOSC), no', 'Android kann sich verbinden, iPhone (PulseOSC) nicht', 'Android peut se connecter, l’iPhone (PulseOSC) non', 'O Android conecta, o iPhone (PulseOSC) não')
 
 
-# --- 0.2.2: dva rozne tepy v jednom zdroji -----------------------------------
-# Appka na hodinkach vie do jedneho OBS zdroja pisat dva rady tepu naraz a
-# cislo potom skace (`heart_rate.dva_rady_v_okne`). Riadok v denniku raz za
-# beh (meno zdroja, ziadne hodnoty) a text pri prepinaci za cislom tepu
-# (`_hr_status_display`). Veta hovori aj to, co appka s tym robi: cislo na
-# obrazovke vyhladi, meranie berie kazdu hodnotu - preto treba opravit
-# nastavenie na hodinkach. SK/EN rucne, 7 jazykov pod nimi, cs/bg v
+# --- 0.3: two different heart rates in one source ----------------------------
+# The app on the watch can write two series of heart rate into one OBS
+# source at once and the number then jumps (`heart_rate.dva_rady_v_okne`).
+# A journal line once per run (source name, no values) and a text by the
+# switch after the heart rate number (`_hr_status_display`). The sentence
+# also says what the app does about it: it smooths the number on screen,
+# the measurement takes every value - so the setting on the watch needs
+# fixing. SK/EN by hand, 7 languages under them, cs/bg in
 # `i18n_cs_bg.py`.
 STRINGS.update({
     'log.hr_two_series': _sk_en(
@@ -7769,12 +7896,14 @@ _tr7('log.hr_two_series', '時計アプリがソース「{source}」に異なる
 _tr7('settings.hr_status_two_series', '1つのソースに異なる心拍が2つ — 時計アプリを確認して', '一个来源里有两个不同的心率——请检查手表应用', 'Два разных пульса в одном источнике — проверь приложение на часах', 'Dos pulsos distintos en una fuente — revisa la app del reloj', 'Zwei verschiedene Pulswerte in einer Quelle — prüf die Uhr-App', 'Deux pouls différents dans une source — vérifie l’app de la montre', 'Dois pulsos diferentes em uma fonte — confira o app do relógio')
 
 
-# --- 0.2.2: jeden slovnik a kratsie texty (UX audit, cast 3) -------------
-# Hlavny vypinac je "sledovat" (en "watching"), prijimac tepu "prijimat tep"
-# (en "heart-rate receiving") a to, co appka posle, je "pripomienka" (en
-# "cue"). Predtym jedna vec mala piat mien a "odpocuvat" po slovensky znamena
-# spehovat - pre appku, ktora cita casovanie vstupov, najhorsie mozne slovo.
-# Nove kluce a doplnene preklady k `_sk_en` klucom, ktore ich este nemali.
+# --- 0.3: one vocabulary and shorter texts (UX audit, part 3) ------------
+# The main switch is "sledovat" (en "watching"), the heart rate receiver
+# "prijimat tep" (en "heart-rate receiving") and what the app sends is a
+# "pripomienka" (en "cue"). Before, one thing had five names and
+# "odpocuvat" in Slovak means to spy - for an app that reads the timing
+# of inputs, the worst possible word.
+# New keys and added translations for `_sk_en` keys that did not have
+# them yet.
 STRINGS.update({
     'session.end.cues_silent': {
         'sk': 'Ozvala som sa {n}×, z toho {silent}× schválne len obrázkom — aby bolo s čím porovnať.',
@@ -7849,16 +7978,18 @@ _tr7('history.detail_hrpi', '持続', '持续', 'Устойчивость', 'Per
 _tr7('history.export_col.hrpi', '心拍の持続（HRPI）', '心率持续（HRPI）', 'Устойчивость пульса (HRPI)', 'Persistencia del pulso (HRPI)', 'Puls-Persistenz (HRPI)', 'Persistance du pouls (HRPI)', 'Persistência do pulso (HRPI)')
 
 
-# --- 0.2.2: "Aktualizovat hlas" (novsi edge-tts na klik) ---------------------
-# Rozhodnutie autora (15. 11. 2026): ked Microsoft odmietne edge-tts, ktory je
-# v Zanshine, hrac si novsi stiahne sam tlacidlom v Nastaveniach → Zvuk (pod
-# Zdrojom hlasu) alebo cez Ctrl+K - len na klik a nikdy pocas sledovania
-# (`AudioMixin.aktualizuj_hlas`, jadro `hlas_kniznica.py`). Stav pod Zdrojom
-# hlasu ma znacku ako ostatne stavy hlasu (⟳ / ✓ / !), riadok v denniku je
-# bez nej. Kde hlas opravi az novy Zanshin, veta posle na oficialny GitHub
-# (Releases) bez URL - odkaz je tlacidlo vedla (`edge.update.releases_btn`,
-# appka mu prida "↗"). Technicky dovod ide len do app.log. SK/EN rucne,
-# 7 jazykov pod nimi, cs/bg v `i18n_cs_bg.py`.
+# --- 0.3: "Update voice" (a newer edge-tts on a click) -----------------------
+# The author's decision (15. 11. 2026): when Microsoft refuses the
+# edge-tts that is in Zanshin, the player downloads a newer one
+# themselves with a button in Settings → Sound (under Voice source) or
+# via Ctrl+K - only on a click and never while watching
+# (`AudioMixin.aktualizuj_hlas`, core `hlas_kniznica.py`). The status
+# under Voice source has a mark like the other voice states (⟳ / ✓ / !),
+# the journal line is without it. Where only a new Zanshin fixes the
+# voice, the sentence points to the official GitHub (Releases) without a
+# URL - the link is the button next to it (`edge.update.releases_btn`,
+# the app adds "↗" to it). The technical reason goes only to app.log.
+# SK/EN by hand, 7 languages under them, cs/bg in `i18n_cs_bg.py`.
 STRINGS.update({
     'edge.update.btn': _sk_en('Aktualizovať hlas', 'Update voice'),
     'edge.update.releases_btn': _sk_en('Nový Zanshin na GitHube', 'New Zanshin on GitHub'),
@@ -7955,18 +8086,19 @@ _tr7('log.edge_update.cancelled', '音声の更新を中断しました（見守
 
 
 # ==========================================================================
-# CESTINA A BULHARCINA (0.2)
+# CZECH AND BULGARIAN (0.2)
 # ==========================================================================
 #
-# Preklad celej appky je v module `i18n_cs_bg.py` (dva slovniky kluc -> text),
-# aby tento subor nenarastol o dalsie dva stlpce. Vklada sa az tu, po vsetkych
-# `STRINGS.update` a `_tr7`, takze meni len cs a bg.
+# The translation of the whole app is in the module `i18n_cs_bg.py` (two
+# dicts key -> text), so that this file does not grow by two more columns.
+# It is inserted only here, after all `STRINGS.update` and `_tr7`, so it
+# changes only cs and bg.
 #
-# Kluc bez ceskeho alebo bulharskeho prekladu (novy kluc, plny slovnik s
-# deviatimi jazykmi) dostane anglictinu - rovnako ako `_sk_en` pri ostatnych
-# jazykoch - a tests/test_i18n_cs_bg.py ho nahlasi, aby neostal anglicky
-# potichu. PyInstaller modul zoberie cez tento import (a pre istotu aj cez
-# hiddenimports v Dandurf.spec).
+# A key without a Czech or Bulgarian translation (a new key, a full dict
+# with nine languages) gets English - the same as `_sk_en` for the other
+# languages - and tests/test_i18n_cs_bg.py reports it, so that it does not
+# stay English silently. PyInstaller picks up the module through this
+# import (and to be safe also through hiddenimports in Dandurf.spec).
 from i18n_cs_bg import BG as _BG, CS as _CS  # noqa: E402
 
 for _kod, _preklady in ((LANG_CS, _CS), (LANG_BG, _BG)):

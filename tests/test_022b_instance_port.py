@@ -1,19 +1,21 @@
 # -*- coding: utf-8 -*-
-"""Chyba portu ci vazby nie je rozhodnutie hraca (0.2.2, audit UX).
+"""A port or bind error is not the player's decision (0.3, UX audit).
 
-Do 0.2.2 appka po obsadenom porte (po troch pokusoch, ~24 s) aj po chybe
-vazby vypla `hr_monitoring_enabled` a ULOZILA to do nastaveni. Druha kopia
-appky tak prvej vypla prijem tepu natrvalo - ten isty subor nastaveni. Teraz:
+Before 0.3, after a busy port (after three attempts, ~24 s) and after a bind
+error, the app turned off `hr_monitoring_enabled` and SAVED it to the
+settings. So a second copy of the app permanently turned off heart-rate
+receiving for the first one - the same settings file. Now:
 
-  * busy aj error vypnu senzor len V PAMATI (prepinac ukaze vypnute, lebo tep
-    naozaj nechodi), do suboru ide dalej zapnute - nech ulozenie spusti
-    ktorekolvek miesto appky, aj ukoncenie,
-  * dalsi start to skusi znova; zmena IP/portu (oprava, ktoru radi dennik)
-    to skusi hned,
-  * vlastny klik hraca na prepinac plati ako doteraz,
-  * adresa, ktoru PC nema (WinError 10049), skusi 0.0.0.0 RAZ - to uz robi
-    `heart_rate._bind` a ulozenu IP neprepisuje,
-  * `log.hr_port_busy` menuje castu pricinu (OBS) a opravu (iny port).
+  * busy and error turn the sensor off only IN MEMORY (the switch shows
+    off, because the heart rate really is not coming), the file keeps
+    getting on - whichever place in the app triggers the save, even quitting,
+  * the next start tries again; a change of IP/port (the fix the journal
+    suggests) tries right away,
+  * the player's own click on the switch counts as before,
+  * an address the PC does not have (WinError 10049) tries 0.0.0.0 ONCE -
+    `heart_rate._bind` already does that and does not overwrite the saved IP,
+  * `log.hr_port_busy` names the common cause (OBS) and the fix (another
+    port).
 """
 import errno
 import json
@@ -55,7 +57,7 @@ class _Var:
 
 
 def _atrapa(**navyse):
-    """To, co `_apply_hr_status` vo vetvach busy/error cita a vola."""
+    """What `_apply_hr_status` reads and calls in the busy/error branches."""
     denn, ulozenia, naplanovane = [], [], []
     a = types.SimpleNamespace(
         _hr_generation=1, _hr_state="connecting", _hr_last_bpm=None,
@@ -80,7 +82,7 @@ def _stav(a, kind, payload):
 
 
 # --------------------------------------------------------------------------
-# busy a error: vypnute len v pamati
+# busy and error: off only in memory
 # --------------------------------------------------------------------------
 
 def test_obsadeny_port_pocas_pokusov_nic_nevypina_ani_neuklada():
@@ -102,7 +104,8 @@ def test_po_vzdani_vypnute_len_v_pamati_a_nic_sa_neulozi():
     assert a.hr_enabled_var.get() is False
     assert a._hr_vypnute_chybou is True, "save_settings musi vediet, ze to nebol hrac"
     assert a.ulozenia == [], "vzdanie sa nesmie ulozit vypnutie"
-    # atrapa nema `_nazov_vhre` -> meno stranky z Hry (0.2.2 davka 4b)
+    # the fake has no `_nazov_vhre` -> page name from the Play world
+    # (0.3 batch 4b)
     assert a.denn[-1] == i18n.tr("log.hr_port_busy", port=4455,
                                  page=i18n.tr("nav.vhre_short"))
     assert a.naplanovane == [], "po vzdani sa uz nic neplanuje"
@@ -123,7 +126,7 @@ def test_chyba_vazby_vypnute_len_v_pamati(chyba):
 
 
 def test_bez_prepinaca_v_okne_to_nespadne():
-    """Stranka s prepinacom este nemusi byt postavena (hr_enabled_var None)."""
+    """The page with the switch may not be built yet (hr_enabled_var None)."""
     for kind, payload, navyse in (("busy", 4455, {"_hr_bind_retries": 3}),
                                   ("error", "x", {})):
         a = _atrapa(hr_enabled_var=None, **navyse)
@@ -132,9 +135,10 @@ def test_bez_prepinaca_v_okne_to_nespadne():
 
 
 def test_novy_beh_zrusi_cakajuci_pokus_predosleho():
-    """Iny port ci vypnutie a zapnutie POCAS pokusov po obsadenom porte: stary
-    pokus (`after`) by o par sekund restartoval novy prijem - hodinky by sa
-    odpojili a relacia otvorila nanovo. Novy beh ho zrusi."""
+    """Another port, or off and on again, DURING the attempts after a busy
+    port: the old attempt (`after`) would restart the new receiving a few
+    seconds later - the watch would disconnect and the session would open
+    anew. The new run cancels it."""
     zrusene, otvorene = [], []
     a = _atrapa(
         _hr_retry_job="stary-pokus", listening=True, hr_ip="0.0.0.0", hr_port=4456,
@@ -146,15 +150,17 @@ def test_novy_beh_zrusi_cakajuci_pokus_predosleho():
     assert zrusene == ["stary-pokus"]
     assert otvorene == [None] and a._hr_retry_job is None
     assert a._hr_generation == 7
-    # bez cakajuceho pokusu sa nic nerusi (`after_cancel(None)` Tk odmietne)
+    # without a pending attempt nothing is cancelled (Tk rejects
+    # `after_cancel(None)`)
     zrusene.clear()
     _D().start_heart_rate_monitor(a)
     assert zrusene == []
 
 
 def test_pokus_o_vazbu_uz_nehovori_druha_kopia():
-    """Druha kopia sa od 0.2.2 k portu nedostane (main.py) - veta pri
-    pokusoch nema hraca posielat hladat ju. Pricinu povie `log.hr_port_busy`."""
+    """Since 0.3 a second copy does not get to the port (main.py) - the
+    sentence during the attempts should not send the player looking for it.
+    `log.hr_port_busy` tells the cause."""
     for jazyk in i18n.LANGUAGES:
         text = i18n.STRINGS["log.hr_port_busy_retry"][jazyk]
         assert set(re.findall(r"\{(\w+)\}", text)) == {"port", "n", "z"}, jazyk
@@ -165,19 +171,19 @@ def test_pokus_o_vazbu_uz_nehovori_druha_kopia():
 
 
 def test_apply_hr_status_nastavenia_neuklada_vobec():
-    """Ziadna vetva stavu spojenia nie je volba hraca."""
+    """No connection-state branch is the player's choice."""
     assert "save_settings" not in zdroj_metody("_apply_hr_status")
     assert "save_settings" not in zdroj_metody("_retry_hr_bind")
 
 
 # --------------------------------------------------------------------------
-# kazde dalsie ulozenie zapise zapnute; dalsi start skusi znova
+# every further save writes on; the next start tries again
 # --------------------------------------------------------------------------
 
 @pytest.fixture
 def appka(tmp_path, monkeypatch):
-    """Atrapa so skutocnym `load_settings` / `save_settings` nad docasnym
-    suborom (rovnako ako tests/test_zanshin_easter_egg.py)."""
+    """A fake with the real `load_settings` / `save_settings` over a temporary
+    file (the same as tests/test_zanshin_easter_egg.py)."""
     import app_prefs
     cesta = str(tmp_path / "dandurf_settings.json")
     monkeypatch.setattr(app_prefs, "SETTINGS_PATH", cesta)
@@ -228,10 +234,10 @@ def test_neskorsie_ulozenie_zapise_zapnute(appka, kind, payload):
     a._hr_bind_retries = 3
     _stav(a, kind, payload)
     assert a.hr_monitoring_enabled is False
-    # hocijake dalsie ulozenie (posuvnik, jazyk, ukoncenie appky)
+    # any further save (slider, language, quitting the app)
     a.save_settings()
     assert appka.ulozene() is True, "chyba portu sa nesmie dostat do nastaveni"
-    # dalsi start: senzor je zapnuty a skusi to znova
+    # next start: the sensor is on and tries again
     druha = appka()
     assert druha.hr_monitoring_enabled is True
 
@@ -243,12 +249,12 @@ def test_klik_hraca_na_prepinac_plati(appka):
     spustene, zastavene = [], []
     a.start_heart_rate_monitor = lambda: spustene.append(1)
     a.stop_heart_rate_monitor = lambda: zastavene.append(1)
-    # hrac prepinac zapne -> skusi sa znova a ulozi sa zapnute
+    # the player turns the switch on -> it tries again and saves on
     a.hr_enabled_var.set(True)
     _D().on_hr_toggle(a)
     assert spustene == [1] and a._hr_vypnute_chybou is False
     assert appka.ulozene() is True
-    # hrac ho vypne -> to uz je jeho volba a uklada sa
+    # the player turns it off -> that is their choice now and it is saved
     a.hr_enabled_var.set(False)
     _D().on_hr_toggle(a)
     assert zastavene == [1] and appka.ulozene() is False
@@ -261,7 +267,7 @@ def test_hracom_vypnuty_senzor_ostava_vypnuty(appka):
 
 
 # --------------------------------------------------------------------------
-# zmena portu po vzdani to skusi hned (to radi log.hr_port_busy)
+# a port change after giving up tries right away (log.hr_port_busy advises it)
 # --------------------------------------------------------------------------
 
 def _konfig(**navyse):
@@ -302,11 +308,11 @@ def test_bez_zmeny_cisla_sa_nic_nespusta():
 
 
 # --------------------------------------------------------------------------
-# WinError 10049: 0.0.0.0 raz, ulozena IP ostava
+# WinError 10049: 0.0.0.0 once, the saved IP stays
 # --------------------------------------------------------------------------
 
 def _monitor(chyby):
-    """HeartRateMonitor so `_bind_to`, ktory pre adresy z `chyby` hodi chybu."""
+    """HeartRateMonitor with a `_bind_to` raising for addresses in `chyby`."""
     mon = heart_rate.HeartRateMonitor(_nic, _nic)
     volania = []
 
@@ -334,7 +340,7 @@ def test_adresa_ktoru_pc_nema_skusi_vsetky_siete_raz():
 
 
 def test_zaloha_ktora_tiez_zlyha_sa_neopakuje():
-    """0.0.0.0 obsadene -> chyba ide von ako "busy", ziadny treti pokus."""
+    """0.0.0.0 busy -> the error goes out as "busy", no third attempt."""
     mon, volania = _monitor({"192.168.1.20": _nema_adresu(),
                              "": OSError(errno.EADDRINUSE, "obsadene")})
     with pytest.raises(OSError) as chyba:
@@ -367,11 +373,11 @@ def test_appka_po_zalohe_ip_neprepise_ani_neulozi():
 
 
 # --------------------------------------------------------------------------
-# texty
+# texts
 # --------------------------------------------------------------------------
 
 def test_obsadeny_port_menuje_obs_a_opravu():
-    # meno stranky dosadza appka podla sveta (`{page}`, 0.2.2 davka 4b)
+    # the app fills in the page name by world (`{page}`, 0.3 batch 4b)
     sk = i18n.tr_lang("sk", "log.hr_port_busy", port=4455,
                       page=i18n.tr_lang("sk", "nav.vhre_short"))
     assert sk == ("Port 4455 už používa iný program — často OBS so zapnutým "
@@ -391,7 +397,7 @@ def test_dokumenty_hovoria_to_iste_co_kod():
     privacy = plain("PRIVACY.md")
     assert "the app also switches it off if it can't open the TCP port" not in privacy
     assert "your setting stays on" in privacy
-    known = plain("CHANGELOG.md")       # historia verzii od davky 4
+    known = plain("CHANGELOG.md")       # version history since batch 4
     zaciatok = known.index("## What 0.3 changes")
     sekcia = known[zaciatok:known.index("## What 0.2.1 fixes")]
     assert "Starting Zanshin a second time could switch heart rate off for good" in sekcia

@@ -1,37 +1,40 @@
-"""Spolocne mena hlavnej appky - pre app.py aj jej mixiny (app_*.py).
+"""Shared names of the main app - for app.py and its mixins (app_*.py).
 
-Mixin DandurfApp nesmie importovat app (kruhovy import), takze co na urovni
-modulu potrebuje app.py aj niektory mixin, byva tu. app.py tieto mena
-importuje, preto `app.app_log`, `app.LANG_NATIVE_LABELS`,
-`app.DEFAULT_SNOOZE_HOTKEY` a pod. ostavaju platne.
+A DandurfApp mixin must not import app (circular import), so whatever
+both app.py and some mixin need at module level lives here. app.py
+imports these names, so `app.app_log`, `app.LANG_NATIVE_LABELS`,
+`app.DEFAULT_SNOOZE_HOTKEY` etc. stay valid.
 
-Pozor v testoch: `monkeypatch.setattr(app, "app_log", ...)` zasiahne len
-metody v app.py - mixin cita meno zo svojho modulu.
+Careful in tests: `monkeypatch.setattr(app, "app_log", ...)` only affects
+the methods in app.py - a mixin reads the name from its own module.
 """
 
 from i18n import (LANG_BG, LANG_CS, LANG_DE, LANG_EN, LANG_ES, LANG_FR,
                   LANG_JA, LANG_PT, LANG_RU, LANG_SK, LANG_ZH, STRINGS, tr)
 from logging_setup import get_logger
 
-# Pre kreslenie stredu Dnes (app_today) aj ikonu okna (app.py).
-# Stred stranky Dnes je tk.Canvas: enso je priehladne PNG (`create_image`),
-# preto tu treba `ImageTk`. PIL nie je tvrda zavislost - bez neho appka bezi
-# dalej (canvas ostane v jednofarebnom pozadi temy).
+# For drawing the centre of Today (app_today) and the window icon (app.py).
+# The centre of the Today page is a tk.Canvas: the enso is a transparent
+# PNG (`create_image`), hence `ImageTk` is needed here. PIL is not a hard
+# dependency - without it the app keeps running (the canvas stays on the
+# theme's single-colour background).
 try:
     from PIL import ImageTk as _ImageTk
-except Exception:               # pragma: no cover - PIL je bezne pritomny
+except Exception:               # pragma: no cover - PIL is normally present
     _ImageTk = None
 
 app_log = get_logger("app")
 
 
 def stranka_vhre(app):
-    """Meno stranky "V hre" tak, ako ho hrac prave vidi v bocnom paneli
-    (0.2.2 davka 4b) - pre texty s `{page}`, ktore na tu stranku posielaju
-    (port, obrazky, prazdna Historia, hranica vysokeho tepu).
+    """Name of the "In-game" page as the player currently sees it in the
+    side panel (0.3 batch 4b) - for texts with `{page}` that send the
+    player to that page (port, pictures, empty History, the high heart
+    rate limit).
 
-    Vo svete Praca sa stranka vola "Obrazovka" (`TodayMixin._nazov_vhre`).
-    Atrapy v testoch tu metodu nemaju - vtedy plati meno z Hry."""
+    In the Work world the page is called "Screen"
+    (`TodayMixin._nazov_vhre`). Test dummies do not have this method -
+    then the name from Play applies."""
     nazov = getattr(app, "_nazov_vhre", None)
     if callable(nazov):
         try:
@@ -42,13 +45,15 @@ def stranka_vhre(app):
 
 
 def zapamataj_text_stranky(app, widget, kluc):
-    """Stitok s textom `kluc`, ktory menuje stranku "V hre" (`{page}`) a
-    stavia sa RAZ (vysvetlivka metriky v Historii). Svet sa prepina bez
-    prestavby okna (`set_world`), takze by inak ostal s menom stranky z
-    druheho sveta - `obnov_texty_stranky` ho po prepnuti prepise.
+    """A label with the text `kluc` that names the "In-game" page (`{page}`)
+    and is built ONCE (a metric's explanation in History). The world is
+    switched without rebuilding the window (`set_world`), so it would
+    otherwise keep the page name from the other world -
+    `obnov_texty_stranky` rewrites it after the switch.
 
-    Pamata si len texty, ktore `{page}` naozaj maju (inak by zoznam rastol
-    s kazdou vysvetlivkou). Atrapy bez `__dict__` sa preskocia."""
+    It remembers only texts that really contain `{page}` (otherwise the
+    list would grow with every explanation). Dummies without `__dict__`
+    are skipped."""
     zaznam = STRINGS.get(kluc) or {}
     if widget is None or "{page}" not in zaznam.get("en", ""):
         return
@@ -59,9 +64,9 @@ def zapamataj_text_stranky(app, widget, kluc):
 
 
 def obnov_texty_stranky(app):
-    """Prepise zapamatane texty s `{page}` menom stranky v aktualnom svete.
-    Stitok, ktory uz neexistuje (prestavba stranky), sa zo zoznamu zahodi.
-    Nikdy nevyhodi vynimku."""
+    """Rewrites the remembered texts with `{page}` to the page name in the
+    current world. A label that no longer exists (page rebuild) is
+    dropped from the list. Never raises an exception."""
     stranka = stranka_vhre(app)
     zive = []
     for widget, kluc in list(getattr(app, "_texty_so_strankou", None) or ()):
@@ -78,10 +83,10 @@ def obnov_texty_stranky(app):
         pass
 
 
-# Natívne nazvy jazykov pre prepinac (Nastavenia) - VZDY vo vlastnom
-# jazyku, bez ohladu na aktualne zvoleny jazyk rozhrania, aby si
-# pouzivatel svoj jazyk nasiel aj vtedy, ked mu je zobrazeny jazyk
-# nezrozumitelny.
+# Native language names for the switch (Settings) - ALWAYS in the language
+# itself, regardless of the currently chosen UI language, so the user can
+# find their language even when the displayed language is unintelligible
+# to them.
 LANG_NATIVE_LABELS = {
     LANG_SK: "Slovenčina",
     LANG_EN: "English",
@@ -98,9 +103,9 @@ LANG_NATIVE_LABELS = {
 LABEL_TO_LANG = {v: k for k, v in LANG_NATIVE_LABELS.items()}
 
 
-# "Teraz nie" (zadanie §1.9). Ctrl+Alt+Z zamerne: Z sa v hrach takmer
-# nepouziva s obidvoma modifikatormi naraz, takze riziko zrazky s hernou
-# vazbou je male. Prazdny retazec hotkey vypina.
+# "Teraz nie" (Not now) (spec §1.9). Ctrl+Alt+Z on purpose: in games Z is
+# hardly ever used with both modifiers at once, so the risk of a clash
+# with a game binding is small. An empty string disables the hotkey.
 DEFAULT_SNOOZE_HOTKEY = "ctrl+alt+z"
-# Zadanie: jeden klaves stisi appku na 30 minut.
+# Spec: one key mutes the app for 30 minutes.
 SNOOZE_HOTKEY_MINUTES = 30

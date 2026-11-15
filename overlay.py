@@ -1,28 +1,31 @@
-"""In-game somaticke vizualy (Overlay) - jeden nezavisly vizual na kazdy
-zo 4 slotov (tazisko / celust / uvolnenie / dych).
+"""In-game somatic visuals (Overlay) - one independent visual for each of
+the 4 slots (grounding / jaw / release / breath).
 
-Co sa oproti alpha 0.4 zmenilo a preco
---------------------------------------
-1. ROZLISENIE. Rozmery vizualov su zadane v "1080p pixeloch" a nasobia sa
-   `Monitor.scale` (vyska monitora / 1080). Na 4K je teda vsetko 2x vacsie
-   a zabera rovnaku CAST obrazovky - predtym bol vizual na 4K stvrtinovy.
+What changed since alpha 0.4, and why
+-------------------------------------
+1. RESOLUTION. Visual sizes are given in "1080p pixels" and are
+   multiplied by `Monitor.scale` (monitor height / 1080). So on 4K
+   everything is 2x larger and takes up the same PART of the screen -
+   before, the visual on 4K was a quarter of the size.
 
-2. VIAC MONITOROV. Poloha sa rata voci konkretnemu monitoru zo
-   `display.resolve_target()`, nie voci `winfo_screenwidth()` (co je vzdy
-   len primarna obrazovka). Kto ma hru na druhom monitore, vizual tam
-   konecne uvidi. Predvolba "auto" berie monitor, na ktorom je aktivne
-   okno - cize hru.
+2. MULTIPLE MONITORS. The position is computed relative to a specific
+   monitor from `display.resolve_target()`, not relative to
+   `winfo_screenwidth()` (which is always only the primary screen).
+   Whoever has the game on a second monitor will finally see the visual
+   there. The "auto" preset takes the monitor that has the active
+   window - i.e. the game.
 
-3. VZHLAD. Kreslenie preslo z tk.Canvas (tvrde hrany, emoji) na PIL +
-   UpdateLayeredWindow (per-pixel alfa, ziara, antialiasing) - viz
-   hud_paint.py a layer_window.py.
+3. LOOK. Drawing moved from tk.Canvas (hard edges, emoji) to PIL +
+   UpdateLayeredWindow (per-pixel alpha, glow, antialiasing) - see
+   hud_paint.py and layer_window.py.
 
 Anti-cheat
 ----------
-Bez zmeny oproti povodnemu navrhu, len prisnejsie: okno je klikom
-priechodne (WS_EX_TRANSPARENT), nikdy sa neaktivuje (WS_EX_NOACTIVATE),
-nie je v Alt+Tab (WS_EX_TOOLWINDOW), nic neinjektuje a o hre nevie nic
-okrem toho, ktory monitor ma prave aktivne okno. Detaily v layer_window.py.
+No change from the original design, only stricter: the window is
+click-through (WS_EX_TRANSPARENT), never activates (WS_EX_NOACTIVATE),
+is not in Alt+Tab (WS_EX_TOOLWINDOW), injects nothing and knows nothing
+about the game except which monitor has the active window right now.
+Details in layer_window.py.
 """
 
 import time
@@ -43,33 +46,33 @@ log = logging_setup.get_logger("overlay")
 
 
 class _SlotOverlay:
-    """Jeden konkretny in-game vizual (pre 1 slot).
+    """One specific in-game visual (for 1 slot).
 
-    Kostra je spolocna pre vsetky 4:
-      * vlastne klikom-priechodne okno (LayeredSurface),
-      * fade-in -> animacia -> fade-out, vsetko cez Tk `.after()` (ziadny
-        time.sleep - to iste vlakno obsluhuje aj poll aktivity a spustac
-        hlasky, takze spanok v nom by zastavil oboje),
-      * novy trigger pocas bezania starej animacie ju okamzite zrusi
-        (`play() -> self.stop()`) a zacne od nuly.
+    The skeleton is shared by all 4:
+      * its own click-through window (LayeredSurface),
+      * fade-in -> animation -> fade-out, all through Tk `.after()` (no
+        time.sleep - the same thread also serves the activity poll and
+        the cue trigger, so sleeping in it would stop both),
+      * a new trigger while an old animation is running cancels it at
+        once (`play() -> self.stop()`) and starts from zero.
 
-    Fade nestoji nic navyse: meni sa len konstantna alfa vrstveneho okna,
-    snimok sa neprekresluje.
+    The fade costs nothing extra: only the constant alpha of the layered
+    window changes, the frame is not redrawn.
     """
 
-    TICK_MS = 40                 # 25 fps - na dychanie a dopad viac netreba
+    TICK_MS = 40                 # 25 fps - breathing and an impact need no more
     FADE_MS = 260
     HOLD_S = 3.0
 
-    # dychovy cyklus - predvolba 4 s nadych / 6 s vydych, hrac si ich vie
-    # zmenit v Nastaveniach (viz SomaticOverlayManager.set_breath_seconds)
+    # breathing cycle - default 4 s inhale / 6 s exhale, the player can
+    # change them in Settings (see SomaticOverlayManager.set_breath_seconds)
     INHALE_S_DEFAULT = 4.0
     EXHALE_S_DEFAULT = 6.0
-    CYCLES = 2                   # 2 cykly na jedno spustenie slotu
+    CYCLES = 2                   # 2 cycles per slot trigger
 
-    # Ako dlho bezi "vstupna" animacia jednotlivych vizualov. Po jej konci
-    # sa snimok uz NEPREKRESLUJE (obraz je staticky), takze drzanie
-    # vizualu na obrazovke nestoji ziadny vykon.
+    # How long the "intro" animation of each visual runs. After it ends
+    # the frame is NO LONGER REDRAWN (the image is static), so keeping
+    # the visual on screen costs no performance.
     INTRO_S = {"grounding": 1.35, "jaw": 0.95, "release": 1.15}
 
     def __init__(self, root, visual, base_size, manager):
@@ -80,8 +83,8 @@ class _SlotOverlay:
 
         self.enabled = False
         self.scale = 1.0
-        self.pos = (50.0, 50.0)     # % sirky/vysky CIELOVEHO monitora
-        self.color = None           # None = akcent temy; inak #rrggbb
+        self.pos = (50.0, 50.0)     # % of the width/height of the TARGET monitor
+        self.color = None           # None = theme accent; otherwise #rrggbb
         self.inhale_s = self.INHALE_S_DEFAULT
         self.exhale_s = self.EXHALE_S_DEFAULT
 
@@ -93,14 +96,15 @@ class _SlotOverlay:
         self._ss = 2
         self._static_done = False
         self._label = None
-        # Rezim "Test vizualu" (drag & drop). Ked je zapnuty, vizual sa
-        # NEskryva po HOLD_S a da sa chytit mysou; po ukonceni sa cez
-        # on_test_moved ulozi nova pozicia a vrati sa klik-through.
+        # "Test visual" mode (drag & drop). When it is on, the visual does
+        # NOT hide after HOLD_S and can be grabbed with the mouse; when it
+        # ends, the new position is saved via on_test_moved and
+        # click-through comes back.
         self._test_mode = False
         self._drag_origin = None
-        self.on_test_moved = None    # callback(index_pos_x, index_pos_y) - nastavi manager
+        self.on_test_moved = None    # callback(index_pos_x, index_pos_y) - set by the manager
 
-    # ---------- konfiguracia ----------
+    # ---------- configuration ----------
 
     def configure(self, enabled=None, scale=None, pos=None, color=None):
         if enabled is not None:
@@ -112,7 +116,7 @@ class _SlotOverlay:
         if pos is not None:
             self.pos = pos
         if color is not None:
-            # "" (prazdny retazec) znamena "vrat sa na farbu temy"
+            # "" (empty string) means "go back to the theme colour"
             self.color = color or None
 
     def set_label(self, label):
@@ -122,16 +126,18 @@ class _SlotOverlay:
         self.inhale_s = max(0.5, float(inhale_s))
         self.exhale_s = max(0.5, float(exhale_s))
 
-    # ---------- spustenie ----------
+    # ---------- triggering ----------
 
     def trigger(self):
-        """Vráti True, ak sa vizuál naozaj začal kresliť.
+        """Returns True if the visual really started drawing.
 
-        Tichá vetva má vizuál ako JEDINÝ podnet — keď zlyhá, meranie by
-        porovnávalo hlášku proti ničomu a označilo okno `valid:True` bez
-        potvrdeného doručenia (bug B17). Návratka to volajúcemu prezradí.
-        Vypnutý vizuál (`not enabled`) nie je zlyhanie — vtedy sa cue vôbec
-        nemal doručovať; vráti False, aby sa nemeral.
+        The silent branch has the visual as its ONLY stimulus — when it
+        fails, the measurement would compare the cue against nothing and
+        mark the window `valid:True` without a confirmed delivery (bug
+        B17). The return value tells the caller. A disabled visual
+        (`not enabled`) is not a failure — then the cue was not supposed
+        to be delivered at all; it returns False so that it is not
+        measured.
         """
         if self.enabled:
             return self.play()
@@ -142,13 +148,15 @@ class _SlotOverlay:
         return self.surface is not None
 
     def test(self):
-        """Tlacidlo "Test vizualu" - NOVE spravanie (drag & drop).
+        """The "Test visual" button - NEW behaviour (drag & drop).
 
-        Vizual sa zobrazi NASTALO (kym hrac test nevypne) a da sa chytit
-        mysou a potiahnut kamkolvek. Predtym to bola len 3-sekundova ukazka
-        na fixnej pozicii, takze sa poloha nedala doladit vizualne.
+        The visual is shown PERMANENTLY (until the player turns the test
+        off) and can be grabbed with the mouse and dragged anywhere.
+        Before, it was only a 3-second preview at a fixed position, so the
+        position could not be fine-tuned visually.
 
-        Druhe volanie test() (alebo stop_test) rezim ukonci a ulozi poziciu.
+        A second call of test() (or stop_test) ends the mode and saves the
+        position.
         """
         if self._test_mode:
             self.stop_test()
@@ -157,7 +165,7 @@ class _SlotOverlay:
         self.play()
 
     def stop_test(self):
-        """Ukonci drag rezim, ulozi poziciu a vrati klik-through."""
+        """Ends drag mode, saves the position and restores click-through."""
         if not self._test_mode:
             return
         self._save_test_position()
@@ -165,14 +173,14 @@ class _SlotOverlay:
         self.stop()
 
     def _save_test_position(self):
-        """Prepocita polohu okna spat na percenta monitora a ohlasi ju."""
+        """Converts the window position back to monitor % and reports it."""
         if self.surface is None or self.surface.top is None:
             return
         try:
             monitor = self.manager.target_monitor()
             x = self.surface.top.winfo_x()
             y = self.surface.top.winfo_y()
-            # stred okna v percentach plochy monitora (rovnaka konvencia ako display.place)
+            # window centre in % of the monitor area (same convention as display.place)
             cx = x + self.w / 2.0
             cy = y + self.h / 2.0
             px = max(0.0, min(100.0, (cx - monitor.x) / monitor.width * 100.0))
@@ -184,11 +192,11 @@ class _SlotOverlay:
             pass
 
     def play(self):
-        """Vykreslí vizuál. Vráti True pri úspechu, False pri zlyhaní.
+        """Draws the visual. Returns True on success, False on failure.
 
-        Chybové vetvy sa LOGUJÚ — doteraz ticho `_destroy(); return`, takže
-        keď sa vizuál nevykreslil, nezostala po tom stopa a meranie ho aj tak
-        rátalo ako platné (bug B17).
+        The error branches are LOGGED — until now it was a silent
+        `_destroy(); return`, so when the visual did not draw, no trace
+        was left and the measurement counted it as valid anyway (bug B17).
         """
         self.stop()
         self._gen += 1
@@ -217,7 +225,7 @@ class _SlotOverlay:
         return True
 
     def _enable_drag(self):
-        """V test rezime: vypni klik-through a nechaj okno tahat mysou."""
+        """Test mode: click-through off, the window can be dragged by mouse."""
         if self.surface is None or self.surface.top is None:
             return
         self.surface.set_click_through(False)
@@ -236,7 +244,7 @@ class _SlotOverlay:
         def _release(_event):
             self._drag_origin = None
 
-        # bind na okno aj na jeho canvas/label (podla toho, cim LayeredSurface kresli)
+        # bind on the window and its canvas/label (whatever LayeredSurface draws with)
         for target in (top,) + tuple(top.winfo_children()):
             try:
                 target.bind("<ButtonPress-1>", _press, add="+")
@@ -256,7 +264,7 @@ class _SlotOverlay:
         self._job = None
         self._destroy()
 
-    # ---------- okno ----------
+    # ---------- window ----------
 
     def _build_window(self):
         monitor = self.manager.target_monitor()
@@ -266,9 +274,9 @@ class _SlotOverlay:
         x, y = display.place(monitor, self.w, self.h, self.pos[0], self.pos[1])
         self.surface = LayeredSurface(self.root)
         self.surface.create(x, y, self.w, self.h)
-        # Na 4K su plochy 4x vacsie nez na 1080p; supersampling 3 by na
-        # dychovom kruhu (prekresluje sa 25x za sekundu) uz zral vykon,
-        # tak ho na velkych plochach znizime.
+        # On 4K the surfaces are 4x larger than on 1080p; supersampling 3
+        # on the breath ring (redrawn 25x per second) would already eat
+        # performance, so we lower it on large surfaces.
         self._ss = 2 if (self.w * self.h) > 240000 else 3
 
     def _destroy(self):
@@ -323,7 +331,7 @@ class _SlotOverlay:
         if gen == self._gen:
             self._destroy()
 
-    # ---------- kreslenie ----------
+    # ---------- drawing ----------
 
     def _render(self, elapsed):
         style = self.manager.style
@@ -348,24 +356,27 @@ class _SlotOverlay:
             image = self._decorate_test(image, style)
         self.surface.draw(image)
 
-    # Ram v test rezime: dlzka ciarky / medzery / odsadenie od hrany (px)
+    # Frame in test mode: dash length / gap / inset from the edge (px)
     TEST_DASH = 8
     TEST_GAP = 5
     TEST_INSET = 2
 
     def _decorate_test(self, image, style):
-        """Upravi snimok pre drag rezim tak, aby sa dal CHYTIT KDEKOLVEK.
+        """Adjusts the image for drag mode so it can be GRABBED ANYWHERE.
 
-        Windows pusta mys cez pixely vrstveneho okna s alfou 0 (hit-test je
-        per-pixel). Piktogram je vacsinou prazdny priestor - nazivo sa dalo
-        okno chytit len na 3-10 % plochy, presne na nakreslenej ciare. Preto:
+        Windows lets the mouse through the pixels of a layered window
+        that have alpha 0 (the hit-test is per-pixel). A pictogram is
+        mostly empty space - live, the window could be grabbed on only
+        3-10 % of its area, exactly on the drawn line. Therefore:
 
-          1. kazdy pixel dostane alfu aspon 1 (opticky neviditelne, ale
-             pre hit-test "plne"), takze drzi cela plocha okna;
-          2. jemny prerusovany ram ukaze, kde ma okno hranu a co hrac drzi.
+          1. every pixel gets an alpha of at least 1 (optically
+             invisible, but "solid" for the hit-test), so the whole
+             window area holds;
+          2. a subtle dashed frame shows where the window's edge is and
+             what the player is holding.
 
-        Mimo test rezimu sa nic z toho nekresli - v hre ostava okno presne
-        take, ake bolo (a klik-through).
+        Outside test mode none of this is drawn - in the game the window
+        stays exactly as it was (and click-through).
         """
         if image is None or ImageDraw is None:
             return image
@@ -399,8 +410,8 @@ class _SlotOverlay:
 
     def _step(self, elapsed):
         if self.visual == "breath":
-            # v test rezime dycha dookola (hrac si polohu doladuje),
-            # inak 2 cykly a koniec
+            # in test mode it breathes round and round (the player is
+            # fine-tuning the position), otherwise 2 cycles and the end
             if not self._test_mode and elapsed >= self.CYCLES * (self.inhale_s + self.exhale_s):
                 return True
             self._render(elapsed)
@@ -410,28 +421,29 @@ class _SlotOverlay:
         if elapsed <= intro + 0.05:
             self._render(elapsed)
         elif not self._static_done:
-            # animacia dobehla - dokreslime koncovy stav raz a dalej uz
-            # okno len visi na obrazovke bez jedineho prekreslenia
+            # the animation has finished - we draw the end state once, and
+            # from then on the window just hangs on screen without a single
+            # redraw
             self._render(intro)
             self._static_done = True
-        # v test rezime NIKDY nekonci sam - visi kym hrac test nevypne
+        # in test mode it NEVER ends by itself - stays until the test is off
         if self._test_mode:
             return False
         return elapsed >= self.HOLD_S
 
 
 class SomaticOverlayManager:
-    """Spravca 4 nezavislych in-game vizualov.
+    """Manager of the 4 independent in-game visuals.
 
-    Drzi spolocny farebny styl (podla temy appky), cielovy monitor a
-    popisky - jednotlive `_SlotOverlay` si od neho beru vsetko spolocne,
-    aby sa pri zmene temy/jazyka/monitora nemuselo prechadzat styri
-    objekty.
+    It holds the shared colour style (by the app's theme), the target
+    monitor and the labels - the individual `_SlotOverlay`s take
+    everything shared from it, so that a theme/language/monitor change
+    does not have to go through four objects.
     """
 
     VISUALS = ("grounding", "jaw", "release", "breath")
 
-    # Rozmery su v 1080p pixeloch - nasobia sa Monitor.scale.
+    # Sizes are in 1080p pixels - they are multiplied by Monitor.scale.
     BASE_SIZES = {
         "grounding": (240, 160),
         "jaw": (170, 175),
@@ -451,17 +463,17 @@ class SomaticOverlayManager:
         for i, overlay in enumerate(self._slots):
             overlay.pos = OVERLAY_DEFAULT_POS.get(i, (50.0, 50.0))
 
-    # ---------- spolocny stav ----------
+    # ---------- shared state ----------
 
     def set_palette(self, pal):
         self.style = Style(pal)
 
     def set_colors(self, color, danger_color):
-        """Zachovane kvoli spatnej kompatibilite s app.py."""
+        """Kept for backward compatibility with app.py."""
         self.style = Style({"accent": color, "danger": danger_color})
 
     def set_labels(self, labels, breath_inhale="", breath_exhale=""):
-        """`labels` je {index: text} - popisok pod vizualom."""
+        """`labels` is {index: text} - the label under the visual."""
         self._labels = labels or {}
         self._breath_labels = (breath_inhale, breath_exhale)
         for i, overlay in enumerate(self._slots):
@@ -471,8 +483,8 @@ class SomaticOverlayManager:
         return self._breath_labels[0] if inhale else self._breath_labels[1]
 
     def set_breath_seconds(self, inhale_s, exhale_s):
-        """Dlzka nadychu/vydychu (v sekundach) pre dychovy kruh - hrac ju
-        meni v Nastaveniach (viz app.py on_breath_seconds_change)."""
+        """Inhale/exhale length (in seconds) for the breath ring - the player
+        changes it in Settings (see app.py on_breath_seconds_change)."""
         for overlay in self._slots:
             if overlay.visual == "breath":
                 overlay.set_breath_seconds(inhale_s, exhale_s)
@@ -482,11 +494,11 @@ class SomaticOverlayManager:
         self._monitor_cache = (0.0, None)
 
     def target_monitor(self):
-        """Cielovy monitor s kratkou cache.
+        """Target monitor with a short cache.
 
-        Enumeracia monitorov je lacna, ale nie zadarmo, a pri spusteni
-        vizualu je to na GUI vlakne. Sekundova cache staci - monitory sa
-        pocas jednej sekundy neprepajaju.
+        Enumerating monitors is cheap but not free, and when a visual is
+        triggered it is on the GUI thread. A one-second cache is enough -
+        monitors do not get rewired within one second.
         """
         now = time.time()
         if self._monitor_cache[1] is not None and now - self._monitor_cache[0] < 1.0:
@@ -495,7 +507,7 @@ class SomaticOverlayManager:
         self._monitor_cache = (now, monitor)
         return monitor
 
-    # ---------- ovladanie slotov ----------
+    # ---------- slot control ----------
 
     def configure(self, index, enabled=None, scale=None, pos=None, color=None):
         if 0 <= index < len(self._slots):
@@ -503,8 +515,8 @@ class SomaticOverlayManager:
                                          color=color)
 
     def trigger(self, index):
-        """Vráti True, ak sa vizuál slotu naozaj začal kresliť (viz
-        `_SlotOverlay.trigger`). Neplatný index = nič sa nevykreslilo."""
+        """Returns True if the slot's visual really started drawing (see
+        `_SlotOverlay.trigger`). Invalid index = nothing was drawn."""
         if 0 <= index < len(self._slots):
             return bool(self._slots[index].trigger())
         return False
@@ -515,11 +527,12 @@ class SomaticOverlayManager:
         return False
 
     def test(self, index):
-        """Prepne drag-test rezim slotu. Vrati True ak je PO volani zapnuty
-        (vizual je na obrazovke a da sa tahat), False ak sa prave vypol."""
+        """Toggles the slot's drag-test mode. Returns True if it is on AFTER
+        the call (the visual is on screen and can be dragged), False if
+        it was just turned off."""
         if 0 <= index < len(self._slots):
-            # ak bezi test ineho slotu, najprv ho vypni - dva perzistentne
-            # test-vizualy naraz by sa prekryvali a mietli
+            # if another slot's test is running, turn it off first - two
+            # persistent test visuals at once would overlap and clash
             for i, ov in enumerate(self._slots):
                 if i != index and ov._test_mode:
                     ov.stop_test()
@@ -537,8 +550,9 @@ class SomaticOverlayManager:
         return False
 
     def set_test_moved_callback(self, index, callback):
-        """Nastavi callback(px, py), ktory sa zavola pri ukonceni testu s
-        novou polohou vizualu (v percentach monitora) - app si ju ulozi."""
+        """Sets callback(px, py), which is called when the test ends with the
+        visual's new position (in monitor percentages) - the app saves
+        it."""
         if 0 <= index < len(self._slots):
             self._slots[index].on_test_moved = callback
 
@@ -548,16 +562,17 @@ class SomaticOverlayManager:
             overlay.stop()
 
     def stop_all_tests(self):
-        """Ukonci VSETKY drag-testy a vrati klik-through.
+        """Ends ALL drag tests and restores click-through.
 
-        PRECO TO MA VLASTNU METODU: test rezim vypina klik-through
-        (`_enable_drag` -> `set_click_through(False)`), takze vizual nad hrou
-        pohlcuje kliky mysou - a sam od seba nikdy neskonci (`_step` v test
-        rezime vracia False navzdy). Kto klikol Test a zabudol, mal uprostred
-        obrazovky nekliknutelnu plochu a nemal ako zistit preco.
+        WHY THIS HAS ITS OWN METHOD: test mode turns click-through off
+        (`_enable_drag` -> `set_click_through(False)`), so the visual over
+        the game swallows mouse clicks - and it never ends on its own
+        (`_step` in test mode returns False forever). Whoever clicked Test
+        and forgot had an unclickable area in the middle of the screen
+        and no way to find out why.
 
-        Vracia pocet ukoncenych testov, aby volajuci vedel, ci ma o tom
-        povedat hracovi.
+        Returns the number of tests ended, so that the caller knows
+        whether to tell the player about it.
         """
         ukoncene = 0
         for overlay in self._slots:

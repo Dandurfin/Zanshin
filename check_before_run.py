@@ -1,28 +1,31 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Predbezna kontrola Zanshin - spusti PRED tym, nez otvoris appku.
+"""Zanshin pre-flight check - run it BEFORE you open the app.
 
-Na co to je
------------
-Cely redizajn (stranky Dnes/Spustace/V hre, dychajuci pas, keycapy) aj
-oprava rebindu a hromadneho odstranenia slotov vznikli v prostredi BEZ
-tkinter a BEZ Windows. Tento skript overi vsetko, co sa overit da bez
-otvorenia okna:
+What it is for
+--------------
+The whole redesign (the Today/Cues/In-game pages, the breathing bar,
+keycaps) and the fix of rebind and bulk slot deletion were made in an
+environment WITHOUT tkinter and WITHOUT Windows. This script checks
+everything that can be checked without opening a window:
 
-  * kompilaciu vsetkych modulov,
-  * uplnost a konzistenciu prekladov vo vsetkych 11 jazykoch,
-  * ze appka nevola metody/tokeny, ktore neexistuju,
-  * ze rebind a keycap maju spravne API (regresia z redizajnu),
-  * ze data z uzivatelskych nastaveni sa normalizuju bez pada,
-  * ze nainstalovany edge-tts je dost novy (starsi Microsoft odmieta).
+  * compilation of all modules,
+  * completeness and consistency of translations in all 11 languages,
+  * that the app does not call methods/tokens that do not exist,
+  * that rebind and keycap have the right API (regression from the
+    redesign),
+  * that data from user settings is normalised without a crash,
+  * that the installed edge-tts is new enough (Microsoft rejects older
+    ones).
 
-NEotvara ziadne okno, NEsahat na siet, NEnahrava nikam. Len cita zdroj a
-importuje ciste (bez GUI) moduly. Co NEvie overit: skutocne kreslenie cez
-Tk/UpdateLayeredWindow, vzhlad. To ostava na rucne overenie v bezaciej
-appke.
+It does NOT open any window, does NOT touch the network, does NOT upload
+anything anywhere. It only reads the source and imports pure (no-GUI)
+modules. What it can NOT check: actual drawing via
+Tk/UpdateLayeredWindow, appearance. That is left for manual checking in
+the running app.
 
-Spustenie:  python check_before_run.py
-Navratovy kod 0 = vsetko preslo, 1 = nieco padlo.
+Run:  python check_before_run.py
+Exit code 0 = everything passed, 1 = something failed.
 """
 
 import ast
@@ -53,24 +56,24 @@ def check(title):
     print(f"\n{'─' * 66}\n{title}\n{'─' * 66}")
 
 
-# DandurfApp je rozdelena do mixinov v app_*.py (stav ostava na DandurfApp,
-# mixiny nesu len metody). Kontroly appky preto citaju app.py aj vsetky
-# app_*.py - inak by volanie metody z mixinu vyzeralo ako nedefinovane a
-# kod presunuty do mixinu by sa nekontroloval vobec.
+# DandurfApp is split into mixins in app_*.py (state stays on DandurfApp,
+# the mixins carry only methods). The app checks therefore read app.py and
+# all app_*.py - otherwise calling a method from a mixin would look
+# undefined and code moved into a mixin would not be checked at all.
 
 def subory_appky():
-    """{meno suboru: zdrojak} pre app.py a vsetky app_*.py."""
+    """{file name: source} for app.py and all app_*.py."""
     mena = ["app.py"] + sorted(f for f in os.listdir(HERE)
                                if f.startswith("app_") and f.endswith(".py"))
     return {meno: read(meno) for meno in mena}
 
 
 def triedy_appky(subory):
-    """[(subor, uzol triedy)] pre DandurfApp a vsetky jej zaklady (mixiny).
+    """[(file, class node)] for DandurfApp and all its bases (mixins).
 
-    Zaklad sa hlada ako trieda na urovni modulu v app_*.py, tak ako ju
-    najde Python cez `from app_x import Mixin`. Zaklad, ktory sa nenajde,
-    je chyba - jeho metody by kontrola nevidela."""
+    A base is looked up as a module-level class in app_*.py, just as Python
+    finds it via `from app_x import Mixin`. A base that is not found is an
+    error - the check would not see its methods."""
     triedy = {}
     for meno, src in subory.items():
         for uzol in ast.parse(src).body:
@@ -92,7 +95,7 @@ def triedy_appky(subory):
 
 
 def zdroj_metody_appky(subory, metoda):
-    """Zdrojak metody DandurfApp (aj ked byva v mixine) od `def` po koniec tela."""
+    """Source of a DandurfApp method (even in a mixin) from `def` to body end."""
     for meno, trieda in triedy_appky(subory):
         for uzol in trieda.body:
             if isinstance(uzol, ast.FunctionDef) and uzol.name == metoda:
@@ -101,7 +104,7 @@ def zdroj_metody_appky(subory, metoda):
 
 
 # ==========================================================================
-# 1. Kompilacia vsetkych modulov
+# 1. Compilation of all modules
 # ==========================================================================
 
 check("1. Compilation (syntax) of all .py files")
@@ -116,12 +119,13 @@ for name in sorted(py_files):
 
 
 # ==========================================================================
-# 1b. Nedefinovane mena - kompilacia ich NEODCHYTI
+# 1b. Undefined names - compilation does NOT CATCH them
 # ==========================================================================
 #
-# Onboarding padal na NameError ('hud_paint' is not defined) hned pri
-# prvom starte: modul sa pouzival, ale neimportoval. ast.parse aj pytest
-# presli, lebo meno sa vyhodnocuje az za behu. pyflakes to vidi staticky.
+# Onboarding crashed with NameError ('hud_paint' is not defined) right at
+# the first start: the module was used but not imported. Both ast.parse and
+# pytest passed, because the name is only evaluated at runtime. pyflakes
+# sees it statically.
 
 check("1b. Undefined names (pyflakes)")
 try:
@@ -149,7 +153,7 @@ except Exception as exc:
 
 
 # ==========================================================================
-# 2. Preklady - vsetkych 11 jazykov, placeholdery, dopreklad
+# 2. Translations - all 11 languages, placeholders, still to translate
 # ==========================================================================
 
 check("2. Translations (all languages)")
@@ -192,14 +196,15 @@ try:
         problems.append(f"translations: {len(empty)} empty strings")
         print(f"  FAIL empty: {', '.join(empty[:10])}")
 
-    # Dopreklad - NIE je chyba, len upozornenie.
+    # Still to translate - NOT an error, just a warning.
     #
-    # Kriterium je ja/zh/ru/bg, nie de: nemecke "Timing" a "normal" su zhodou
-    # okolnosti rovnake slova ako anglicke, takze porovnanie s `de` hlasilo
-    # tri retazce navzdy aj po uplnom doprelozeni. Ine pismo sa s anglictinou
-    # nahodou netrafi. Zamerne zhody (ja/zh „{n}%“ ako anglictina) su v
-    # make_translation_todo.ZAMERNA_ZHODA - inak by tu pred kazdym spustenim
-    # svietilo falosne upozornenie a skutocne by sa v nom stratilo.
+    # The criterion is ja/zh/ru/bg, not de: German "Timing" and "normal" are
+    # by coincidence the same words as English, so comparing with `de`
+    # reported three strings forever, even after full translation. A
+    # different script does not match English by accident. Deliberate matches
+    # (ja/zh „{n}%“ like English) are in make_translation_todo.ZAMERNA_ZHODA -
+    # otherwise a false warning would light up here before every run and a
+    # real one would get lost in it.
     from make_translation_todo import na_dopreklad
     todo = na_dopreklad(S)
     if todo:
@@ -214,7 +219,7 @@ except Exception as exc:
 
 
 # ==========================================================================
-# 3. app.py + mixiny app_*.py - volane metody a tokeny existuju
+# 3. app.py + mixins app_*.py - called methods and tokens exist
 # ==========================================================================
 
 check("3. app.py + app_*.py mixins - call integrity")
@@ -222,8 +227,8 @@ try:
     subory = subory_appky()
     src = "\n".join(subory.values())
     triedy = triedy_appky(subory)
-    # Metody DandurfApp aj vsetkych jej mixinov. Meno v dvoch triedach je
-    # duplicita aj napriec subormi - jedna by ticho zatienila druhu.
+    # Methods of DandurfApp and all its mixins. A name in two classes is a
+    # duplicate even across files - one would silently shadow the other.
     methods = [n.name for _subor, cls in triedy for n in cls.body
                if isinstance(n, ast.FunctionDef)]
     defined = set(methods)
@@ -243,7 +248,7 @@ try:
     else:
         print("  OK   no duplicate methods")
 
-    # tokeny palety musia existovat v oboch temach
+    # palette tokens must exist in both themes
     #
     import theme as th
     combined = src + read("ui_dialogs.py") + read("ui_kit.py")
@@ -252,14 +257,15 @@ try:
         | set(re.findall(r'\["([a-z_0-9]+)"\]',
                          "".join(re.findall(r'tokens\([^)]*\)(\["[a-z_0-9]+"\])', combined))))
 
-    # `ui_shell.py` sa scanuje ZVLAST a LEN na vzor `c("kluc", "zaloha")`.
+    # `ui_shell.py` is scanned SEPARATELY and ONLY for the pattern
+    # `c("kluc", "zaloha")`.
     #
-    # Titulkova lista berie farby temy cez tuto pomocnu funkciu
-    # (`pal.get(kluc, PAL[zaloha])`), takze bez toho by sa jej preklep v
-    # nazve tokenu nedal odhalit inak nez okom. Cely subor sem ale pridat
-    # NEMOZNO: `Sidebar` si stavia vlastny slovnik s vlastnymi menami
-    # (`hover`, `active`, `text_2`, `text_3`), ktore NIE su tokeny temy -
-    # scan cez `pal["..."]` by ich nahlasil ako chybajuce.
+    # The title bar takes theme colours through this helper function
+    # (`pal.get(kluc, PAL[zaloha])`), so without this a typo in a token name
+    # could not be caught other than by eye. But the whole file CANNOT be
+    # added here: `Sidebar` builds its own dictionary with its own names
+    # (`hover`, `active`, `text_2`, `text_3`), which are NOT theme tokens -
+    # a scan via `pal["..."]` would report them as missing.
     used |= set(re.findall(r'\bc\("([a-z_0-9]+)",\s*"[a-z_0-9]+"\)',
                            read("ui_shell.py")))
     for key in (th.MODERN, th.ZEN):
@@ -275,7 +281,7 @@ except Exception as exc:
 
 
 # ==========================================================================
-# 4. Rebind + keycap API (regresia z redizajnu)
+# 4. Rebind + keycap API (regression from the redesign)
 # ==========================================================================
 
 check("4. Rebind and keycap (regression)")
@@ -289,18 +295,19 @@ try:
         problems.append("ui_kit.Keycap has NO set_text() - rebind will crash")
         print("  FAIL Keycap has no set_text()")
 
-    # FAZA 3: kontroly rebindu tu boli, kym sa hlaska spustala klavesou.
-    # Rebind aj obe pynput listenery su prec - jediny kus appky, ktory
-    # navonok vyzeral ako keylogger. Namiesto toho sa stráži, ze sa
-    # NEVRATIL. (Keycap sa zatial nemaze: stranka Spustace sa prekresluje
-    # az vo faze 5 a kontrola set_text() vyssie ho drzi funkcny.)
-    # Cela appka: app.py aj mixiny DandurfApp v app_*.py.
+    # PHASE 3: rebind checks were here while the cue was triggered by a key.
+    # Rebind and both pynput listeners are gone - the only part of the app
+    # that looked like a keylogger from outside. Instead, this guards that it
+    # has NOT COME BACK. (Keycap is not deleted yet: the Cues page is
+    # only redrawn in phase 5 and the set_text() check above keeps it
+    # working.)
+    # The whole app: app.py and the DandurfApp mixins in app_*.py.
     appka = subory_appky()
     ap = "\n".join(appka.values())
     dovoz =re.compile(r"^\s*(?:from\s+pynput|import\s+pynput)", re.M)
-    # Import pynput sa hlada vo VSETKYCH .py (nie len v app.py a
-    # ui_dialogs.py) a navyse v zavislostiach a v .spec - hook v inom module
-    # by pre anti-cheat vyzeral rovnako.
+    # The pynput import is searched for in ALL .py files (not just app.py and
+    # ui_dialogs.py) and also in the dependencies and the .spec - a hook in
+    # another module would look the same to an anti-cheat.
     s_pynput = [n for n in sorted(py_files) if dovoz.search(read(n))]
     s_pynput += [n for n in sorted(os.listdir(HERE))
                  if (n.endswith(".spec") or n.startswith("requirements"))
@@ -319,16 +326,17 @@ try:
         problems.append("a keyboard hook or rebind came back in app.py / app_*.py")
         print("  FAIL a keyboard hook or rebind is back in app.py / app_*.py")
 
-    # metoda moze byvat v mixine (app_*.py) - hlada sa v celej DandurfApp
+    # the method may live in a mixin (app_*.py) - search all of DandurfApp
     block = zdroj_metody_appky(appka, "remove_selected_slots")
     if "slot_only_one" in block:
         print("  OK   remove_selected_slots has a guard against deleting everything")
     else:
         problems.append("remove_selected_slots has no guard against deleting every slot")
         print("  FAIL the guard for bulk deletion is missing")
-    # Velkost pisma MUSI byt cislo. ui("11") prejde kompilaciou aj testami,
-    # ale customtkinter ju pri skalovani nasobi floatom -> TypeError a cely
-    # dialog sa neotvori (takto padal Sprievodca pri kazdom otvoreni).
+    # Font size MUST be a number. ui("11") passes compilation and tests, but
+    # customtkinter multiplies it by a float when scaling -> TypeError and
+    # the whole dialog does not open (this is how the Guide crashed every
+    # time it was opened).
     string_fonts = []
     for name in sorted(os.listdir(".")):
         if not name.endswith(".py"):
@@ -349,7 +357,7 @@ except Exception as exc:
 
 
 # ==========================================================================
-# 5. Normalizacia nastaveni - ciste moduly bez Tk
+# 5. Settings normalisation - pure modules without Tk
 # ==========================================================================
 
 check("5. Data layer (without Tk)")
@@ -364,7 +372,7 @@ for mod in ("settings_model", "hr_stats", "display", "hud_paint",
 
 try:
     import settings_model as sm
-    # zamerne rozbite/prazdne data - normalizacia nesmie padnut
+    # deliberately broken/empty data - normalisation must not crash
     for raw in ({}, {"mode": "nezmysel", "cooldown": "abc"}, {"key_type": "??"}, None):
         sm.normalize_slot(raw)
     for i in range(4):
@@ -378,7 +386,7 @@ except Exception as exc:
 
 
 # ==========================================================================
-# 6. Ikona - znak 残 sa da vykreslit
+# 6. Icon - the character 残 can be drawn
 # ==========================================================================
 
 check("6. Icon (golden enso 残)")
@@ -399,12 +407,13 @@ except Exception as exc:
 
 
 # ==========================================================================
-# 7. Ziadna integracia so Steamom
+# 7. No Steam integration
 # ==========================================================================
 #
-# Zanshin na Steam zatial nejde (rozhodnutie autora, 0.2) a Steam vrstva
-# je v _archiv. Tato kontrola strazi, ze sa nevratila potichu - ani modul,
-# ani jeho import, ani Steamworks binding v builde.
+# Zanshin is not going to Steam for now (author's decision, 0.2) and the
+# Steam layer is in _archiv. This check guards that it did not quietly
+# come back - neither the module, nor its import, nor a Steamworks binding
+# in the build.
 
 check("7. No Steam integration")
 try:
@@ -431,20 +440,22 @@ except Exception as exc:
 
 
 # ==========================================================================
-# 8. edge-tts dost novy (prirodzeny hlas)
+# 8. edge-tts new enough (natural voice)
 # ==========================================================================
 #
-# Microsoft od novembra 2026 odmieta starsie edge-tts (HTTP 403) - appka
-# potom hovori len hlasom z Windows a v Nastaveniach -> Zvuk pise, ze
-# sluzba poziadavku odmietla. build_all.ps1 edge-tts pri kazdom builde
-# zdvihne na najnovsi sam (a vyskusa ho), pri behu zo zdrojakov to treba
-# urobit rucne. Poziadavka je len v requirements.txt a cita sa tym istym
-# vzorom ako $edgeMinVzor v build_all.ps1 (skupina 1 = cela podmienka,
-# 2 = minimum). Stara verzia je len upozornenie - appka bezi aj bez
-# prirodzeneho hlasu; chybajuce minimum v requirements.txt je chyba.
-# Strop verzie (napr. ,<8) tam zamerne nie je - zablokoval by opravu v novej
-# hlavnej verzii. build_all.ps1 ho odporuci len docasne, ked novy edge-tts
-# zmeni API; preto tu len upozornenie, nech sa na jeho odstranenie nezabudne.
+# Since November 2026 Microsoft rejects older edge-tts (HTTP 403) - the
+# app then speaks only with the Windows voice and in Settings -> Sound it
+# says the service refused the request. build_all.ps1 raises edge-tts to
+# the newest on every build by itself (and tries it out); when running
+# from source it has to be done by hand. The requirement is only in
+# requirements.txt and is read with the same pattern as $edgeMinVzor in
+# build_all.ps1 (group 1 = the whole condition, 2 = the minimum). An old
+# version is only a warning - the app runs even without the natural
+# voice; a missing minimum in requirements.txt is an error.
+# A version cap (e.g. ,<8) is deliberately not there - it would block a
+# fix in a new major version. build_all.ps1 recommends it only
+# temporarily, when a new edge-tts changes the API; that is why it is only
+# a warning here, so that removing it is not forgotten.
 
 check("8. edge-tts version (natural voice)")
 try:
@@ -487,7 +498,7 @@ except Exception as exc:
 
 
 # ==========================================================================
-# Zaver
+# Summary
 # ==========================================================================
 
 print(f"\n{'═' * 66}")

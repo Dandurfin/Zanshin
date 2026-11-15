@@ -1,31 +1,37 @@
 # -*- coding: utf-8 -*-
-"""Dokumenty po opravach 0.2.1 (druha kontrola) hovoria to, co robi kod.
+"""Documents after the 0.2.1 fixes (second check) say what the code does.
 
-  * README / PRIVACY: prirodzeny hlas posiela Microsoftu len hlasky, ktore
-    moze naozaj povedat (jedna zo styroch, zapnuta, so zapnutym obrazkom v
-    hre, s hlasom, bez vlastnej nahravky). Uz netvrdia, ze ide aj vypnuta
-    alebo nahrata hlaska, ani ze po prepnuti na hlas z Windows sa
-    rozbehnuta priprava este dopossle.
-  * Hlaska s vypnutym obrazkom v hre sa od 0.2.1c nepripravuje - PRIVACY a
-    KNOWN_ISSUES uz nepriznavaju, ze jej text ide Microsoftu.
-  * UDP, ktore sa neotvorilo: dokumenty citaju stitok a prepinac presne
-    tak, ako ich ukazuje appka; do app.log ide len port a chyba.
-  * KNOWN_ISSUES: hra Ctrl+Alt+Z "nemusi dostat", chodza sa z ucenia
-    nevyraduje (kroky len stisia hlasky), terminy ako v README, licencia
-    "GPLv3" (autor 2026-11-15: len verzia 3, bez "or later").
-  * SOUL: hranica vysokeho tepu je do naucenia zaloha 110.
-  * SAFETY: gui_harness_auto.py zalohuje nastavenia a historiu tepu na
-    disk vedla originalov a po prerusenom behu ich vrati (od 0.2.1c; do
-    vtedy historiu drzal len v pamati a SAFETY to priznaval).
+  * README / PRIVACY: the natural voice sends Microsoft only cues it can
+    really say (one of the four, enabled, with the in-game picture on,
+    with voice, without its own recording). They no longer claim that a
+    disabled or recorded cue goes too, or that after switching to the
+    Windows voice a preparation already running still sends the rest.
+  * A cue with its in-game picture turned off is not prepared since
+    0.2.1c - PRIVACY and KNOWN_ISSUES no longer admit that its text goes
+    to Microsoft.
+  * UDP that did not open: the documents quote the label and the switch
+    exactly as the app shows them; only the port and the error go into
+    app.log.
+  * KNOWN_ISSUES: the game "may not get" Ctrl+Alt+Z, walking is not
+    excluded from learning (steps only silence cues), terms as in the
+    README, licence "GPLv3" (author 2026-11-15: version 3 only, without
+    "or later").
+  * SOUL: the high heart rate limit is a fallback of 110 until it is
+    learnt.
+  * SAFETY: gui_harness_auto.py backs up the settings and heart rate
+    history to disk next to the originals and restores them after an
+    interrupted run (since 0.2.1c; until then it kept the history only in
+    memory and SAFETY admitted it).
 
-Kazda veta je naviazana na kod: ked sa kod zmeni, test povie, ktory
-dokument treba prepisat - nie naopak.
+Every sentence is tied to the code: when the code changes, the test says
+which document needs rewriting - not the other way round.
 
-0.2.2d: podrobne pravidla pripravy hlasu sa z README presunuli do
-docs/HOW-IT-WORKS.md, vyvojarske skripty a GUI harness do DEVELOPMENT.md;
-straze isli s vetami. Slovo "reminder" je v dokumentoch "cue" ako v appke.
-0.2.2 (davka 4): co ktora verzia opravila, je v CHANGELOG.md (KNOWN_ISSUES
-ma len otvorene veci) - straze na tie vety su tam.
+0.3d: the detailed rules of voice preparation moved from the README to
+docs/HOW-IT-WORKS.md, the developer scripts and the GUI harness to
+DEVELOPMENT.md; the guards went with the sentences. The word "reminder"
+is "cue" in the documents, as in the app.
+0.3 (batch 4): what each version fixed is in CHANGELOG.md (KNOWN_ISSUES
+has only open things) - the guards for those sentences are there.
 """
 import ast
 import inspect
@@ -52,8 +58,8 @@ def _read(meno):
 
 
 def _plain(meno):
-    """Text bez zalomeni a bez znakov citatu ">" na zaciatku riadkov -
-    vety v .md su zalomene kdekolvek, aj v ramceku README."""
+    """Text without line breaks and without ">" quote marks at line starts -
+    sentences in .md are wrapped anywhere, even in the README box."""
     return " ".join(" ".join(r.lstrip(">") for r in _read(meno).splitlines())
                     .split())
 
@@ -79,13 +85,13 @@ def _metoda_triedy(subor, trieda, metoda):
 
 
 # --------------------------------------------------------------------------
-# Priprava hlasu: co sa posiela
+# Voice preparation: what is sent
 # --------------------------------------------------------------------------
 
 def test_priprava_posiela_len_hlasky_ktore_moze_povedat():
-    # Kod: vypnuta hlaska, hlaska s vypnutym obrazkom v hre (0.2.1c),
-    # vlastna nahravka a slot navyse z 0.1 (index 4+) sa nepripravuju - ani
-    # pri Teste (`_speak_text`).
+    # Code: a disabled cue, a cue with its in-game picture off (0.2.1c), a
+    # cue with its own recording and an extra slot from 0.1 (index 4+) are
+    # not prepared - not even on Test (`_speak_text`).
     telo = zdroj_metody("_slot_na_pripravu")
     for podmienka in ("je_kategoria(slot.index)", "slot.enabled_value",
                       "self._ma_obrazok_v_hre(slot)",
@@ -94,8 +100,8 @@ def test_priprava_posiela_len_hlasky_ktore_moze_povedat():
     assert "self._slot_na_pripravu(slot)" in zdroj_metody("pregen_jobs")
     assert "self._slot_na_pripravu(slot)" in zdroj_metody("_speak_text")
 
-    # README hovori len "the wording of your spoken cues"; presne podmienky
-    # su od 0.2.2d v HOW-IT-WORKS a v PRIVACY.
+    # The README only says "the wording of your spoken cues"; the exact
+    # conditions are in HOW-IT-WORKS and in PRIVACY since 0.3d.
     readme = _plain("README.md")
     assert "the wording of your spoken cues" in readme
     ako = _plain(AKO)
@@ -112,8 +118,8 @@ def test_priprava_posiela_len_hlasky_ktore_moze_povedat():
     assert ("that are switched on, have their in-game picture on, are set to "
             "speak and don't play your own recording") in privacy
     assert "extra cue kept from a 0.1 profile are never sent" in privacy
-    # Co pripravu spusti (zapnutie hlasky ci obrazka, zmazanie nahravky,
-    # novy profil).
+    # What starts the preparation (enabling a cue or a picture, deleting a
+    # recording, a new profile).
     assert ("switch it or its picture on, switch it to speak or remove its "
             "own recording") in ako
     assert ("switch a cue or its picture on, switch it to speak or "
@@ -123,21 +129,23 @@ def test_priprava_posiela_len_hlasky_ktore_moze_povedat():
 
 
 def test_zapnutie_hlasky_a_novy_profil_pripravu_spustia():
-    """README aj PRIVACY menuju zapnutie hlasky a novy profil medzi tym, co
-    pripravu spusti - kod to od tejto opravy naozaj robi."""
+    """README and PRIVACY name enabling a cue and a new profile among the
+    things that start the preparation - since this fix the code really
+    does that."""
     assert "schedule_pregenerate" in _metoda_triedy(
         "ui_dialogs.py", "SlotCard", "on_enabled_change")
     assert "schedule_pregenerate" in zdroj_metody("create_profile")
     assert "schedule_pregenerate" in _metoda_triedy(
         "ui_dialogs.py", "SlotSettingsDialog", "_commit_voice")
-    # Zapnutie obrazka v hre tiez (0.2.1c) - oba prepinace obrazka idu cez
-    # `on_overlay_config_change` (test_021c_pregen_obrazok.py).
+    # Enabling the in-game picture too (0.2.1c) - both picture switches go
+    # through `on_overlay_config_change` (test_021c_pregen_obrazok.py).
     assert "self.schedule_pregenerate(200)" in zdroj_metody("on_overlay_config_change")
 
 
 def test_prepnutie_prec_zastavi_rozbehnutu_pripravu():
-    # Kod: kazde planovanie aj prazdna priprava zvysi `_pregen_seq`, prepnutie
-    # na hlas z Windows tiez - vlakno dalsiu hlasku nezacne.
+    # Code: every scheduling and even an empty preparation increments
+    # `_pregen_seq`, switching to the Windows voice too - the thread does
+    # not start the next cue.
     for metoda in ("on_engine_change", "schedule_pregenerate", "pregenerate"):
         assert "self._zrus_rozbehnutu_pripravu()" in zdroj_metody(metoda), metoda
     assert "self._pregen_seq += 1" in zdroj_metody("_zrus_rozbehnutu_pripravu")
@@ -159,13 +167,14 @@ def test_prepnutie_prec_zastavi_rozbehnutu_pripravu():
 
 
 def test_hlaska_s_vypnutym_obrazkom_dokumenty_hovoria_pravdu():
-    """`_dalsi_cue_slot` hlasku s vypnutym obrazkom v hre sam nespusti. Do
-    0.2.1b ju priprava nevyradovala (jej text isiel Microsoftu) a PRIVACY s
-    KNOWN_ISSUES to poctivo priznavali. Od 0.2.1c ju `_slot_na_pripravu`
-    vyraduje - priznanie je prec a KNOWN_ISSUES to vedie medzi opravami.
-    Keby podmienka na obrazok z kodu zmizla, test povie, ze vety o nej
-    uz nie su pravda."""
-    kod = zdroj_metody("_slot_na_pripravu").split('"""')[-1]   # bez docstringu
+    """`_dalsi_cue_slot` does not itself trigger a cue whose in-game picture
+    is off. Until 0.2.1b the preparation did not exclude it (its text went
+    to Microsoft) and PRIVACY with KNOWN_ISSUES honestly admitted it.
+    Since 0.2.1c `_slot_na_pripravu` excludes it - the admission is gone
+    and KNOWN_ISSUES lists it among the fixes. If the picture condition
+    disappeared from the code, the test says that the sentences about it
+    are no longer true."""
+    kod = zdroj_metody("_slot_na_pripravu").split('"""')[-1]   # without the docstring
     vyraduje = "overlay_configs" in kod or "_ma_obrazok" in kod
     assert vyraduje
     privacy = _plain("PRIVACY.md")
@@ -179,7 +188,7 @@ def test_hlaska_s_vypnutym_obrazkom_dokumenty_hovoria_pravdu():
 
 
 # --------------------------------------------------------------------------
-# Port tepu a UDP
+# Heart rate port and UDP
 # --------------------------------------------------------------------------
 
 def test_privacy_port_menuje_ovladanie_ako_appka():
@@ -190,9 +199,9 @@ def test_privacy_port_menuje_ovladanie_ako_appka():
     assert "*%s → %s*" % (_en("nav.vhre_short"),
                           _en("settings.hr_section_title")) in p
     assert "heart-rate sensor settings" not in p
-    # Parovaci sprievodca senzor zapne - PRIVACY to hovori.
+    # The pairing guide turns the sensor on - PRIVACY says so.
     assert "self._enable_hr_monitoring()" in zdroj_metody("open_watch_pairing")
-    # Na UDP appka neodpoveda nicim, na TCP sa tvari ako OBS.
+    # On UDP the app replies with nothing, on TCP it pretends to be OBS.
     assert "on UDP it replies nothing" in p
     assert "sendto" not in inspect.getsource(heart_rate)
 
@@ -207,8 +216,8 @@ def test_udp_stitok_a_log_v_dokumentoch_ako_v_kode():
     assert "**If UDP won't open**" in _plain("PRIVACY.md")
     assert "not your PC's address" in _plain("PRIVACY.md")
 
-    # Kod: vlastne druhy stavu (TCP bezi dalej) a do app.log len port a
-    # chyba - adresa `host` nie.
+    # Code: its own kinds of state (TCP keeps running) and only the port and
+    # the error go to app.log - not the `host` address.
     src = inspect.getsource(heart_rate.HeartRateMonitor._udp_loop)
     assert '"udp_busy"' in src and '"udp_error"' in src
     volania = [u for u in ast.walk(ast.parse(textwrap.dedent(src)))
@@ -221,7 +230,7 @@ def test_udp_stitok_a_log_v_dokumentoch_ako_v_kode():
 
 def test_readme_check_sources_offline_ako_skript():
     import check_sources
-    readme = _plain(VYVOJ)      # od 0.2.2d vyvojarske skripty tu, nie v README
+    readme = _plain(VYVOJ)      # since 0.3d the developer scripts are here, not in the README
     assert ("it says you're offline, checks nothing and exits with 0 instead "
             "of reporting the links as dead") in readme
     main = inspect.getsource(check_sources.main)
@@ -247,14 +256,15 @@ def test_known_issues_bez_rozporov():
     opravy = _sekcia(_read(ZMENY), "What 0.2.1 fixes")
     for nadpis in ("### The online voice", "### Smaller fixes"):
         assert nadpis in opravy, nadpis
-    # Jazykovy riadok: KNOWN_ISSUES hovori, ze uz netvrdi preklad hlasok.
+    # The language row: KNOWN_ISSUES says it no longer claims cue translation.
     assert _en("settings.language_sub") == "Cues you already have keep their wording."
     assert "cues you already have keep their wording" in _plain(ZMENY)
 
 
 def test_chodza_len_stisi_hlasky_ucenie_ju_nevyraduje():
-    """KNOWN_ISSUES: kroky len stisia hlasky, cas chodze sa uci dalej. Keby
-    ucenie kroky niekedy vyradovalo, veta v KNOWN_ISSUES musi ist prec."""
+    """KNOWN_ISSUES: steps only silence cues, walking time is still learnt
+    from. If learning ever excluded steps, the sentence in KNOWN_ISSUES
+    has to go."""
     k = _plain("KNOWN_ISSUES.md")
     assert "Steps from the watch only keep cues quiet" in k
     for f in (hr_stats.dynamicky_kriticky, hr_stats.dynamicky_prah_zataze,
@@ -276,9 +286,10 @@ def test_soul_hranica_a_licencia():
 
 
 def test_safety_harness_odklada_nastavenia_a_historiu_ako_skript():
-    """Od 0.2.2d su podrobnosti o zalohach harnessu v DEVELOPMENT.md (po
-    anglicky); SAFETY ma len, ze skripty hybu mysou a build ich nebali, a
-    odkaz sem. Veta ide za kodom: ked sa zaloha zmeni, test povie kde."""
+    """Since 0.3d the details of the harness backups are in DEVELOPMENT.md
+    (in English); SAFETY only has that the scripts move the mouse and the
+    build does not package them, and a link here. The sentence follows the
+    code: when the backup changes, the test says where."""
     skript = _read("gui_harness_auto.py")
     safety = _plain("SAFETY.md")
     vyvoj = _plain(VYVOJ)
@@ -287,9 +298,9 @@ def test_safety_harness_odklada_nastavenia_a_historiu_ako_skript():
         assert '"%s"' % subor in skript, subor
         assert "`%s`" % subor in vyvoj, subor
     assert 'os.path.join(PROJ, "logs", "gui_harness")' in skript
-    # Od 0.2.1c je zaloha na disku vedla originalov, nie v pamati ani v
-    # logs\gui_harness\ - a po tvrdom zabiti ju vrati dalsi beh
-    # (test_021c_harness_zaloha.py overuje spravanie).
+    # Since 0.2.1c the backup is on disk next to the originals, not in memory
+    # or in logs\gui_harness\ - and after a hard kill the next run restores
+    # it (test_021c_harness_zaloha.py checks the behaviour).
     assert "_hr_backups" not in skript
     assert 'ZALOHA = ".pred-harnessom"' in skript
     assert "def obnov_po_prerusenom_behu" in skript

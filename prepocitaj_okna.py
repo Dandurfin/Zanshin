@@ -1,23 +1,26 @@
 # -*- coding: utf-8 -*-
-"""Prepocita PLATNOST uz ulozenych meracich okien podla dnesnych pravidiel.
+"""Recomputes the VALIDITY of saved measurement windows by today's rules.
 
-PRECO TO EXISTUJE
-Okno si nesie `valid` a `reasons` z chvile, kedy vzniklo. Ked sa pravidlo
-zmeni, stare zaznamy o tom nevedia - a graf ucinnosti dalej rata okna, ktore
-by dnes neobstali. Presne to sa stalo 19. 9., ked pribudol dovod
-`nebol_pri_klavesnici`: zo siestich platnych okien boli styri take, v ktorych
-hrac pri pocitaci vobec nebol, a tri z nich boli najvacsie "hlaska zabrala"
-vysledky v celom subore.
+WHY THIS EXISTS
+A window carries `valid` and `reasons` from the moment it was created.
+When a rule changes, old records do not know about it - and the
+effectiveness graph keeps counting windows that would not pass today.
+That is exactly what happened on 19. 9., when the reason
+`nebol_pri_klavesnici` was added: of the six valid windows, four were
+ones in which the player was not at the computer at all, and three of
+them were the biggest "the cue worked" results in the whole file.
 
-CO ROBI A CO NEROBI
-Dopocitava len dovody, ktore sa daju odvodit z UZ ULOZENYCH poli okna -
-teda z `pre_activity` a `post_activity`. Nesiaha na `skratene_pred`,
-`skratene_po`, `diera_v_datach` ani `refraktern_zona`: tie sa ratali zo
-surovych vzoriek tepu, ktore v subore nie su, a hadat ich spatne by
-znamenalo vyrobit cisla, ktore nikto nenameral.
+WHAT IT DOES AND WHAT IT DOES NOT
+It only fills in reasons that can be derived from the window's ALREADY
+SAVED fields - i.e. from `pre_activity` and `post_activity`. It does not
+touch `skratene_pred`, `skratene_po`, `diera_v_datach` or
+`refraktern_zona`: those were computed from raw heart-rate samples that
+are not in the file, and guessing them after the fact would mean making
+up numbers nobody measured.
 
-ZAZNAMY SA NEMAZU. Okno ostava aj s cislami, len prestane platit a dostane
-dovod. Surove data sa daju vzdy prefiltrovat znova; zmazat sa daju raz.
+RECORDS ARE NOT DELETED. The window stays, numbers and all; it just
+stops being valid and gets a reason. Raw data can always be filtered
+again; it can be deleted only once.
 """
 
 import io
@@ -32,12 +35,12 @@ from paths import data_dir
 
 
 def _dovody_z_aktivity(okno):
-    """Dovody, ktore plynu z aktivity pri klavesnici. Rovnake pravidlo ako
-    `measure.build_window` - ked sa zmeni tam, zmeni sa aj tu."""
+    """Reasons that follow from activity at the keyboard. The same rule as
+    `measure.build_window` - when it changes there, it changes here too."""
     pre = okno.get("pre_activity")
     post = okno.get("post_activity")
-    # `None` znamena "nevieme", nie "bol prec" - stare relacie aktivitu
-    # nezapisovali a neznalost nesmie zneplatnit okno.
+    # `None` means "we do not know", not "was away" - old sessions did not
+    # record activity, and not knowing must not invalidate a window.
     if ((pre is not None and pre < measure.MIN_AKTIVITA)
             or (post is not None and post < measure.MIN_AKTIVITA)):
         return [measure.R_NEAKTIVNY]
@@ -45,7 +48,7 @@ def _dovody_z_aktivity(okno):
 
 
 def prepocitaj(cesta, zapisat=True):
-    """Vrati (pocet_okien, zmenene, cesta_zalohy). `zapisat=False` = nahlad."""
+    """Returns (n_windows, changed, backup_path). `zapisat=False` = preview."""
     with io.open(cesta, encoding="utf-8") as f:
         data = json.load(f)
     okna = data["windows"] if isinstance(data, dict) and "windows" in data else data
@@ -68,9 +71,9 @@ def prepocitaj(cesta, zapisat=True):
         znacka = datetime.now().strftime("%Y%m%d-%H%M%S")
         zaloha = "%s.pred-prepoctom-%s" % (cesta, znacka)
         shutil.copy2(cesta, zaloha)
-        # Atomicky zapis - rovnaky vzor ako `save_settings`: pri pade
-        # uprostred zapisu by inak ostal orezany subor a s nim aj strata
-        # celej historie merania.
+        # Atomic write - the same pattern as `save_settings`: a crash in the
+        # middle of writing would otherwise leave a truncated file, and with
+        # it the loss of the whole measurement history.
         tmp = cesta + ".tmp"
         with io.open(tmp, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)

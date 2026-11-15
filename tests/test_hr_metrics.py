@@ -1,6 +1,6 @@
-"""Testy metrik z cisteho BPM (hr_stats), analyzy historie (hr_insights) a
-kandidatskych IP (netinfo). Vsetko bez Tk, bez siete (netinfo len cita
-adresy z OS, nikam neposiela).
+"""Tests of metrics from pure BPM (hr_stats), history analysis
+(hr_insights) and candidate IPs (netinfo). All without Tk, without network
+(netinfo only reads addresses from the OS, sends nothing anywhere).
 """
 import os
 import sys
@@ -28,8 +28,8 @@ def _feed(stats, values, start=1000.0, step=1.0):
 # --------------------------------------------------------------------------
 
 def test_hrr_is_peak_minus_bpm_one_minute_later():
-    """Tep 170 na vrchole, o minutu 140 -> HRR 30 (zadanie)."""
-    # 3 min pokoj 70, nastup na 170, potom linearne dole na 140 za 60 s
+    """Heart rate 170 at the peak, a minute later 140 -> HRR 30 (spec)."""
+    # 3 min of rest at 70, rise to 170, then linearly down to 140 over 60 s
     values = [70] * 180 + [100, 130, 160, 170] + [170 - (30 * i / 60.0) for i in range(1, 61)] + [140] * 30
     events = hr_stats.heart_rate_recovery(_samples(values))
     assert events, "vrchol 170 musi byt najdeny"
@@ -42,7 +42,7 @@ def test_hrr_is_peak_minus_bpm_one_minute_later():
 def test_hrr_ignores_small_wiggles_and_peaks_without_a_minute_after():
     stats_wiggle = hr_stats.heart_rate_recovery(_samples([70, 72, 71, 73, 70, 74, 71] * 30))
     assert stats_wiggle == [], "drobne zuby +-4 BPM nie su vrchol"
-    # vrchol na uplnom konci - minutu po nom nic nie je -> ziadna udalost
+    # peak at the very end - there is nothing a minute after it -> no event
     events = hr_stats.heart_rate_recovery(_samples([70] * 120 + [120, 150, 160]))
     assert events == []
 
@@ -66,11 +66,11 @@ def test_heartstats_exposes_hrr_and_summary_fields():
 
 
 # --------------------------------------------------------------------------
-# Pokojova zakladna relacie + trend
+# Session resting baseline + trend
 # --------------------------------------------------------------------------
 
 def test_session_baseline_is_20th_percentile_of_whole_session():
-    values = [60] * 50 + [100] * 150        # 25 % vzoriek na 60 -> 20. percentil = 60
+    values = [60] * 50 + [100] * 150        # 25 % of samples at 60 -> 20th percentile = 60
     assert hr_stats.session_baseline(_samples(values)) == 60
     assert hr_stats.session_baseline(_samples([60] * 20 + [100] * 180)) == 100
     assert hr_stats.session_baseline(_samples([60] * 10)) is None
@@ -88,21 +88,22 @@ def test_baseline_trend_across_sessions_rising():
 
 
 def test_baseline_trend_flags_insufficient_span_instead_of_exploding():
-    """Bug (opraveny): relacie par minut od seba davali "-3009 BPM/tyzden"
-    a podobne nezmysly, lebo regresia delila takmer nulovym casovym
-    rozptylom. Teraz sa slope pri kratkom rozostupe vobec neuvadza."""
+    """Bug (fixed): sessions a few minutes apart gave "-3009 BPM/tyzden"
+    (per week) and similar nonsense, because the regression divided by an
+    almost zero time spread. Now the slope is not given at all with a
+    short spacing."""
     sessions = [
         {"started": 1000.0, "baseline_bpm": 62.0},
-        {"started": 1000.0 + 5 * 60, "baseline_bpm": 58.0},   # o 5 minut neskor
-        {"started": 1000.0 + 11 * 60, "baseline_bpm": 61.0},  # o dalsich 6 minut
+        {"started": 1000.0 + 5 * 60, "baseline_bpm": 58.0},   # 5 minutes later
+        {"started": 1000.0 + 11 * 60, "baseline_bpm": 61.0},  # another 6 minutes on
     ]
     trend = hr_stats.baseline_trend(sessions)
     assert trend["insufficient_span"] is True
     assert trend["slope_per_week"] == 0.0
-    # first/last/delta su nezavisle od regresie a mozu ostat pouzitelne
+    # first/last/delta are independent of the regression and may stay usable
     assert trend["first"] == 62.0 and trend["last"] == 61.0
 
-    # presne na hranici (2 dni) uz je rozostup dostatocny
+    # exactly at the limit (2 days) the spacing is already sufficient
     sessions_ok = [
         {"started": 1000.0, "baseline_bpm": 60.0},
         {"started": 1000.0 + hr_stats.MIN_TREND_SPAN_S, "baseline_bpm": 64.0},
@@ -111,13 +112,13 @@ def test_baseline_trend_flags_insufficient_span_instead_of_exploding():
 
 
 # --------------------------------------------------------------------------
-# Casove obdobia (Historia: Den / Tyzden / Mesiac / Rok)
+# Time periods (History: Day / Week / Month / Year)
 # --------------------------------------------------------------------------
 
 def test_aggregate_by_period_buckets_same_day_together():
-    # realisticky (aktualna era) zaklad - datetime.timestamp() na Windows
-    # nezvlada zaporne/tesne-pri-epoche hodnoty, ktore by "started" nikdy
-    # v skutocnosti nemalo (vzdy z time.time())
+    # a realistic (current era) base - datetime.timestamp() on Windows cannot
+    # handle negative/near-epoch values, which "started" would never actually
+    # have (always from time.time())
     base = time.mktime((2026, 3, 10, 9, 0, 0, 0, 0, -1))
     day = 86400.0
     sessions = [
@@ -139,7 +140,7 @@ def test_aggregate_by_period_buckets_same_day_together():
 
 
 def test_aggregate_by_period_month_and_year_bucketing():
-    """"Mesiac -> denne priemery, rok -> mesacne" - presne ako v zadani."""
+    """"Month -> daily averages, year -> monthly" - exactly as in the spec."""
     sessions = [
         {"started": time.mktime((2026, 1, 5, 10, 0, 0, 0, 0, -1)), "baseline_bpm": 60.0},
         {"started": time.mktime((2026, 1, 5, 18, 0, 0, 0, 0, -1)), "baseline_bpm": 62.0},
@@ -159,11 +160,11 @@ def test_aggregate_by_period_skips_sessions_without_started():
 
 
 def test_period_start_ts_week_is_a_monday_midnight():
-    # stvrtok 2026-01-15 15:30 -> pondelok 2026-01-12 00:00
+    # Thursday 2026-01-15 15:30 -> Monday 2026-01-12 00:00
     thursday = time.mktime((2026, 1, 15, 15, 30, 0, 0, 0, -1))
     start = hr_stats.period_start_ts(hr_stats.PERIOD_WEEK, now=thursday)
     start_struct = time.localtime(start)
-    assert start_struct.tm_wday == 0        # pondelok
+    assert start_struct.tm_wday == 0        # Monday
     assert (start_struct.tm_hour, start_struct.tm_min, start_struct.tm_sec) == (0, 0, 0)
     assert start <= thursday
 
@@ -172,7 +173,7 @@ def test_count_sessions_since_filters_and_sums_duration():
     sessions = [
         {"started": 100.0, "duration_s": 120.0},
         {"started": 200.0, "duration_s": 60.0},
-        {"started": 50.0, "duration_s": 999.0},   # pred hranicou
+        {"started": 50.0, "duration_s": 999.0},   # before the limit
         "junk",
     ]
     count, duration = hr_stats.count_sessions_since(sessions, since_ts=100.0)
@@ -180,13 +181,13 @@ def test_count_sessions_since_filters_and_sums_duration():
 
 
 # --------------------------------------------------------------------------
-# Cas v pasmach - v sekundach, nie vo vzorkach
+# Time in bands - in seconds, not in samples
 # --------------------------------------------------------------------------
 
 def test_time_in_zones_counts_seconds_not_samples():
     critical = 110
-    slow = _samples([60] * 60 + [130] * 60, step=1.0)            # 60 s pokoj, 60 s kriticke
-    fast = _samples([60] * 120 + [130] * 120, step=0.5)          # to iste pri 2 Hz
+    slow = _samples([60] * 60 + [130] * 60, step=1.0)            # 60 s calm, 60 s critical
+    fast = _samples([60] * 120 + [130] * 120, step=0.5)          # the same at 2 Hz
     zs = hr_stats.time_in_zones(slow, critical, baseline=60)
     zf = hr_stats.time_in_zones(fast, critical, baseline=60)
     assert abs(zs[hr_stats.ZONE_CRITICAL] - 60) <= 1.5
@@ -210,11 +211,11 @@ def test_live_zone_seconds_accumulate_in_seconds():
 # --------------------------------------------------------------------------
 
 def test_hrpi_is_largest_k_with_bpm_at_least_k_for_k_seconds():
-    # 120 BPM po 2 minuty -> k = 120 (120 s >= 120)
+    # 120 BPM for 2 minutes -> k = 120 (120 s >= 120)
     assert hr_stats.persistence_index(_samples([120] * 121)) == 120
-    # 120 BPM len 91 s -> k je 91 (91 s pri >= 91 BPM plati, 92 uz nie)
+    # 120 BPM for only 91 s -> k is 91 (91 s at >= 91 BPM holds, 92 no longer)
     assert hr_stats.persistence_index(_samples([120] * 91)) == 91
-    # 85 BPM po 3 hodiny -> 85
+    # 85 BPM for 3 hours -> 85
     assert hr_stats.persistence_index(_samples([85] * 3 * 3600)) == 85
     assert hr_stats.persistence_index([]) == 0
 
@@ -226,7 +227,7 @@ def test_hrpi_uses_time_not_sample_count():
 
 
 # --------------------------------------------------------------------------
-# Analyza historie
+# History analysis
 # --------------------------------------------------------------------------
 
 def _session(started, duration_s=3600, baseline=62, hrr=18, triggers=(), over=0):
@@ -242,7 +243,7 @@ def test_analysis_survives_empty_and_single_history():
     assert hr_insights.analyze(None)[0]["key"] == "need_more"
     one = hr_insights.analyze([_session(1000)])
     assert one[0]["key"] == "need_more" and one[0]["params"]["n"] == 1
-    # rozbite zaznamy sa ignoruju, nespadne
+    # broken records are ignored, it does not crash
     assert hr_insights.analyze([None, "x", {"duration_s": "abc"}])[0]["key"] == "need_more"
 
 
@@ -272,11 +273,12 @@ def test_analysis_flags_late_triggers_in_long_sessions():
 
 
 # --------------------------------------------------------------------------
-# Kedy prichadzaju spustenia - hustota, nie podiel (B3a)
+# When triggers come - density, not share (B3a)
 #
-# V 90-min relacii je prva hodina dve tretiny casu, takze aj rovnomerne
-# spustenia davali ~67 % "v prvej hodine" a stary prah 66 % hlasil vzor,
-# ktory tam nebol. To iste "po dvoch hodinach" v 4-5 h relaciach.
+# In a 90-min session the first hour is two thirds of the time, so even
+# evenly spread triggers gave ~67 % "in the first hour" and the old 66 %
+# threshold reported a pattern that was not there. The same for "after
+# two hours" in 4-5 h sessions.
 # --------------------------------------------------------------------------
 
 def _timing_keys(duration_s, triggers, n=3):
@@ -287,8 +289,8 @@ def _timing_keys(duration_s, triggers, n=3):
 
 
 def test_even_triggers_in_90min_sessions_are_not_early():
-    # kazdych 15 min, v strede useku: 4 v prvej hodine, 2 po nej = 67 %,
-    # ale hustota je vsade rovnaka
+    # every 15 min, in the middle of a stretch: 4 in the first hour, 2 after
+    # it = 67 %, but the density is the same everywhere
     out = _timing_keys(90 * 60, (450, 1350, 2250, 3150, 4050, 4950))
     assert "triggers_early" not in out and "triggers_late" not in out
 
@@ -300,34 +302,34 @@ def test_front_loaded_triggers_are_early():
 
 
 def test_front_loading_is_seen_even_below_two_thirds_in_long_sessions():
-    # 3 h: prva hodina 3 spustenia, dalsie dve hodiny 2 - podiel len 60 %,
-    # ale prva hodina je 3x hustejsia. Stary podiel to prehliadol.
+    # 3 h: the first hour 3 triggers, the next two hours 2 - share only 60 %,
+    # but the first hour is 3x denser. The old share missed that.
     out = _timing_keys(3 * 3600, (600, 1500, 2400, 5000, 9000), n=4)
     assert out["triggers_early"]["params"]["share"] == 60
 
 
 def test_few_front_loaded_triggers_stay_quiet():
-    # 6 z 6 v prvej hodine 90-min relacii - pri rovnomernom rozlozeni to
-    # vyjde nahodou skoro v kazdom desiatom pripade (2/3)^6 = 8,8 %
+    # 6 of 6 in the first hour of a 90-min session - with an even spread this
+    # comes out by chance in almost every tenth case (2/3)^6 = 8.8 %
     out = _timing_keys(90 * 60, (900, 2700))
     assert "triggers_early" not in out
 
 
 def test_even_triggers_in_5h_sessions_are_not_late():
-    # kazdych 30 min: 6 z 10 az po dvoch hodinach (60 % > stary prah 50 %),
-    # ale tie hodiny su aj 60 % casu - nic neskoro nehustne
+    # every 30 min: 6 of 10 only after two hours (60 % > old threshold 50 %),
+    # but those hours are also 60 % of the time - nothing gets denser late
     out = _timing_keys(5 * 3600, tuple(900 + 1800 * k for k in range(10)))
     assert "triggers_late" not in out and "triggers_early" not in out
 
 
 def test_timing_survives_years_of_history_and_broken_duration():
-    # 300 relacii = 1500 spusteni: naivne math.comb(1500, k) * float pretecie
+    # 300 sessions = 1500 triggers: naive math.comb(1500, k) * float overflows
     now = 400 * 86400.0
     sessions = [_session(now - i * 86400, duration_s=90 * 60,
                          triggers=(300, 1200, 2100, 3000, 4000)) for i in range(300)]
     keys = [i["key"] for i in hr_insights.analyze(sessions, now=now)]
     assert "triggers_early" in keys
-    # nekonecne trvanie (pokazeny JSON) nesmie zhodit analyzu v pozadi
+    # an infinite duration (broken JSON) must not crash the background analysis
     broken = [_session(now - i * 86400, duration_s=90 * 60, triggers=(300, 1200))
               for i in range(3)]
     broken.append(dict(broken[0], duration_s=float("inf"), started=now - 5 * 86400))
@@ -335,7 +337,7 @@ def test_timing_survives_years_of_history_and_broken_duration():
 
 
 def _even(duration_s, n):
-    # n spusteni, kazde v strede rovnakeho useku - dokonale rovnomerne
+    # n triggers, each in the middle of an equal stretch - perfectly even
     return tuple(duration_s * (i + 0.5) / n for i in range(n))
 
 
@@ -351,18 +353,18 @@ def _mixed_keys(parts):
 
 
 def test_tense_short_evenings_next_to_calm_long_ones_are_not_early():
-    # V KAZDEJ relacii su spustenia rovnomerne. Napate su len kratke vecery,
-    # pokojne su dlhe - scitany cas by z toho urobil "prva hodina je
-    # hustejsia" (Simpson). Ocakavanie po relaciach to nesmie.
+    # In EVERY session the triggers are even. Only the short evenings are
+    # tense, the long ones are calm - summed time would turn that into "the
+    # first hour is denser" (Simpson). The per-session expectation must not.
     keys = _mixed_keys([(3, 90 * 60, _even(90 * 60, 7)),
                         (4, 5 * 3600, _even(5 * 3600, 5))])
     assert "triggers_early" not in keys
 
 
 def test_tense_long_evenings_next_to_calm_ones_are_not_late():
-    # dve napate 5-h relacie (2/h rovnomerne) + sest pokojnych 150-min bez
-    # spustenia: nic neprislo "az po dvoch hodinach", len dlhe vecery boli
-    # napate od zaciatku
+    # two tense 5-h sessions (2/h evenly) + six calm 150-min ones without a
+    # trigger: nothing came "only after two hours", just the long evenings
+    # were tense from the start
     keys = _mixed_keys([(2, 5 * 3600, _even(5 * 3600, 10)),
                         (6, 150 * 60, ())])
     assert "triggers_late" not in keys
@@ -410,12 +412,13 @@ def test_local_ip_candidates_are_real_ipv4_without_loopback():
 
 
 # --------------------------------------------------------------------------
-# Odporúčania o tichu (18. 9.)
+# Recommendations about silence (18. 9.)
 #
-# Jediné insighty, ktoré hráčovi hovoria, ČO MÁ UROBIŤ. Preto stoja na
-# tvrdých číslach zo spúšťača, nie na dojme z tepu — a preto je dôležité,
-# aby netrafili nesprávnu príčinu: rada „ozvi sa častejšie" pri vypadávajúcich
-# hodinkách by ho poslala ladiť prah namiesto pripojenia.
+# The only insights that tell the player WHAT TO DO. That is why they rest
+# on hard numbers from the trigger, not on an impression from heart rate —
+# and why it matters that they do not hit the wrong cause: the advice
+# "speak up more often" with a watch that keeps dropping out would send
+# them to tune the threshold instead of the connection.
 # --------------------------------------------------------------------------
 
 def _relacia(**kw):
@@ -432,8 +435,9 @@ def _kluce(relacie):
 
 
 def test_vypadky_maju_prednost_pred_ladenim():
-    """Pri výpadkoch je „najdlhší úsek" rozsekaný dierami v dátach, nie
-    fyziológiou. Radiť podľa neho by poslalo hráča opravovať nesprávnu vec."""
+    """With dropouts, the "longest stretch" is chopped up by gaps in the
+    data, not by physiology. Advising by it would send the player to fix
+    the wrong thing."""
     relacie = [_relacia(started=1789000000.0 + i * 86400.0,
                         above_runs=9, longest_above_s=11.0,
                         runs_cancelled_gap=8) for i in range(4)]
@@ -443,7 +447,7 @@ def test_vypadky_maju_prednost_pred_ladenim():
 
 
 def test_telo_sa_ani_raz_nedostalo_hore():
-    """Politika nepomôže — hranica tepu je nastavená privysoko."""
+    """Policy will not help — the heart-rate limit is set too high."""
     relacie = [_relacia(started=1789000000.0 + i * 86400.0) for i in range(4)]
     assert "cue_never_above" in _kluce(relacie)
 
@@ -455,8 +459,8 @@ def test_tesne_vedla_radi_zmenu_politiky():
 
 
 def test_hlboko_pod_radi_hranicu_tepu():
-    """Telo ide hore-dole rýchlejšie, než appka čaká — skracovať čakanie
-    tu nestačí a rada to musí povedať."""
+    """The body goes up and down faster than the app waits — shortening the
+    wait is not enough here and the advice must say so."""
     relacie = [_relacia(started=1789000000.0 + i * 86400.0,
                         above_runs=6, longest_above_s=9.0) for i in range(4)]
     kluce = _kluce(relacie)
@@ -464,9 +468,9 @@ def test_hlboko_pod_radi_hranicu_tepu():
 
 
 def test_zadrzane_hlasky_netvrdia_ze_zataz_nevydrzala():
-    """0.2 (stress-gate): spúšťač sa natiahol a appka sama mlčala. Záťaž
-    teda hore vydržala — „len na chvíľu" by klamalo, a „nič som si
-    nevšimla" tiež. Radšej žiadna rada."""
+    """0.2 (stress-gate): the trigger armed and the app itself stayed silent.
+    So the load did stay up — "only briefly" would lie, and "I didn't
+    notice anything" too. Better no advice."""
     relacie = [_relacia(started=1789000000.0 + i * 86400.0,
                         above_runs=6, longest_above_s=9.0,
                         cues_withheld={"bez_pauzy": 0, "nevhodna_chvila": 2,
@@ -474,7 +478,7 @@ def test_zadrzane_hlasky_netvrdia_ze_zataz_nevydrzala():
                for i in range(4)]
     kluce = _kluce(relacie)
     assert not (kluce & {"cue_almost", "cue_far", "steady"})
-    # pokazená hodnota nezhodí analýzu a nič nepredstiera
+    # a broken value does not crash the analysis and pretends nothing
     relacie = [_relacia(started=1789000000.0 + i * 86400.0,
                         above_runs=6, longest_above_s=9.0,
                         cues_withheld={"nevhodna_chvila": "x"})
@@ -483,7 +487,7 @@ def test_zadrzane_hlasky_netvrdia_ze_zataz_nevydrzala():
 
 
 def test_ked_hlasky_chodia_sa_nerieskuje_nic():
-    """Odporúčanie o tichu nesmie prísť do večera, v ktorom appka hovorila."""
+    """No silence recommendation for an evening in which the app spoke."""
     relacie = [_relacia(started=1789000000.0 + i * 86400.0,
                         auto_triggers=4, above_runs=6, longest_above_s=60.0)
                for i in range(4)]
@@ -492,8 +496,8 @@ def test_ked_hlasky_chodia_sa_nerieskuje_nic():
 
 
 def test_stare_relacie_bez_pocitadiel_neradia_nic():
-    """Relácie uložené pred 17. 9. tie čísla nemajú. Radiť z chýbajúcich
-    dát by znamenalo hádať."""
+    """Sessions saved before 17. 9. do not have those numbers. Advising from
+    missing data would mean guessing."""
     relacie = []
     for i in range(4):
         r = _relacia(started=1789000000.0 + i * 86400.0)
@@ -506,7 +510,7 @@ def test_stare_relacie_bez_pocitadiel_neradia_nic():
 
 
 def test_kroky_su_rozdiel_nie_kumulativny_sucet():
-    """Hodinky posielajú súčet za deň — ten o pohybe TERAZ nehovorí nič."""
+    """The watch sends a daily total — that says nothing about movement NOW."""
     st = hr_stats.HeartStats(critical_bpm=110)
     t = 1000.0
     for i in range(4):
@@ -520,10 +524,11 @@ def test_kroky_su_rozdiel_nie_kumulativny_sucet():
 
 
 def test_bez_krokov_je_to_nevieme_nie_nula():
-    """„Nevieme" a „nula krokov" sú dve rôzne veci.
+    """"We don't know" and "zero steps" are two different things.
 
-    Zameniť ich by znamenalo tvrdiť, že hráč sedí, vždy keď hodinky kroky
-    neposielajú — a práve na tom má stáť vyraďovanie okien.
+    Swapping them would mean claiming the player is sitting whenever the
+    watch does not send steps — and window exclusion is supposed to rest
+    exactly on that.
     """
     st = hr_stats.HeartStats(critical_bpm=110)
     assert st.steps_per_min(now=1000.0) is None
@@ -532,10 +537,11 @@ def test_bez_krokov_je_to_nevieme_nie_nula():
 
 
 def test_restart_pocitadla_na_hodinkach_nevyrobi_kroky():
-    """O polnoci (alebo pri reštarte appky na hodinkách) súčet spadne na nulu.
+    """At midnight (or on a watch app restart) the total drops to zero.
 
-    Záporný rozdiel sa musí zahodiť — inak by sa z neho stal obrovský
-    záporný prírastok alebo, pri naivnom abs(), falošná dávka krokov.
+    A negative difference must be thrown away — otherwise it would turn
+    into a huge negative increment or, with a naive abs(), a fake batch of
+    steps.
     """
     st = hr_stats.HeartStats(critical_bpm=110)
     t = 1000.0
@@ -545,28 +551,30 @@ def test_restart_pocitadla_na_hodinkach_nevyrobi_kroky():
 
 
 def test_appka_mlci_kym_chodia_kroky():
-    """Tep od pohybu odlíšiť nejde, takže sa pri chôdzi nesmie ozvať.
+    """Heart rate can't be told from movement, so no speaking up while walking.
 
-    Uendes a kol. (2026, JMIR, N=127): model s 55 EKG príznakmi má pri
-    strednej fyzickej aktivite špecificitu 0,418 — takmer šesť z desiatich
-    okien chôdze označí ako stres. Jeden BPM každých 1,5 s to nezvládne.
+    Uendes et al. (2026, JMIR, N=127): a model with 55 ECG features has, at
+    moderate physical activity, a specificity of 0.418 — it marks almost
+    six of ten walking windows as stress. One BPM every 1.5 s cannot manage
+    that.
     """
     import inspect
     import app as app_mod
     telo = inspect.getsource(app_mod.DandurfApp._cue_can_fire)
     assert "steps_per_min" in telo, "brana na pohyb chyba"
     assert "KROKY_PRAH_ZA_MIN" in telo
-    # `None` (hodinky kroky neposielaju) nesmie appku umlcat
+    # `None` (the watch does not send steps) must not silence the app
     assert "kroky is not None" in telo, "neznalost by umlcala appku"
 
 
 def test_pokazena_relacia_sa_pozna_podla_nemoznych_skokov():
-    """Tep sa medzi dvoma vzorkami (~1,5 s) o 30 bpm neposunie.
+    """Heart rate does not move by 30 bpm between two samples (~1.5 s).
 
-    19. 9. to spôsobil parser, ktorý po pridaní krokov a rýchlosti do správy
-    z hodiniek čítal raz tep a raz počet krokov. Výsledkom bola 52-minútová
-    relácia s priemerom 124 a maximom 235 — a tá by inak natrvalo skrivila
-    základňu aj vypočítanú hranicu.
+    On 19. 9. this was caused by a parser that, after steps and speed were
+    added to the watch message, read heart rate one time and the step count
+    another. The result was a 52-minute session with an average of 124 and
+    a maximum of 235 — and that would otherwise have permanently skewed both
+    the baseline and the computed limit.
     """
     zdrava = {"curve": [78, 80, 79, 82, 85, 83, 81, 79, 80, 84, 82, 80]}
     assert not hr_stats.je_podozriva(zdrava)
@@ -574,14 +582,15 @@ def test_pokazena_relacia_sa_pozna_podla_nemoznych_skokov():
     pokazena = {"curve": [135, 69, 135, 145, 79, 145, 145, 91, 145, 182, 111, 182]}
     assert hr_stats.je_podozriva(pokazena)
 
-    # prikratka krivka sa neposudzuje - radsej nechat, nez zahodit nevinnu
+    # too short a curve is not judged - better keep it than drop an innocent
     assert not hr_stats.je_podozriva({"curve": [80, 120]})
 
 
 def test_podozriva_relacia_neurcuje_zakladnu_ani_hranicu():
-    # `duration_s` od 0.2.1: kriticky tep sa uci len z relacii aspon 5 min
-    # (`je_dost_dlha`) - bez neho by obe strany padli na zalohu a rovnost
-    # nizsie by nic nemerala.
+    # `duration_s` since 0.2.1: the critical heart rate is learned only from
+    # sessions of at least 5 min (`je_dost_dlha`) - without it both sides
+    # would end up on the fallback and the equality below would measure
+    # nothing.
     zdrave = [{"curve": [78, 80, 79, 82, 81, 80, 79, 83, 82, 80] * 30,
                "baseline_bpm": 78, "duration_s": 1800.0} for _ in range(4)]
     pokazena = {"curve": [135, 69, 135, 145, 79, 145, 182, 91, 222, 111] * 30,
@@ -594,21 +603,22 @@ def test_podozriva_relacia_neurcuje_zakladnu_ani_hranicu():
 
 
 def test_kriticky_tep_bez_dat_padne_na_zalohu():
-    """Kým nie je z čoho rátať, appka nesmie tvrdiť vypočítané číslo."""
+    """Until there's data to compute from, no claiming a computed number."""
     assert hr_stats.dynamicky_kriticky([]) == hr_stats.KRITICKY_ZALOHA
     assert hr_stats.dynamicky_kriticky(
         [{"curve": [80] * 120}]) == hr_stats.KRITICKY_ZALOHA
 
 
 def test_kriticky_tep_nesmie_sadnut_na_zakladnu():
-    """Headroom nesmie byť symbolický.
+    """Headroom must not be merely nominal.
 
-    `headroom = max(12, kritický − základňa)`. Keby vypočítaná hranica sadla
-    tesne nad základňu, záťaž by sa vyškálovala na pár úderoch a appka by
-    reagovala na šum.
+    `headroom = max(12, kritický − základňa)`. If the computed limit sat
+    just above the baseline, load would be scaled over a few beats and the
+    app would react to noise.
     """
-    # `duration_s` od 0.2.1 (relacia aspon 5 min) - inak zaloha 110 a test
-    # by presiel bez toho, aby poistku vobec skusil.
+    # `duration_s` since 0.2.1 (a session of at least 5 min) - otherwise the
+    # fallback 110 and the test would pass without the safety net ever being
+    # tried.
     pokojne = [{"curve": [70] * 120, "baseline_bpm": 69, "duration_s": 600.0}
                for _ in range(4)]
     h = hr_stats.dynamicky_kriticky(pokojne, baseline=69)
@@ -617,11 +627,12 @@ def test_kriticky_tep_nesmie_sadnut_na_zakladnu():
 
 
 def test_kriticky_tep_uz_nie_je_nastavenie():
-    """Pole „Tep, pri ktorom pomôcť" zmizlo zo systému.
+    """The "Heart rate at which to help" field is gone from the system.
 
-    Nedalo sa nastaviť dobre: pri základni 77 dávalo čokoľvek do 89 rovnaký
-    výsledok (podlaha headroomu 12), takže hráč posúval číslo a nič sa
-    nemenilo — a zároveň robilo z pokojného večera 52 % času v červenom.
+    It could not be set well: with a baseline of 77, anything up to 89 gave
+    the same result (headroom floor 12), so the player moved the number and
+    nothing changed — and at the same time it turned a calm evening into
+    52 % of the time in the red.
     """
     from _zdroj_appky import zdroj_appky
     zdroj = zdroj_appky()
@@ -632,19 +643,19 @@ def test_kriticky_tep_uz_nie_je_nastavenie():
 
 
 def test_krivka_aktivity_rozlisi_hru_menu_a_odchod():
-    """Odhad „kedy sa naozaj hralo" bez toho, aby sme čítali hru.
+    """Estimating "when there was real play" without reading the game.
 
-    Overwolf by to povedal presne (`scene`), ale je to slepá ulička —
-    licenčne nepoužiteľné a technicky injektor. Zostáva hustota vstupu
-    z `GetLastInputInfo`, ktorú appka meria tak či tak.
+    Overwolf would tell it precisely (`scene`), but it is a dead end —
+    unusable licence-wise and technically an injector. What remains is the
+    input density from `GetLastInputInfo`, which the app measures anyway.
     """
     st = hr_stats.HeartStats(critical_bpm=110)
     t = 1000.0
-    for i in range(60):                      # hra: vstup takmer stále
+    for i in range(60):                      # game: input almost constantly
         st.note_activity(True, ts=t + i)
-    for i in range(60):                      # menu: občas klik
+    for i in range(60):                      # menu: an occasional click
         st.note_activity(i % 6 == 0, ts=t + 60 + i)
-    for i in range(60):                      # preč od PC
+    for i in range(60):                      # away from the PC
         st.note_activity(False, ts=t + 120 + i)
 
     k = st.activity_trace(points=12)
@@ -656,43 +667,44 @@ def test_krivka_aktivity_rozlisi_hru_menu_a_odchod():
 
 
 def test_krivka_aktivity_je_podiel_nie_okamih():
-    """Bod krivky je PODIEL aktivity v úseku, nie hodnota v okamihu.
+    """A curve point is the SHARE of activity in a stretch, not an instant.
 
-    Inak by z toho bol náhodný šum jednotiek a núl namiesto toho, čo nás
-    zaujíma: ako husto sa hralo.
+    Otherwise it would be random noise of ones and zeros instead of what we
+    care about: how densely the game was played.
     """
     st = hr_stats.HeartStats(critical_bpm=110)
     t = 1000.0
     for i in range(100):
-        st.note_activity(i % 2 == 0, ts=t + i)   # presne polovica
+        st.note_activity(i % 2 == 0, ts=t + i)   # exactly half
     k = st.activity_trace(points=5)
     assert all(0.3 <= b <= 0.7 for b in k), k
 
 
 def test_bez_vzoriek_je_krivka_prazdna():
-    """Žiadne dáta nie sú to isté čo nulová aktivita."""
+    """No data is not the same as zero activity."""
     st = hr_stats.HeartStats(critical_bpm=110)
     assert st.activity_trace() == []
 
 
 # --------------------------------------------------------------------------
-# Otrávenie kalibrácie pokazenými / cudzími dátami (B8–B12)
+# Poisoning of calibration by broken / foreign data (B8–B12)
 # --------------------------------------------------------------------------
 
 def test_pokazena_relacia_bez_krivky_je_podozriva():
-    """B11/B12: nemožné maximum (kroky čítané ako tep) sa musí chytiť aj keď
-    krivka chýba alebo ju podvzorkovanie zahladilo. `max_bpm` je zo surových."""
+    """B11/B12: an impossible maximum (steps read as heart rate) must be
+    caught even when the curve is missing or downsampling smoothed it out.
+    `max_bpm` comes from the raw ones."""
     assert hr_stats.je_podozriva({"max_bpm": 235, "avg_bpm": 124}) is True
     assert hr_stats.je_podozriva(
         {"max_bpm": 235, "avg_bpm": 124, "curve": [120] * 600}) is True
-    # zdravá relácia (aj intenzívna) prejde
+    # a healthy session (even an intense one) passes
     assert hr_stats.je_podozriva(
         {"max_bpm": 165, "avg_bpm": 100,
          "curve": [90 + i % 20 for i in range(600)]}) is False
 
 
 def test_importovana_relacia_sa_nezapocita_do_kalibracie():
-    """B10: cudzie telo nesmie určovať základňu ani prahy."""
+    """B10: a foreign body must not set the baseline or the thresholds."""
     vlastna = {"curve": [90] * 600, "baseline_bpm": 72, "max_bpm": 150,
                "avg_bpm": 95, "duration_s": 1800}
     cudzia = dict(vlastna, imported=True, baseline_bpm=55)
@@ -701,8 +713,9 @@ def test_importovana_relacia_sa_nezapocita_do_kalibracie():
 
 
 def test_kriticky_tep_ma_strop():
-    """B9: jedna nezmyselná krivka nesmie vytlačiť kritický prah mimo dosah
-    a umlčať appku. `dynamicky_prah_zataze` strop má, tento ho tiež musí mať."""
+    """B9: one nonsensical curve must not push the critical threshold out of
+    reach and silence the app. `dynamicky_prah_zataze` has a cap, this one
+    must have one too."""
     nezmysel = [{"curve": [235] * 600, "baseline_bpm": 70, "max_bpm": 180,
                  "avg_bpm": 160, "duration_s": 1800} for _ in range(3)]
     h = hr_stats.dynamicky_kriticky(nezmysel, baseline=70)
@@ -710,7 +723,7 @@ def test_kriticky_tep_ma_strop():
 
 
 def test_hr_insights_filtruje_pokazene_relacie():
-    """B8: pokazená relácia nesmie vyrobiť falošné rady."""
+    """B8: a broken session must not produce false advice."""
     import hr_insights
     zdrave = [{"started": 1000.0 + i, "duration_s": 1800, "samples": 500,
                "baseline_bpm": 72, "max_bpm": 150, "avg_bpm": 95,
@@ -718,19 +731,19 @@ def test_hr_insights_filtruje_pokazene_relacie():
     pokazena = {"started": 9000.0, "duration_s": 1800, "samples": 500,
                 "baseline_bpm": 135, "max_bpm": 235, "avg_bpm": 160,
                 "curve": [235] * 600}
-    # analýza s pokazenou aj bez nej dá to isté — pokazená neprispela
+    # analysis with and without the broken one is the same — it added nothing
     assert hr_insights.analyze(zdrave + [pokazena]) == hr_insights.analyze(zdrave)
 
 
 # --------------------------------------------------------------------------
-# Pokrytie signalu (C4): prah sa uci len z casu, ked tep chodil
+# Signal coverage (C4): the threshold learns only from time with heart rate
 # --------------------------------------------------------------------------
 
 _ZONY_1800 = {"calm": 900.0, "raised": 600.0, "high": 300.0, "critical": 0.0}
 
 
 def _vlna(hore, opakovani=60):
-    """Plynula krivka ako telo - bez skokov, ktore by chytil `je_podozriva`."""
+    """Smooth body-like curve - no jumps that `je_podozriva` would catch."""
     vlna = []
     for _ in range(opakovani):
         vlna.extend(range(70, hore, 5))
@@ -739,28 +752,28 @@ def _vlna(hore, opakovani=60):
 
 
 def test_pokrytie_signalu_z_ulozenych_poli():
-    """Sucet pasiem / trvanie - z toho, co kazdy suhrn uz uklada."""
+    """Sum of bands / duration - from what every summary already stores."""
     p = hr_stats.pokrytie_signalu(
         {"duration_s": 1000.0,
          "zone_seconds": {"calm": 600.0, "raised": 200.0, "high": 100.0,
                           "critical": 0.0}})
     assert abs(p - 0.9) < 1e-9
-    # zaokruhlenie v suhrne moze dat o chlp viac nez trvanie - strop je 1
+    # rounding in the summary can give a hair more than the duration - cap is 1
     assert hr_stats.pokrytie_signalu(
         {"duration_s": 100.0, "zone_seconds": {"calm": 100.4}}) == 1.0
 
 
 def test_pokrytie_signalu_ked_sa_to_nevie_je_none():
-    """Nevedet nie je „0 %": stare relacie, pokazene subory a hodinky, ktore
-    posielali ridsie nez kazdych 12 s (kazda medzera vypadok, sucet nula)."""
+    """Not knowing is not "0 %": old sessions, broken files and watches that
+    sent less often than every 12 s (every gap a dropout, sum zero)."""
     zony = {"calm": 500.0}
     for relacia in (
-            {"duration_s": 1000.0},                              # stara
+            {"duration_s": 1000.0},                              # old
             {"duration_s": 1000.0, "zone_seconds": {}},
             {"duration_s": 1000.0, "zone_seconds": None},
             {"duration_s": 0, "zone_seconds": zony},
             {"duration_s": -5.0, "zone_seconds": zony},
-            {"zone_seconds": zony},                              # bez trvania
+            {"zone_seconds": zony},                              # without duration
             {"duration_s": 1000.0, "zone_seconds": {"calm": 0.0}},
             {"duration_s": 1000.0, "zone_seconds": {"calm": "x"}},
             {"duration_s": 1000.0, "zone_seconds": {"calm": None}},
@@ -773,12 +786,13 @@ def test_pokrytie_signalu_ked_sa_to_nevie_je_none():
 
 
 def test_prehravanie_prahu_nevazi_vecer_podla_dier():
-    """Krivka je preriedena podla vzoriek, nie casu - diery v nej nie su.
+    """The curve is thinned by samples, not by time - it has no gaps.
 
-    Ten isty vecer s dvojnasobnym `duration_s` (polovicu casu hodinky
-    mlcali) a tym istym suctom pasiem sa musi prehrat rovnako - rovnaky
-    pocet bodov, rovnaky 80. percentil. Predtym sa natiahol na cely cas a
-    v prahu vazil dvakrat viac.
+    The same evening with a double `duration_s` (half the time the watch
+    was silent) and the same sum of bands must be replayed the same way -
+    the same number of points, the same 80th percentile. Before, it was
+    stretched over the whole time and weighed twice as much in the
+    threshold.
     """
     celistvy = {"curve": _vlna(130), "duration_s": 1800.0,
                 "zone_seconds": dict(_ZONY_1800)}
@@ -789,17 +803,17 @@ def test_prehravanie_prahu_nevazi_vecer_podla_dier():
     assert a and abs(len(a) - len(b)) <= 1
     assert hr_stats._percentile(sorted(a), 0.8) == \
         hr_stats._percentile(sorted(b), 0.8)
-    # bez pasiem (stara relacia) sa natiahne na cele trvanie ako doteraz
+    # no bands (old session): stretched over the whole duration as before
     stara = {k: v for k, v in dierava.items() if k != "zone_seconds"}
     assert len(hr_stats.load_z_krivky(stara, 70.0, 110)) > 1.9 * len(a)
 
 
 def test_relacia_bez_pokrytia_sa_prehra_ako_doteraz():
-    """Bez pasiem, s nulovym suctom aj s plnym pokrytim - to iste ako pred C4."""
+    """Without bands, with a zero sum, with full coverage - as before C4."""
     krivka = [70 + (i % 20) for i in range(600)]
     bez = {"curve": krivka, "duration_s": 600.0}
     ocakavane = hr_stats.load_z_krivky(bez, 65.0, 110)
-    assert len(ocakavane) == int(600.0 / 1.5) - 29   # ako test kalibracie
+    assert len(ocakavane) == int(600.0 / 1.5) - 29   # like the calibration test
     for zony in ({"calm": 0.0, "raised": 0.0}, {"calm": 400.0, "raised": 200.0},
                  {"calm": 700.0}):
         assert hr_stats.load_z_krivky(
@@ -807,19 +821,21 @@ def test_relacia_bez_pokrytia_sa_prehra_ako_doteraz():
 
 
 def test_do_prahu_patri_ta_ista_relacia_aj_s_malym_pokrytim():
-    """Podmienka „aspon 5 minut" ostava na `duration_s` - ktore relacie sa
-    rataju do prahu (a do „vypocitane z n relacii"), sa nemeni."""
+    """The "at least 5 minutes" condition stays on `duration_s` - which
+    sessions count towards the threshold (and towards "computed from n
+    sessions") does not change."""
     relacia = {"curve": [70 + (i % 20) for i in range(600)], "duration_s": 600.0,
-               "zone_seconds": {"calm": 180.0}}             # pokrytie 0,3
+               "zone_seconds": {"calm": 180.0}}             # coverage 0.3
     body = hr_stats.load_z_krivky(relacia, 65.0, 110)
     assert len(body) == int(180.0 / 1.5) - 29
 
 
 def test_dierava_relacia_neposunie_prah_viac_nez_celistva():
-    """Vecer s dierami ma v prahu rovnaku vahu ako ten isty vecer bez nich.
+    """An evening with gaps weighs the same in the threshold as without them.
 
-    Pred C4 sa jeho krivka natiahla aj cez diery, takze do 80. percentilu
-    vlozil dvakrat viac bodov nez celistvy dvojca a prah posunul (tu 76 -> 78).
+    Before C4 its curve was stretched over the gaps too, so it put twice as
+    many points into the 80th percentile as its unbroken twin and shifted
+    the threshold (here 76 -> 78).
     """
     zdrave = [{"curve": _vlna(110), "duration_s": 1800.0, "baseline_bpm": 70,
                "zone_seconds": dict(_ZONY_1800)} for _ in range(4)]
@@ -832,65 +848,69 @@ def test_dierava_relacia_neposunie_prah_viac_nez_celistva():
     assert s_dierami is not None
     assert s_dierami == hr_stats.dynamicky_prah_zataze(
         zdrave + [dvojca], baseline=70, critical=110)
-    # kontrola, ze test nieco meria: natiahnuta cez diery by prah posunula
+    # check that the test measures something: stretched over the gaps, it
+    # would shift the threshold
     natiahnuta = {k: v for k, v in dierava.items() if k != "zone_seconds"}
     assert hr_stats.dynamicky_prah_zataze(
         zdrave + [natiahnuta], baseline=70, critical=110) != s_dierami
 
 
 def test_brana_na_pokrytie_zamerne_nie_je():
-    """Vecer s malym pokrytim sa z ucenia NEVYRADUJE (C4, viz komentar pri
-    `pokrytie_signalu`): pomer klesne aj pri uspatom PC alebo hodinkach na
-    nabijacke a tie vecery maju dobre data. Kto branu postavi, zmeni tento
-    test vedome - a s datami zo skutocneho zleho vecera."""
+    """An evening with low coverage is NOT excluded from learning (C4, see the
+    comment at `pokrytie_signalu`): the ratio drops also with a sleeping PC
+    or the watch on the charger, and those evenings have good data. Whoever
+    builds the gate changes this test knowingly - and with data from a
+    real bad evening."""
     slaba = {"curve": [80 + i % 5 for i in range(600)], "duration_s": 3600.0,
-             "max_bpm": 90, "zone_seconds": {"calm": 700.0}}   # pokrytie ~0,19
+             "max_bpm": 90, "zone_seconds": {"calm": 700.0}}   # coverage ~0.19
     assert hr_stats.pokrytie_signalu(slaba) < 0.5
     assert hr_stats.ciste_relacie([slaba]) == [slaba]
 
 
 # --------------------------------------------------------------------------
-# Zive pokrytie pre widget kvality signalu
+# Live coverage for the signal quality widget
 # --------------------------------------------------------------------------
 
 def test_zive_pokrytie_je_none_kym_nie_je_z_coho():
     st = hr_stats.HeartStats(critical_bpm=110)
-    assert st.signal_coverage_at(now=5000.0) is None          # ziadna vzorka
+    assert st.signal_coverage_at(now=5000.0) is None          # no sample
     koniec = _feed(st, [75] * 30, start=1000.0)
-    assert st.signal_coverage_at(now=koniec) is None           # 30 s < minuta
+    assert st.signal_coverage_at(now=koniec) is None           # 30 s < a minute
     assert st.signal_coverage_at(now=1000.0 + 59.9) is None
     assert st.signal_coverage_at(now=1000.0 + 60.0) is not None
 
 
 def test_zive_pokrytie_nekolise_medzi_vzorkami():
-    """Hodinky posielaju kazde ~3 s. Medzi dvoma vzorkami nesmie cislo klesat
-    a pri dalsej skocit spat - otvoreny interval sa zarata (najviac 5 s)."""
+    """The watch sends every ~3 s. Between two samples the number must not
+    drop and jump back at the next - the open interval is counted (at most
+    5 s)."""
     st = hr_stats.HeartStats(critical_bpm=110)
-    koniec = _feed(st, [75] * 40, start=1000.0, step=3.0)    # posledna 1117
+    koniec = _feed(st, [75] * 40, start=1000.0, step=3.0)    # the last one 1117
     posledna = koniec - 3.0
     for po in (0.0, 1.0, 2.9, 4.99):
         assert abs(st.signal_coverage_at(now=posledna + po) - 1.0) < 1e-9, po
-    # po 5 s ticha uz cas so signalom nepribuda (ten isty strop ako `add`)
+    # after 5 s of silence no more time with signal (same cap as `add`)
     pokr = st.signal_coverage_at(now=posledna + 8.0)
     assert abs(pokr - (117.0 + 5.0) / 125.0) < 1e-9
 
 
 def test_zive_pokrytie_meria_od_prvej_vzorky_nie_od_zapnutia():
-    """Cakanie, kym sa hodinky pripoja, nie je slaby signal."""
+    """Waiting for the watch to connect is not a weak signal."""
     st = hr_stats.HeartStats(critical_bpm=110)
-    st.session_start = 0.0                     # relacia otvorena davno predtym
+    st.session_start = 0.0                     # session opened long before
     koniec = _feed(st, [75] * 120, start=1000.0)
     assert abs(st.signal_coverage_at(now=koniec - 0.5) - 1.0) < 1e-9
 
 
 def test_zive_pokrytie_sedi_s_vypadkom_a_je_vedla_neho():
-    """Vypadok: pokrytie klesne presne o slepy cas a widget ma vedla neho aj
-    pocet vypadkov (`dropouts`) a slepe sekundy (`blind_seconds`)."""
+    """Dropout: coverage drops by exactly the blind time and the widget also
+    has the number of dropouts (`dropouts`) and blind seconds
+    (`blind_seconds`) next to it."""
     st = hr_stats.HeartStats(critical_bpm=110)
     _feed(st, [75] * 60, start=1000.0)                       # 1000..1059
     st.note_dropout(od=1059.0)
     st.clear_live()
-    # pocas vypadku otvoreny interval nie je - tep nechodi
+    # during a dropout there is no open interval - heart rate is not coming
     pocas = st.signal_coverage_at(now=1080.0)
     assert abs(pocas - 59.0 / 80.0) < 1e-9
     _feed(st, [75] * 60, start=1090.0)                       # 1090..1149
@@ -902,8 +922,8 @@ def test_zive_pokrytie_sedi_s_vypadkom_a_je_vedla_neho():
 
 
 def test_zive_pokrytie_zarata_aj_sekundy_z_kalibracie():
-    """Prvy vecer bez zakladne: sekundy cakaju v `_zony_cakaju`, kym zakladna
-    nepride - aj tie su cas so signalom."""
+    """First evening without a baseline: the seconds wait in `_zony_cakaju`
+    until the baseline arrives - they too are time with signal."""
     st = hr_stats.HeartStats(critical_bpm=110)
     koniec = _feed(st, [75] * 25, start=1000.0, step=3.0)    # 1000..1072
     assert st.is_calibrating and st._zony_cakaju

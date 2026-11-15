@@ -1,20 +1,22 @@
 # -*- coding: utf-8 -*-
-"""Prijimac na porte 4455 pod zatazou - skutocne sockety na 127.0.0.1 (0.2.1).
+"""Receiver on port 4455 under load - real sockets on 127.0.0.1 (0.2.1).
 
-Chyby z code review, ktore spolu robili z ochrany proti zaplaveniu sposob,
-ako prijem tepu vypnut:
+Bugs from the code review that together turned the flood protection into a
+way to switch heart rate reception off:
 
-  1. strop spojeni (`_MAX_LIVE_SOCKETS`) pri naplneni zastavil CELY listener
-     az do restartu senzora (`break` namiesto zahodenia jedneho spojenia),
-  2. spojenia nemali ziadny casovy limit, takze kazde tiche spojenie drzalo
-     miesto navzdy - aj polootvorene po hodinkach, ktore odisli z Wi-Fi.
+  1. the connection cap (`_MAX_LIVE_SOCKETS`) stopped the WHOLE listener
+     when full, until the sensor was restarted (`break` instead of
+     dropping one connection),
+  2. connections had no time limit, so every silent connection held its
+     place forever - even half-open ones from watches that left the Wi-Fi.
 
-A oprava 2 nesmie odpojit zive, len tiche hodinky, ani hlasit "odpojene",
-ked hodinky pisu dalej novym spojenim.
+And fix 2 must not disconnect a live, just quiet watch, nor report
+"disconnected" when the watch keeps writing over a new connection.
 
-Port sa berie volny a len na 127.0.0.1 - firewall sa nepyta a pripadnej
-bezucej appke na 4455 sa nic nestane. Limity sa v testoch skracuju na
-desatiny sekundy, aby test necakal minutu.
+The port is taken free and only on 127.0.0.1 - the firewall does not ask
+and a possibly running app on 4455 is not affected. The limits are
+shortened in the tests to tenths of a second, so the test does not wait a
+minute.
 """
 import json
 import os
@@ -53,7 +55,7 @@ def _volny_port():
 
 
 def _ramec(payload, opcode=0x1):
-    """Ramec od klienta - podla RFC 6455 vzdy maskovany."""
+    """Frame from the client - per RFC 6455 always masked."""
     mask = os.urandom(4)
     n = len(payload)
     if n < 126:
@@ -66,7 +68,7 @@ def _ramec(payload, opcode=0x1):
 
 
 class _Klient:
-    """Minimalny WebSocket klient - tak, ako sa sprava appka na hodinkach."""
+    """Minimal WebSocket client - behaving like the app on the watch."""
 
     def __init__(self, sock):
         self.sock = sock
@@ -124,7 +126,7 @@ class _Klient:
                             "inputSettings": {"text": str(bpm)}}}})
 
     def zatvoril_server(self, limit=3.0):
-        """True, ked server spojenie do `limit` sekund zavrie."""
+        """True if the server closes the connection in `limit` seconds."""
         koniec = time.monotonic() + limit
         while time.monotonic() < koniec:
             self.sock.settimeout(max(0.01, koniec - time.monotonic()))
@@ -134,7 +136,7 @@ class _Klient:
             except socket.timeout:
                 return False
             except OSError:
-                return True             # reset je tiez zavretie
+                return True             # a reset is a close too
         return False
 
     def close(self):
@@ -145,7 +147,7 @@ class _Klient:
 
 
 class _Prijimac:
-    """Skutocny `HeartRateMonitor` na volnom porte, s vlastnymi klientmi."""
+    """A real `HeartRateMonitor` on a free port, with its own clients."""
 
     def __init__(self):
         self.bpm = []
@@ -157,8 +159,8 @@ class _Prijimac:
         self.port = _volny_port()
         self.mon.start(HOST, self.port)
         assert _cakaj(lambda: "connecting" in self.stavy), self.stavy
-        # UDP sa registruje vo vlastnom vlakne - pockame nan, nech sa pocet
-        # obsadenych miest nemeni pod rukami testu
+        # UDP registers in its own thread - we wait for it, so that the number
+        # of occupied places does not change under the test's hands
         _cakaj(lambda: self.obsadene() >= 2, limit=2.0)
 
     def obsadene(self):
@@ -172,7 +174,8 @@ class _Prijimac:
                 sock = socket.create_connection((HOST, self.port), timeout=5.0)
                 break
             except ConnectionRefusedError:
-                # listen() este nebezal (vola sa tesne po starte UDP vlakna)
+                # listen() was not running yet (it is called right after the
+                # UDP thread starts)
                 if pokus == 2:
                     raise
                 time.sleep(0.1)
@@ -194,48 +197,50 @@ def prijimac():
 
 
 # ---------------------------------------------------------------------------
-# 1. plny strop nesmie zastavit cely prijem
+# 1. a full cap must not stop all reception
 # ---------------------------------------------------------------------------
 
 def test_plny_strop_zahodi_len_nove_spojenie_a_prijem_bezi_dalej(
         prijimac, monkeypatch, caplog):
-    """Doteraz: 16. spojenie -> `conn.close(); break` -> listener skoncil a
-    tep neprisiel az do restartu senzora, aj ked sa miesta uvolnili. Strop
-    proti zaplaveniu tak sam robil to, pred cim mal chranit."""
+    """Before: the 16th connection -> `conn.close(); break` -> the listener
+    ended and heart rate did not arrive until the sensor was restarted,
+    even when places freed up. So the flood cap itself did what it was
+    supposed to protect against."""
     monkeypatch.setattr(heart_rate, "_MAX_LIVE_SOCKETS", prijimac.obsadene() + 3)
     strop = heart_rate._MAX_LIVE_SOCKETS
     plni = [prijimac.klient().handshake() for _ in range(3)]
     assert _cakaj(lambda: prijimac.obsadene() == strop)
 
-    # dve spojenia navyse: obe sa zahodia a listener pritom nesmie skoncit
+    # two extra connections: both are dropped and the listener must not
+    # end meanwhile
     for _ in range(2):
         navyse = prijimac.klient()
         assert navyse.zatvoril_server(), "spojenie nad strop sa malo zahodit"
 
-    # miesto sa uvolni...
+    # a place frees up...
     plni[0].close()
     assert _cakaj(lambda: prijimac.obsadene() < strop)
-    # ...a hodinky sa pripoja a tep prejde
+    # ...and the watch connects and heart rate gets through
     hodinky = prijimac.klient().handshake().identify()
     hodinky.tep(77)
     assert _cakaj(lambda: 77 in prijimac.bpm), prijimac.bpm
 
-    # do denniku sa strop hlasi raz za beh, nie pri kazdom odmietnuti
+    # the cap is reported to the journal once per run, not on every refusal
     hlasky = [r for r in caplog.records
               if r.name == "zanshin.hr" and "strop" in r.getMessage()]
     assert len(hlasky) == 1, [r.getMessage() for r in hlasky]
 
 
 def test_stop_zavrie_spojenia_hned_aj_s_casovym_limitom():
-    """Sockety maju teraz limit (minuta ticha) - stop() na neho necaka.
+    """Sockets now have a limit (a minute of silence); stop() won't wait on it.
 
-    Zatvorenie socketu z ineho vlakna odblokuje citanie okamzite; keby nie,
-    vlakna starych behov by viseli az do vyprsania limitu."""
+    Closing a socket from another thread unblocks the read immediately; if
+    not, the threads of old runs would hang until the limit expired."""
     pred = set(threading.enumerate())
     p = _Prijimac()
     try:
         linked = p.klient().handshake().identify()
-        v_handshake = p.klient()               # nic neposlal, caka sa na neho
+        v_handshake = p.klient()               # sent nothing, it is being waited for
         assert _cakaj(lambda: p.obsadene() >= 3)
         zaciatok = time.monotonic()
         p.mon.stop()
@@ -250,12 +255,13 @@ def test_stop_zavrie_spojenia_hned_aj_s_casovym_limitom():
 
 
 # ---------------------------------------------------------------------------
-# 2. casove limity
+# 2. time limits
 # ---------------------------------------------------------------------------
 
 def test_tiche_spojenie_uvolni_miesto_po_limite_handshake(prijimac, monkeypatch):
-    """Skener portov (alebo cokolvek, co len otvori TCP a mlci) drzal jedno
-    zo 16 miest navzdy. Styrnast takych a hodinky sa nepripojili."""
+    """A port scanner (or anything that only opens TCP and stays silent) held
+    one of the 16 places forever. Fourteen of those and the watch did not
+    connect."""
     monkeypatch.setattr(obs_websocket, "HANDSHAKE_TIMEOUT_S", 0.3)
     pred = prijimac.obsadene()
     ticho = prijimac.klient()
@@ -266,14 +272,15 @@ def test_tiche_spojenie_uvolni_miesto_po_limite_handshake(prijimac, monkeypatch)
 
 def test_mrtve_spojenie_skonci_a_odpojenie_sa_hlasi_az_za_poslednym(
         prijimac, monkeypatch):
-    """Hodinky po vypadku Wi-Fi pisu NOVYM spojenim, stare visi polootvorene.
+    """Wi-Fi drop: the watch uses a NEW connection, the old one stays half-open.
 
-    Limit necinnosti ho teraz zavrie - ale "client_gone" pri nom by uprostred
-    ziveho tepu zahodil odpocet spustaca a zapisal vypadok, ktory nebol.
-    Hlasi sa az ked odide posledny klient.
+    The inactivity limit now closes it - but a "client_gone" on it would,
+    in the middle of live heart rate, throw away the trigger countdown and
+    record a dropout that did not happen. It is reported only when the
+    last client leaves.
     """
     monkeypatch.setattr(obs_websocket, "NECINNOST_S", 0.3)
-    mrtve = prijimac.klient().handshake().identify()    # potom ani pong
+    mrtve = prijimac.klient().handshake().identify()    # then not even a pong
     zive = prijimac.klient().handshake().identify()
     koniec = time.monotonic() + 1.5
     while time.monotonic() < koniec:
@@ -291,13 +298,13 @@ def test_mrtve_spojenie_skonci_a_odpojenie_sa_hlasi_az_za_poslednym(
 
 
 def test_osamele_mrtve_spojenie_skonci_ako_bezne_odpojenie(prijimac, monkeypatch):
-    """Limit necinnosti musi pre appku vyzerat presne ako bezne odpojenie:
-    jediny klient, ktory neodpovie ani na ping, skonci s JEDNYM "client_gone"
-    (nie ziadnym - appka by navzdy tvrdila "hodinky pripojene"), miesto sa
-    uvolni a dalsie hodinky sa pripoja normalne."""
+    """For the app, the inactivity limit must look exactly like a normal
+    disconnect: the only client that does not answer even a ping ends with
+    ONE "client_gone" (not none - the app would claim "watch connected"
+    forever), the place frees up and the next watch connects normally."""
     monkeypatch.setattr(obs_websocket, "NECINNOST_S", 0.2)
     pred = prijimac.obsadene()
-    mrtve = prijimac.klient().handshake().identify()    # potom ani pong
+    mrtve = prijimac.klient().handshake().identify()    # then not even a pong
     assert mrtve.zatvoril_server(limit=3.0), "mrtve spojenie malo skoncit"
     assert _cakaj(lambda: "client_gone" in prijimac.stavy), prijimac.stavy
     assert _cakaj(lambda: prijimac.obsadene() == pred)
@@ -321,8 +328,9 @@ def _server_v_pozadi(server, zapisy, on_connected=None):
 
 
 def test_zive_ale_tiche_hodinky_na_ping_odpovedia_a_ostanu(monkeypatch):
-    """Pauza merania nesmie znamenat odpojenie: po tichu ide ping, kazda
-    WebSocket kniznica nan odpovie sama a spojenie ostava."""
+    """A pause in measuring must not mean a disconnect: after silence a ping
+    goes out, every WebSocket library answers it by itself and the
+    connection stays."""
     monkeypatch.setattr(obs_websocket, "NECINNOST_S", 0.2)
     server, druhy = socket.socketpair()
     zapisy = []
@@ -362,8 +370,8 @@ def test_mrtve_spojenie_dostane_ping_a_potom_skonci(monkeypatch):
 
 
 def test_handshake_ma_celkovy_limit_aj_pri_kvapkani_po_bajte(monkeypatch):
-    """Limit na jeden `recv` by klient posielajuci po bajte natahoval
-    donekonecna - limit handshake je celkovy."""
+    """A limit per single `recv` would be stretched forever by a client
+    sending one byte at a time - the handshake limit is overall."""
     monkeypatch.setattr(obs_websocket, "HANDSHAKE_TIMEOUT_S", 0.4)
     server, druhy = socket.socketpair()
     vysledok = []
@@ -374,7 +382,7 @@ def test_handshake_ma_celkovy_limit_aj_pri_kvapkani_po_bajte(monkeypatch):
     vlakno.start()
     try:
         while vlakno.is_alive() and time.monotonic() - zaciatok < 3.0:
-            druhy.sendall(b"G")            # hlavicku nikdy nedokonci
+            druhy.sendall(b"G")            # never finishes the header
             time.sleep(0.05)
         vlakno.join(0.5)
         assert vysledok == [False]

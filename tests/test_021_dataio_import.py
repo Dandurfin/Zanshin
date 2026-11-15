@@ -1,16 +1,16 @@
 # -*- coding: utf-8 -*-
-"""Import cudzieho suboru (0.2.1): prisny parser, ktory to naozaj je.
+"""Importing a foreign file (0.2.1): a strict parser that really is one.
 
-README slubuje "strict parser, no pickle". Pickle ani eval tam nebol, ale
-prisne to nebolo: `clean_session`/`clean_window` preniesli kazde pole okrem
-`started`/`ts` bez kontroly, `json.loads` prijal NaN a Infinity, subor v
-inom kodovani nez UTF-8 skoncil tracebackom namiesto vety pre hraca a velkost
-suboru nemala strop. Importovane zaznamy idu priamo do hr_sessions.json a
-hr_windows.json - zle pole v nich zhodilo Historiu alebo CSV export pri
-kazdom otvoreni, nie raz.
+The README promises "strict parser, no pickle". There was no pickle or eval,
+but it was not strict: `clean_session`/`clean_window` carried over every
+field except `started`/`ts` unchecked, `json.loads` accepted NaN and
+Infinity, a file in an encoding other than UTF-8 ended in a traceback instead
+of a sentence for the player, and the file size had no cap. Imported records
+go straight into hr_sessions.json and hr_windows.json - a bad field in them
+crashed History or the CSV export on every open, not just once.
 
-A zaroven: nic, co appka sama exportuje (aj starsie verzie bez novsich poli),
-sa po ceste tam a spat nesmie stratit.
+And at the same time: nothing the app itself exports (including older
+versions without the newer fields) may get lost on the round trip.
 """
 import json
 import math
@@ -37,8 +37,8 @@ def zapis_text(tmp_path, text, meno="export.json", kodovanie="utf-8"):
 
 
 def bundle_text(sessions=(), windows=(), version="1"):
-    """Export ako TEXT - `json.dumps` by NaN/Infinity/1e999 nenapisal tak,
-    ako ich moze obsahovat cudzi subor."""
+    """Export as TEXT - `json.dumps` would not write NaN/Infinity/1e999 the
+    way a foreign file can contain them."""
     return ('{"format": "zanshin-dojosync", "version": %s, "app_version": "x",'
             ' "sessions": [%s], "windows": [%s], "insights": {}}'
             % (version, ", ".join(sessions), ", ".join(windows)))
@@ -51,14 +51,15 @@ def chyba(cesta):
 
 
 # --------------------------------------------------------------------------
-# Zaznamy presne v tvare, v akom ich zapisuje appka
+# Records in exactly the shape the app writes them
 # --------------------------------------------------------------------------
 
 def _plna_relacia_a_okna(tmp_path):
-    """Relacia a okna cez SKUTOCNE zapisovace appky, nie rucne slovniky:
-    `HeartStats.summary`, pole z `app._close_hr_session` (tie iste vyrazy),
-    dotaznik cez `hr_stats.attach_context` a okna cez `measure.build_windows`
-    s tym, co prida `app._save_measure_windows`.
+    """A session and windows via the app's REAL writers, not hand-made dicts:
+    `HeartStats.summary`, the fields from `app._close_hr_session` (the same
+    expressions), the questionnaire via `hr_stats.attach_context` and the
+    windows via `measure.build_windows` with what
+    `app._save_measure_windows` adds.
     """
     t0 = time.time() - 3700.0
     stats = hr_stats.HeartStats(critical_bpm=110)
@@ -66,7 +67,7 @@ def _plna_relacia_a_okna(tmp_path):
     for i in range(1800):
         ts = t0 + i * 2.0
         stats.add(70 + (i % 45), ts=ts)
-        # aktivita len v prvej a poslednej tretine - krivka aktivity ma diery
+        # activity only in the first and last third - activity curve has holes
         if i < 600 or i > 1200:
             stats.note_activity(i % 3 != 0, ts=ts)
     t_hlasky = t0 + 1800.0
@@ -98,8 +99,8 @@ def _plna_relacia_a_okna(tmp_path):
     summary["snoozed_s"] = round(95.5, 1)
     summary["hud_visible_s"] = round(1200.0, 1)
     summary["hud_visible_frac"] = round(max(0.0, min(1.0, 0.5)), 3)
-    # `_maybe_graduate`; hrr_bpm cez skutocny `hrr_headline` (umele data
-    # vyssie ziadne zotavenie nemaju)
+    # `_maybe_graduate`; hrr_bpm via the real `hrr_headline` (the artificial
+    # data above have no recovery)
     summary["zen_graduation"] = True
     summary["hrr_bpm"] = hr_stats.hrr_headline([{"peak_bpm": 150, "recovery": 31.6}])
 
@@ -126,9 +127,9 @@ def _plna_relacia_a_okna(tmp_path):
 
 
 def test_plny_export_prejde_tam_a_spat_bez_straty(tmp_path):
-    """Kazde pole, ktore appka zapisuje, sa po exporte a importe vrati
-    rovnake - len s `imported: True`. Novy typ kontroly nesmie zahodit nic
-    vlastne."""
+    """Every field the app writes comes back the same after export and
+    import - just with `imported: True`. The new type check must not drop
+    anything of our own."""
     relacia, okna = _plna_relacia_a_okna(tmp_path)
     cesta = data_io.write_bundle(
         str(tmp_path / "e.json"),
@@ -140,10 +141,10 @@ def test_plny_export_prejde_tam_a_spat_bez_straty(tmp_path):
 
 
 def test_tabulka_typov_je_overena_skutocnymi_datami(tmp_path):
-    """Kazde pole z tabuliek typov ma v skutocnom zazname appky hodnotu
-    (nie None - None prejde vzdy, takze by typ neoveril). Keby sa typ v
-    tabulke netrafil, test vyssie by to pole stratil; tento strazi, ze sa
-    tam naozaj skusa kazde."""
+    """Every field from the type tables has a value in a real app record
+    (not None - None always passes, so it would not check the type). If a
+    type in the table were wrong, the test above would lose that field;
+    this one guards that every field really gets tried there."""
     relacia, okna = _plna_relacia_a_okna(tmp_path)
     for kluc in data_io._TYPY_RELACIE:
         if kluc == "imported":
@@ -158,9 +159,10 @@ def test_tabulka_typov_je_overena_skutocnymi_datami(tmp_path):
 
 
 def test_starsi_export_bez_novsich_poli_prejde(tmp_path):
-    """Export zo starsej verzie nema `cues_withheld`, `world`, `activity`
-    ani krivku aktivity - a moze mat pole, ktore uz appka nepise (`tired`
-    nahradil `sleep`). Nic z toho nie je dovod zaznam zahodit."""
+    """An export from an older version has no `cues_withheld`, `world`,
+    `activity` or activity curve - and it may have a field the app no
+    longer writes (`sleep` replaced `tired`). None of that is a reason to
+    drop the record."""
     stara = {"started": 1700000000.0, "duration_s": 3600.0, "avg_bpm": 80,
              "max_bpm": 130, "curve": [80, 81, 82], "context": ["chill"],
              "tired": True, "zone_seconds": {"calm": 3000.0, "raised": 600.0}}
@@ -175,7 +177,7 @@ def test_starsi_export_bez_novsich_poli_prejde(tmp_path):
 
 
 def test_neznamy_obycajny_udaj_sa_prenesie(tmp_path):
-    """Novsia verzia appky moze ukladat viac. Obycajne data sa prenesu."""
+    """A newer app version may store more. Plain data is carried over."""
     nove = {"started": 1700000000.0, "duration_s": 60.0,
             "nove_pole": {"a": [1, 2.5, None, {"b": "c"}], "d": False}}
     cesta = data_io.write_bundle(str(tmp_path / "e.json"),
@@ -185,7 +187,7 @@ def test_neznamy_obycajny_udaj_sa_prenesie(tmp_path):
 
 
 # --------------------------------------------------------------------------
-# NaN, nekonecno, nezmyselne cisla
+# NaN, infinity, nonsense numbers
 # --------------------------------------------------------------------------
 
 @pytest.mark.parametrize("zle", ["NaN", "Infinity", "-Infinity", "1e999",
@@ -195,10 +197,10 @@ def test_neznamy_obycajny_udaj_sa_prenesie(tmp_path):
                               "10na400", "rok33658", "zaporny",
                               "nula", "rok1970", "rok1970-den2"])
 def test_nekonecny_alebo_nezmyselny_cas_zaznam_zahodi(tmp_path, zle):
-    """`json.loads` NaN a Infinity prijme a `1e999` je nekonecno. Cas mimo
-    2000-2100 by graf Historie vo Windows zhodil (OSError) pri kazdom
-    otvoreni - za 2100 aj v roku 1970. Cele cislo s 400 ciframi nesmie
-    skoncit OverflowError pri `float()`."""
+    """`json.loads` accepts NaN and Infinity, and `1e999` is infinity. A time
+    outside 2000-2100 would crash the History chart on Windows (OSError) on
+    every open - beyond 2100 and also at 1970. An integer with 400 digits
+    must not end in OverflowError on `float()`."""
     text = bundle_text(
         sessions=['{"started": %s, "duration_s": 60}' % zle,
                   '{"started": 1700000000, "duration_s": 60}'],
@@ -212,9 +214,9 @@ def test_nekonecny_alebo_nezmyselny_cas_zaznam_zahodi(tmp_path, zle):
 
 
 def test_hranice_casu_graf_historie_znesie():
-    """Rozsah `MIN_CAS`..`MAX_CAS` musi byt bezpecny pre graf Historie vo
-    vsetkych obdobiach - `started=1000` (rok 1970) ho pred opravou zhodil
-    vo Windows (OSError) pri kazdom otvoreni, hoci ho import prijal."""
+    """The `MIN_CAS`..`MAX_CAS` range must be safe for the History chart in
+    every period - before the fix, `started=1000` (year 1970) crashed it on
+    Windows (OSError) on every open, even though the import accepted it."""
     for cas in (data_io.MIN_CAS, data_io.MAX_CAS):
         relacia = data_io.clean_session({"started": cas, "duration_s": 60})
         assert relacia is not None, cas
@@ -228,8 +230,9 @@ def test_hranice_casu_graf_historie_znesie():
 
 @pytest.mark.parametrize("zle", ["NaN", "Infinity", "-Infinity", "1e999"])
 def test_nekonecno_v_inom_poli_zahodi_len_to_pole(tmp_path, zle):
-    """Jedno NaN v `avg_bpm` by v priemere spravilo NaN z celeho grafu.
-    Zaznam sa kvoli nemu ale nezahodi - len to pole, ako keby ho nemal."""
+    """A single NaN in `avg_bpm` would turn the whole chart into NaN via the
+    average. But the record is not dropped because of it - only that field,
+    as if it did not have it."""
     text = bundle_text(sessions=[
         '{"started": 1700000000, "duration_s": 60, "avg_bpm": %s,'
         ' "curve": [80, %s, 82], "zone_seconds": {"calm": %s},'
@@ -240,7 +243,7 @@ def test_nekonecno_v_inom_poli_zahodi_len_to_pole(tmp_path, zle):
     for kluc in ("avg_bpm", "curve", "zone_seconds", "nove"):
         assert kluc not in s, kluc
     assert s["max_bpm"] == 130
-    # nic, co import vrati, uz NaN ani nekonecno neobsahuje
+    # nothing the import returns contains NaN or infinity any more
     json.dumps(sessions, allow_nan=False)
 
 
@@ -251,7 +254,7 @@ def test_nan_vo_verzii_je_cudzi_subor(tmp_path):
 
 
 def test_nekonecno_nezostane_ako_float(tmp_path):
-    """`parse_constant` z NaN/Infinity nespravi float - ani hlboko vnutri."""
+    """`parse_constant` makes no float of NaN/Infinity - even deep inside."""
     text = bundle_text(sessions=['{"started": 1700000000, "duration_s": 60,'
                                  ' "a": [[[NaN]]]}'])
     sessions, _w, _z = data_io.parse_bundle(zapis_text(tmp_path, text))
@@ -261,12 +264,13 @@ def test_nekonecno_nezostane_ako_float(tmp_path):
 
 
 # --------------------------------------------------------------------------
-# Pole zleho typu: zahodi sa pole, zaznam ostane - a appka nespadne
+# Field of the wrong type: the field is dropped, the record stays - and the
+# app does not crash
 # --------------------------------------------------------------------------
 
 def test_pole_zleho_typu_sa_zahodi_a_historia_nespadne(tmp_path):
-    """Pred 0.2.1 by tato relacia natrvalo zhodila graf Historie
-    (`float("abc")`) aj CSV export (`t in 5`, `"x".get`)."""
+    """Before 0.2.1 this session would have permanently crashed the History
+    chart (`float("abc")`) and the CSV export (`t in 5`, `"x".get`)."""
     zla = {"started": 1700000000.0, "duration_s": 3600.0, "avg_bpm": 80,
            "baseline_bpm": "abc", "context": 5, "zone_seconds": "x",
            "curve": "abcdefghijkl", "hrr_bpm": [1], "world": {"a": 1},
@@ -282,15 +286,15 @@ def test_pole_zleho_typu_sa_zahodi_a_historia_nespadne(tmp_path):
                  "cues_withheld"):
         assert kluc not in s, kluc
     assert s["avg_bpm"] == 80 and s["imported"] is True
-    # to, co cita Historia a CSV export
+    # what History and the CSV export read
     hr_stats.aggregate_by_period(sessions, hr_stats.PERIOD_DAY)
     hr_stats.session_row(s)
     assert hr_stats.session_world(s) == hr_stats.WORLD_DEFAULT
 
 
 def test_okno_so_zlym_cue_id_nezhodi_dalsi_import(tmp_path):
-    """`merge_windows` pari okna podla `(ts, cue_id)` v mnozine - zoznam
-    ako `cue_id` by pri dalsom zluceni skoncil TypeError."""
+    """`merge_windows` pairs windows by `(ts, cue_id)` in a set - a list as
+    `cue_id` would end in a TypeError on the next merge."""
     zle = {"ts": 1700000100.0, "cue_id": [1, 2], "valid": "ano",
            "reasons": "x", "params": [1], "pre_bpm": "90", "arm": "voice"}
     cesta = data_io.write_bundle(str(tmp_path / "e.json"),
@@ -305,10 +309,11 @@ def test_okno_so_zlym_cue_id_nezhodi_dalsi_import(tmp_path):
 
 
 def test_text_ktory_sa_neda_zapisat_sa_zahodi(tmp_path):
-    """`json.loads` prijme osamely surrogate (`\\ud800`) - v poznamke, v okne
-    aj v kluci. `zapis_zoznam` (UTF-8) na nom padol az PO zalohe: relacie sa
-    zapisali, okna nie, a na disku ostal `.tmp`. Pole sa preto zahodi uz
-    pri citani a import sa da naozaj zapisat."""
+    """`json.loads` accepts a lone surrogate (`\\ud800`) - in a note, in a
+    window and in a key. `zapis_zoznam` (UTF-8) only failed on it AFTER the
+    backup: the sessions were written, the windows were not, and a `.tmp`
+    was left on disk. So the field is dropped already when reading, and the
+    import can really be written."""
     text = bundle_text(
         sessions=['{"started": 1700000000, "duration_s": 60, "avg_bpm": 80,'
                   ' "note": "a\\ud800b", "nove": ["\\udfff"],'
@@ -323,11 +328,11 @@ def test_text_ktory_sa_neda_zapisat_sa_zahodi(tmp_path):
     for kluc in ("game", "reasons", "cue_id"):
         assert kluc not in w, kluc
     assert s["avg_bpm"] == 80 and w["arm"] == "voice"
-    # a to podstatne: vysledok sa da zapisat tam, kam ho zapisuje appka
+    # and the main thing: the result can be written where the app writes it
     data_io.zapis_zoznam(str(tmp_path / "hr_sessions.json"), sessions)
     data_io.zapis_zoznam(str(tmp_path / "hr_windows.json"), windows)
     assert not list(tmp_path.glob("*.tmp"))
-    # platny par (emoji) zapisat ide - ten zahadzovat netreba
+    # a valid pair (emoji) can be written - no need to drop that one
     assert data_io._je_text("gg \U0001F600")
 
 
@@ -345,11 +350,11 @@ def test_prilis_hlboke_nezname_pole_sa_zahodi(tmp_path):
 
 
 # --------------------------------------------------------------------------
-# Kodovanie a rozbity subor: veta pre hraca, nie traceback
+# Encoding and a broken file: a sentence for the player, not a traceback
 # --------------------------------------------------------------------------
 
 def test_subor_v_inom_kodovani_nez_utf8_je_slusna_chyba(tmp_path):
-    """Predtym UnicodeDecodeError, ktory `parse_bundle` nechytal."""
+    """Previously a UnicodeDecodeError that `parse_bundle` did not catch."""
     text = bundle_text(sessions=['{"started": 1700000000, "duration_s": 60,'
                                  ' "note": "ľadový"}'])
     assert chyba(zapis_text(tmp_path, text, kodovanie="cp1250")) == "data.import.not_json"
@@ -357,7 +362,7 @@ def test_subor_v_inom_kodovani_nez_utf8_je_slusna_chyba(tmp_path):
 
 
 def test_utf8_s_bom_sa_nacita(tmp_path):
-    """Notepad vie pri ulozeni pridat BOM - obsah je ale stale nas export."""
+    """Notepad can add a BOM on save - but the content is still our export."""
     text = bundle_text(sessions=['{"started": 1700000000, "duration_s": 60}'])
     sessions, _w, _z = data_io.parse_bundle(
         zapis_text(tmp_path, text, kodovanie="utf-8-sig"))
@@ -365,23 +370,23 @@ def test_utf8_s_bom_sa_nacita(tmp_path):
 
 
 def test_prilis_hlboke_vnorenie_je_slusna_chyba(tmp_path):
-    """`json.loads` na tom hodi RecursionError, nie JSONDecodeError."""
+    """`json.loads` raises RecursionError on this, not JSONDecodeError."""
     assert chyba(zapis_text(tmp_path, "[" * 100000)) == "data.import.not_json"
 
 
 def test_cislo_s_tisickami_cifier_je_slusna_chyba(tmp_path):
-    """Nad 4300 cifier `json.loads` hodi obycajny ValueError."""
+    """Above 4300 digits `json.loads` raises a plain ValueError."""
     text = bundle_text(sessions=['{"started": %s, "duration_s": 60}' % ("1" * 5000)])
     assert chyba(zapis_text(tmp_path, text)) == "data.import.not_json"
 
 
 # --------------------------------------------------------------------------
-# Velkost suboru
+# File size
 # --------------------------------------------------------------------------
 
 def test_privelky_subor_sa_odmietne_pred_citanim(tmp_path, monkeypatch):
-    """Nad strop sa subor ani neotvori: aj neplatny obsah je "cudzi", nie
-    "nie je JSON" - na obsah sa nepozeralo."""
+    """Above the cap the file is not even opened: even valid content is
+    "foreign", not "not JSON" - nobody looked at the content."""
     monkeypatch.setattr(data_io, "MAX_IMPORT_BAJTOV", 200)
     cesta = str(tmp_path / "velky.json")
     with open(cesta, "wb") as fh:
@@ -395,8 +400,8 @@ def test_privelky_subor_sa_odmietne_pred_citanim(tmp_path, monkeypatch):
 
 
 def test_citanie_je_zastropovane_aj_ked_velkost_klame(tmp_path, monkeypatch):
-    """Subor moze medzi kontrolou velkosti a citanim narast - citanie samo
-    ma strop."""
+    """The file can grow between the size check and the read - the read
+    itself has a cap."""
     monkeypatch.setattr(data_io, "MAX_IMPORT_BAJTOV", 200)
     cesta = zapis_text(tmp_path, bundle_text(sessions=[
         '{"started": %d, "duration_s": 60}' % (1700000000 + i) for i in range(10)]))
@@ -406,11 +411,11 @@ def test_citanie_je_zastropovane_aj_ked_velkost_klame(tmp_path, monkeypatch):
 
 
 def test_strop_velkosti_je_daleko_nad_plnym_exportom(tmp_path):
-    """Plny export - 400 relacii (`MAX_SESSIONS`) a 5000 okien
-    (`MAX_WINDOWS`) v skutocnom tvare, poznamka na doraz - musi byt hlboko
-    pod stropom, inak by import odmietol vlastnu zalohu. Dnes ~12,5 MB;
-    ked tento test padne, pribudlo do zaznamov tolko, ze treba zdvihnut
-    `MAX_IMPORT_BAJTOV`."""
+    """A full export - 400 sessions (`MAX_SESSIONS`) and 5000 windows
+    (`MAX_WINDOWS`) in their real shape, the note at full length - must be
+    far below the cap, otherwise the import would reject our own backup.
+    Today ~12.5 MB; when this test fails, so much has been added to the
+    records that `MAX_IMPORT_BAJTOV` needs raising."""
     relacia, okna = _plna_relacia_a_okna(tmp_path)
     relacia = dict(relacia, note="x" * hr_stats.NOTE_MAX)
     bundle = data_io.build_bundle(

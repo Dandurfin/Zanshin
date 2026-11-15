@@ -1,21 +1,24 @@
 # -*- coding: utf-8 -*-
-"""Nastavovanie pri stole sa neuci ako hranie (0.2.2).
+"""Setting up at the desk is not learned as playing (0.3).
 
-Audit: uvod, parovanie a prehliadka lahko trvaju viac nez 5 minut. Prva
-relacia tak bola pokoj pri stole ulozeny ako "hra" a kalibroval hranicu
-vysokeho tepu aj prah zataze - ta ista chyba ako pokles 110 -> 80 z
-KNOWN_ISSUES. Najmensia poctiva oprava:
+Audit: the introduction, pairing and the tour easily take more than 5
+minutes. The first session was thus calm at the desk saved as "play", and
+it calibrated the high heart-rate limit and the load threshold - the same
+bug as the 110 -> 80 drop from KNOWN_ISSUES. The smallest honest fix:
 
-  * prva ULOZENA relacia po uvode dostane `setup: True` (kratka, ktora sa
-    neulozi, znacku nespotrebuje); po restarte uz nie,
-  * `hr_stats.ciste_relacie` ju vynecha ako obnovenu (`recovered`) - prah,
-    hranica, dlhodoba zakladna ani promocia sa z nej neucia, Historia ju
-    ukazuje dalej,
-  * dotaznik ma cip "Len nastavovanie appky": pri prvej relacii zapnuty od
-    appky (kto pritom naozaj hral, vypne ho), pri inej ho hrac zapne sam,
-  * export/import znacku prenesie.
+  * the first SAVED session after the introduction gets `setup: True` (a
+    short one that is not saved does not use up the mark); after a restart
+    no more,
+  * `hr_stats.ciste_relacie` leaves it out like a recovered one
+    (`recovered`) - neither the threshold, the limit, the long-term baseline
+    nor graduation learn from it, History keeps showing it,
+  * the questionnaire has the chip "Len nastavovanie appky" (Just setting up
+    the app): on the first session switched on by the app (whoever really
+    played meanwhile switches it off), on another one the player switches it
+    on themselves,
+  * export/import carries the mark over.
 
-Vsetko v tmp priecinku - %APPDATA%\\Zanshin sa nedotyka nic.
+Everything in a tmp folder - nothing in %APPDATA%\\Zanshin is touched.
 """
 import os
 import random
@@ -41,11 +44,11 @@ def _nic(*_a, **_k):
 
 
 # --------------------------------------------------------------------------
-# Ucenie: ciste_relacie a co z nich zije
+# Learning: ciste_relacie and what lives on them
 # --------------------------------------------------------------------------
 
 def _pokoj_pri_stole(i, **navyse):
-    """10 minut pokoja pri stole - presne to, co by hranicu stiahlo dole."""
+    """10 calm minutes at the desk - exactly what would pull the limit down."""
     s = {"started": 1_790_000_000.0 + i * 3600.0, "duration_s": 600.0,
          "world": "play", "baseline_bpm": 62.0, "avg_bpm": 66.0,
          "max_bpm": 74.0, "samples": 300,
@@ -62,8 +65,9 @@ def test_ciste_relacie_vynechaju_nastavovanie():
 
 
 def test_hranica_sa_z_nastavovania_neuci():
-    """Tri relacie pokoja pri stole by bez znacky dali hranicu 80 namiesto
-    zalohy 110 (KNOWN_ISSUES, 0.2.1). So znackou ostava zaloha."""
+    """Three sessions of calm at the desk would, without the mark, give a limit
+    of 80 instead of the fallback 110 (KNOWN_ISSUES, 0.2.1). With the mark
+    the fallback stays."""
     bez = [_pokoj_pri_stole(i) for i in range(3)]
     so = [_pokoj_pri_stole(i, setup=True) for i in range(3)]
     assert hr_stats.dynamicky_kriticky(bez) < hr_stats.KRITICKY_ZALOHA
@@ -80,7 +84,7 @@ def test_historia_nastavovanie_ukazuje():
 
 
 # --------------------------------------------------------------------------
-# Dotaznik: attach_context
+# Questionnaire: attach_context
 # --------------------------------------------------------------------------
 
 def _ulozena(tmp_path, **navyse):
@@ -95,16 +99,16 @@ def test_cip_znacku_zapne_zrusi_a_bez_odpovede_necha(tmp_path):
     assert hr_stats.attach_context(cesta, started, ["chill"], setup=True)
     s = hr_stats.load_sessions(cesta)[0]
     assert s["setup"] is True and s["context"] == ["chill"]
-    # None = nemenit (napr. stare volanie bez cipu)
+    # None = do not change (e.g. an old call without the chip)
     assert hr_stats.attach_context(cesta, started, [])
     assert hr_stats.load_sessions(cesta)[0]["setup"] is True
-    # False = hrac cip vypol, lebo naozaj hral
+    # False = the player switched the chip off because they really played
     assert hr_stats.attach_context(cesta, started, [], setup=False)
     assert "setup" not in hr_stats.load_sessions(cesta)[0]
 
 
 # --------------------------------------------------------------------------
-# Prva relacia po uvode (skutocne `_close_hr_session` / `_suhrn_relacie`)
+# First session after the intro (real `_close_hr_session` / `_suhrn_relacie`)
 # --------------------------------------------------------------------------
 
 class _Root:
@@ -166,7 +170,7 @@ def _appka(tmp_path, minut=15, prvy_start=True):
 def test_init_znacku_berie_len_z_prveho_startu():
     init = zdroj_metody("__init__")
     assert 'self._relacia_nastavovania = bool(settings["first_run"])' in init
-    # skor, nez sa moze otvorit prva relacia
+    # before the first session can open
     assert (init.index("self._relacia_nastavovania")
             < init.index("self.start_heart_rate_monitor()"))
 
@@ -178,10 +182,10 @@ def test_prva_ulozena_relacia_po_uvode_je_nastavovanie(tmp_path):
     assert ulozena["setup"] is True
     assert hr_stats.ciste_relacie([ulozena]) == []
     assert a._relacia_nastavovania is False, "len prva relacia"
-    # dotaznik dostane suhrn so znackou - cip bude zapnuty
+    # the questionnaire gets the summary with the mark - the chip will be on
     assert a.dotazniky and a.dotazniky[0]["setup"] is True
 
-    # dalsia relacia v tom istom behu uz je obycajna
+    # the next session in the same run is an ordinary one
     a.hr_stats = _statistika(15)
     a.hr_stats.session_start -= 3600.0
     a._hr_session_open = True
@@ -191,8 +195,8 @@ def test_prva_ulozena_relacia_po_uvode_je_nastavovanie(tmp_path):
 
 
 def test_kratka_relacia_znacku_nespotrebuje(tmp_path):
-    """Pod minutu (napr. sledovanie pred sparovanim hodiniek) sa neulozi -
-    nastavovanie je az ta dalsia, so sparovanymi hodinkami."""
+    """Under a minute (e.g. watching before the watch is paired) it is not
+    saved - the setup is the next one, with the paired watch."""
     a = _appka(tmp_path, minut=0.5)
     a._close_hr_session()
     assert hr_stats.load_sessions(a.hr_sessions_path) == []
@@ -207,8 +211,8 @@ def test_bez_uvodu_ziadna_znacka(tmp_path):
 
 
 def test_kontrolny_bod_nesie_znacku(tmp_path):
-    """Pad pocas nastavovania: obnovena relacia je aj tak `recovered`, ale
-    znacka nesmie zmiznut - dotaznik o nej sa uz nespyta."""
+    """Crash during setup: the recovered session is `recovered` anyway, but the
+    mark must not vanish - the questionnaire will no longer ask about it."""
     a = _appka(tmp_path)
     assert a._suhrn_relacie()["setup"] is True
     a._relacia_nastavovania = False
@@ -231,7 +235,7 @@ def test_dotaznik_posle_cip_do_suboru(tmp_path):
 
 
 # --------------------------------------------------------------------------
-# Cip v dotazniku (SessionEndDialog bez Tk)
+# Chip in the questionnaire (SessionEndDialog without Tk)
 # --------------------------------------------------------------------------
 
 class _Tlacidlo:
@@ -288,9 +292,10 @@ def test_dotaznik_cip_kresli_a_zacina_podla_suhrnu():
 
 
 def test_cip_zapnuty_appkou_povie_preco_a_ako_ho_zrusit():
-    """Prva relacia po uvode ma cip zapnuty od appky. Bez vety hrac nevie
-    preco - a kto pritom naozaj hral, ho Ulozenim necha (prvy vecer by sa
-    do ucenia nezaratal)."""
+    """The first session after the introduction has the chip switched on by the
+    app. Without a sentence the player does not know why - and whoever
+    really played meanwhile leaves it on by pressing Save (the first evening
+    would not count towards learning)."""
     ud = zdroj_suboru("ui_dialogs.py")
     trieda = ud[ud.index("class SessionEndDialog"):ud.index("class ImportProfileDialog")]
     assert ('tr("session.context.setup_hint_first") if self.setup'

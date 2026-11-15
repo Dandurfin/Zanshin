@@ -1,47 +1,49 @@
-"""Statistika tepu - pokojova zakladna, index zataze, priebeh relacie.
+"""Heart rate statistics - resting baseline, load index, session course.
 
-Co je a co NIE je "zataz"
-------------------------
-Z hodiniek chodi jedine cislo: BPM, zhruba raz za sekundu. To NIE je HRV
-a nie je z toho mozne pocitat ani RMSSD, ani SDNN - na to su potrebne
-vzdialenosti medzi jednotlivymi udermi (R-R intervaly), ktore appka
-nedostava. Cokolvek, co by sa tu volalo "HRV", by bolo vymyslene cislo.
+What "load" is and what it is NOT
+---------------------------------
+Only one number comes from the watch: BPM, roughly once a second. That is
+NOT HRV, and neither RMSSD nor SDNN can be computed from it - that needs the
+distances between individual beats (R-R intervals), which the app does not
+get. Anything called "HRV" here would be a made-up number.
 
-Preto sa pocita `stress` (v UI "Záťaž") ako otvorene priznana zlozenina
-troch veci, ktore sa Z BPM zistit DAJU:
+That is why `stress` (in the UI "Záťaž", i.e. "Load") is computed as an
+openly admitted compound of three things that CAN be found out FROM BPM:
 
-  1. `over`      - o kolko je tep nad vlastnou pokojovou zakladnou hraca,
-                   skalovane k jeho kritickej hranici (55 % vahy)
-  2. `slope`     - ako rychlo tep prave stupa (20 % vahy); prudky nastup
-                   je to, co hrac citi ako "nakoplo ma to", este skor nez
-                   je cislo vysoke
-  3. `sustained` - kolko z poslednych 2 minut stravil nad zakladnou
-                   (25 % vahy); kratky spike po headshote nie je stres,
-                   dve minuty na 120 BPM ano
+  1. `over`      - how far the heart rate is above the player's own resting
+                   baseline, scaled to their critical limit (55 % weight)
+  2. `slope`     - how fast the heart rate is rising right now (20 %
+                   weight); a sharp onset is what the player feels as "it
+                   kicked in", even before the number is high
+  3. `sustained` - how much of the last 2 minutes they spent above the
+                   baseline (25 % weight); a short spike after a headshot
+                   is not stress, two minutes at 120 BPM is
 
-Vysledok je vyhladeny exponencialnym priemerom, aby pruh na HUD-e
-neposkakoval pri kazdom udere.
+The result is smoothed with an exponential average so that the bar on the
+HUD does not jump at every beat.
 
-Zakladna (`baseline`) nie je konstanta z nastaveni: berie sa ako 20.
-percentil poslednych ~10 minut, cize "aky tep ma tento hrac, ked ho hra
-prave nikam netlaci". Kto ma pokojovy tep 52 a kto 78, dostanu tak
-porovnatelny vysledok bez toho, aby cokolvek nastavovali.
+The baseline (`baseline`) is not a constant from the settings: it is taken
+as the 20th percentile of the last ~10 minutes, i.e. "what heart rate this
+player has when the game is not pushing them anywhere right now". Someone
+with a resting heart rate of 52 and someone with 78 thus get comparable
+results without having to set anything.
 
-Metriky, ktore sa z cisteho BPM spocitat DAJU (a v suhrne relacie su)
-----------------------------------------------------------------------
-  * HRR - Heart Rate Recovery: o kolko klesol tep za 1 min po vrchole.
-    Standardna klinicka metrika (Cleveland Clinic: bezne 12-23 BPM,
-    trenovani 29+). Pocita sa z lokalnych vrcholov relacie, hlavne cislo
-    je zotavenie po NAJVYSSOM vrchole (viz heart_rate_recovery).
-  * baseline_bpm - pokojova zakladna CELEJ relacie (20. percentil), aby sa
-    dal sledovat trend naprieC relaciami (stupajuca zakladna den za dnom =
-    unava/stres, nie nutne z hrania).
-  * zone_seconds - cas v pasmach pokoj/zvysena/vysoka/kriticka, v SEKUNDACH
-    (nie vo vzorkach - rovnaka pasca ako time_over).
-  * HRPI - Heart Rate Persistence Index: najvacsie k, pri ktorom bol tep
-    aspon k BPM po dobu aspon k SEKUND (kumulativne). Analogia h-indexu:
-    spaja vysku a trvanie do jedneho cisla (viz persistence_index).
-Nic z toho nie je HRV a nic z toho nie je diagnoza.
+Metrics that CAN be computed from plain BPM (and are in the session summary)
+----------------------------------------------------------------------------
+  * HRR - Heart Rate Recovery: how much the heart rate dropped within 1 min
+    after a peak. A standard clinical metric (Cleveland Clinic: normal 12-23
+    BPM, trained 29+). Computed from the session's local peaks, the main
+    number is the recovery after the HIGHEST peak (see heart_rate_recovery).
+  * baseline_bpm - resting baseline of the WHOLE session (20th percentile),
+    so that a trend across sessions can be watched (a baseline rising day
+    after day = fatigue/stress, not necessarily from gaming).
+  * zone_seconds - time in the calm/raised/high/critical zones, in SECONDS
+    (not in samples - the same trap as time_over).
+  * HRPI - Heart Rate Persistence Index: the largest k for which the heart
+    rate was at least k BPM for at least k SECONDS (cumulative). Analogous
+    to the h-index: combines height and duration into one number (see
+    persistence_index).
+None of this is HRV and none of this is a diagnosis.
 """
 
 import json
@@ -51,65 +53,72 @@ import time
 from collections import deque
 from datetime import datetime, timedelta
 
-# os.replace, ktory prezije kratky zamok suboru vo Windows (antivirus,
-# indexovanie). `paths` nenatahuje ziadny modul appky - ziadny kruh.
+# os.replace that survives a short file lock on Windows (antivirus,
+# indexing). `paths` does not pull in any app module - no cycle.
 from paths import nahrad_subor
 
-HISTORY_SECONDS = 180.0        # co drzime na krivku HUD-u
-BASELINE_SECONDS = 600.0       # z coho sa rata pokojova zakladna
-# Tvar CELEJ relacie ulozeny do suhrnu.
+HISTORY_SECONDS = 180.0        # what we keep for the HUD curve
+BASELINE_SECONDS = 600.0       # what the resting baseline is computed from
+# The shape of the WHOLE session, stored in the summary.
 #
-# 120 -> 600. Pri 15-minutovej relacii to je jeden bod na 1,5 s namiesto
-# 7,4 s, teda priblizne skutocna hustota vzoriek z hodiniek. Nizsie
-# rozlisenie znamenalo, ze sa spatne nedalo odpovedat na otazku "preco sa
-# vtedy neozvala" - interpolacia zo 120 bodov vyrobi hladkost, ktora tam
-# nebola, a z nej vyjde iny zaver nez z realneho priebehu.
+# 120 -> 600. For a 15-minute session that is one point per 1.5 s instead
+# of 7.4 s, i.e. roughly the real density of samples from the watch. Lower
+# resolution meant that the question "why didn't it speak up then" could
+# not be answered afterwards - interpolation from 120 points makes up a
+# smoothness that was not there, and it leads to a different conclusion
+# than the real course.
 #
-# Cena je par kilobajtov na relaciu. Za moznost prepocitat si vlastne
-# nastavenie z vlastnych dat to stoji.
+# The cost is a few kilobytes per session. Being able to recompute your own
+# settings from your own data is worth it.
 CURVE_POINTS = 600
 SLOPE_WINDOW_S = 20.0
 SUSTAINED_WINDOW_S = 120.0
 
-SMOOTHING = 0.25               # vaha novej hodnoty pri vyhladzovani
+SMOOTHING = 0.25               # weight of the new value when smoothing
 
 ZONE_CALM = "calm"
 ZONE_RAISED = "raised"
 ZONE_HIGH = "high"
 ZONE_CRITICAL = "critical"
 
-# Z kolkych poslednych vzoriek tepu sa berie median pre ZIVE slovo pasma
-# (`HeartStats.zone`). Jedna vzorka by pri tepe na hrane pasma preskakovala
-# medzi dvoma slovami a farbami; pat je pri kadencii hodiniek (~0,9 az
-# ~2,9 s na vzorku) zhruba 5 az 15 sekund - stale "teraz", ale uz nie sum.
+# From how many of the latest heart rate samples the median is taken for
+# the LIVE zone word (`HeartStats.zone`). A single sample would flip between
+# two words and colours when the heart rate is at the edge of a zone; five,
+# at the watch's cadence (~0.9 to ~2.9 s per sample), is roughly 5 to 15
+# seconds - still "now", but no longer noise.
 ZONE_MEDIAN_SAMPLES = 5
 
-# CISLO TEPU NA OBRAZOVKE (0.2.2) je median vzoriek z poslednych tolkych
-# sekund, nie posledna surova hodnota. Len obrazovka - do merania (`add`,
-# zataz, pasma, suhrn relacie) ide kazda vzorka ako doteraz.
+# THE HEART RATE NUMBER ON SCREEN (0.3) is the median of the samples from
+# the last that many seconds, not the last raw value. Screen only - every
+# sample goes into the measurement (`add`, load, zones, session summary)
+# as before.
 #
-# Preco: appka na hodinkach vie do jedneho zdroja pisat DVA rozne tepy
-# (u zadavatela ~2 spravy za sekundu, jeden rad o 5-10 BPM nizsie nez
-# druhy) a cislo potom v tej istej sekunde skakalo hore-dole o tych 5-10 BPM.
-# Preco 3 s: senzor sa meni zhruba raz za sekundu, takze v okne su ~3
-# citania jedneho radu - median zahodi jednu ujdenu hodnotu. Pri dvoch
-# radoch (~6 hodnot v okne, pol na pol) padne medzi ne a neskace. Za
-# skutocnym nastupom tepu cislo meska zhruba o sekundu (dve z troch citani
-# musia byt nove), menej nez slovo pasma (median 5 vzoriek, 5 az 15 s) -
-# cislo a farba sa teda nerozidu. Dlhsie okno by uz bolo vidno ako
-# oneskorenie pri prudkom nastupe tepu.
+# Why: the app on the watch can write TWO different heart rates into one
+# source (for the requester ~2 messages per second, one series 5-10 BPM
+# lower than the other), and the number then jumped up and down by those
+# 5-10 BPM within the same second.
+# Why 3 s: the sensor changes roughly once a second, so the window holds ~3
+# readings of one series - the median throws away one stray value. With two
+# series (~6 values in the window, half and half) it falls between them and
+# does not jump. Behind a real heart rate onset the number lags by roughly
+# a second (two of three readings must be new), less than the zone word
+# (median of 5 samples, 5 to 15 s) - so the number and the colour do not
+# drift apart. A longer window would already show as a delay on a sharp
+# heart rate onset.
 ZOBRAZ_OKNO_S = 3.0
-# Strop vzoriek v okne - 3 s ani pri 10 spravach za sekundu viac nemaju.
+# Cap on samples in the window - 3 s won't hold more even at 10 messages/s.
 ZOBRAZ_MAX_VZORIEK = 32
 
 
 def zone_for(stress):
-    """PEVNE pasma ZATAZE (25/50/75) - uz len pre `time_high_s`.
+    """FIXED LOAD zones (25/50/75) - now only for `time_high_s`.
 
-    Slovo a farba pasma, ktore hrac vidi (HUD, Dnes, kontrolka tepu), sa od
-    0.2 NErataju odtialto, ale z tepu voci jeho pokoju (`HeartStats.zone`,
-    `zone_of_bpm`). Tu to ostava, lebo `time_high_s` je ulozena metrika a
-    musi znamenat to iste ako v starsich relaciach (viz `HeartStats.add`).
+    The zone word and colour the player sees (HUD, Today, heart rate
+    indicator) have NOT been computed from here since 0.2, but from the
+    heart rate relative to their resting level (`HeartStats.zone`,
+    `zone_of_bpm`). This stays here because `time_high_s` is a stored
+    metric and has to mean the same as in older sessions (see
+    `HeartStats.add`).
     """
     if stress >= 75:
         return ZONE_CRITICAL
@@ -129,15 +138,15 @@ def _percentile(values, pct):
 
 
 # --------------------------------------------------------------------------
-# Ciste vypocty nad [(timestamp, bpm)] - bez stavu, testovatelne priamo
+# Pure computations over [(timestamp, bpm)] - stateless, directly testable
 # --------------------------------------------------------------------------
 
-MAX_SAMPLE_GAP_S = 5.0         # dlhsia diera = vypadok, cas sa nepripisuje
+MAX_SAMPLE_GAP_S = 5.0         # longer gap = dropout, time is not credited
 
 
 def _durations(samples):
-    """Kolko sekund "plati" kazda vzorka - do dalsej vzorky, max 5 s.
-    Posledna vzorka dostane typicky interval (median), aby nebola nula."""
+    """How many seconds each sample "counts" - until the next sample, max 5 s.
+    The last sample gets the typical interval (median), so it is not zero."""
     n = len(samples)
     if n == 0:
         return []
@@ -150,18 +159,20 @@ def _durations(samples):
 
 
 def kadencia_vzoriek(samples):
-    """Ako casto hodinky posielali tep - tri suhrnne cisla, ziadna krivka.
+    """How often the watch sent heart rate - three summary numbers, no curve.
 
-    PRECO
-    Spustac hlasky rozlisuje ridsiu kadenciu od vypadku (`trigger.DIERA_S`)
-    a tato hranica stoji na tom, ako casto hodinky naozaj posielaju. Doteraz
-    sa to dalo len odhadovat spatne z inych pocitadiel. S tymito tromi
-    cislami v suhrne relacie sa po par veceroch da overit namerane, nie
-    modelom: median a 90. percentil medzery medzi vzorkami a pocet medzier
-    nad 5 s (strop kreditu `trigger.MAX_KROK_S` aj `MAX_SAMPLE_GAP_S`).
+    WHY
+    The cue trigger tells a sparser cadence apart from a dropout
+    (`trigger.DIERA_S`), and that limit rests on how often the watch really
+    sends. Until now this could only be estimated afterwards from other
+    counters. With these three numbers in the session summary it can be
+    verified after a few evenings by measurement, not by a model: the
+    median and the 90th percentile of the gap between samples, and the
+    number of gaps over 5 s (the credit cap of `trigger.MAX_KROK_S` and
+    `MAX_SAMPLE_GAP_S`).
 
-    Su to agregaty - casove znacky ani krivka medzier sa neukladaju.
-    Menej nez dve vzorky: median a p90 su None, pocet 0.
+    They are aggregates - neither timestamps nor a curve of the gaps are
+    stored. Fewer than two samples: median and p90 are None, count 0.
     """
     medzery = [max(0.0, b[0] - a[0]) for a, b in zip(samples, samples[1:])]
     median = _percentile(medzery, 0.5)
@@ -169,14 +180,14 @@ def kadencia_vzoriek(samples):
     return {
         "sample_dt_median_s": round(median, 2) if median is not None else None,
         "sample_dt_p90_s": round(p90, 2) if p90 is not None else None,
-        # 5.0 natvrdo, nie konstanta: je to cislo v nazve kluca.
+        # 5.0 hard-coded, not a constant: it is the number in the key's name.
         "sample_gaps_over_5s": sum(1 for d in medzery if d > 5.0),
     }
 
 
 def session_baseline(samples, min_samples=30):
-    """Pokojova zakladna celej relacie - 20. percentil vsetkych vzoriek.
-    Pod 30 vzoriek None (rovnaky prah ako ziva zakladna)."""
+    """Resting baseline of the whole session - 20th percentile of all samples.
+    Below 30 samples None (the same threshold as the live baseline)."""
     values = [b for _, b in samples]
     if len(values) < min_samples:
         return None
@@ -184,10 +195,10 @@ def session_baseline(samples, min_samples=30):
 
 
 def downsample(values, points):
-    """Rovnomerne prerieduje zoznam na `points` hodnot.
+    """Evenly thins the list down to `points` values.
 
-    Nie orezanie: orezanim by sa z dvojhodinovej relacie stala krivka
-    poslednych desiatich minut. Rovnaky princip ako `HeartStats.series`.
+    Not truncation: truncating would turn a two-hour session into a curve
+    of the last ten minutes. The same principle as `HeartStats.series`.
     """
     values = list(values)
     if points < 1 or len(values) <= points:
@@ -196,43 +207,48 @@ def downsample(values, points):
     return [values[int(i * step)] for i in range(points)]
 
 
-DLHODOBA_MIN_RELACII = 3       # menej relacii = nemame co priemerovat
-DLHODOBA_Z_RELACII = 20        # z kolkych poslednych relacii sa rata
-DLHODOBA_PODLAHA = 40.0        # nizsie uz to nie je pokojovy tep, ale chyba
+DLHODOBA_MIN_RELACII = 3       # fewer sessions = nothing to average
+DLHODOBA_Z_RELACII = 20        # computed from this many latest sessions
+DLHODOBA_PODLAHA = 40.0        # lower is not a resting heart rate but an error
 
 
-# Podiel fyziologicky nemoznych skokov, od ktoreho je relacia podozriva.
+# Share of physiologically impossible jumps above which a session is suspect.
 #
-# Tep sa medzi dvoma susednymi bodmi krivky o 30 bpm neposunie. POZOR: skoky
-# sa rataju na `curve` (preriedenej na `CURVE_POINTS`), nie na surovych
-# vzorkach. Kym ma relacia menej nez 600 vzoriek, bod = vzorka (kadencia
-# hodiniek ~0,9 az ~2,9 s); dlhsia relacia ma bod kazdych trvanie/600 (2 h =
-# 12 s). Hranica 30 bpm sa s tym neskaluje. Ked sa to deje
-# opakovane, nemeria sa telo, ale nieco ine - 19. 9. to bol parser, ktory po
-# pridani krokov a rychlosti do spravy z hodiniek cital raz tep a raz pocet
-# krokov. Vysledkom bola 52-minutova relacia s priemerom 124 a maximom 235.
+# The heart rate does not move by 30 bpm between two neighbouring curve
+# points. WARNING: the jumps are counted on `curve` (thinned to
+# `CURVE_POINTS`), not on the raw samples. While a session has fewer than
+# 600 samples, point = sample (watch cadence ~0.9 to ~2.9 s); a longer
+# session has a point every duration/600 (2 h = 12 s). The 30 bpm limit
+# does not scale with that. When this happens repeatedly, it is not the
+# body being measured but something else - on 19. 9. it was the parser,
+# which, after steps and speed were added to the message from the watch,
+# read the heart rate one time and the step count another time. The result
+# was a 52-minute session with an average of 124 and a maximum of 235.
 #
-# Hranica 5 % je velkoryso nizko: v 12 zdravych relaciach bolo takych skokov
-# 0 %, v tej pokazenej 18 %. Medzi tym nie je nic.
+# The 5 % limit is generously low: in 12 healthy sessions there were 0 % of
+# such jumps, in the broken one 18 %. There is nothing in between.
 PODOZRIVE_SKOKY = 0.05
 NEMOZNY_SKOK_BPM = 30.0
-# Nad tuto hodnotu uz nejde o ludsky tep, ale o zle precitane cislo (kroky).
-# Zamerne vysoko nad realnym maximom aj mladeho hraca, nech to nechyti
-# ozajstnu spicku - chyta pokazene citanie (max 235 z krokov).
+# Above this value it is no longer a human heart rate but a misread number
+# (steps). Deliberately high above the real maximum of even a young player,
+# so that it does not catch a genuine spike - it catches a broken reading
+# (max 235 from steps).
 NEMOZNE_MAX_BPM = 220.0
 
 
 def je_podozriva(session):
-    """True, ked relacia nevyzera ako ludsky tep.
+    """True when the session does not look like a human heart rate.
 
-    Nezahadzuje sa - len sa nerata do niceho, co z dat vyvodzuje zavery.
+    It is not thrown away - it just does not count towards anything that
+    draws conclusions from the data.
     """
     if not isinstance(session, dict):
         return True
-    # NEZÁVISLE OD KRIVKY: nemožné maximum tepu = čítanie krokov ako tepu
-    # (pokazená relácia mala avg 124, max 235). Toto chytí aj reláciu BEZ
-    # krivky (B12) aj takú, kde podvzorkovanie striedanie bpm/steps zahladilo
-    # (B11) - `curve` je preriedená na 600 bodov, `max_bpm` je zo surových.
+    # INDEPENDENT OF THE CURVE: an impossible heart rate maximum = steps read
+    # as heart rate (the broken session had avg 124, max 235). This also
+    # catches a session WITHOUT a curve (B12) and one where downsampling
+    # smoothed out the bpm/steps alternation (B11) - `curve` is thinned to 600
+    # points, `max_bpm` is from the raw ones.
     try:
         mx = float(session.get("max_bpm") or 0)
     except (TypeError, ValueError):
@@ -241,7 +257,7 @@ def je_podozriva(session):
         return True
     krivka = session.get("curve") or []
     if len(krivka) < 10:
-        return False        # prikratka na posudenie, nechame ju byt
+        return False        # too short to judge, we leave it be
     try:
         skoky = [abs(float(krivka[i + 1]) - float(krivka[i]))
                  for i in range(len(krivka) - 1)]
@@ -254,34 +270,40 @@ def je_podozriva(session):
 
 
 def ciste_relacie(sessions):
-    """Relacie, z ktorych sa smie pocitat: bez podozrivych a bez CUDZICH.
+    """Sessions it is OK to compute from: no suspect and no FOREIGN ones.
 
-    Importovane relacie (`imported`) su cudzie telo - ina zakladna, iny
-    kriticky tep. `measure` aj `hr_insights` ich uz vylucuju; `hr_stats` to
-    doteraz nerobil, takze jeden import cudzieho exportu posunul hracovi
-    zakladnu, kriticky tep aj prah zataze (B10).
+    Imported sessions (`imported`) are a foreign body - a different
+    baseline, a different critical heart rate. `measure` and `hr_insights`
+    already exclude them; `hr_stats` did not do it until now, so a single
+    import of someone else's export shifted the player's baseline, critical
+    heart rate and load threshold (B10).
 
-    Od vyskumu 2026-09-22 sa vylucuju aj CONFOUNDED relacie (`je_confounded`:
-    alkohol, choroba, fyzicka namaha tesne pred hranim) - jeden opity vecer cez
-    per-session baseline inak vojde do dlhodobeho 20. percentilu a skresli
-    desiatky cistych relacii. Relacie sa NEMAZU, len sa neucia zo skreslenych.
+    Since the research of 2026-09-22 CONFOUNDED sessions are excluded too
+    (`je_confounded`: alcohol, illness, physical exertion right before
+    playing) - otherwise one drunk evening gets into the long-term 20th
+    percentile via the per-session baseline and skews dozens of clean
+    sessions. Sessions are NOT DELETED, the app just does not learn from
+    the skewed ones.
 
-    OBNOVENE RELACIE (`recovered`, 0.2.2) sa tiez nerataju - zamerne
-    opatrne. Su to skutocne vecery hraca, ale appka sa vtedy nezavrela
-    normalne (pad, Spravca uloh, vypadok prudu): chyba im koniec od
-    posledneho kontrolneho bodu (az 5 minut, casto prave upokojenie po hre)
-    a nikdy nedostali dotaznik, takze nevedia o alkohole ani chorobe, ktore
-    `je_confounded` vylucuje. Prahy sa z nich teda neucia (ani promocia),
-    v Historii a v exporte su ako kazda ina relacia. Deje sa to len vynimocne
-    - vypnutie Windows ulozi relaciu normalne (`app._pri_vypinani_windows`).
+    RECOVERED SESSIONS (`recovered`, 0.3) do not count either -
+    deliberately cautious. They are real evenings of the player, but the
+    app did not close normally then (crash, Task Manager, power cut): they
+    are missing the end since the last checkpoint (up to 5 minutes, often
+    exactly the calming down after the game) and they never got the
+    questionnaire, so they know nothing about the alcohol or illness that
+    `je_confounded` excludes. So thresholds are not learned from them (no
+    promotion either); in History and in the export they are like any other
+    session. This happens only rarely - shutting Windows down saves the
+    session normally (`app._pri_vypinani_windows`).
 
-    NASTAVOVANIE APPKY (`setup`, 0.2.2) z rovnakeho dovodu ako pokles 110 -> 80
-    pri parovani: uvod, parovanie a prehliadka lahko trvaju viac nez 5 minut
-    a su to minuty pokoja pri stole, nie hranie. Taka relacia by prah aj
-    hranicu stiahla k pokoju. Znacku dostane prva ulozena relacia po uvode
-    (`app._relacia_nastavovania`) a hociktora relacia, pri ktorej hrac v
-    dotazniku oznaci "Len nastavovanie appky" (`attach_context`). V Historii
-    ostava.
+    SETTING UP THE APP (`setup`, 0.3) for the same reason as the 110 -> 80
+    drop during pairing: introduction, pairing and the tour easily take
+    more than 5 minutes, and they are minutes of calm at the desk, not
+    playing. Such a session would pull both the threshold and the limit
+    towards calm. The tag goes to the first saved session after the
+    introduction (`app._relacia_nastavovania`) and to any session for which
+    the player ticks "Just setting up the app" in the questionnaire
+    (`attach_context`). It stays in History.
     """
     return [x for x in (sessions or [])
             if isinstance(x, dict) and not x.get("imported")
@@ -290,26 +312,30 @@ def ciste_relacie(sessions):
 
 
 def pokrytie_signalu(session):
-    """Aku cast relacie naozaj chodil tep: 0..1, alebo None, ked sa to nevie.
+    """Share of the session with a real heart rate: 0..1, or None when unknown.
 
-    `sum(zone_seconds) / duration_s`, najviac 1. Obe polia ma kazdy ulozeny
-    suhrn, takze sa to da dopocitat aj spatne - nove pole sa neuklada.
+    `sum(zone_seconds) / duration_s`, at most 1. Every stored summary has
+    both fields, so it can be computed afterwards too - no new field is
+    stored.
 
-    PRECO JE SUCET PASIEM CAS SO SIGNALOM
-    `HeartStats.add` pripisuje do pasma cas od predoslej vzorky, najviac
-    5 s (`min(5.0, ...)`), a po vypadku `clear_live` zahodi `_last_ts`,
-    takze diera po vypadku neprida nic. Medzera 5 az 12 s sa zarata ako 5 s:
-    pokrytie je skor mierne nadhodnotene nez podhodnotene.
+    WHY THE SUM OF ZONES IS THE TIME WITH SIGNAL
+    `HeartStats.add` credits to the zone the time since the previous
+    sample, at most 5 s (`min(5.0, ...)`), and after a dropout `clear_live`
+    throws away `_last_ts`, so the gap after a dropout adds nothing. A gap
+    of 5 to 12 s is counted as 5 s: coverage is rather slightly
+    overestimated than underestimated.
 
-    `duration_s` je cas na hodinach od otvorenia relacie, vratane cakania
-    na prvu vzorku. Kratka relacia ma preto pokrytie nizsie (v testoch z
-    vyvoja 0,79 az 0,96 pri 1 az 1,5 min, dlhe vecery 0,974 az 1,0).
+    `duration_s` is wall-clock time since the session was opened, including
+    waiting for the first sample. A short session therefore has lower
+    coverage (in tests during development 0.79 to 0.96 at 1 to 1.5 min,
+    long evenings 0.974 to 1.0).
 
-    None, ked chyba `zone_seconds` alebo je prazdne (stare a importovane
-    relacie), ked `duration_s <= 0`, pri pokazenom vstupe - a ked je sucet
-    pasiem nula. To nie je vecer bez tepu (ten by nemal krivku), ale
-    hodinky, ktore posielali ridsie nez kazdych 12 s: kazda medzera bola
-    vypadok a nepripisala nic. Meradlo vtedy nevie, nie "0 %".
+    None when `zone_seconds` is missing or empty (old and imported
+    sessions), when `duration_s <= 0`, on broken input - and when the sum
+    of zones is zero. That is not an evening without heart rate (that one
+    would have no curve), but a watch that sent less often than every 12 s:
+    every gap was a dropout and credited nothing. The gauge does not know
+    then, it is not "0 %".
     """
     try:
         trvanie = float(session.get("duration_s") or 0)
@@ -319,79 +345,87 @@ def pokrytie_signalu(session):
         signal = sum(float(v) for v in zony.values())
     except (TypeError, ValueError, AttributeError):
         return None
-    # Porovnanie zhora chyta aj NaN a nekonecno z pokazeneho suboru.
+    # The upper bound also catches NaN and infinity from a broken file.
     if not (0.0 < trvanie < float("inf") and 0.0 < signal < float("inf")):
         return None
     return min(1.0, signal / trvanie)
 
 
-# BRANA NA POKRYTIE v `ciste_relacie` - zvazena a ZAMERNE NEPOSTAVENA (C4).
+# COVERAGE GATE in `ciste_relacie` - weighed and DELIBERATELY NOT BUILT (C4).
 #
-# Kandidat bol "pod 0,5 sa z vecera appka neuci" (`je_slaby_signal`, vedla
-# `je_confounded`). Nepostavila sa, lebo:
-#   * po oprave prehravania v `load_z_krivky` uz ziadne ucenie nevazi relaciu
-#     podla pokrytia - dlhodoba zakladna berie jedno `baseline_bpm` za
-#     relaciu, kriticky tep najviac CURVE_POINTS bodov krivky a prah uz
-#     prehrava len cas so signalom;
-#   * pomer klesne aj vtedy, ked je PC uspate, hodinky na nabijacke alebo
-#     appka pocuva, kym si prec (vypadok relaciu nezatvara) - taky vecer ma
-#     dobre data a brana by ich zahodila;
-#   * na testovacich datach (9 relacii) by nevyradila ani jednu;
-#   * pokrytie sa da dopocitat z toho, co kazdy suhrn uz uklada, takze brana
-#     pridana neskor zaposobi na celu historiu naraz. Cakanie nic nestoji.
-# Postavit ju ma zmysel, az ked sa objavi skutocny vecer s pokrytim pod 50 %,
-# ktoreho zakladna alebo kriticky tep jasne vybocuje od susednych vecerov -
-# teda tep by vypadaval nenahodne (napr. prave pri pohybe v napatych
-# chvilach), nie len ubudol.
+# The candidate was "below 0.5 the app does not learn from the evening"
+# (`je_slaby_signal`, next to `je_confounded`). It was not built because:
+#   * after the fix to the replay in `load_z_krivky` no learning weights a
+#     session by coverage anymore - the long-term baseline takes one
+#     `baseline_bpm` per session, the critical heart rate at most
+#     CURVE_POINTS curve points, and the threshold now replays only the
+#     time with signal;
+#   * the ratio also drops when the PC is asleep, the watch is on the
+#     charger or the app is listening while you are away (a dropout does
+#     not close the session) - such an evening has good data and the gate
+#     would throw it away;
+#   * on the test data (9 sessions) it would not exclude a single one;
+#   * coverage can be computed from what every summary already stores, so
+#     a gate added later takes effect on the whole history at once. Waiting
+#     costs nothing.
+# It makes sense to build it only once a real evening with coverage below
+# 50 % turns up whose baseline or critical heart rate clearly deviates from
+# the neighbouring evenings - i.e. the heart rate would drop out
+# non-randomly (e.g. exactly during movement in tense moments), not just
+# thin out.
 
-# Zive pokrytie (`HeartStats.signal_coverage`) vracia cislo az minutu po
-# PRVEJ VZORKE (nie po minute nepretrziteho tepu), dovtedy None - widget
-# musi mat pre ten cas vlastny stav. Po 15 sekundach by jedna
-# 12-sekundova medzera ukazala 20 % - to je sum zaciatku, nie stav spojenia.
+# The live coverage (`HeartStats.signal_coverage`) returns a number only a
+# minute after the FIRST SAMPLE (not after a minute of uninterrupted heart
+# rate), until then None - the widget has to have its own state for that
+# time. After 15 seconds a single 12-second gap would show 20 % - that is
+# start-up noise, not the connection state.
 POKRYTIE_ZIVE_MIN_S = 60.0
 
 
 # --------------------------------------------------------------------------
-# Kriticky tep: vypocet, nie nastavenie
+# Critical heart rate: a computation, not a setting
 # --------------------------------------------------------------------------
 
-KRITICKY_PERCENTIL = 0.90      # "hornych desat percent tvojho hrania"
+KRITICKY_PERCENTIL = 0.90      # "the top ten percent of your playing"
 KRITICKY_MIN_RELACII = 3
 KRITICKY_MIN_BODOV = 300
 KRITICKY_Z_RELACII = 20
-KRITICKY_ZALOHA = 110.0        # kym nie je z coho ratat
+KRITICKY_ZALOHA = 110.0        # until there is something to compute from
 KRITICKY_MIN_NAD_ZAKLADNOU = 20.0
-KRITICKY_MIN_BOD, KRITICKY_MAX_BOD = 25.0, 250.0   # bod krivky mimo = sum
-KRITICKY_STROP = (80.0, 200.0)  # kriticky prah sa drzi v rozumnom rozsahu
+KRITICKY_MIN_BOD, KRITICKY_MAX_BOD = 25.0, 250.0   # curve point outside = noise
+KRITICKY_STROP = (80.0, 200.0)  # critical threshold kept in a sane range
 
 
 def dynamicky_kriticky(sessions, baseline=None):
-    """Kriticky tep spocitany z vlastnych relacii hraca.
+    """Critical heart rate computed from the player's own sessions.
 
-    PRECO TO NIE JE NASTAVENIE
-    Bolo nim - a nedalo sa nastavit dobre. Cislo vstupuje do vzorca zataze
-    ako `headroom = max(12, kriticky - zakladna)`, takze pri zakladni 77
-    dava hocico do 89 rovnaky vysledok (podlahu 12) a hrac nema ako zistit,
-    ze posuvanim z 80 na 90 nic nemeni. Zaroven urcuje pasmo "kriticka",
-    takze prilis nizka hodnota spravi z pokojneho vecera 52 % v cervenom.
+    WHY IT IS NOT A SETTING
+    It used to be one - and it could not be set well. The number enters the
+    load formula as `headroom = max(12, kriticky - zakladna)`, so with a
+    baseline of 77 anything up to 89 gives the same result (the floor of
+    12) and the player has no way to find out that moving it from 80 to 90
+    changes nothing. At the same time it defines the "critical" zone, so a
+    value that is too low turns a calm evening into 52 % in the red.
 
-    CO SA RATA
-    90. percentil zo zlucenych krivok poslednych `KRITICKY_Z_RELACII` CISTYCH
-    relacii dlhych aspon `PRAH_MIN_TRVANIE_S` - teda "tep, nad ktory sa
-    dostanes v hornej desatine hrania".
-    Na testovacich datach to dava napr. 105 pri zakladni 77: headroom 28 a pasmo
-    kriticka pokryva 10 % casu.
+    WHAT IS COMPUTED
+    The 90th percentile of the merged curves of the last `KRITICKY_Z_RELACII`
+    CLEAN sessions at least `PRAH_MIN_TRVANIE_S` long - i.e. "the heart rate
+    you get above in the top tenth of your playing".
+    On the test data this gives e.g. 105 with a baseline of 77: headroom 28,
+    and the critical zone covers 10 % of the time.
 
-    Vracia `KRITICKY_ZALOHA`, kym nie je z coho ratat. `baseline` je len
-    poistka, aby vysledok neskoncil tesne nad zakladnou.
+    Returns `KRITICKY_ZALOHA` until there is something to compute from.
+    `baseline` is only a safeguard so that the result does not end up just
+    above the baseline.
     """
-    # MINIMUM 5 MINUT NA RELACIU (0.2.1) - to iste pravidlo ako pri prahu
-    # zataze (`je_dost_dlha`). Doteraz stacilo 300 bodov krivky SPOLU, takze
-    # tri dvojminutove relacie pri parovani hodiniek (sedis, tep pri pokoji)
-    # nahradili zalohu 110 hranicou tesne nad zakladnou. Nizsia hranica =
-    # mensi headroom = vyssia zataz a viac "Spicky" - appka by volala vlka
-    # z dat, ktore o hrani nic nehovoria. Kratka relacia sa NEMAZE, len sa z
-    # nej hranica neuci; zakladna (`dlhodoba_zakladna`) ju berie dalej.
+    # MINIMUM 5 MINUTES PER SESSION (0.2.1) - the same rule as for the load
+    # threshold (`je_dost_dlha`). Until now 300 curve points IN TOTAL were
+    # enough, so three two-minute sessions while pairing the watch (you sit,
+    # heart rate at rest) replaced the fallback of 110 with a limit just above
+    # the baseline. A lower limit = less headroom = higher load and more
+    # "Peak" - the app would cry wolf from data that says nothing about
+    # playing. A short session is NOT DELETED, the limit is just not learned
+    # from it; the baseline (`dlhodoba_zakladna`) still takes it.
     ciste = [r for r in ciste_relacie(sessions)
              if je_dost_dlha(r)][-KRITICKY_Z_RELACII:]
     if len(ciste) < KRITICKY_MIN_RELACII:
@@ -403,38 +437,43 @@ def dynamicky_kriticky(sessions, baseline=None):
                 v = float(b)
             except (TypeError, ValueError):
                 continue
-            # Body mimo ludskeho tepu do percentilu nepatria - jedna pokazena
-            # plocha by inak vytlacila kriticky prah nahor (B9).
+            # Points outside a human heart rate do not belong in the
+            # percentile - otherwise one broken stretch would push the
+            # critical threshold up (B9).
             if KRITICKY_MIN_BOD <= v <= KRITICKY_MAX_BOD:
                 body.append(v)
     if len(body) < KRITICKY_MIN_BODOV:
         return KRITICKY_ZALOHA
     hodnota = _percentile(sorted(body), KRITICKY_PERCENTIL)
     if baseline:
-        # Headroom nesmie byt symbolicky - inak sa zataz vyskaluje na
-        # niekolkych uderoch a appka bude reagovat na sum.
+        # The headroom must not be merely symbolic - otherwise the load gets
+        # scaled over a few beats and the app will react to noise.
         hodnota = max(hodnota, float(baseline) + KRITICKY_MIN_NAD_ZAKLADNOU)
-    # STROP: sesterska `dynamicky_prah_zataze` ho ma (PRAH_ROZSAH), tato ho
-    # nemala - jedna nezmyselna krivka mohla vytlacit kriticky prah az k 235
-    # a appka by uz nikdy neoznacila nic ako kriticke a stichla (B9).
+    # CAP: its sister `dynamicky_prah_zataze` has one (PRAH_ROZSAH), this
+    # one did not - a single nonsensical curve could push the critical
+    # threshold up to 235 and the app would never mark anything as critical
+    # again and go quiet (B9).
     return float(round(max(KRITICKY_STROP[0], min(KRITICKY_STROP[1], hodnota))))
 
 
-PRAH_PERCENTIL = 0.80          # nad prahom ma byt ~20 % casu hrania
+PRAH_PERCENTIL = 0.80          # ~20 % of playing time should be above the threshold
 PRAH_MIN_RELACII = 3
-# Kolko bodov zataze musia relacie dat SPOLU. Bod = krok 1,5 s prehravania
-# (`load_z_krivky`), prehrava sa len cas so signalom (`duration_s * pokrytie`)
-# a prvych 29 krokov kazdej relacie je kalibracia (`HeartStats` chce 30
-# vzoriek), ktora sa nerata. Relacia teda da `int(signal_s / 1.5) - 29` bodov.
+# How many load points the sessions must give IN TOTAL. Point = a 1.5 s
+# replay step (`load_z_krivky`), only time with signal is replayed
+# (`duration_s * pokrytie`) and the first 29 steps of each session are
+# calibration (`HeartStats` wants 30 samples), which does not count. So a
+# session gives `int(signal_s / 1.5) - 29` points.
 #
-# 1000 -> 900 (0.2.1). README slubuje "tri relacie po zhruba desat minut
-# staci, tri po pat nie". Pri 1000 to platilo len pri pokryti nad ~91 %:
-# 3 x 10 min dava pri 100 % 3 x 371 = 1113, pri 90 % 3 x 331 = 993 a pri
-# 85 % 3 x 311 = 933 - cize bezny vecer s par dierami v signale by pod
-# prahom ostal. 900 prejde 3 x 10 min az po pokrytie ~82 %, a stale
-# nepusti 3 x 5 min (3 x 171 = 513 ani pri plnom pokryti) ani 3 x 8 min
-# pri plnom pokryti (873). Spolu s kalibraciou je to pri troch relaciach
-# (900 + 3 x 29) x 1,5 s = ~25 minut tepu - "zhruba pol hodiny" z README.
+# 1000 -> 900 (0.2.1). The README promises "three sessions of roughly ten
+# minutes are enough, three of five are not". At 1000 that held only with
+# coverage above ~91 %: 3 x 10 min gives at 100 % 3 x 371 = 1113, at 90 %
+# 3 x 331 = 993 and at 85 % 3 x 311 = 933 - so a normal evening with a few
+# holes in the signal would stay below the threshold. 900 lets 3 x 10 min
+# through down to a coverage of ~82 %, and still does not let through
+# 3 x 5 min (3 x 171 = 513 not even at full coverage) nor 3 x 8 min at
+# full coverage (873). Together with calibration, for three sessions it is
+# (900 + 3 x 29) x 1.5 s = ~25 minutes of heart rate - "roughly half an
+# hour" from the README.
 PRAH_MIN_BODOV = 900
 PRAH_Z_RELACII = 20
 PRAH_MIN_TRVANIE_S = 300.0
@@ -442,18 +481,20 @@ PRAH_ROZSAH = (35.0, 85.0)
 
 
 def je_dost_dlha(session):
-    """True, ked relacia trva aspon `PRAH_MIN_TRVANIE_S` (5 minut).
+    """True when the session lasts at least `PRAH_MIN_TRVANIE_S` (5 minutes).
 
-    Jedno pravidlo pre prah zataze aj kriticky tep: z kratsej relacie sa
-    ziadna vlastna hranica neuci. Pokazene alebo chybajuce `duration_s` sa
-    sprava ako nula - relacia sa neuci, ale ani nezhodi cely vypocet
-    (v `app._open_hr_session` by vynimka zahodila aj dlhodobu zakladnu).
-    Porovnanie zhora chyta NaN a nekonecno z pokazeneho suboru, rovnako ako
-    v `pokrytie_signalu`.
+    One rule for both the load threshold and the critical heart rate: no
+    own limit is learned from a shorter session. A broken or missing
+    `duration_s` behaves as zero - the session is not learned from, but it
+    does not bring down the whole computation either (in
+    `app._open_hr_session` an exception would also throw away the
+    long-term baseline). The upper-bound comparison catches NaN and
+    infinity from a broken file, same as in `pokrytie_signalu`.
 
-    Vety v nastaveniach "spocitane z n relacii" (`app._kriticky_popis`,
-    `_prah_z_relacii`) musia n ratat TYMTO pravidlom - inak by pri troch
-    kratkych relaciach tvrdili vypocitanu hranicu, kym plati zaloha.
+    The sentences in the settings "computed from n sessions"
+    (`app._kriticky_popis`, `_prah_z_relacii`) must count n by THIS rule -
+    otherwise with three short sessions they would claim a computed limit
+    while the fallback applies.
     """
     try:
         trvanie = float(session.get("duration_s") or 0)
@@ -463,24 +504,25 @@ def je_dost_dlha(session):
 
 
 def load_z_krivky(session, baseline, critical, krok_s=1.5):
-    """Prehra ulozenu krivku relacie a vrati z nej priebeh ZATAZE.
+    """Replays a session's stored curve and returns its LOAD course.
 
-    Relacia si uklada tep, nie zataz - tu sa dopocita tym istym kodom, aky
-    bezi naostro (`HeartStats`), takze sa vysledok nemoze rozist s tym, co
-    appka pocitala v realnom case.
+    A session stores heart rate, not load - here it is recomputed with the
+    same code that runs live (`HeartStats`), so the result cannot drift
+    apart from what the app computed in real time.
     """
     krivka = session.get("curve") or []
     trvanie = float(session.get("duration_s") or 0)
     if len(krivka) < 10 or trvanie < PRAH_MIN_TRVANIE_S:
         return []
-    # Krivka je preriedena podla POCTU vzoriek, nie podla casu (`trace` ->
-    # `downsample`), takze diery po vypadkoch v nej nie su. Natiahnuta na
-    # cele `duration_s` vazila vecer s dierami 1/pokrytie-krat viac nez
-    # ostatne a roztiahla mu casovu os. Prehrava sa preto len cas, ked tep
-    # naozaj chodil (`trvanie * p` je sucet pasiem). Podmienka vyssie ostava
-    # na `duration_s`, aby sa nezmenilo, ktore relacie do prahu patria, ani
-    # "vypocitane z n relacii" v nastaveniach. Bez pokrytia (stare relacie,
-    # None) sa prehrava cele trvanie ako doteraz.
+    # The curve is thinned by NUMBER of samples, not by time (`trace` ->
+    # `downsample`), so the gaps after dropouts are not in it. Stretched over
+    # the whole `duration_s`, an evening with gaps weighed 1/coverage times
+    # more than the others and had its time axis stretched. So only the time
+    # when the heart rate really came in is replayed (`trvanie * p` is the
+    # sum of the zones). The condition above stays on `duration_s` so that it
+    # does not change which sessions belong to the threshold, nor "computed
+    # from n sessions" in the settings. Without coverage (old sessions, None)
+    # the whole duration is replayed as before.
     p = pokrytie_signalu(session)
     if p:
         trvanie *= p
@@ -498,33 +540,37 @@ def load_z_krivky(session, baseline, critical, krok_s=1.5):
             continue
         t += krok_s
         st.add(hodnota, ts=t)
-        # Kalibracia sa vynecha: naostro ju spustac nevidi (`note_load`
-        # s `calibrating=True`), tak nesmie posuvat ani prah.
+        # Calibration is skipped: live, the trigger does not see it
+        # (`note_load` with `calibrating=True`), so it must not move the
+        # threshold either.
         if not st.is_calibrating:
             out.append(st.stress)
     return out
 
 
 def dynamicky_prah_zataze(sessions, baseline=None, critical=None):
-    """Prah zataze, pri ktorom sa appka zacne natahovat. Alebo None.
+    """Load threshold at which the app starts winding up. Or None.
 
-    PRECO TO NIE JE NASTAVENIE
-    Bolo - ako volba "ako casto sa ozvem" s tromi polohami. Lenze hrac nema
-    ako vediet, co ktora poloha urobi PRAVE JEMU: zataz je skalovana voci
-    jeho vlastnej zakladne, takze to iste cislo znamena u kazdeho nieco ine.
+    WHY IT IS NOT A SETTING
+    It was - as a "how often I speak up" option with three positions. But
+    the player has no way to know what each position does FOR THEM: the
+    load is scaled against their own baseline, so the same number means
+    something different for everyone.
 
-    AKO SA TO RATA
-    80. percentil jeho vlastnej zataze napriec cistymi relaciami - teda
-    "hranica, nad ktorou travi patinu hrania". Odmerane na testovacich datach
-    to dava prah 73 a 3,7 dorucenych hlasok za hodinu, co sedi pod strop 5
-    zo zadania. Nizsi prah strop len vycerpa skor a hlasky padnu na menej
-    vyhrotene momenty.
+    HOW IT IS COMPUTED
+    The 80th percentile of their own load across clean sessions - i.e. "the
+    limit above which they spend a fifth of their playing". Measured on the
+    test data this gives a threshold of 73 and 3.7 delivered cues per hour,
+    which fits under the cap of 5 from the spec. A lower threshold only
+    uses up the cap sooner and the cues fall on less heated moments.
 
-    Prah teda neurcuje, KOLKO hlasok pride - to robi `max_per_hour` a
-    `min_gap_s`. Urcuje, KTORE momenty sa na ne kvalifikuju.
+    So the threshold does not decide HOW MANY cues come - that is done by
+    `max_per_hour` and `min_gap_s`. It decides WHICH moments qualify for
+    them.
 
-    Vracia None, kym nie je z coho ratat - volajuci vtedy necha cisla pre
-    priemerneho hraca z `trigger.default_params()`.
+    Returns None until there is something to compute from - the caller
+    then keeps the numbers for an average player from
+    `trigger.default_params()`.
     """
     pouzitelne = [r for r in ciste_relacie(sessions)
                   if je_dost_dlha(r) and r.get("curve")][-PRAH_Z_RELACII:]
@@ -541,22 +587,24 @@ def dynamicky_prah_zataze(sessions, baseline=None, critical=None):
 
 
 def dlhodoba_zakladna(sessions):
-    """Pokojova zakladna hraca naprieč relaciami, alebo None.
+    """The player's resting baseline across sessions, or None.
 
-    PRECO TO NESTACI RATAT Z JEDNEJ RELACIE
-    Zakladna vnutri relacie je 20. percentil poslednych 10 minut. Ked hrac
-    zapne appku az uprostred boja - alebo ked tep drzi hore cely vecer -
-    to okno pokoj nikdy neuvidi a zakladna sa ustali na strese. Zataz sa
-    pocita voci nej, takze appka v suvislom strese vidi zataz nula.
+    WHY COMPUTING IT FROM ONE SESSION IS NOT ENOUGH
+    The baseline within a session is the 20th percentile of the last 10
+    minutes. When the player turns the app on only in the middle of a
+    fight - or when the heart rate stays up the whole evening - that window
+    never sees calm and the baseline settles on stress. Load is computed
+    against it, so in sustained stress the app sees zero load.
 
-    Hrac ma ale pokojovy tep aj vtedy, ked ho dnes vecer neukazal - je
-    zapisany v predchadzajucich relaciach. Berie sa 20. percentil zakladien
-    z poslednych `DLHODOBA_Z_RELACII` relacii: ta ista statistika, len o
-    poschodie vyssie, takze jeden zly vecer vysledok neurcí.
+    But the player has a resting heart rate even when they did not show it
+    tonight - it is recorded in previous sessions. The 20th percentile of
+    the baselines from the last `DLHODOBA_Z_RELACII` sessions is taken: the
+    same statistic, just one floor higher, so a single bad evening does not
+    decide the result.
     """
     hodnoty = []
-    # Podozriva relacia (pokazene citanie tepu) nesmie urcovat zakladnu -
-    # viz `je_podozriva`.
+    # A suspect session (broken heart rate reading) must not determine the
+    # baseline - see `je_podozriva`.
     for s in ciste_relacie(sessions)[-DLHODOBA_Z_RELACII:]:
         try:
             b = float(s.get("baseline_bpm") or 0)
@@ -571,10 +619,11 @@ def dlhodoba_zakladna(sessions):
 
 
 # --------------------------------------------------------------------------
-# "Plny Zanshin" - promocia (easter egg). Detekcia nad ULOZENOU historiou,
-# voci VLASTNEJ zakladni hraca; nikdy nad zivym senzorom. Spusti sa RAZ.
-# Cisla su volene voci baseline (nie fixne): base+12 (~"pod 90" bezne),
-# base+18 (~"pod 95" v spickach), 5 z poslednych 7, min 10 relacii a 10 dni.
+# "Full Zanshin" - graduation (easter egg). Detection over the STORED
+# history, against the player's OWN baseline; never over the live sensor.
+# Fires ONCE. The numbers are chosen against the baseline (not fixed):
+# base+12 (~"under 90" normally), base+18 (~"under 95" at peaks), 5 of the
+# last 7, min 10 sessions and 10 days.
 # --------------------------------------------------------------------------
 ZEN_REG_MARGIN = 12.0
 ZEN_SPIKE_MARGIN = 18.0
@@ -587,16 +636,18 @@ ZEN_WINDOW = 7
 ZEN_NEEDED = 5
 ZEN_MIN_TOTAL = 10
 ZEN_MIN_SPAN_DAYS = 10.0
-# Do serie sa rataju LEN HERNE relacie (0.2, B3-worlds) - rovnako ako
-# kriticky tep a prah zataze (`app.ALGORITMUS_SVET`). Pokojne popoludnie pri
-# praci nie je pokoj pri hre; a sprava hovori o "dalsom zapase". Svet urcuje
-# `session_world` (odpoved v dotazniku > svet zo startu > Hra).
+# Only PLAY sessions count towards the streak (0.2, B3-worlds) - same as
+# the critical heart rate and the load threshold (`app.ALGORITMUS_SVET`).
+# A calm afternoon at work is not calm while playing; and the message
+# talks about "the next match". The world is decided by `session_world`
+# (answer in the questionnaire > world from the start > Play).
 ZEN_SVET = "play"
 
 
 def _rising_crossings(curve, threshold):
-    """Kolkokrat krivka STUPAJUCO prekroci prah (len prechody zdola nahor -
-    jedno vyskocenie = jedno prekrocenie, nie kazdy bod nad prahom)."""
+    """How many times the curve crosses the threshold RISING (only crossings
+    from below upwards - one jump = one crossing, not every point above the
+    threshold)."""
     n = 0
     hore = False
     for v in curve:
@@ -613,36 +664,42 @@ def _rising_crossings(curve, threshold):
 
 
 def je_plne_zanshin(session):
-    """Bola relacia "plny Zanshin"? True / False / None.
+    """Was the session "full Zanshin"? True / False / None.
 
-    None = relacia sa NEPOCITA (kratka, bez dat, podozriva, importovana) -
-    zamerne, aby volne dni a rychle nahliadnutia NIKDY netrestali (appka
-    nesmie vytvorit seriu, ktora sa da stratit; viz zrusene `streaks()`).
+    None = the session does NOT COUNT (short, no data, suspect, imported) -
+    deliberately, so that days off and quick peeks NEVER punish (the app
+    must not create a streak that can be lost; see the removed
+    `streaks()`).
 
-    Inak PASS iff (voci VLASTNEJ zakladni):
-      1. 80 % priebehu <= base + ZEN_REG_MARGIN   (~pod 90, bezny pokoj)
-      2. aj najhorucejsich 5 % <= base + ZEN_SPIKE_MARGIN  (~pod 95 v spickach)
-      3. <= ZEN_MAX_CRIT_CROSSINGS stupajucich prekroceni kritickej linie
-    Percentily (nie max_bpm): modul neveri jednotlivym extremom - jeden
-    artefaktovy uder nesmie zrusit pokojny vecer.
+    Otherwise PASS iff (against the player's OWN baseline):
+      1. 80 % of the course <= base + ZEN_REG_MARGIN   (~under 90, usual calm)
+      2. even the hottest 5 % <= base + ZEN_SPIKE_MARGIN  (~under 95 at peaks)
+      3. <= ZEN_MAX_CRIT_CROSSINGS rising crossings of the critical line
+    Percentiles (not max_bpm): the module does not trust single extremes -
+    one artefact beat must not cancel a calm evening.
 
-    ZAKLADNA MA TEN ISTY STROP AKO PASMA (0.2, C2). Zakladna relacie je 20.
-    percentil tohto vecera; dlhodoba zakladna (`long_baseline_bpm`, ulozena v
-    suhrne) je jej STROP - presne ako v `HeartStats.baseline`, voci ktorej sa
-    rata zataz aj pasmo "Pokoj". Bez stropu by presiel vecer, ktory cely drzal
-    rovnomerne VYSOKO (kava, suvisly stres): 20. percentil sa dotiahne za nim
-    a rozptyl ostane maly. Stare relacie bez pola maju len zakladnu relacie.
+    THE BASELINE HAS THE SAME CAP AS THE ZONES (0.2, C2). The session
+    baseline is the 20th percentile of this evening; the long-term baseline
+    (`long_baseline_bpm`, stored in the summary) is its CAP - exactly as in
+    `HeartStats.baseline`, against which both the load and the "Calm" zone
+    are computed. Without the cap an evening that stayed evenly HIGH the
+    whole time (coffee, sustained stress) would pass: the 20th percentile
+    follows it up and the spread stays small. Old sessions without the
+    field have only the session baseline.
 
-    DLZKA = CAS S TEPOM. `duration_s` zahrna aj vypadky (hodinky prec, PC
-    uspane); od C3 suhrn nesie `blind_s`, takze sa vypadky do 15 minut
-    nerataju. Inak by 5 minut tepu a 20 minut ticha preslo ako cely pokojny
-    vecer. Cakanie na prvu vzorku sa neodpocitava - `blind_s` ho nepozna,
-    lebo tep este nechodil (viz `note_dropout`). Bez pola (stare relacie)
-    sa berie cele trvanie.
+    LENGTH = TIME WITH HEART RATE. `duration_s` also includes dropouts
+    (watch away, PC asleep); since C3 the summary carries `blind_s`, so
+    dropouts up to 15 minutes do not count. Otherwise 5 minutes of heart
+    rate and 20 minutes of silence would pass as a whole calm evening.
+    Waiting for the first sample is not subtracted - `blind_s` does not
+    know it, because the heart rate was not coming in yet (see
+    `note_dropout`). Without the field (old sessions) the whole duration is
+    taken.
 
-    Zataz, pasma (`zone_seconds`) ani prah spustaca sem nevstupuju, takze
-    ich kalibracia nemeni nic: su to len ulozene TEPY (`curve`, aj z prvych
-    sekund), zakladne, `critical_bpm` a pocty.
+    Load, zones (`zone_seconds`) and the trigger threshold do not enter
+    here, so their calibration changes nothing: these are only stored HEART
+    RATES (`curve`, also from the first seconds), baselines, `critical_bpm`
+    and counts.
     """
     try:
         if session is None or je_podozriva(session) or session.get("imported"):
@@ -673,9 +730,9 @@ def je_plne_zanshin(session):
 
 
 def _zen_eligible(sessions):
-    """Ciste HERNE relacie (bez podozrivych/importovanych/confounded, len
-    `ZEN_SVET`) s vyhodnotenim je_plne_zanshin, zoradene podla casu; None
-    (nepocita sa) sa vynecha."""
+    """Clean PLAY sessions (no suspect/imported/confounded, only `ZEN_SVET`)
+    with the je_plne_zanshin evaluation, sorted by time; None (does not
+    count) is skipped."""
     out = []
     for s in ciste_relacie(sessions_in_world(sessions, ZEN_SVET)):
         r = je_plne_zanshin(s)
@@ -687,7 +744,7 @@ def _zen_eligible(sessions):
 
 
 def zanshin_streak(sessions):
-    """Stav serie - PREPOCITA sa z historie (nic sa neuklada, self-healing)."""
+    """Streak state - RECOMPUTED from history (nothing saved, self-healing)."""
     elig = _zen_eligible(sessions)
     window = elig[-ZEN_WINDOW:]
     passed = sum(1 for _, r in window if r)
@@ -697,11 +754,12 @@ def zanshin_streak(sessions):
 
 
 def zanshin_graduation(sessions, already_graduated=False):
-    """Ma sa spustit promocia? Vracia dict s `fire` (raz) a `reason`.
+    """Should graduation fire? Returns a dict with `fire` (once) and `reason`.
 
-    Poistky: spusti sa az pri >=ZEN_MIN_TOTAL cistych hernych relaciach, rozpatych
-    aspon ZEN_MIN_SPAN_DAYS dni, pri existujucej stabilnej zakladni, a len
-    ked posledny vecer bol pokojny (kruh sa uzavrie po pokoji, nie po strese).
+    Safeguards: it fires only with >=ZEN_MIN_TOTAL clean play sessions, spread
+    over at least ZEN_MIN_SPAN_DAYS days, with an existing stable baseline,
+    and only when the last evening was calm (the circle closes after calm,
+    not after stress).
     """
     if already_graduated:
         return {"fire": False, "graduated": True, "reason": "already"}
@@ -725,13 +783,14 @@ def zanshin_graduation(sessions, already_graduated=False):
             "passed_in_window": passed, "reason": "fire" if fire else "not_yet"}
 
 def zone_of_bpm(bpm, baseline, critical_bpm):
-    """Pasmo jednej hodnoty tepu voci VLASTNEJ zakladne hraca.
+    """The zone of one heart rate value against the player's OWN baseline.
 
-    Jediny zdroj pravdy pre pasma: pouziva to sucet casu (`time_in_zones`),
-    kazdy graf, ktory pas pasiem kresli (stopa relacie), aj zive slovo a
-    farba pasma na HUD-e, na Dnes a na kontrolke tepu (`HeartStats.zone`).
-    Keby to kazdy pocital sam, pruh a cisla pod nim by si po case prestali
-    sediet - a "Vysoka" by na jednej stranke znamenala dve rozne veci.
+    The single source of truth for zones: it is used by the time sum
+    (`time_in_zones`), every chart that draws a zone band (the session
+    trace), and the live zone word and colour on the HUD, on Today and on
+    the heart rate indicator (`HeartStats.zone`). If each computed it on
+    its own, the bar and the numbers under it would stop matching over
+    time - and "High" would mean two different things on one page.
     """
     if bpm >= critical_bpm:
         return ZONE_CRITICAL
@@ -743,13 +802,14 @@ def zone_of_bpm(bpm, baseline, critical_bpm):
 
 
 def time_in_zones(samples, critical_bpm, baseline=None):
-    """Sekundy v pasmach podla ODCHYLKY OD ZAKLADNE, nie podla zivej
-    zataze (ta je vyhladeny stav a spatne sa neda zrekonstruovat).
+    """Seconds in zones by DEVIATION FROM THE BASELINE, not by the live
+    load (that is a smoothed state and cannot be reconstructed afterwards).
 
-    Pasma: calm < base+10, raised < base+25, high < critical, critical >=
-    critical. Vysledok je slovnik {zona: sekundy}. Pouziva sa na dodatocny
-    prepocet zo surovych vzoriek (napr. v testoch alebo pri importe);
-    ziva relacia si pasma pocita priebezne z aktualnej zataze."""
+    Zones: calm < base+10, raised < base+25, high < critical, critical >=
+    critical. The result is a dict {zone: seconds}. Used for an
+    after-the-fact recomputation from raw samples (e.g. in tests or on
+    import); a live session computes its zones continuously from the
+    current load."""
     out = {ZONE_CALM: 0.0, ZONE_RAISED: 0.0, ZONE_HIGH: 0.0, ZONE_CRITICAL: 0.0}
     if not samples:
         return out
@@ -761,19 +821,20 @@ def time_in_zones(samples, critical_bpm, baseline=None):
 
 def heart_rate_recovery(samples, recovery_s=60.0, min_prominence=15.0,
                         tolerance_s=5.0, peak_window_s=30.0, lookback_s=180.0):
-    """Heart Rate Recovery: o kolko klesol tep 1 minutu po lokalnom vrchole.
+    """Heart Rate Recovery: how far heart rate fell 1 minute after a local peak.
 
-    Vrati zoznam udalosti {peak_ts, peak_bpm, after_bpm, recovery} - jednu
-    na kazdy vrchol, ktory:
-      * je najvyssi v okne +-peak_window_s (lokalne maximum),
-      * je aspon `min_prominence` BPM nad minimom predoslych `lookback_s`
-        (kratky drobny zub v pokojnom tepe nie je "vrchol"),
-      * ma vzorku priblizne recovery_s po sebe (tolerancia tolerance_s) -
-        inak sa zotavenie neda zmerat a udalost sa vynecha.
+    Returns a list of events {peak_ts, peak_bpm, after_bpm, recovery} - one
+    for each peak that:
+      * is the highest in the window +-peak_window_s (local maximum),
+      * is at least `min_prominence` BPM above the minimum of the preceding
+        `lookback_s` (a short small tooth in a calm heart rate is not a
+        "peak"),
+      * has a sample roughly recovery_s after it (tolerance tolerance_s) -
+        otherwise the recovery cannot be measured and the event is skipped.
 
-    recovery = peak_bpm - after_bpm (zaporne = tep dalej stupal).
-    Definicia: Cleveland Clinic - HRR je rozdiel tepu na vrchole a minutu po
-    nom; bezne 12-23, trenovani 29+.
+    recovery = peak_bpm - after_bpm (negative = the heart rate kept rising).
+    Definition: Cleveland Clinic - HRR is the difference between the heart
+    rate at the peak and a minute after it; normal 12-23, trained 29+.
     """
     n = len(samples)
     events = []
@@ -783,7 +844,7 @@ def heart_rate_recovery(samples, recovery_s=60.0, min_prominence=15.0,
     j0 = 0
     for i in range(n):
         ts, bpm = samples[i]
-        # lokalne maximum v okne +-peak_window_s (prvy pri remize)
+        # local maximum in the window +-peak_window_s (the first one on a tie)
         is_peak = True
         k = i - 1
         while k >= 0 and ts - ts_list[k] <= peak_window_s:
@@ -801,13 +862,13 @@ def heart_rate_recovery(samples, recovery_s=60.0, min_prominence=15.0,
             k += 1
         if not is_peak:
             continue
-        # prominencia voci minimu predoslych lookback_s
+        # prominence against the minimum of the preceding lookback_s
         while j0 < i and ts - ts_list[j0] > lookback_s:
             j0 += 1
         floor = min(b for _, b in samples[j0:i + 1])
         if bpm - floor < min_prominence:
             continue
-        # vzorka ~recovery_s po vrchole
+        # sample ~recovery_s after the peak
         target = ts + recovery_s
         best = None
         for m in range(i + 1, n):
@@ -824,8 +885,9 @@ def heart_rate_recovery(samples, recovery_s=60.0, min_prominence=15.0,
 
 
 def hrr_headline(events):
-    """Jedno cislo pre UI: zotavenie po NAJVYSSOM vrchole relacie (tak sa
-    HRR meria aj klinicky - po maximalnej zatazi). None bez udalosti."""
+    """One number for the UI: recovery after the session's HIGHEST peak (that
+    is how HRR is measured clinically too - after maximum load). None
+    without events."""
     if not events:
         return None
     top = max(events, key=lambda e: e["peak_bpm"])
@@ -833,20 +895,21 @@ def hrr_headline(events):
 
 
 def persistence_index(samples):
-    """Heart Rate Persistence Index (HRPI): najvacsie cele k take, ze tep
-    bol aspon k BPM po dobu aspon k SEKUND (kumulativne, cas v sekundach
-    podla rozostupov vzoriek, nie pocet vzoriek).
+    """Heart Rate Persistence Index (HRPI): the largest whole k such that the
+    heart rate was at least k BPM for at least k SECONDS (cumulative, time
+    in seconds from the sample spacing, not the number of samples).
 
-    Analogia h-indexu: relacia "120 BPM po 2 minuty" da k = 120, relacia
-    "85 BPM po 3 hodiny" da k = 85. Jedno cislo spaja vysku aj trvanie.
-    0 pre prazdne data.
+    Analogous to the h-index: a session "120 BPM for 2 minutes" gives
+    k = 120, a session "85 BPM for 3 hours" gives k = 85. One number
+    combines both height and duration. 0 for empty data.
     """
     if not samples:
         return 0
     pairs = sorted(zip((b for _, b in samples), _durations(samples)), reverse=True)
     cum = 0.0
     best = 0
-    # prechadzame od najvyssieho tepu; cum = sekundy s tepom >= aktualny bpm
+    # we go from the highest heart rate down; cum = seconds with heart
+    # rate >= the current bpm
     idx = 0
     n = len(pairs)
     for k in range(int(pairs[0][0]), 0, -1):
@@ -859,27 +922,30 @@ def persistence_index(samples):
     return best
 
 
-# Pod tymto casovym rozostupom (prva -> posledna relacia) nema regresny
-# sklon zmysel - viz baseline_trend() nizsie.
-MIN_TREND_SPAN_S = 2 * 86400.0  # 2 dni
+# Below this time span (first -> last session) a regression slope makes
+# no sense - see baseline_trend() below.
+MIN_TREND_SPAN_S = 2 * 86400.0  # 2 days
 
 
 def baseline_trend(sessions, min_span_s=MIN_TREND_SPAN_S):
-    """Vyvoj pokojovej zakladne naprieC relaciami.
+    """Development of the resting baseline across sessions.
 
-    Vrati {"points": [(started, baseline)], "first", "last", "delta",
-    "slope_per_week", "insufficient_span"}; slope je linearna regresia
-    zakladne voci casu (dni). Relacie bez baseline_bpm sa preskocia.
+    Returns {"points": [(started, baseline)], "first", "last", "delta",
+    "slope_per_week", "insufficient_span"}; slope is a linear regression of
+    the baseline against time (days). Sessions without baseline_bpm are
+    skipped.
 
-    Bug (opraveny tu): regresia cez body blizko seba v case davala
-    nezmyselne hodnoty ako "-3009 BPM/tyzden" - dve relacie napr. 5 minut
-    od seba maju takmer nulovy casovy rozptyl, cim sa aj maly rozdiel
-    zakladne po vydeleni tymto rozptylom (a vynasobeni x7 na "za tyzden")
-    vystreli do tisicok. Riesenie: ak je rozostup PRVEJ a POSLEDNEJ relacie
-    mensi ako `min_span_s` (predvolene 2 dni), `slope_per_week` ostava 0.0
-    a `insufficient_span=True` - UI ma vtedy ukazat "potrebujem viac dat",
-    nie cislo. Pri >=2 dnoch je vypocet identicky ako predtym (existujuci
-    test s reláciami po 1 dni naprieč tyzdnom musi dat rovnaky vysledok).
+    Bug (fixed here): a regression over points close together in time gave
+    nonsensical values like "-3009 BPM/week" - two sessions e.g. 5 minutes
+    apart have almost zero time variance, so even a small baseline
+    difference, after dividing by this variance (and multiplying x7 for
+    "per week"), shoots up into the thousands. Solution: if the span
+    between the FIRST and the LAST session is less than `min_span_s`
+    (default 2 days), `slope_per_week` stays 0.0 and
+    `insufficient_span=True` - the UI should then show "I need more data",
+    not a number. At >=2 days the computation is identical to before (the
+    existing test with sessions 1 day apart across a week must give the
+    same result).
     """
     points = [(float(s.get("started", 0)), float(s["baseline_bpm"]))
               for s in sessions
@@ -905,11 +971,11 @@ def baseline_trend(sessions, min_span_s=MIN_TREND_SPAN_S):
 
 
 def count_sessions_since(sessions, since_ts):
-    """Kolko relacii zacalo od `since_ts` (unix cas) a ich celkova dlzka.
+    """Number of sessions since `since_ts` (unix time) and their total length.
 
-    Pouziva to Dnes ("Relácie tento týždeň") - volajuci si sam vypocita
-    zaciatok obdobia (napr. pondelok polnoc, viz period_start_ts), tato
-    funkcia uz len filtruje a scita."""
+    Used by Today ("Sessions this week") - the caller computes the start of
+    the period itself (e.g. Monday midnight, see period_start_ts), this
+    function only filters and sums."""
     count, duration = 0, 0.0
     for s in sessions:
         if not isinstance(s, dict):
@@ -923,15 +989,16 @@ def count_sessions_since(sessions, since_ts):
 
 
 # --------------------------------------------------------------------------
-# Co je pre TOHTO hraca bezne (graf, karty statistik, mriezka dni)
+# What is usual for THIS player (chart, stat cards, day grid)
 # --------------------------------------------------------------------------
 
 def metric_series(sessions, field, n=8):
-    """Poslednych `n` hodnot jedneho pola suhrnu, chronologicky.
+    """The last `n` values of one summary field, chronologically.
 
-    Na mikrograf pri cisle: "62 BPM" samo o sebe nehovori nic, "62 a za
-    poslednych sedem relacii to klesalo" hovori vsetko. Relacie bez toho
-    pola sa preskakuju (nie nulou - nula by krivku klamala).
+    For the sparkline next to a number: "62 BPM" on its own says nothing,
+    "62, and over the last seven sessions it went down" says everything.
+    Sessions without that field are skipped (not with zero - a zero would
+    make the curve lie).
     """
     ordered = sorted((s for s in sessions if isinstance(s, dict)
                       and isinstance(s.get("started"), (int, float))),
@@ -948,11 +1015,11 @@ def metric_series(sessions, field, n=8):
 
 
 def usual_range(values, lo_pct=0.25, hi_pct=0.75, min_values=4):
-    """(p25, p75) - "tvoje bezne rozpatie" ako pas za grafom.
+    """(p25, p75) - "your usual range" as a band behind the chart.
 
-    Pod `min_values` hodnot None: kvartily z troch cisel su ozdoba, nie
-    rozpatie. Zamerne percentily, nie priemer +- odchylka - jeden panicky
-    vecer by rozpatie roztiahol na nezmysel.
+    Below `min_values` values None: quartiles from three numbers are
+    decoration, not a range. Deliberately percentiles, not mean +-
+    deviation - one panicky evening would stretch the range into nonsense.
     """
     vals = []
     for value in values or []:
@@ -967,11 +1034,11 @@ def usual_range(values, lo_pct=0.25, hi_pct=0.75, min_values=4):
 
 
 def day_activity(sessions, days=112, now=None):
-    """Kalendarna mriezka: [{"date", "seconds", "count"}] za poslednych
-    `days` dni vratane dneska, od najstarsieho.
+    """Calendar grid: [{"date", "seconds", "count"}] for the last `days` days
+    including today, oldest first.
 
-    Dni BEZ relacie su v zozname tiez (s nulami) - prave diery su to, co
-    na mriezke clovek cita, takze sa nesmu vynechat.
+    Days WITHOUT a session are in the list too (with zeros) - the gaps are
+    exactly what a person reads on the grid, so they must not be left out.
     """
     now_dt = datetime.fromtimestamp(now if now is not None else time.time())
     today = now_dt.date()
@@ -993,25 +1060,27 @@ def day_activity(sessions, days=112, now=None):
             for day, cell in sorted(cells.items())]
 
 
-# POZN: tu bola `streaks()` - aktualna a najdlhsia seria dni po sebe.
-# Vypadla zamerne, nie preto, ze by nefungovala. Seria je jedina vec v
-# appke, ktora sa da PRETRHNUT, a appka ma upokojovat: najlepsia
-# publikovana evidencia o seriach je nepriaznivá (bezci, ktori si seriu
-# drzali, behali cez zranenia a opisovali to ako zavislost). Stranka
-# Historia ukazuje namiesto toho pocet dni, v ktorych nejaka relacia
-# bola - to iste "chodis na to", ale nic sa v nom neda stratit jednym
-# vynechanym vecerom. Mriezka dni (`day_activity`) ostava.
+# NOTE: here used to be `streaks()` - the current and the longest streak
+# of consecutive days. It was dropped on purpose, not because it did not
+# work. A streak is the only thing in the app that can be BROKEN, and the
+# app is meant to calm: the best published evidence on streaks is
+# unfavourable (runners who kept a streak ran through injuries and
+# described it as an addiction). Instead, the History page shows the
+# number of days on which some session took place - the same "you keep at
+# it", but nothing in it can be lost by one skipped evening. The day grid
+# (`day_activity`) stays.
 
 
 # --------------------------------------------------------------------------
-# Hodnoty jednej ULOZENEJ relacie (Historia: graf a detail; karta na Dnes)
+# Values of one STORED session (History: chart and detail; card on Today)
 # --------------------------------------------------------------------------
-# Vsetko sa pocita z poli, ktore suhrn uz uklada - ziadne nove ulozene pole.
-# None vsade znamena "nevieme" (stara, importovana alebo pokazena relacia),
-# nikdy nie nulu: nula minut v pokoji je vypoved, chybajuce pasma nie.
+# Everything is computed from fields the summary already stores - no new
+# stored field. None everywhere means "we don't know" (an old, imported or
+# broken session), never zero: zero minutes in calm is a statement,
+# missing zones are not.
 
 def _cislo(value):
-    """float, alebo None pre None / text / NaN / nekonecno."""
+    """float, or None for None / text / NaN / infinity."""
     try:
         v = float(value)
     except (TypeError, ValueError):
@@ -1022,10 +1091,11 @@ def _cislo(value):
 
 
 def cas_v_pokoji_s(session):
-    """Sekundy relacie v pasme POKOJA (`zone_seconds["calm"]`), alebo None.
+    """Session seconds in the CALM zone (`zone_seconds["calm"]`), or None.
 
-    Pasmo je to iste ako vsade inde (`zone_of_bpm`): tep menej nez 10 BPM
-    nad pokojom. None, ked relacia pasma nema - nie 0."""
+    The zone is the same as everywhere else (`zone_of_bpm`): heart rate
+    less than 10 BPM above resting. None when the session has no zones -
+    not 0."""
     try:
         zony = session.get("zone_seconds")
         if not zony:
@@ -1037,10 +1107,10 @@ def cas_v_pokoji_s(session):
 
 
 def hlasky_relacie(session):
-    """Kolko hlasok appka v relacii poslala SAMA (`auto_triggers`; stare
-    relacie maju len `triggers`), alebo None. JEDNO cislo na relaciu vsade:
-    tabulka Historie, detail relacie, graf Historie aj stlpec CSV
-    "breathing" (`session_row`)."""
+    """How many cues the app sent ON ITS OWN in the session (`auto_triggers`;
+    old sessions only have `triggers`), or None. ONE number per session
+    everywhere: the History table, session detail, the History chart and
+    the CSV column "breathing" (`session_row`)."""
     try:
         v = _cislo(session.get("auto_triggers", session.get("triggers")))
     except AttributeError:
@@ -1049,13 +1119,13 @@ def hlasky_relacie(session):
 
 
 def namerana_zataz_0_10(session):
-    """Namerana zataz relacie na skale 0-10 - aby mohla stat vedla vnimanej
-    zataze z dotaznika (tiez 0-10), alebo None.
+    """Measured load of the session on a 0-10 scale - so that it can stand
+    next to the perceived load from the questionnaire (also 0-10), or None.
 
-    Je to SPICKA zataze relacie (`peak_stress`, 0-100) vydelena desiatimi a
-    zaokruhlena nahor od polovice (45 -> 5, nie bankarsky 4). Ine ulozene
-    cislo zataze za celu relaciu nie je; priemer zataze sa neuklada.
-    Hrac sa to docita v ⓘ karty aj pod tabulkou Historie
+    It is the session's load PEAK (`peak_stress`, 0-100) divided by ten and
+    rounded half up (45 -> 5, not banker's 4). There is no other stored
+    load number for the whole session; the average load is not stored. The
+    player can read about it in the card's ⓘ and under the History table
     (`metric.felt_vs_measured.more`).
     """
     try:
@@ -1068,12 +1138,13 @@ def namerana_zataz_0_10(session):
 
 
 def citene_a_merane(session):
-    """(citene, merane): vnimana zataz z dotaznika a namerana (obe 0-10).
+    """(citene, merane): felt load (questionnaire) and measured, both 0-10.
 
-    None, ked hrac dotaznik preskocil (vnimanu zataz nezadal) - bez nej nie
-    je co porovnat. `merane` moze byt None (relacia bez spicky zataze).
-    ZAMERNE dve cisla, nie rozdiel, pomer ani verdikt: ani jedno nie je
-    "spravne" - tep nevidi, ako ti bolo, a ty necitis kazdy uder.
+    None when the player skipped the questionnaire (did not enter the
+    perceived load) - without it there is nothing to compare. `merane` can
+    be None (a session without a load peak). DELIBERATELY two numbers, not
+    a difference, a ratio or a verdict: neither one is "right" - the heart
+    rate does not see how you felt, and you do not feel every beat.
     """
     if not isinstance(session, dict):
         return None
@@ -1084,12 +1155,13 @@ def citene_a_merane(session):
 
 
 def posledna_relacia(sessions):
-    """Posledna ULOZENA relacia (podla `started`), alebo None.
+    """The last STORED session (by `started`), or None.
 
-    Ulozena = ukoncena: aktualna relacia sa do suboru dostane az pri
-    zatvoreni (`app._close_hr_session`). Importovane relacie (`imported`)
-    sa preskakuju - su to cudzie data (`data_io`), nie "tvoja posledna
-    relacia"; zlucenim cudzieho exportu by inak karta ukazala cudzie cisla."""
+    Stored = finished: the current session gets into the file only when it
+    is closed (`app._close_hr_session`). Imported sessions (`imported`) are
+    skipped - they are someone else's data (`data_io`), not "your last
+    session"; otherwise, after merging someone else's export, the card
+    would show someone else's numbers."""
     najnovsia = None
     for s in sessions or []:
         if not isinstance(s, dict) or s.get("imported"):
@@ -1103,7 +1175,7 @@ def posledna_relacia(sessions):
 
 
 # --------------------------------------------------------------------------
-# Casove obdobia (Historia: Den / Tyzden / Mesiac / Rok)
+# Time periods (History: Day / Week / Month / Year)
 # --------------------------------------------------------------------------
 
 PERIOD_HOUR = "hour"
@@ -1113,8 +1185,9 @@ PERIOD_MONTH = "month"
 PERIOD_YEAR = "year"
 PERIODS = (PERIOD_DAY, PERIOD_WEEK, PERIOD_MONTH, PERIOD_YEAR)
 
-# Do akych bucketov sa relacie zoskupuju v grafe PRE DANE zvolene obdobie -
-# "mesiac" ukazuje denne priemery, "rok" mesacne (presne ako v zadani).
+# Which buckets sessions are grouped into in the chart FOR THE given chosen
+# period - "month" shows daily averages, "year" monthly ones (exactly as in
+# the spec).
 CHART_BUCKET_FOR_PERIOD = {
     PERIOD_DAY: PERIOD_HOUR,
     PERIOD_WEEK: PERIOD_DAY,
@@ -1139,8 +1212,8 @@ def _period_floor(dt, period):
 
 
 def period_start_ts(period, now=None):
-    """Zaciatok AKTUALNEHO obdobia (napr. "tento tyzden" = pondelok 00:00)
-    ako unix cas v miestnom case. `now` (unix cas) je pre testy."""
+    """Start of the CURRENT period (e.g. "this week" = Monday 00:00) as unix
+    time in local time. `now` (unix time) is for tests."""
     dt = datetime.fromtimestamp(now if now is not None else time.time())
     return _period_floor(dt, period).timestamp()
 
@@ -1154,14 +1227,15 @@ PERIOD_SPAN_S = {
 
 
 def rolling_start_ts(period, now=None):
-    """Zaciatok POSUVNEHO okna ("poslednych 7 dni"), nie kalendarneho
-    obdobia.
+    """Start of a ROLLING window ("the last 7 days"), not a calendar
+    period.
 
-    Graf trendu chce okno, kalendar mu skodi: v pondelok rano by "tento
-    tyzden" (od polnoci) ukazal prazdny graf s hlaskou "V tomto období
-    zatiaľ nič", hoci hrac hral cely vikend. Karta "Relácie tento týždeň"
-    naopak kalendar naozaj chce - tam ma tyzden znamenat tyzden, a preto
-    `period_start_ts` ostava a pouziva sa dalej.
+    The trend chart wants a window, the calendar hurts it: on a Monday
+    morning "this week" (since midnight) would show an empty chart with the
+    message "Nothing in this period yet", even though the player played the
+    whole weekend. The "Sessions this week" card, on the other hand, really
+    wants the calendar - there a week should mean a week, and that is why
+    `period_start_ts` stays and is still used.
     """
     now = float(now) if now is not None else time.time()
     return now - PERIOD_SPAN_S.get(period, 7 * 86400.0)
@@ -1173,21 +1247,22 @@ _BUCKET_LABEL_FMT = {
 }
 
 
-# Metriky, ktore bucket spriemeruje - kazda je priemer NA RELACIU v buckete.
-# Posledne styri pribudli v 0.2 (Historia = cely obraz): dlzka relacie, cas v
-# pokoji, pokrytie signalu (0..1) a pocet hlasok, ktore appka poslala sama.
+# Metrics that a bucket averages - each is an average PER SESSION in the
+# bucket. The last four were added in 0.2 (History = the whole picture):
+# session length, time in calm, signal coverage (0..1) and the number of
+# cues the app sent on its own.
 BUCKET_METRICS = ("baseline", "hrr", "over_s", "peak",
                   "duration_s", "calm_s", "coverage", "cues")
 
 
 def aggregate_by_period(sessions, period):
-    """Zoskupi relacie do bucketov podla kalendarneho obdobia (hour/day/
-    week/month/year) a spriemeruje kluvove metriky v kazdom z nich.
+    """Groups sessions into buckets by calendar period (hour/day/
+    week/month/year) and averages the key metrics in each of them.
 
-    Vrati chronologicky zoradeny zoznam dictov {"started", "label",
-    "count"} + jedna hodnota pre kazdy kluc z `BUCKET_METRICS` - kazda
-    metrika je priemer relacii v danom buckete, alebo None, ak ju ziadna
-    relacia v buckete nema. Relacie bez `started` sa preskocia.
+    Returns a chronologically sorted list of dicts {"started", "label",
+    "count"} + one value for each key from `BUCKET_METRICS` - each metric
+    is the average of the sessions in the given bucket, or None if no
+    session in the bucket has it. Sessions without `started` are skipped.
     """
     buckets = {}
     for s in sessions:
@@ -1213,8 +1288,8 @@ def aggregate_by_period(sessions, period):
             b["over_s"].append(float(s["time_over_s"]))
         if s.get("peak_stress") is not None:
             b["peak"].append(float(s["peak_stress"]))
-        # Nove metriky idu cez pomocnikov vyssie: pokazena hodnota z importu
-        # sa vynecha (None), nezhodi cely graf.
+        # The new metrics go through the helpers above: a broken value from an
+        # import is skipped (None), it does not bring down the whole chart.
         trvanie = _cislo(s.get("duration_s"))
         if trvanie is not None and trvanie > 0:
             b["duration_s"].append(trvanie)
@@ -1249,17 +1324,18 @@ def _period_next(dt, period):
     raise ValueError(f"neznamy period: {period}")
 
 
-EMPTY_BUCKET_LIMIT = 400        # poistka proti nezmyselnemu rozsahu
+EMPTY_BUCKET_LIMIT = 400        # safeguard against a nonsensical range
 
 
 def bucket_axis(buckets, period, start, end=None):
-    """Doplni PRAZDNE buckety medzi `start` a `end`, aby bola os spojita.
+    """Adds EMPTY buckets between `start` and `end` so the axis is continuous.
 
-    `aggregate_by_period` vyrobi bucket len pre obdobie, v ktorom nejaka
-    relacia naozaj bola. Graf potom kreslil stredu hned vedla pondelka a
-    utorok, v ktory sa nehralo, z osi zmizol - hoci prave pauza je
-    informacia. Doplnene buckety maju count 0 a vsetky metriky None, cize
-    sa v grafe nekreslia, ale miesto na osi zaberaju.
+    `aggregate_by_period` makes a bucket only for a period in which some
+    session really took place. The chart then drew Wednesday right next to
+    Monday, and Tuesday, when nobody played, vanished from the axis - even
+    though the pause itself is information. Filled-in buckets have count 0
+    and all metrics None, so they are not drawn in the chart, but they take
+    up space on the axis.
     """
     existujuce = {b["started"]: b for b in buckets}
     end = float(end) if end is not None else time.time()
@@ -1276,38 +1352,39 @@ def bucket_axis(buckets, period, start, end=None):
     return out
 
 
-# Kym vybrany zdroj krokov posiela, ostatne sa ignoruju. Ked stichne na
-# tolkoto sekund, smie ho vystriedat iny. Minuta je dost na to, aby to
-# nepreskakovalo pri kazdom vypadku Wi-Fi, a malo na to, aby prepnutie
-# zdroja v telefone nestalo hraca cely vecer bez detekcie pohybu.
+# While the chosen step source is sending, the others are ignored. When it
+# goes quiet for this many seconds, another one may take over. A minute is
+# enough so that it does not flip at every Wi-Fi dropout, and short enough
+# that switching the source on the phone does not cost the player a whole
+# evening without movement detection.
 PRELADENIE_ZDROJA_S = 60.0
 
-# "Este som si zdroj nevybral" - odlisene od `None`, co je platny zdroj
-# (UDP a hodinky, ktore meno zdroja neposielaju).
+# "I haven't picked a source yet" - distinct from `None`, which is a valid
+# source (UDP and watches that do not send a source name).
 _NEURCENY = object()
 
 
 class HeartStats:
-    """Drzi historiu tepu a vsetko z nej odvodene.
+    """Holds the heart rate history and everything derived from it.
 
-    Trieda je cisto datova - nema Tk, nema I/O okrem ulozenia suhrnu
-    relacie na konci. Vola sa VYHRADNE z GUI vlakna (z `_apply_hr_bpm`),
-    takze nepotrebuje zamok.
+    The class is purely data - no Tk, no I/O except saving the session
+    summary at the end. It is called EXCLUSIVELY from the GUI thread (from
+    `_apply_hr_bpm`), so it does not need a lock.
     """
 
     def __init__(self, critical_bpm=110):
         self.critical_bpm = int(critical_bpm)
-        self._samples = []          # [(timestamp, bpm)] za HISTORY_SECONDS
-        self._long = []             # [(timestamp, bpm)] za BASELINE_SECONDS
+        self._samples = []          # [(timestamp, bpm)] for HISTORY_SECONDS
+        self._long = []             # [(timestamp, bpm)] for BASELINE_SECONDS
         self.stress = 0.0
         self._raw_stress = 0.0
-        # Pokojovy tep z PREDCHADZAJUCICH vecerov. Nastavuje ho appka pri
-        # otvoreni relacie (`_open_hr_session`); je to vlastnost cloveka,
-        # nie relacie, tak ju `reset_session` nemaze.
+        # Resting heart rate from PREVIOUS evenings. The app sets it when
+        # opening a session (`_open_hr_session`); it is a property of the
+        # person, not of the session, so `reset_session` does not clear it.
         self.long_baseline = None
         self.reset_session()
 
-    # ---------- relacia ----------
+    # ---------- session ----------
 
     def reset_session(self):
         now = time.time()
@@ -1316,84 +1393,92 @@ class HeartStats:
         self.session_max = None
         self.session_sum = 0.0
         self.session_count = 0
-        self.time_over = 0.0        # sekundy nad kritickou hranicou
-        self.time_high = 0.0        # sekundy v zone high/critical
+        self.time_over = 0.0        # seconds above the critical limit
+        self.time_high = 0.0        # seconds in the high/critical zone
         self.triggers = 0
-        self.auto_triggers = 0      # z toho kolko appka spustila sama (vysoky tep)
+        self.auto_triggers = 0      # of these, fired by the app itself (high HR)
         self.peak_stress = 0.0
         self._last_ts = None
         self.last_bpm = None
         self.last_beat_ts = now
-        # [(cas, bpm)] poslednych par sekund LEN pre cislo na obrazovke
-        # (`display_bpm`). Nuluje sa spolu s `last_bpm` - tu a v `clear_live`
-        # - takze po vypadku ci novej relacii nevytiahne staru hodnotu.
+        # [(time, bpm)] of the last few seconds ONLY for the number on screen
+        # (`display_bpm`). It is cleared together with `last_bpm` - here and in
+        # `clear_live` - so after a dropout or a new session it does not pull
+        # up an old value.
         self._zobraz = deque(maxlen=ZOBRAZ_MAX_VZORIEK)
-        # Najnizsia zakladna, aku sme v tejto relacii videli. Viz `baseline`.
+        # The lowest baseline we have seen in this session. See `baseline`.
         self._baseline_kotva = None
-        # [(cas, prirastok krokov)] a [(cas, rychlost)] za poslednych 10 minut
+        # [(time, step increment)] and [(time, speed)] for the last 10 minutes
         self._steps = []
         self._speed = []
         self._last_steps = None
-        # Z ktoreho zdroja kroky beriem. Prvy, ktory nejake posle, vyhrava a
-        # ostatne sa ignoruju - viz `note_metrics`.
+        # Which source I take steps from. The first one that sends some wins
+        # and the others are ignored - see `note_metrics`.
         self._zdroj_krokov = _NEURCENY
         self._krok_naposledy = 0.0
-        # [(cas, 0..1)] podiel casu so vstupom - plni to appka z
-        # `activity.ActivityTracker`. Sluzi na odhad "kedy sa naozaj hralo".
+        # [(time, 0..1)] share of time with input - filled by the app from
+        # `activity.ActivityTracker`. Used to estimate "when there was really
+        # playing".
         self._aktivita = []
-        # cela relacia (pre HRR, HRPI, zakladnu relacie) - 1 vzorka/s,
-        # aj 4-hodinova relacia je len ~15k dvojic
+        # the whole session (for HRR, HRPI, the session baseline) - 1 sample/s,
+        # even a 4-hour session is only ~15k pairs
         self._all = []
-        # Zataz v case, suberzne k `_all`. Do `_all` sa pridat neda - ten
-        # ide do `persistence_index` aj `heart_rate_recovery`, ktore cakaju
-        # dvojice (cas, bpm). Meracie okno ale chce aj "aka bola zataz
-        # pred a po", a spatne sa dopocitat neda: je vyhladena
-        # exponencialnym priemerom, takze zavisi od poradia, v akom
-        # vzorky prichadzali.
+        # Load over time, parallel to `_all`. It cannot be added to `_all` -
+        # that goes into `persistence_index` and `heart_rate_recovery`, which
+        # expect (time, bpm) pairs. But the measurement window also wants
+        # "what the load was before and after", and it cannot be recomputed
+        # afterwards: it is smoothed with an exponential average, so it
+        # depends on the order in which the samples arrived.
         self._load = []
         self.zone_seconds = {ZONE_CALM: 0.0, ZONE_RAISED: 0.0,
                              ZONE_HIGH: 0.0, ZONE_CRITICAL: 0.0}
-        # [(bpm, sekundy)] z kalibracie prveho vecera, kym nie je zakladna
+        # [(bpm, seconds)] from the first evening's calibration, until there
+        # is a baseline
         self._zony_cakaju = []
-        self.trigger_offsets = []   # sekundy od zaciatku relacie
-        # Hlasky s absolutnym casom a tym, ktora to bola. `trigger_offsets`
-        # na meracie okna nestaci: je zaokruhleny na 0,1 s a pocita sa od
-        # zapnutia senzora, nie od prvej vzorky.
+        self.trigger_offsets = []   # seconds since the start of the session
+        # Cues with absolute time and which one it was. `trigger_offsets` is
+        # not enough for the measurement windows: it is rounded to 0.1 s and
+        # counted from when the sensor was switched on, not from the first
+        # sample.
         self.cues = []
         self._metric_cache = {}
-        # Vypadky tepu v tejto relacii: kolkokrat appka prestala pocut tep,
-        # ktory predtym pocula, a kolko sekund bola spolu slepa. Az tieto
-        # dve cisla povedia, ako casto je appka naozaj bez dat - odhad zo
-        # zrusenych usekov spustaca to nevie (viz `note_dropout`).
+        # Heart rate dropouts in this session: how many times the app stopped
+        # hearing a heart rate it had heard before, and how many seconds it
+        # was blind in total. Only these two numbers tell how often the app is
+        # really without data - an estimate from cancelled trigger stretches
+        # cannot tell that (see `note_dropout`).
         self.dropouts = 0
         self.blind_s = 0.0
-        # Kedy prisla posledna vzorka pred otvorenym vypadkom (None = tep
-        # chodi). Uzavrie ho prva platna vzorka v `add`.
+        # When the last sample before an open dropout came (None = heart rate
+        # is coming in). The first valid sample in `add` closes it.
         self._slepy_od = None
 
     def note_trigger(self, ts=None, auto=False, category=None, cue_id=None,
                      arm="voice", source=None, delivery=None, delivered=True,
                      rung=None, audible=None, load_at=None, load_peak=None,
                      zone_at=None):
-        """Zaznamena spustenu hlasku.
+        """Records a fired cue.
 
-        `arm` je "voice" alebo "silent" - tiche kontrolne rameno pribudne
-        vo faze 2, pole tu uz je, aby mali data z oboch faz rovnaky tvar.
-        `source` rozlisuje, ci hlasku spustilo telo ("auto") alebo klavesa
-        ("key"); klavesove spustace vo faze 3 zaniknu, dovtedy sa hodia na
-        overenie, ze merania funguju.
+        `arm` is "voice" or "silent" - the silent control arm arrives in
+        phase 2, the field is already here so that data from both phases
+        has the same shape. `source` tells whether the cue was fired by
+        the body ("auto") or a key ("key"); the key triggers go away in
+        phase 3, until then they are handy for checking that the
+        measurements work.
 
-        ZAZNAM O DORUCENI (0.2, rebrik + brana): `rung` je stupen rebrika
-        relacie, `audible` ci naozaj nieco zaznelo, `load_at` / `load_peak`
-        zataz pri doruceni a najvyssia od natiahnutia, `zone_at` pasmo tepu.
-        Ukladaju sa len ked ich volajuci posle - starsie zaznamy ich nemaju
-        a `measure.build_window` ich potom do okna nepise.
+        DELIVERY RECORD (0.2, ladder + gate): `rung` is the session's
+        ladder rung, `audible` whether something really sounded,
+        `load_at` / `load_peak` the load at delivery and the highest since
+        winding up, `zone_at` the heart rate zone. They are stored only
+        when the caller sends them - older records do not have them and
+        `measure.build_window` then does not write them into the window.
         """
         self.triggers += 1
         if auto:
             self.auto_triggers += 1
-        # `if ts` by na ts=0.0 ticho spadlo na time.time() - pri absolutnych
-        # casoch je to nepravdepodobne, v testoch s vlastnymi hodinami nie.
+        # `if ts` would silently fall back to time.time() on ts=0.0 - with
+        # absolute times that is unlikely, in tests with their own clock it is
+        # not.
         now = float(ts) if ts is not None else time.time()
         self.trigger_offsets.append(round(max(0.0, now - self.session_start), 1))
         zaznam_dorucenia = {k: v for k, v in (
@@ -1406,37 +1491,40 @@ class HeartStats:
             "cue_id": cue_id,
             "arm": arm,
             "source": source if source is not None else ("auto" if auto else "key"),
-            # "pause" / "timeout" - AKO sa to dorucilo. S `arm` sa to zlucit
-            # nesmie (viz hlavicka `trigger.py`), ale zapisat sa to MUSI:
-            # bez toho sa spatne neda zistit, ktore hlasky prisli na pauzu a
-            # ktore az po 90 s ticho, a prah pauzy sa neda z dat overit.
+            # "pause" / "timeout" - HOW it was delivered. It must not be
+            # merged with `arm` (see the header of `trigger.py`), but it MUST
+            # be recorded: without it there is no way to find out afterwards
+            # which cues came at a pause and which only after 90 s of silence,
+            # and the pause threshold cannot be checked against the data.
             "delivery": delivery,
-            # Vykreslil sa vizual naozaj? Tiche rameno ma vizual ako jediny
-            # podnet - ked zlyhal, okno by meralo hlasku proti nicomu.
-            # `measure` take okno zneplatni (bug B17). True/False, nie None:
-            # stare zaznamy pole nemaju a `measure` ich necha platne.
+            # Was the visual really drawn? The silent arm has the visual as its
+            # only stimulus - when it failed, the window would measure the cue
+            # against nothing. `measure` invalidates such a window (bug B17).
+            # True/False, not None: old records lack the field and `measure`
+            # keeps them valid.
             "delivered": bool(delivered),
             **zaznam_dorucenia,
         })
 
     def last_auto_cue_ts(self):
-        """Cas poslednej hlasky, ktoru appka v TEJTO relacii poslala sama a
-        ktora sa naozaj ukazala - alebo None, kym ziadna neprisla.
+        """Time of the last cue the app sent on its own in THIS session and
+        that was really shown - or None until none has come.
 
-        Sama = `source == "auto"` (klavesa a tlacidlo "Test" nie, rovnako ako
-        `auto_triggers`). Ukazala sa = `delivered`: hlaska, ktorej vizual sa
-        nevykreslil, sa ako posledna nerata - hrac z nej nic nevidel.
-        `reset_session` zoznam `cues` maze, takze predosla relacia sem nevidi.
+        On its own = `source == "auto"` (key and the "Test" button do not
+        count, same as `auto_triggers`). Shown = `delivered`: a cue whose
+        visual was not drawn does not count as the last one - the player
+        saw nothing of it. `reset_session` clears the `cues` list, so the
+        previous session does not reach in here.
         """
         for cue in reversed(self.cues):
             if cue.get("source") == "auto" and cue.get("delivered", True):
                 return cue.get("ts")
         return None
 
-    # ---------- zber ----------
+    # ---------- collection ----------
 
     def add(self, bpm, ts=None):
-        """Prida jednu hodnotu tepu a prepocita vsetko odvodene."""
+        """Adds one heart rate value and recomputes everything derived."""
         try:
             bpm = float(bpm)
         except (TypeError, ValueError):
@@ -1445,42 +1533,46 @@ class HeartStats:
             return
         now = float(ts) if ts else time.time()
 
-        # Prva platna vzorka po vypadku ho uzavrie: slepy cas je od poslednej
-        # vzorky pred nim po tuto (vratane 12 s, kym si to appka vsimla).
+        # The first valid sample after a dropout closes it: the blind time runs
+        # from the last sample before it to this one (including the 12 s until
+        # the app noticed).
         if self._slepy_od is not None:
             self.blind_s += max(0.0, now - self._slepy_od)
             self._slepy_od = None
 
-        # cas straveny v zone pripisujeme SPATNE za interval od poslednej
-        # vzorky - inak by rychlejsie hodinky (2 Hz) nazbierali dvojnasobok
+        # we credit the time spent in a zone BACKWARDS over the interval since
+        # the last sample - otherwise a faster watch (2 Hz) would gather double
         if self._last_ts is not None:
             delta = max(0.0, min(5.0, now - self._last_ts))
             if self.last_bpm is not None and self.last_bpm > self.critical_bpm:
                 self.time_over += delta
-            # Pocas kalibracie appka zataz nikde neukazuje - nesmie ju ani
-            # potichu zapisat do suhrnu relacie.
+            # During calibration the app shows the load nowhere - so it must
+            # not quietly write it into the session summary either.
             #
-            # `time_high` ostava ZAMERNE na pevnych pasmach zataze
-            # (`zone_for`: 50/75), nie na `self.zone`, ktore od 0.2 hovori
-            # o tepe voci pokoju. Je to ulozena metrika (`time_high_s`) a
-            # musi znamenat to iste ako v relaciach spred 0.2 - kto to tu
-            # "zjednoti", potichu zmeni vyznam celej historie.
+            # `time_high` stays DELIBERATELY on the fixed load zones
+            # (`zone_for`: 50/75), not on `self.zone`, which since 0.2 talks
+            # about heart rate relative to rest. It is a stored metric
+            # (`time_high_s`) and must mean the same as in sessions from
+            # before 0.2 - whoever "unifies" this here quietly changes the
+            # meaning of the whole history.
             if (not self.is_calibrating
                     and zone_for(self.stress) in (ZONE_HIGH, ZONE_CRITICAL)):
                 self.time_high += delta
-            # Pasma sa pripisuju podla TEPU voci vlastnej zakladne - tou
-            # istou funkciou, akou ich farbi pas v grafe (`zone_of_bpm`).
-            # Predtym sa pocitali z vyhladenej zataze, ktora sa zo
-            # ulozenych dat spatne zrekonstruovat neda: pas pasiem a cisla
-            # pod nim by si tak nikdy presne nesadli. `time_high` ostava
-            # zo zataze zamerne - to je ina otazka ("ako dlho ta to
-            # tlacilo"), nie rozdelenie casu relacie.
+            # Zones are credited by HEART RATE relative to the player's own
+            # baseline - with the same function that colours the band in the
+            # chart (`zone_of_bpm`). Before, they were computed from the
+            # smoothed load, which cannot be reconstructed from the stored
+            # data afterwards: the zone band and the numbers under it would
+            # thus never quite match. `time_high` stays on the load
+            # deliberately - that is a different question ("how long it
+            # pushed you"), not a split of the session time.
             if self.last_bpm is not None:
                 base = self._zakladna_bez_odhadu()
                 if base is None:
-                    # Prve sekundy prveho vecera: sekundy sa odlozia a
-                    # pripisu sa, az ked zakladna pride (nizsie v `add`) -
-                    # nie voci minimu, ktore jedna zla vzorka stiahne dole.
+                    # The first seconds of the first evening: the seconds
+                    # are put aside and credited only once the baseline
+                    # arrives (further down in `add`) - not against a
+                    # minimum that one bad sample drags down.
                     self._zony_cakaju.append((self.last_bpm, delta))
                 else:
                     self.zone_seconds[
@@ -1505,10 +1597,10 @@ class HeartStats:
         self.session_min = bpm if self.session_min is None else min(self.session_min, bpm)
         self.session_max = bpm if self.session_max is None else max(self.session_max, bpm)
 
-        # Kroky sa pocitaju ZVLAST od tepu: sprava ich nemusi obsahovat.
-        # Kotva zakladnej sa posuva LEN nadol a robi sa to tu, nie v
-        # `baseline` - property so skrytym vedlajsim ucinkom je past pre
-        # kazdeho, kto ju raz zavola "len na pozretie".
+        # Steps are counted SEPARATELY from heart rate: the message does not
+        # have to contain them. The baseline anchor moves ONLY downwards and
+        # that is done here, not in `baseline` - a property with a hidden side
+        # effect is a trap for anyone who calls it once "just to have a look".
         if len(self._long) >= 30:
             ziva = _percentile([b for _, b in self._long], 0.20)
             if self._baseline_kotva is None or ziva < self._baseline_kotva:
@@ -1522,36 +1614,40 @@ class HeartStats:
                 self._zony_cakaju = []
 
         self._recompute(now)
-        # Zataz z kalibracie nejde ani do spicky, ani do stopy pre meracie
-        # okna (`pre_load` by inak priemeroval odhad alebo nuly).
+        # Load from calibration goes neither into the peak nor into the trace
+        # for the measurement windows (`pre_load` would otherwise average an
+        # estimate or zeros).
         if not self.is_calibrating:
             self._load.append((now, self.stress))
             self.peak_stress = max(self.peak_stress, self.stress)
 
     def note_metrics(self, steps=None, speed=None, ts=None, zdroj=None):
-        """Kroky a rychlost z hodiniek. Obe su volitelne.
+        """Steps and speed from the watch. Both are optional.
 
-        Drzi sa ROZDIEL krokov medzi spravami, nie ich absolutny pocet:
-        hodinky posielaju kumulativny sucet za den a ten sam o sebe o pohybe
-        prave teraz nehovori nic. Zaporny rozdiel (polnoc, restart appky na
-        hodinkach) sa zahodi.
+        The DIFFERENCE in steps between messages is kept, not their
+        absolute count: the watch sends a cumulative total for the day,
+        and that on its own says nothing about movement right now. A
+        negative difference (midnight, app restart on the watch) is thrown
+        away.
 
-        `None` znamena "nevieme", nie "nula". Zamenit ich by znamenalo
-        tvrdit, ze hrac sedi, vzdy ked hodinky kroky neposielaju - a prave
-        na tom ma stat vyradzovanie okien.
+        `None` means "we don't know", not "zero". Mixing them up would mean
+        claiming that the player is sitting whenever the watch does not
+        send steps - and window rejection is supposed to rest on exactly
+        that.
 
-        KROKY SA BERU LEN Z JEDNEHO ZDROJA.
-        `zdroj` je meno OBS zdroja, z ktoreho sprava prisla. Appka na
-        hodinkach vie pisat ten isty pocet krokov do viacerych zdrojov naraz
-        (u zadavatela `Steps` aj `steps`). Rozdiel medzi dvoma pocitadlami
-        nie je prejdena vzdialenost - je to ich vzajomne oneskorenie. Pri
-        zaostavani o 5 krokov a styroch spravach za sekundu z toho vyslo 595
-        krokov za minutu pri prahu 15, cize appka by uz nikdy nepovedala ani
-        slovo.
+        STEPS ARE TAKEN FROM ONE SOURCE ONLY.
+        `zdroj` is the name of the OBS source the message came from. The
+        app on the watch can write the same step count into several
+        sources at once (for the requester both `Steps` and `steps`). The
+        difference between two counters is not distance walked - it is
+        their mutual delay. With a lag of 5 steps and four messages per
+        second this came out as 595 steps per minute at a threshold of 15,
+        so the app would never say a word again.
 
-        Prvy zdroj, ktory kroky posle, teda vyhrava a ostatne sa ticho
-        preskakuju. Ked stichne na `PRELADENIE_ZDROJA_S`, prevezme to iny -
-        inak by vypnuty zdroj umlcal kroky navzdy.
+        So the first source that sends steps wins and the others are
+        quietly skipped. When it goes quiet for `PRELADENIE_ZDROJA_S`,
+        another one takes over - otherwise a switched-off source would
+        silence steps forever.
         """
         now = time.time() if ts is None else float(ts)
         if steps is not None:
@@ -1564,10 +1660,11 @@ class HeartStats:
                 self._zdroj_krokov = zdroj
             elif zdroj != self._zdroj_krokov:
                 if now - self._krok_naposledy < PRELADENIE_ZDROJA_S:
-                    steps = None            # duplikat z druheho pocitadla
+                    steps = None            # duplicate from the second counter
                 else:
-                    # Povodny zdroj stichol. Preberie to tento, ale bez
-                    # rozdielu - cudzie pocitadlo sa najprv len ukotvi.
+                    # The original source went quiet. This one takes
+                    # over, but without a difference - the other
+                    # counter is just anchored first.
                     self._zdroj_krokov = zdroj
                     self._last_steps = None
         if steps is not None:
@@ -1587,21 +1684,23 @@ class HeartStats:
             self._speed.pop(0)
 
     def note_activity(self, aktivny, ts=None):
-        """Jedno odmeranie aktivity: True/False, ci prave chodil vstup.
+        """One activity reading: True/False, whether input just came in.
 
-        Drzi sa cela relacia, nie klzave okno - krivka sa uklada do suhrnu
-        a chceme ju za cely vecer. Pri sekundovom vzorkovani je to par
-        desiatok tisic hodnot za dlhy vecer, cize zanedbatelne.
+        The whole session is kept, not a sliding window - the curve is
+        stored in the summary and we want it for the whole evening. At
+        one-second sampling that is a few tens of thousands of values for
+        a long evening, i.e. negligible.
         """
         now = time.time() if ts is None else float(ts)
         self._aktivita.append((now, 1.0 if aktivny else 0.0))
 
     def activity_trace(self, points=CURVE_POINTS):
-        """Krivka aktivity v rovnakom pocte bodov ako `trace()` pre tep.
+        """Activity curve with as many points as `trace()` has for heart rate.
 
-        Kazdy bod je PODIEL aktivity v danom useku (0..1), nie hodnota v
-        okamihu - inak by z toho bol nahodny sum jednotiek a nul namiesto
-        toho, co nas zaujima: ako husto sa hralo.
+        Each point is the SHARE of activity in the given stretch (0..1),
+        not the value at an instant - otherwise it would be random noise of
+        ones and zeros instead of what we care about: how densely there
+        was playing.
         """
         if not self._aktivita:
             return []
@@ -1620,25 +1719,26 @@ class HeartStats:
                 for i in range(points)]
 
     def steps_per_min(self, window_s=60.0, now=None):
-        """Krokov za poslednu minutu, alebo None ked to nevieme.
+        """Steps in the last minute, or None when we don't know.
 
-        None znamena "nevieme", nie "nula". Ked hodinky kroky vobec
-        neposielaju (`_last_steps is None`), alebo prestali posielat (posledna
-        sprava starsia nez okno), je to NEZNAME - nie ze hrac stal na mieste
-        (B32). Kym spravy chodia, aj nulovy prirastok je platna nula.
+        None means "we don't know", not "zero". When the watch does not
+        send steps at all (`_last_steps is None`), or stopped sending (the
+        last message is older than the window), it is UNKNOWN - not that
+        the player stood still (B32). While messages come in, even a zero
+        increment is a valid zero.
         """
         if self._last_steps is None:
             return None
         now = time.time() if now is None else float(now)
         if now - self._krok_naposledy > window_s:
-            return None                 # kroky prestali chodit = nevieme
+            return None                 # steps stopped coming = we don't know
         v_okne = [d for t, d in self._steps if t >= now - window_s]
         if not v_okne:
             return 0.0
         return sum(v_okne) * (60.0 / window_s)
 
     def clear_live(self):
-        """Senzor sa odpojil - krivka aj zataz idu prec, suhrn relacie ostava."""
+        """Sensor disconnected - curve and load go, the session summary stays."""
         self._samples.clear()
         self.last_bpm = None
         self._zobraz.clear()
@@ -1647,15 +1747,17 @@ class HeartStats:
         self._last_ts = None
 
     def note_dropout(self, od=None):
-        """Tep, ktory appka v tejto relacii pocula, prestal chodit.
+        """The heart rate the app heard in this session stopped coming in.
 
-        Vola to appka pri `disconnected` / `client_gone` - PRED `clear_live`,
-        a len ked predtym tep naozaj chodil (vypadok pred prvou vzorkou nie
-        je vypadok, to je "este nic neprislo"). `od` je cas poslednej vzorky;
-        bez neho sa berie `last_beat_ts`.
+        The app calls it on `disconnected` / `client_gone` - BEFORE
+        `clear_live`, and only when the heart rate was really coming in
+        before (a dropout before the first sample is not a dropout, that
+        is "nothing has arrived yet"). `od` is the time of the last
+        sample; without it `last_beat_ts` is taken.
 
-        Druhe volanie pocas toho isteho vypadku (hodinky pustia TCP spojenie
-        az po `disconnected`) sa nerata - je to stale ten isty vypadok.
+        A second call during the same dropout (the watch drops the TCP
+        connection only after `disconnected`) does not count - it is still
+        the same dropout.
         """
         if self._slepy_od is not None:
             return
@@ -1663,8 +1765,9 @@ class HeartStats:
         self._slepy_od = float(od) if od is not None else float(self.last_beat_ts)
 
     def blind_seconds(self, now=None):
-        """Kolko sekund relacie bola appka bez tepu, ktory predtym pocula -
-        vratane vypadku, ktory este trva (relacia sa zatvara naslepo)."""
+        """How many seconds of the session the app was without the heart rate
+        it had heard before - including a dropout that is still going on
+        (the session is being closed blind)."""
         slepy = self.blind_s
         if self._slepy_od is not None:
             now = time.time() if now is None else float(now)
@@ -1672,22 +1775,26 @@ class HeartStats:
         return slepy
 
     def signal_coverage_at(self, now=None):
-        """Aku cast casu od prvej vzorky tep naozaj chodil: 0..1, alebo None.
+        """Share of time since the first sample with heart rate: 0..1, or None.
 
-        Zive cislo pre kvalitu signalu, tym istym meradlom ako ulozene
-        `pokrytie_signalu`: cas so signalom je sucet pasiem (kazda medzera
-        najviac 5 s, diera po vypadku nic) plus prave otvoreny interval od
-        poslednej vzorky, tiez najviac 5 s. Bez neho by cislo medzi dvoma
-        vzorkami zakazdym kleslo a pri dalsej skocilo spat.
+        A live number for signal quality, with the same gauge as the
+        stored `pokrytie_signalu`: time with signal is the sum of the
+        zones (each gap at most 5 s, a hole after a dropout nothing) plus
+        the currently open interval since the last sample, also at most
+        5 s. Without it the number would drop between every two samples
+        and jump back at the next one.
 
-        Meria sa od PRVEJ VZORKY, nie od otvorenia relacie: cakanie, kym sa
-        hodinky pripoja, nie je slaby signal - to appka ukazuje zvlast.
-        Ulozene pokrytie ho zapocitava, lebo cas prvej vzorky suhrn nema;
-        prehravaniu prahu je to jedno (`load_z_krivky` prehrava sucet pasiem).
+        It is measured from the FIRST SAMPLE, not from opening the
+        session: waiting until the watch connects is not a weak signal -
+        the app shows that separately. The stored coverage counts it,
+        because the summary does not have the time of the first sample;
+        replaying the threshold does not care (`load_z_krivky` replays the
+        sum of the zones).
 
-        None, kym nie je aspon `POKRYTIE_ZIVE_MIN_S` od prvej vzorky. Vedla
-        neho pre ten isty widget: `dropouts` (kolkokrat tep vypadol) a
-        `blind_seconds()` (kolko sekund bola appka spolu slepa).
+        None until at least `POKRYTIE_ZIVE_MIN_S` have passed since the
+        first sample. Next to it for the same widget: `dropouts` (how many
+        times the heart rate dropped out) and `blind_seconds()` (how many
+        seconds the app was blind in total).
         """
         if not self._all:
             return None
@@ -1698,58 +1805,63 @@ class HeartStats:
         signal = (sum(self.zone_seconds.values())
                   + sum(d for _, d in self._zony_cakaju))
         if self._last_ts is not None:
-            # Ten isty strop ako v `add`: po 5 s ticha uz cas nepribuda.
+            # The same cap as in `add`: after 5 s of silence no time is added.
             signal += max(0.0, min(MAX_SAMPLE_GAP_S, now - self._last_ts))
         return max(0.0, min(1.0, signal / od_prvej))
 
     @property
     def signal_coverage(self):
-        """`signal_coverage_at()` teraz - pre widget kvality signalu."""
+        """`signal_coverage_at()` now - for the signal quality widget."""
         return self.signal_coverage_at()
 
     def calm_seconds(self):
-        """Sekundy TEJTO relacie v pasme pokoja, alebo None, kym sa nevie.
+        """Seconds of THIS session in the calm zone, or None while unknown.
 
-        To iste pasmo ako vsade (`zone_of_bpm`: tep menej nez 10 BPM nad
-        pokojom) a ten isty sucet, z ktoreho kresli panel "Kde si dnes bol".
-        None bez jedinej vzorky - a na prvom veceri, kym appka nema zakladnu:
-        sekundy vtedy cakaju v `_zony_cakaju` a pasmo sa im este neda urcit
-        (nula by tvrdila, ze si nebol v pokoji ani minutu).
+        The same zone as everywhere (`zone_of_bpm`: heart rate less than
+        10 BPM above rest) and the same sum that the "Where the session
+        went" panel draws from. None without a single sample - and on the
+        first evening, while the app has no baseline: the seconds then
+        wait in `_zony_cakaju` and their zone cannot be determined yet (a
+        zero would claim you were not calm for even a minute).
         """
         if not self.session_count or self._zony_cakaju:
             return None
         return max(0.0, float(self.zone_seconds.get(ZONE_CALM, 0.0) or 0.0))
 
-    # ---------- odvodene hodnoty ----------
+    # ---------- derived values ----------
 
     @property
     def baseline(self):
-        """Pokojova zakladna hraca. V ramci relacie sa smie uz len ZNIZOVAT.
+        """The player's resting baseline. Within a session it may only go DOWN.
 
-        Kym nie je aspon 30 vzoriek, vraciame None: radsej nic, nez
-        zakladnu spocitanu z 5 sekund panickeho tepu.
+        Until there are at least 30 samples we return None: better nothing
+        than a baseline computed from 5 seconds of panicked heart rate.
 
-        PRECO KOTVA A NIE HOLY PERCENTIL
-        Do 19. 9. to bol 20. percentil poslednych 10 minut, a nic viac. Znie
-        to rozumne, ale ma to jeden dosledok, ktory appku rozbijal presne
-        tam, kde mala byt najsilnejsia: ked tep drzi dlho hore, cele
-        desatminutove okno je vysoke, zakladna sa zaň dotiahne - a
-        `_recompute` pocita `over` aj `sustained` VOCI NEJ. Cim dlhsie stres
-        trva, tym MENSIU zataz appka vidi.
+        WHY AN ANCHOR AND NOT A BARE PERCENTILE
+        Until 19. 9. it was the 20th percentile of the last 10 minutes, and
+        nothing more. That sounds reasonable, but it has one consequence
+        that broke the app exactly where it was supposed to be strongest:
+        when the heart rate stays up for a long time, the whole ten-minute
+        window is high, the baseline follows it up - and `_recompute`
+        computes both `over` and `sustained` AGAINST IT. The longer the
+        stress lasts, the LESS load the app sees.
 
-        Odsimulovane nad tymto modulom: tep 115 BPM drzany celu hodinu pri
-        critical_bpm=110 skoncil so zakladnou 114 a spickovou zatazou 21 -
-        teda hlboko pod prahom 55. Nula hlasok za hodinu suvisleho stresu.
-        Potvrdzuju to aj realne relacie v hr_sessions.json.
+        Simulated over this module: a heart rate of 115 BPM held for a
+        whole hour at critical_bpm=110 ended with a baseline of 114 and a
+        peak load of 21 - i.e. deep below the threshold of 55. Zero cues in
+        an hour of sustained stress. Real sessions in hr_sessions.json
+        confirm it too.
 
-        Kotva to lieci bez toho, aby zaviedla cudzie cislo: zakladna je
-        najnizsia hodnota, aku relacia videla. Ked sa hrac upokoji, klesne s
-        nim; ked sa stresuje, ostane dole a zataz ma voci comu rast. Drift
-        nahor zmizol, prisposobenie nadol ostalo.
+        The anchor cures this without bringing in a foreign number: the
+        baseline is the lowest value the session has seen. When the player
+        calms down, it drops with them; when they are stressed, it stays
+        down and the load has something to grow against. The upward drift
+        is gone, the downward adjustment stayed.
 
-        Nesie si to jedno obmedzenie a je poctive ho priznat: kto appku
-        zapne az uprostred boja, ma prvu zakladnu privysoku - kym sa raz
-        neupokoji. Preto sa kotva pocita z kazdej vzorky, nie raz na zaciatku.
+        It carries one limitation and it is fair to admit it: whoever turns
+        the app on only in the middle of a fight has a first baseline that
+        is too high - until they calm down once. That is why the anchor is
+        computed from every sample, not once at the start.
         """
         values = [b for _, b in self._long]
         if len(values) < 30:
@@ -1757,69 +1869,79 @@ class HeartStats:
         ziva = _percentile(values, 0.20)
         kotva = self._baseline_kotva
         base = ziva if kotva is None else min(kotva, ziva)
-        # Dlhodoba zakladna je STROP, nie nahrada: dnesny vecer smie ukazat,
-        # ze je hrac pokojnejsi nez zvycajne, ale nie ze je "pokojny" na
-        # 115 BPM len preto, ze tam drzi uz hodinu.
+        # The long-term baseline is a CAP, not a replacement: tonight may show
+        # that the player is calmer than usual, but not that they are "calm"
+        # at 115 BPM just because they have been there for an hour.
         if self.long_baseline:
             base = min(base, float(self.long_baseline))
         return base
 
     @property
     def is_calibrating(self):
-        """Relacia este nema vlastnu zakladnu - zataz sa zatial neukazuje.
+        """The session has no baseline of its own yet - load is not shown yet.
 
-        Kalibruje sa RAZ ZA RELACIU: od zapnutia, kym nepride 30 vzoriek
-        (podla kadencie hodiniek: pri ~0,9 s na vzorku necela polminuta,
-        pri ~2,9 s zhruba poldruha minuty). Kym to plati, HUD aj stranka
-        Dnes pisu "kalibrujem…" a spustac hlasky sa nenatiahne - appka
-        nehovori cislo, ktoremu sama neveri.
+        Calibration happens ONCE PER SESSION: from switching on until 30
+        samples arrive (depending on the watch cadence: at ~0.9 s per
+        sample just under half a minute, at ~2.9 s roughly a minute and a
+        half). While that holds, the HUD and the Today page write
+        "calibrating…" and the cue trigger does not wind up - the app does
+        not state a number it does not trust itself.
 
-        Po vypadku dlhsom nez `BASELINE_SECONDS` sa uz NEkalibruje znova,
-        hoci `baseline` vtedy vrati None (desatminutove okno je prazdne).
-        Kotva z tohto vecera plati dalej a zataz sa pocita voci nej (viz
-        `_zakladna_bez_odhadu`). Druha kalibracia by nebola poctivejsia, len
-        by zabudla, co uz o tomto vecere vieme.
+        After a dropout longer than `BASELINE_SECONDS` it does NOT
+        calibrate again, even though `baseline` then returns None (the
+        ten-minute window is empty). The anchor from this evening still
+        applies and the load is computed against it (see
+        `_zakladna_bez_odhadu`). A second calibration would not be more
+        honest, it would just forget what we already know about this
+        evening.
         """
         return self._baseline_kotva is None and self.baseline is None
 
     @property
     def is_settling(self):
-        """Tep sa prave vratil (po vypadku alebo po znovuzapnuti senzora) a
-        zataz sa este len rozbieha - pasmo sa zatial neukazuje.
+        """The heart rate just came back (after a dropout or after the sensor
+        was switched on again) and the load is only just getting going -
+        the zone is not shown yet.
 
-        `clear_live` zahodi zive vzorky aj zataz, takze po navrate zacina
-        vyhladena zataz od nuly a jej "suvisla" cast potrebuje aspon 5
-        vzoriek (`len(window) >= 5` v `_recompute`). Prve vzorky by teda
-        ukazali "Pokoj", hoci tep je hore. Kym ich je menej nez 5, HUD aj
-        Dnes pisu namiesto pasma tiche "…" (tou istou cestou ako kalibracia).
+        `clear_live` throws away the live samples and the load, so after
+        the return the smoothed load starts from zero and its "sustained"
+        part needs at least 5 samples (`len(window) >= 5` in `_recompute`).
+        The first samples would therefore show "Calm" even though the
+        heart rate is up. While there are fewer than 5 of them, the HUD and
+        Today write a quiet "…" instead of the zone (the same way as
+        calibration).
 
-        Je to len zaplata na falosny "Pokoj": par vzoriek potom moze zataz
-        este chvilu ukazovat menej, nez naozaj je. Chyba smerom k tichu.
+        It is only a patch for a false "Calm": for a few samples after that
+        the load may still show less than it really is for a while. The
+        error leans towards silence.
 
-        Od C2 je slovo pasma tep voci pokoju (`zone`), takze samo by uz
-        "Pokoj" nepovedalo. Tlmi sa dalej kvoli pruhu: jeho dlzka je zataz
-        a ta sa po navrate rozbieha od nuly.
+        Since C2 the zone word is heart rate relative to rest (`zone`), so
+        on its own it would no longer say "Calm". It is still muted because
+        of the bar: its length is the load, and that starts from zero after
+        the return.
         """
         return 0 < len(self._samples) < 5 and not self.is_calibrating
 
     def _zakladna_bez_odhadu(self):
-        """Zakladna, za ktorou si appka stoji - alebo None.
+        """The baseline the app stands behind - or None.
 
-        Mimo kalibracie je to `baseline`. Ked chyba, plati mensia z tychto
-        dvoch, ak aspon jednu pozname:
+        Outside calibration it is `baseline`. When that is missing, the
+        smaller of these two applies, if we know at least one:
 
-          * kotva relacie - po dlhom vypadku. Predtym sa tu bralo minimum
-            novych vzoriek: po 12 minutach bez hodiniek a navrate na 85 BPM
-            skocila zakladna z 62 na 85 a zataz ukazala nulu. Kotva sa v
-            relacii smie len znizovat; tu sa tym padom ani neobide.
-          * dlhodoba zakladna z predchadzajucich vecerov - `baseline` je nou
-            zhora obmedzeny, takze prechod z kalibracie na zivu zakladnu ide
-            len NADOL.
+          * the session anchor - after a long dropout. Before, the minimum
+            of the new samples was taken here: after 12 minutes without the
+            watch and a return at 85 BPM the baseline jumped from 62 to 85
+            and the load showed zero. The anchor may only go down within a
+            session; so it cannot be bypassed here either.
+          * the long-term baseline from previous evenings - `baseline` is
+            capped from above by it, so the transition from calibration to
+            the live baseline only goes DOWN.
 
-        Minimum prvych sekund sem zamerne nepatri. Je to hruby odhad (jedna
-        zle nacitana vzorka na 50 BPM a vsetko ostatne vyzera ako zataz) a
-        prechod z neho na zivu zakladnu ide NAHOR. Zataz sa voci nemu
-        nepocita vobec - pocas kalibracie ju aj tak nikto nevidi.
+        The minimum of the first seconds deliberately does not belong here.
+        It is a rough estimate (one misread sample at 50 BPM and everything
+        else looks like load) and the transition from it to the live
+        baseline goes UP. The load is not computed against it at all -
+        during calibration nobody sees it anyway.
         """
         base = self.baseline
         if base is not None:
@@ -1829,28 +1951,30 @@ class HeartStats:
 
     @property
     def zone(self):
-        """Pasmo PRAVE TERAZ - jedno slovo a jedna farba pre HUD, Dnes aj
-        kontrolku tepu. Pocita sa len tu; kresliace funkcie ho dostavaju
-        hotove a vlastnu hranicu pasma nemaju.
+        """The zone RIGHT NOW - one word and one colour for the HUD, Today and
+        the heart rate indicator. It is computed only here; drawing
+        functions get it ready-made and have no zone limit of their own.
 
-        Je to TEP voci POKOJU, nie zataz: `zone_of_bpm` nad medianom
-        poslednych `ZONE_MEDIAN_SAMPLES` vzoriek a nad tou istou zakladnou,
-        voci ktorej sa rata zataz (`_zakladna_bez_odhadu`). Zvysena od
-        pokoja + 10, vysoka od + 25, kriticka od nameranej hranice
-        vysokeho tepu (`critical_bpm`). Tie iste pasma pocita panel "Kde si
-        dnes bol", stopa relacie aj Historia - "Vysoka" tak na jednej
-        stranke znamena jednu vec.
+        It is HEART RATE relative to REST, not load: `zone_of_bpm` over the
+        median of the last `ZONE_MEDIAN_SAMPLES` samples and over the same
+        baseline that the load is computed against (`_zakladna_bez_odhadu`).
+        Raised from rest + 10, high from + 25, critical from the measured
+        high heart rate limit (`critical_bpm`). The same zones are computed
+        by the "Where the session went" panel, the session trace and
+        History - so "High" means one thing on one page.
 
-        PRECO NIE PASMA ZATAZE (25/50/75), ako do 0.2
-        Pri pokoji 76 a hranici 109 dava stabilnych 95 BPM zataz okolo 57 -
-        a to bolo "Vysoka" pri tepe, ktory appka na tej istej stranke v
-        paneli "Kde si dnes bol" ratala ako "zvysenu". Cislo zataze, dlzka
-        pruhu, spustac ani `time_high_s` sa tym nemenia; meni sa len slovo
-        a farba.
+        WHY NOT LOAD ZONES (25/50/75), as until 0.2
+        At rest 76 and a limit of 109, a steady 95 BPM gives a load of
+        about 57 - and that was "High" at a heart rate that the app, on the
+        same page, counted as "raised" in the "Where the session went"
+        panel. The load number, the bar length, the trigger and
+        `time_high_s` do not change because of this; only the word and the
+        colour change.
 
-        Bez tepu alebo bez zakladne vracia pokoj. Volajuci to bez spojenia,
-        pocas kalibracie a po navrate tepu (`is_settling`) necitaju - tam
-        maju vlastny tichy stav, ktory ma prednost.
+        Without heart rate or without a baseline it returns calm. Callers
+        do not read it without a connection, during calibration and after
+        the heart rate returns (`is_settling`) - there they have their own
+        quiet state, which takes precedence.
         """
         base = self._zakladna_bez_odhadu()
         posledne = sorted(b for _, b in self._samples[-ZONE_MEDIAN_SAMPLES:])
@@ -1863,16 +1987,17 @@ class HeartStats:
 
     @property
     def known_zone(self):
-        """To iste pasmo ako `zone` - alebo None, ked ho appka NEPOZNA.
+        """The same zone as `zone` - or None when the app does NOT KNOW it.
 
-        Pre branu hlasky (`trigger.CueTrigger.note_load(zona=...)`). `zone`
-        bez tepu, bez zakladne, pocas kalibracie aj hned po navrate tepu
-        vracia "pokoj" ako tichy zaskok pre obrazovku; brana ho ale nesmie
-        brat ako "nie je kriticke". Tam, kde HUD pise "…", tu je None - a
-        hlaska vtedy nejde.
+        For the cue gate (`trigger.CueTrigger.note_load(zona=...)`). `zone`
+        without heart rate, without a baseline, during calibration and
+        right after the heart rate returns gives "calm" as a quiet fallback
+        for the screen; but the gate must not take it as "not critical".
+        Where the HUD writes "…", here it is None - and the cue does not go
+        then.
 
-        NIKDY nie pasma zataze (`zone_for`): tie su o pruhu, nie o tom, ci
-        je tep nad hranicou vysokeho tepu.
+        NEVER the load zones (`zone_for`): those are about the bar, not
+        about whether the heart rate is above the high heart rate limit.
         """
         if self.is_calibrating or self.is_settling or not self._samples:
             return None
@@ -1887,42 +2012,44 @@ class HeartStats:
         return self.session_sum / self.session_count
 
     def series(self, points=90):
-        """Poslednych `points` hodnot pre krivku na HUD-e (stara -> nova)."""
+        """The last `points` values for the curve on the HUD (old -> new)."""
         values = [b for _, b in self._samples]
         if len(values) <= points:
             return values
-        # rovnomerne preriedenie, nie len orezanie - inak by krivka pri
-        # rychlejsich hodinkach ukazovala kratsi casovy usek
+        # even thinning, not just truncation - otherwise with a faster watch
+        # the curve would show a shorter time span
         step = len(values) / float(points)
         return [values[int(i * step)] for i in range(points)]
 
     def trace(self, points=CURVE_POINTS):
-        """Tvar CELEJ relacie (stara -> nova), preriedeny na `points`.
+        """The shape of the WHOLE session (old -> new), thinned to `points`.
 
-        `series()` je zive okno poslednych troch minut pre HUD; toto je
-        cely vecer pre "stopu relacie" na stranke Dnes. Su to dve rozne
-        otazky, preto dve metody.
+        `series()` is the live window of the last three minutes for the
+        HUD; this is the whole evening for the "session trace" on the
+        Today page. These are two different questions, hence two methods.
         """
         return downsample([b for _, b in self._all], points)
 
     @property
     def display_bpm(self):
-        """Cislo tepu pre obrazovku (HUD, Dnes, stitok pri prepinaci) - cele
-        cislo, alebo None, kym appka tep nema.
+        """Heart rate number for the screen (HUD, Today, label by the switch) -
+        a whole number, or None while the app has no heart rate.
 
-        Median vzoriek za poslednych `ZOBRAZ_OKNO_S` sekund, vzdy aspon tej
-        poslednej. Okno sa meria od POSLEDNEJ VZORKY, nie od hodin: medzi
-        dvoma spravami cislo stoji a neodplava samo. Meranie toto necita -
-        `last_bpm` aj vsetko ostatne ostava na surovych vzorkach.
+        Median of the samples over the last `ZOBRAZ_OKNO_S` seconds, always
+        at least the last one. The window is measured from the LAST
+        SAMPLE, not from the clock: between two messages the number stands
+        still and does not drift away by itself. Measurement does not read
+        this - `last_bpm` and everything else stays on the raw samples.
         """
         if self.last_bpm is None:
             return None
         if not self._zobraz:
-            # `last_bpm` bez vzorky v okne (nastavene zvonka) - aspon ono.
+            # `last_bpm` with no sample in the window (set from outside) -
+            # at least that.
             return int(round(self.last_bpm))
         posledna = self._zobraz[-1][0]
-        # `0 <=`: keby sa hodiny PC posunuli dozadu, starsie vzorky "z buducnosti"
-        # sa nepocitaju - posledna vzorka v okne ostane vzdy.
+        # `0 <=`: if the PC clock moved backwards, older samples "from the
+        # future" are not counted - the last sample always stays in the window.
         okno = sorted(b for t, b in self._zobraz
                       if 0.0 <= posledna - t < ZOBRAZ_OKNO_S)
         n = len(okno)
@@ -1931,7 +2058,7 @@ class HeartStats:
         return int(round(median))
 
     def beat_phase(self, now=None):
-        """0..1 faza tepu - aby srdce na HUD-e bilo v realnom rytme."""
+        """0..1 beat phase - so the HUD heart beats in the real rhythm."""
         if not self.last_bpm:
             return 0.0
         now = now or time.time()
@@ -1939,9 +2066,10 @@ class HeartStats:
         return ((now - self.last_beat_ts) % period) / period
 
     def _recompute(self, now):
-        # Bez zakladne, za ktorou si appka stoji (prve sekundy prveho
-        # vecera), sa zataz nepocita - ostava, kde bola. Vyhladeny priemer
-        # sa potom rozbehne az od skutocnej zakladne, nie z odhadu z minima.
+        # Without a baseline the app stands behind (the first seconds of the
+        # first evening), the load is not computed - it stays where it was. The
+        # smoothed average then gets going only from the real baseline, not
+        # from an estimate from the minimum.
         base = self._zakladna_bez_odhadu()
         if not base:
             return
@@ -1968,15 +2096,16 @@ class HeartStats:
         self._raw_stress = raw
         self.stress = self.stress + (raw - self.stress) * SMOOTHING
 
-    # ---------- odvodene metriky celej relacie ----------
+    # ---------- derived metrics of the whole session ----------
 
     def hrr_events(self):
         return heart_rate_recovery(self._all)
 
     def _cached(self, name, fn, every=30):
-        """HRR/HRPI sa pytaju kazdu sekundu (stranka Dnes), ale pocitaju sa
-        z celej relacie - pri 4 hodinach su to desiatky tisic vzoriek.
-        Prepocitavame ich preto najviac raz za `every` novych vzoriek."""
+        """HRR/HRPI are asked for every second (the Today page), but they are
+        computed from the whole session - at 4 hours that is tens of
+        thousands of samples. So we recompute them at most once per
+        `every` new samples."""
         cache = getattr(self, "_metric_cache", None)
         if cache is None:
             cache = self._metric_cache = {}
@@ -1988,7 +2117,7 @@ class HeartStats:
 
     @property
     def hrr(self):
-        """Zotavenie tepu po najvyssom vrchole relacie (BPM), None kym nie je."""
+        """Recovery after the top peak of the session (BPM), None until known."""
         return self._cached("hrr", lambda: hrr_headline(self.hrr_events()))
 
     @property
@@ -1999,11 +2128,12 @@ class HeartStats:
     def session_baseline(self):
         return session_baseline(self._all)
 
-    # ---------- suhrn ----------
+    # ---------- summary ----------
 
     def _zony_do_suhrnu(self):
-        """Relacia skoncila este pocas kalibracie: odlozene sekundy sa
-        pripisu voci minimu (povodne spravanie), aby sucet sedel s trvanim."""
+        """The session ended while still calibrating: the set-aside seconds are
+        credited against the minimum (the original behaviour), so that the
+        sum matches the duration."""
         out = dict(self.zone_seconds)
         if self._zony_cakaju:
             base = min(b for b, _ in self._zony_cakaju)
@@ -2012,12 +2142,13 @@ class HeartStats:
         return out
 
     def summary(self, koniec=None):
-        """Suhrn relacie. `koniec` (cas) = relacia skoncila skor nez teraz -
-        posledny tik pred uspanim PC (`app._rozdel_relaciu_po_medzere`,
-        0.2.2). Bez neho sa trvanie rata po tuto chvilu, ako doteraz."""
+        """Session summary. `koniec` (time) = the session ended before now -
+        the last tick before the PC went to sleep
+        (`app._rozdel_relaciu_po_medzere`, 0.3). Without it the duration
+        is counted up to this moment, as before."""
         teraz = time.time() if koniec is None else float(koniec)
         elapsed = max(0.0, teraz - self.session_start)
-        events = self.hrr_events()          # tu vzdy cerstvo, nie z cache
+        events = self.hrr_events()          # always fresh here, not from the cache
         base = self.session_baseline
         return {
             "started": self.session_start,
@@ -2032,74 +2163,83 @@ class HeartStats:
             "auto_triggers": self.auto_triggers,
             "critical_bpm": self.critical_bpm,
             "samples": self.session_count,
-            # Ako casto hodinky posielali (viz `kadencia_vzoriek`) - tri
-            # agregaty, nie krivka medzier.
+            # How often the watch sent (see `kadencia_vzoriek`) - three
+            # aggregates, not a curve of the gaps.
             **kadencia_vzoriek(self._all),
-            # Vypadky tepu: kolkokrat a kolko sekund spolu bola appka slepa
-            # (viz `note_dropout`). Vypadok, ktory pri zatvoreni este trva,
-            # sa zarata az po tuto chvilu.
+            # Heart rate dropouts: how many times and how many seconds in
+            # total the app was blind (see `note_dropout`). A dropout that
+            # is still going on at closing is counted up to this moment.
             "dropouts": self.dropouts,
             "blind_s": round(self.blind_seconds(now=teraz), 1),
-            # nove metriky z cisteho BPM (viz hlavicka modulu)
+            # new metrics from plain BPM (see the module header)
             "baseline_bpm": int(round(base)) if base else None,
             "zone_seconds": {z: round(s, 1) for z, s in self._zony_do_suhrnu().items()},
             "hrr_bpm": hrr_headline(events),
             "hrr_events": len(events),
             "hrpi": persistence_index(self._all),
             "trigger_offsets_s": list(self.trigger_offsets),
-            # Tvar relacie - 120 cisel (~0,5 kB). Bez neho sa relacia v
-            # historii da uz len precitat ako riadok tabulky; s nim sa da
-            # POZRIET. Pasma sa z krivky dopocitaju az pri kresleni, cez
-            # `baseline_bpm` a `critical_bpm` vyssie - ukladat ich znova by
-            # bolo to iste cislo dvakrat.
+            # The shape of the session - 120 numbers (~0.5 kB). Without it a
+            # session in the history can only be read as a table row; with it
+            # it can be LOOKED AT. The zones are recomputed from the curve
+            # only when drawing, via `baseline_bpm` and `critical_bpm` above -
+            # storing them again would be the same number twice.
             "curve": [int(round(b)) for b in self.trace()],
-            # Krivka aktivity vedla krivky tepu - z nej sa da spatne
-            # zistit, kedy sa naozaj hralo a kedy sa sedelo v menu.
-            # Prah sa z nej spocita, ked bude z coho (viz `PRAH_HRANIA`).
+            # Activity curve next to the heart rate curve - from it one can
+            # find out afterwards when there was real playing and when
+            # someone sat in a menu. The threshold will be computed from it
+            # once there is enough data (see `PRAH_HRANIA`).
             "activity_curve": self.activity_trace(),
         }
 
 
 # --------------------------------------------------------------------------
-# Ulozenie historie relacii
+# Saving the session history
 # --------------------------------------------------------------------------
 
 # --------------------------------------------------------------------------
-# Kontext relacie
+# Session context
 # --------------------------------------------------------------------------
 
-# Co sa pri relacii dialo. NIE je to o pocitoch - je to na CISTENIE DAT.
+# What was going on during the session. It is NOT about feelings - it is
+# for CLEANING THE DATA.
 #
-# Rozpravanie je najhorsi konfunder v tomto merani: ked hovoris, meni sa
-# dych a tep ide hore. Hlaska, ktora do toho zaznie, vyzera neucinne, hoci
-# s tym nema nic spolocne. Smiech rovnako. Grind naopak drzi tep plocho
-# cele hodiny.
+# Talking is the worst confounder in this measurement: when you talk, your
+# breathing changes and the heart rate goes up. A cue that sounds into
+# that looks ineffective, even though it has nothing to do with it.
+# Laughing likewise. A grind, on the other hand, keeps the heart rate flat
+# for hours.
 #
-# Id su ANGLICKE a NEPREKLADAJU sa - id ide do datoveho suboru a musi
-# prezit zmenu jazyka rozhrania, rovnako ako kluce SFX sad a kategorie
-# hlasok. Preklada sa az popisok v UI (`session.context.<id>`).
-# Co sa dialo POCAS hrania.
+# The ids are ENGLISH and are NOT TRANSLATED - the id goes into the data
+# file and must survive a change of the UI language, same as the keys of
+# SFX sets and cue categories. Only the label in the UI is translated
+# (`session.context.<id>`).
+# What was going on WHILE playing.
 CONTEXT_DIANIE = ("call", "laugh", "grind", "competitive", "chill")
 
-# Co mal hrac V SEBE. Oddelene zamerne: prve su udalosti behom vecera,
-# druhe je stav, v ktorom vecer zacal - a posuvaju uplne ine veci.
+# What the player had IN THEM. Kept apart on purpose: the first are events
+# during the evening, the second is the state the evening started in - and
+# they shift completely different things.
 #
-# PRECO TO VOBEC JE: kofein, nikotin ci alkohol pred hranim posunu pokojovu
-# zakladnu o kus hore - a v datach by o tom inak nebolo NIC. Keby sa takto nazbieralo tridsat vecerov,
-# rozptyl by sa nedal vysvetlit a nedal by sa ani odpocitat.
+# WHY IT EXISTS AT ALL: caffeine, nicotine or alcohol before playing push
+# the resting baseline up a bit - and otherwise there would be NOTHING
+# about it in the data. If thirty evenings like that were collected, the
+# variance could not be explained and could not be subtracted either.
 #
-# Zadanie 2.1b, B2: "kazda premenna, ktora vysvetluje rozptyl, znizuje n."
-# Stimulanty su pravdepodobne najvacsi vysvetlitelny zdroj rozptylu v tomto
-# meraní - vacsi nez rozpravanie, kvoli ktoremu cely dialog vznikol.
-# `supplement` je zamerne vseobecny, nie nazov znacky: appka ide do vsetkych
-# svojich jazykov a konkretny pre-workout by inde nikomu nic nepovedal. Pre data je
-# podstatne, ze islo o stimulant, nie ktory.
-# `food` je tu preto, ze trávenie samo dvíha tep - jedlo tesne pred hranim
-# posunie zakladnu aj bez akehokolvek stresu.
-# `illness` a `exercise_before` pribudli z vyskumu 2026-09-22 ako CONFOUNDERY
-# pokojovej zakladne (infekcia dvíha pokoj +10-20 bpm na dni; pohyb tesne pred
-# hranim usadzuje tep 10-30 min a nastavi kotvu privysoko). `tired` odislo -
-# nahradil ho jemnejsi `sleep` (3 urovne, viz normalize_sleep).
+# Spec 2.1b, B2: "every variable that explains variance reduces n."
+# Stimulants are probably the biggest explainable source of variance in
+# this measurement - bigger than talking, which the whole dialog was
+# created for. `supplement` is deliberately general, not a brand name: the
+# app goes into all its languages and a specific pre-workout would mean
+# nothing to anyone elsewhere. For the data what matters is that it was a
+# stimulant, not which one.
+# `food` is here because digestion itself raises the heart rate - a meal
+# right before playing shifts the baseline even without any stress.
+# `illness` and `exercise_before` were added from the research of
+# 2026-09-22 as CONFOUNDERS of the resting baseline (an infection raises
+# rest by +10-20 bpm for days; exercise right before playing keeps the
+# heart rate settling for 10-30 min and sets the anchor too high). `tired`
+# is gone - it was replaced by the finer `sleep` (3 levels, see
+# normalize_sleep).
 CONTEXT_TELO = ("caffeine", "supplement", "alcohol", "nicotine", "food",
                 "illness", "exercise_before")
 
@@ -2107,11 +2247,11 @@ CONTEXT_IDS = CONTEXT_DIANIE + CONTEXT_TELO
 
 
 def normalize_context(raw):
-    """Zoznam platnych id kontextu, v pevnom poradi, bez duplikatov.
+    """List of valid context ids, in a fixed order, without duplicates.
 
-    None znamena nieco ine nez prazdny zoznam: None = hrac sa este
-    nevyjadril, [] = vyslovne povedal "nic z toho". Preto sa None
-    nezamiena za [].
+    None means something other than an empty list: None = the player has
+    not answered yet, [] = they explicitly said "none of these". That is
+    why None is not swapped for [].
     """
     if raw is None:
         return None
@@ -2121,50 +2261,58 @@ def normalize_context(raw):
     return [c for c in CONTEXT_IDS if c in vybrane]
 
 
-# Cinnost, pri ktorej relacia vznikla. Self-report v dotazniku: len hrac vie,
-# ci pri PC hral alebo pracoval. NIE je to confounder, ktory by sa "odpocital"
-# - je to iny DRUH vecera. Zbierame realny udaj; ci sa praca a hra lisia, sa
-# rozhodne z DAT, nie dohadom (ziadne oddelene prahy, kym na to nie su cisla).
+# The activity during which the session happened. Self-report in the
+# questionnaire: only the player knows whether they played or worked at
+# the PC. It is NOT a confounder to be "subtracted" - it is a different
+# KIND of evening. We collect the real answer; whether work and play
+# differ will be decided from DATA, not by guessing (no separate
+# thresholds until there are numbers for it).
 ACTIVITY_KINDS = ("play", "work")
 
 
 def normalize_activity(raw):
-    """'play' / 'work' / None (hrac sa nevyjadril). Ine hodnoty -> None."""
+    """'play' / 'work' / None (player did not answer). Other values -> None."""
     return raw if raw in ACTIVITY_KINDS else None
 
 
-# SVET RELACIE (0.2, B3-worlds): "dva svety, jedno telo".
+# SESSION WORLD (0.2, B3-worlds): "two worlds, one body".
 #
-# Hra a praca maju oddelenu historiu, postrehy aj vzhlad. Kazda relacia
-# si pri OTVORENI zapise svet, v ktorom zacala (`world`, pecati ho
-# `app._open_hr_session`). Prepinac uprostred relacie meni len vzhlad a
-# pohlady - bezuca relacia sa neprestitkuje.
+# Play and work have separate history, insights and look. Every session
+# records, when it is OPENED, the world it started in (`world`, stamped by
+# `app._open_hr_session`). The switch in the middle of a session changes
+# only the look and the views - a running session is not relabelled.
 #
-# `activity` ostava tym, cim bolo: odpovedou hraca v dotazniku. Uklada sa
-# len ked na nu naozaj klikol, takze sa neskor da poctivo rozlisit "prislo
-# z prepinaca" od "hrac to potvrdil". Ked odpovedal, jeho slovo vyhrava.
+# `activity` stays what it was: the player's answer in the questionnaire.
+# It is stored only when they really clicked it, so later one can
+# honestly tell "came from the switch" apart from "the player confirmed
+# it". When they answered, their word wins.
 #
-# ZAMERNE aj pre ucenie, nie len pre historiu (overene pri 0.2.1). Otazka
-# znie "Hral si, alebo pracoval?" - to je OPRAVA sveta, nie poznamka. Kto
-# zabudol pred hrou prepnut z Prace, odpovie "Hral som" a vecer sa presunie
-# do Hry VRATANE kritickeho tepu a prahu zataze (`sessions_in_world` v
-# `app._open_hr_session`); naopak relacia zacata v Hre a odpovedana
-# "Pracoval som" z nich vypadne.
-# Pecat zo startu by tu klamala o tom, co hrac robil - a on to vie lepsie.
-# "Bezuca relacia ostava vo svete, v ktorom zacala" plati do dotaznika:
-# prepinac uprostred ju neprestitkuje, az hracova odpoved po konci.
+# DELIBERATELY for learning too, not just for history (verified in
+# 0.2.1). The question is "Did you play, or work?" - that is a CORRECTION
+# of the world, not a remark. Whoever forgot to switch from Work before
+# playing answers "I played" and the evening moves to Play INCLUDING the
+# critical heart rate and the load threshold (`sessions_in_world` in
+# `app._open_hr_session`); conversely a session started in Play and
+# answered "I worked" drops out of them.
+# The stamp from the start would lie here about what the player was doing
+# - and they know it better.
+# "A running session stays in the world it started in" holds until the
+# questionnaire: the switch in the middle does not relabel it, only the
+# player's answer after the end does.
 #
-# Relacie bez stitku (starsie verzie appky, preskoceny dotaznik) patria do
-# Hry PEVNYM pravidlom - nie podla "hlavneho sveta", inak by sa pri jeho
-# zmene presuvali medzi svetmi. Subor sa kvoli tomu nikdy neprepisuje.
+# Sessions without a label (older app versions, skipped questionnaire)
+# belong to Play by a FIXED rule - not by the "main world", otherwise they
+# would move between worlds when it changes. That is why the file is
+# never rewritten.
 WORLD_DEFAULT = "play"
 
 
 def session_world(session):
-    """Do ktoreho sveta relacia patri: 'play' alebo 'work'.
+    """Which world the session belongs to: 'play' or 'work'.
 
-    Poradie: odpoved v dotazniku (`activity`) > svet zo startu relacie
-    (`world`) > Hra. Pokazena hodnota sa sprava ako chybajuca.
+    Order: the answer in the questionnaire (`activity`) > the world from
+    the session start (`world`) > Play. A broken value behaves as a
+    missing one.
     """
     if not isinstance(session, dict):
         return WORLD_DEFAULT
@@ -2174,21 +2322,22 @@ def session_world(session):
 
 
 def sessions_in_world(sessions, world):
-    """Len relacie daneho sveta, v povodnom poradi. Ne-dicty vypadnu.
+    """Only the given world's sessions, in original order. Non-dicts drop.
 
-    Neznamy svet sa berie ako Hra (rovnako ako `session_world`)."""
+    An unknown world is taken as Play (same as `session_world`)."""
     svet = normalize_activity(world) or WORLD_DEFAULT
     return [s for s in (sessions or [])
             if isinstance(s, dict) and session_world(s) == svet]
 
 
-# Vlastna poznamka hraca k veceru. Volny text, bez interpretacie - appka ju
-# len drzi a ukaze. Strop dlzky, aby jeden zaznam nenafukol subor.
+# The player's own note on the evening. Free text, no interpretation - the
+# app only keeps it and shows it. A length cap, so that one record does
+# not bloat the file.
 NOTE_MAX = 280
 
 
 def normalize_note(raw):
-    """Orezany volny text, alebo None. Prazdny/nezmyselny vstup -> None."""
+    """Trimmed free text, or None. Empty/nonsensical input -> None."""
     if not isinstance(raw, str):
         return None
     txt = raw.strip()
@@ -2198,24 +2347,25 @@ def normalize_note(raw):
 
 
 # --------------------------------------------------------------------------
-# SUBJEKTIVNA VRSTVA (vyskum 2026-09-22): to, co TEP NEVIDI.
-# Aktivacia (tep) a valencia (dobre/zle) su dve NEZAVISLE osi. Hlavna
-# evaluacna metrika je ROZCHOD merane x citene - preto sa subjektivne osi
-# drzia ako ordinalne id (ako CONTEXT_IDS, prezije vsetky jazyky), nie volny text.
-# Vsade plati None != "nevybrate" - None = hrac sa nevyjadril.
+# SUBJECTIVE LAYER (research of 2026-09-22): what the HEART RATE DOES NOT
+# SEE. Arousal (heart rate) and valence (good/bad) are two INDEPENDENT
+# axes. The main evaluation metric is the GAP measured x felt - that is why
+# the subjective axes are kept as ordinal ids (like CONTEXT_IDS, they
+# survive all languages), not free text.
+# Everywhere None != "not chosen" - None = the player did not answer.
 # --------------------------------------------------------------------------
 
-# Spanok minulu noc - nahradza binarne 'tired'. 3 urovne alebo None.
+# Sleep last night - replaces the binary 'tired'. 3 levels or None.
 SLEEP_LEVELS = ("rested", "mid", "broken")
 
 
 def normalize_sleep(raw):
-    """'rested'/'mid'/'broken' alebo None. Ine hodnoty -> None."""
+    """'rested'/'mid'/'broken' or None. Other values -> None."""
     return raw if raw in SLEEP_LEVELS else None
 
 
 def normalize_felt_load(raw):
-    """Vnimana zataz 0-10 (hracova vlastna znamka), alebo None."""
+    """Perceived load 0-10 (the player's own rating), or None."""
     try:
         v = int(round(float(raw)))
     except (TypeError, ValueError):
@@ -2224,7 +2374,7 @@ def normalize_felt_load(raw):
 
 
 def normalize_valence(raw):
-    """Valencia -2..+2 (zle .. dobre), alebo None."""
+    """Valence -2..+2 (bad .. good), or None."""
     try:
         v = int(raw)
     except (TypeError, ValueError):
@@ -2232,44 +2382,47 @@ def normalize_valence(raw):
     return v if -2 <= v <= 2 else None
 
 
-# Telo pocas spicky - ZAZITKOVE dlazdice, viacvyber. NIE symptomovy skrining
-# (ziadna zavaznost, ziadne trvanie, ziadny kardialny termin) - ramcuje sa
-# "ako to bolo v tele", nie "mal si nevolnost?". Id anglicke kvoli vsetkym jazykom.
+# The body during the peak - EXPERIENCE tiles, multiple choice. NOT
+# symptom screening (no severity, no duration, no cardiac term) - it is
+# framed as "how it was in the body", not "did you feel sick?". English
+# ids because of all the languages.
 BODY_PEAK_IDS = ("ok", "flow", "wired", "tense", "sick")
 
 
 def normalize_body_peak(raw):
-    """Zoznam platnych id v pevnom poradi, alebo None (nevyjadril sa)."""
+    """List of valid ids in a fixed order, or None (did not answer)."""
     if raw is None or not isinstance(raw, (list, tuple, set)):
         return None
     vybrane = {c for c in raw if c in BODY_PEAK_IDS}
     return [c for c in BODY_PEAK_IDS if c in vybrane]
 
 
-# Verdikt o hlaske - priama kontrola, ci cue robi spravnu vec. landed/unneeded/
-# disruptive/agitated ked cue ZAZNEL; missed = "bola chvila, ked mala a
-# mlcala". None = nevyjadril sa / neaplikovatelne.
-# `agitated` ("rozhodila ma", 0.2) oddeluje "vytocila ma" (vzrusenie, presne
-# obava zo spatnej vazby) od "rusila" (pozornost). Obe posuvaju rebrik hlasky
-# o stupen nizsie (`rebrik.py`).
+# Verdict about the cue - a direct check of whether the cue does the right
+# thing. landed/unneeded/disruptive/agitated when the cue SOUNDED; missed =
+# "there was a moment when it should have, and it stayed silent". None =
+# did not answer / not applicable.
+# `agitated` ("it wound me up", 0.2) separates "it got me worked up"
+# (arousal, exactly the worry about feedback) from "it disrupted"
+# (attention). Both move the cue ladder one rung lower (`rebrik.py`).
 CUE_VERDICTS = ("landed", "unneeded", "disruptive", "agitated", "missed")
 
 
 def normalize_cue_verdict(raw):
-    """Jeden z CUE_VERDICTS alebo None."""
+    """One of CUE_VERDICTS or None."""
     return raw if raw in CUE_VERDICTS else None
 
 
-# CONFOUNDED relacia: fyziologicky tak skreslena, ze by otravila POKOJOVU
-# ZAKLADNU (menovatel vsetkeho). NEMAZE sa - ostava v historii aj v
-# subjektivnej analyze, len NEVSTUPUJE do percentilovych pool-ov (zakladna/
-# kriticky/prah). Rozhodnute vyskumom 2026-09-22: alkohol (dvíha pokoj aj na
-# druhy den), choroba, fyzicka namaha tesne pred hranim.
+# CONFOUNDED session: physiologically so skewed that it would poison the
+# RESTING BASELINE (the denominator of everything). It is NOT DELETED - it
+# stays in the history and in the subjective analysis, it just does NOT
+# ENTER the percentile pools (baseline/critical/threshold). Decided by the
+# research of 2026-09-22: alcohol (raises rest even the next day),
+# illness, physical exertion right before playing.
 CONFOUND_TAGS = ("alcohol", "illness", "exercise_before")
 
 
 def je_confounded(session):
-    """True, ked sa z relacie NESMIE ucit pokojova zakladna."""
+    """True when the resting baseline MUST NOT be learned from the session."""
     if not isinstance(session, dict):
         return True
     ctx = session.get("context") or []
@@ -2279,14 +2432,15 @@ def je_confounded(session):
 def attach_context(path, started, context, activity=None, note=None,
                    sleep=None, felt_load=None, valence=None, body_peak=None,
                    cue_verdict=None, log=None, setup=None):
-    """Doplni kontext k uz ulozenej relacii. Vracia True pri uspechu.
+    """Adds context to an already saved session. Returns True on success.
 
-    Relacia sa uklada pri zatvoreni, dotaznik sa pyta az potom - preto sa
-    zaznam dohladava podla `started`. Kazdy pripad, ked sa kontext neulozi,
-    sa ZAPISE cez `log` (ak je dany): kontext je najvacsi vysvetlitelny zdroj
-    rozptylu v merani a stratit ho potichu je presne to, comu sa appka
-    vyhyba. Volajuci (`app.save_session_context`) navratovu hodnotu cita a
-    pri False to povie hracovi (bug B16).
+    The session is saved when it closes, the questionnaire asks only after
+    that - that is why the record is looked up by `started`. Every case in
+    which the context is not saved is WRITTEN via `log` (if given):
+    context is the biggest explainable source of variance in the
+    measurement, and losing it silently is exactly what the app avoids.
+    The caller (`app.save_session_context`) reads the return value and on
+    False tells the player (bug B16).
     """
     try:
         if not os.path.exists(path):
@@ -2303,9 +2457,10 @@ def attach_context(path, started, context, activity=None, note=None,
         for s in data:
             if isinstance(s, dict) and s.get("started") == started:
                 s["context"] = normalize_context(context)
-                # Cinnost (hral/pracoval) a volna poznamka. Ukladaju sa len ked
-                # ich hrac zadal: None = nevyjadril sa, nechavame stary stav.
-                # Prazdna poznamka ("") je vyslovny pokyn zmazat pripadnu starsiu.
+                # Activity (played/worked) and a free note. They are stored
+                # only when the player entered them: None = did not answer, we
+                # keep the old state. An empty note ("") is an explicit
+                # instruction to delete a possible older one.
                 akt = normalize_activity(activity)
                 if akt is not None:
                     s["activity"] = akt
@@ -2314,8 +2469,9 @@ def attach_context(path, started, context, activity=None, note=None,
                     s["note"] = pozn
                 elif isinstance(note, str):
                     s.pop("note", None)
-                # Subjektivna vrstva (spanok, vnimana zataz, valencia, telo,
-                # verdikt o hlaske). Uklada sa len ked hrac zadal (None = necham).
+                # Subjective layer (sleep, perceived load, valence, body,
+                # verdict about the cue). Stored only when the player entered
+                # it (None = I leave it as is).
                 for kluc, hodnota, norm in (
                         ("sleep", sleep, normalize_sleep),
                         ("felt_load", felt_load, normalize_felt_load),
@@ -2325,10 +2481,11 @@ def attach_context(path, started, context, activity=None, note=None,
                     nova = norm(hodnota)
                     if nova is not None:
                         s[kluc] = nova
-                # "Len nastavovanie appky" (0.2.2, `ciste_relacie`). Cip je
-                # prepinac, nie viacero moznosti: True ho zapne, False ho
-                # zrusi (prva relacia po uvode ho ma zapnuty od appky a hrac,
-                # ktory pritom naozaj hral, ho vypne), None = nemenit.
+                # "Just setting up the app" (0.3, `ciste_relacie`). The chip
+                # is a toggle, not several options: True switches it on, False
+                # cancels it (the first session after the introduction has it
+                # switched on by the app, and a player who really played in it
+                # switches it off), None = leave unchanged.
                 if setup is True:
                     s["setup"] = True
                 elif setup is False:
@@ -2336,9 +2493,10 @@ def attach_context(path, started, context, activity=None, note=None,
                 zmenene = True
                 break
         if not zmenene:
-            # Dialóg sa otvára AŽ po úspešnom uložení relácie, takže keď sa
-            # tu relácia nenájde, je to reálna strata (rotácia MAX_SESSIONS,
-            # nesúhlas `started`), nie neškodný prípad krátkej relácie.
+            # The dialog opens ONLY after the session was saved successfully,
+            # so when the session is not found here, it is a real loss
+            # (MAX_SESSIONS rotation, `started` mismatch), not a harmless case
+            # of a short session.
             if log:
                 log("kontext: relácia sa v súbore nenašla (started=%s)" % (started,))
             return False
@@ -2353,20 +2511,21 @@ def attach_context(path, started, context, activity=None, note=None,
         return False
 
 
-# Kolko relacii drzime. Bolo 60 - pri dennom hrani dva mesiace, hoci
-# stranka Historia ponuka obdobie "Rok"; rocny graf tak ukazoval vysek a
-# tvaril sa ako cely rok. Pri ~0,9 kB na relaciu (aj s krivkou) je 400
-# relacii asi 350 kB JSON - za rok denneho hrania to vyjde.
+# How many sessions we keep. It used to be 60 - two months of daily
+# playing, even though the History page offers a "Year" period; the
+# yearly chart thus showed a slice and pretended to be a whole year. At
+# ~0.9 kB per session (curve included) 400 sessions are about 350 kB of
+# JSON - a year of daily playing fits.
 MAX_SESSIONS = 400
 
 
 def je_ulozitelna(summary):
-    """Da sa suhrn ulozit ako relacia? Pod minutu alebo pod 10 vzoriek nie.
+    """Can the summary be stored as a session? Not under 1 min or 10 samples.
 
-    Jedno pravidlo pre `save_session` aj pre obnovu rozpracovanej relacie
-    (`obnov_rozpracovanu`) - obnova nesmie do historie pustit nieco, co by
-    beznym zatvorenim neproslo. Pokazene cislo (None, text) sa sprava ako
-    nula, nie ako vynimka.
+    One rule for both `save_session` and the recovery of an unfinished
+    session (`obnov_rozpracovanu`) - recovery must not let into the
+    history anything that a normal close would not let through. A broken
+    number (None, text) behaves as zero, not as an exception.
     """
     if not isinstance(summary, dict) or not summary:
         return False
@@ -2378,15 +2537,17 @@ def je_ulozitelna(summary):
 
 
 def _odloz_pokazeny(path):
-    """Pokazeny subor `path` bokom pod `.corrupt-<cas>`, nech sa da zachranit.
+    """Moves broken `path` aside under `.corrupt-<cas>` so it can be rescued.
 
-    Presunom cez `nahrad_subor` (kratky zamok prezije, zdroj NEMAZE). Ked ho
-    iny proces drzi dlhsie, aspon kopiou - drzany subor sa precitat da (ako
-    `app_prefs.nacitaj_nastavenia`). Ked nevyjde ani kopia a subor tam stale
-    je, vyhodi chybu presunu: `path` je JEDINA kopia a volajuci ju nesmie
-    prepisat. Zapis za odlozenim totiz skusa znova tiez - zamok, ktory povoli
-    az pocas jeho pokusov, by inak pokazeny subor prepisal bez kopie (holy
-    `os.replace` vtedy padol na ten isty zamok a subor ostal)."""
+    By moving it via `nahrad_subor` (survives a short lock, does NOT
+    DELETE the source). When another process holds it longer, at least by
+    copying - a held file can be read (like
+    `app_prefs.nacitaj_nastavenia`). When even the copy fails and the file
+    is still there, it raises the move error: `path` is the ONLY copy and
+    the caller must not overwrite it. The write after setting it aside
+    retries too - a lock that is released only during its attempts would
+    otherwise overwrite the broken file without a copy (a bare
+    `os.replace` then failed on the same lock and the file stayed)."""
     odlozene = "%s.corrupt-%d" % (path, int(time.time()))
     try:
         nahrad_subor(path, odlozene)
@@ -2403,11 +2564,12 @@ def _odloz_pokazeny(path):
 
 
 def save_session(path, summary, log=None):
-    """Prida suhrn relacie do JSON suboru (drzime poslednych MAX_SESSIONS).
+    """Adds a session summary to the JSON file (keeps the last MAX_SESSIONS).
 
-    Relacie kratsie ako minuta alebo bez jedinej vzorky sa zahadzuju -
-    zapnut a hned vypnut senzor nie je "relacia" a len by to zasumilo
-    priemery v prehlade (`je_ulozitelna`).
+    Sessions shorter than a minute or without a single sample are thrown
+    away - switching the sensor on and right off is not a "session" and it
+    would only add noise to the averages in the overview
+    (`je_ulozitelna`).
     """
     if not je_ulozitelna(summary):
         return False
@@ -2426,27 +2588,29 @@ def save_session(path, summary, log=None):
             if citatelne is not None:
                 data = citatelne
             else:
-                # EXISTUJÚCI SÚBOR JE POKAZENÝ (nečitateľný alebo nie zoznam).
+                # THE EXISTING FILE IS BROKEN (unreadable or not a list).
                 #
-                # Prepísať ho novou reláciou by NAVŽDY zahodilo všetky
-                # predošlé večery - a odvtedy by sa každý ďalší stratil
-                # rovnako ticho (bug B15). Radšej ho odložíme bokom pod
-                # `.corrupt-<čas>`, nech sa dá zachrániť, a v ukladaní
-                # pokračujeme s prázdnym zoznamom.
+                # Overwriting it with a new session would throw away all the
+                # previous evenings FOREVER - and from then on every next one
+                # would be lost just as quietly (bug B15). Instead we set it
+                # aside as `.corrupt-<čas>`, so it can be rescued, and carry
+                # on saving with an empty list.
                 #
-                # Ked ho odlozit (ani skopirovat) nejde, `_odloz_pokazeny`
-                # vyhodi chybu a relacia skonci ako neulozena (except nizsie
-                # -> hr_session_pending.json), nie prepisom jedinej kopie.
+                # When it cannot be set aside (or copied), `_odloz_pokazeny`
+                # raises an error and the session ends up unsaved (the except
+                # below -> hr_session_pending.json), not by overwriting the
+                # only copy.
                 _odloz_pokazeny(path)
                 if log:
                     log("HR: pokazený súbor histórie odložený na záchranu")
         data.append(summary)
         if summary.get("recovered"):
-            # DOPLNENA DODATOCNE (kontrolny bod, neulozena relacia z minula -
-            # `obnov_cakajuce`) moze byt STARSIA nez posledna v subore: po
-            # neulozenej relacii sa dalsia ulozi normalne a az za nou sa
-            # doplni ta skorsia. Historia berie poslednu v subore ako
-            # najnovsiu (detail, tabulka), preto ide na miesto podla `started`.
+            # A session ADDED AFTERWARDS (checkpoint, an unsaved session from
+            # before - `obnov_cakajuce`) may be OLDER than the last one in the
+            # file: after an unsaved session the next one is saved normally
+            # and the earlier one is added only after it. History takes the
+            # last one in the file as the newest (detail, table), so it goes
+            # to its place by `started`.
             _zarad_poslednu(data)
         data = data[-MAX_SESSIONS:]
         tmp = path + ".tmp"
@@ -2461,8 +2625,9 @@ def save_session(path, summary, log=None):
 
 
 def _zarad_poslednu(data):
-    """Posledny prvok `data` posunie pred relacie, ktore zacali neskor.
-    Poradie ostatnych sa nemeni; bez pouzitelneho `started` ostava na konci."""
+    """Moves the last item of `data` before sessions that started later.
+    The order of the rest is unchanged; without a usable `started` it
+    stays at the end."""
     try:
         zaciatok = float(data[-1].get("started"))
     except (AttributeError, IndexError, TypeError, ValueError):
@@ -2473,7 +2638,7 @@ def _zarad_poslednu(data):
             pred = float(data[i - 1].get("started"))
         except (AttributeError, TypeError, ValueError):
             break
-        if not pred > zaciatok:          # aj NaN ostava na mieste
+        if not pred > zaciatok:          # NaN stays in place too
             break
         i -= 1
     if i < len(data) - 1:
@@ -2481,38 +2646,38 @@ def _zarad_poslednu(data):
 
 
 # --------------------------------------------------------------------------
-# Rozpracovana relacia (kontrolny bod)
+# Unfinished session (checkpoint)
 # --------------------------------------------------------------------------
 #
-# PRECO: relacia sa do hr_sessions.json zapisuje az pri zatvoreni
-# (`app._close_hr_session`). Pad appky, ukoncenie cez Spravcu uloh,
-# vypadok prudu alebo `build.bat`, ktory beziacu appku zabije, tak zahodili
-# cely vecer. Pocas otvorenej relacie sa preto kazdych par minut zapise jej
-# suhrn sem (rovnaky suhrn, aky by ulozilo zatvorenie) a pri dalsom starte
-# sa prida do historie s `recovered: True`.
+# WHY: a session is written to hr_sessions.json only when it closes
+# (`app._close_hr_session`). An app crash, ending it via Task Manager, a
+# power cut or `build.bat`, which kills the running app, thus threw away
+# a whole evening. So while a session is open its summary is written here
+# every few minutes (the same summary that closing would save) and at the
+# next start it is added to the history with `recovered: True`.
 #
-# Rovnake data ako hr_sessions.json, ten isty priecinok - "Zmazat historiu"
-# ho maze tiez (`data_io.MAZATELNE`).
+# The same data as hr_sessions.json, the same folder - "Delete history"
+# deletes it too (`data_io.MAZATELNE`).
 ROZPRACOVANA_MENO = "hr_session_open.json"
-# Zaciatok relacie mimo tohto rozsahu nie je skutocny cas - rovnaka hranica
-# 2000 ako pri importe (`data_io`). Relacia nesmie koncit v buducnosti;
-# 5 minut tolerancie pre posunute hodiny (synchronizacia casu po starte).
+# A session start outside this range is not a real time - the same 2000
+# limit as on import (`data_io`). A session must not end in the future;
+# 5 minutes of tolerance for a shifted clock (time sync after start).
 ROZPRACOVANA_OD = 946684800.0
 ROZPRACOVANA_TOLERANCIA_S = 300.0
 
 
 def cesta_rozpracovanej(sessions_path):
-    """Kontrolny bod lezi vedla hr_sessions.json (nie v DATA_DIR natvrdo):
-    test, ktory presmeruje historiu do tmp, presmeruje aj kontrolny bod."""
+    """The checkpoint sits next to hr_sessions.json (not fixed in DATA_DIR):
+    a test that redirects the history to tmp redirects the checkpoint too."""
     return os.path.join(os.path.dirname(os.path.abspath(sessions_path)),
                         ROZPRACOVANA_MENO)
 
 
 def zapis_rozpracovanu(sessions_path, summary, log=None):
-    """Atomicky zapise suhrn otvorenej relacie (.tmp + os.replace).
+    """Atomically writes the summary of the open session (.tmp + os.replace).
 
-    Pad uprostred zapisu tak necha predosly kontrolny bod cely, nie
-    polovicny JSON. Vracia True pri uspechu."""
+    A crash in the middle of the write thus leaves the previous checkpoint
+    whole, not half a JSON. Returns True on success."""
     cesta = cesta_rozpracovanej(sessions_path)
     tmp = cesta + ".tmp"
     try:
@@ -2527,7 +2692,7 @@ def zapis_rozpracovanu(sessions_path, summary, log=None):
 
 
 def zahod_rozpracovanu(sessions_path):
-    """Zmaze kontrolny bod (relacia sa zatvorila normalne). True = bol tam."""
+    """Deletes the checkpoint (session closed normally). True = it existed."""
     try:
         os.remove(cesta_rozpracovanej(sessions_path))
         return True
@@ -2536,7 +2701,7 @@ def zahod_rozpracovanu(sessions_path):
 
 
 def _preco_neobnovit(summary, now):
-    """Dovod, preco kontrolny bod nie je vierohodna relacia, alebo None."""
+    """The reason why the checkpoint is not a credible session, or None."""
     if not je_ulozitelna(summary):
         return "kratka alebo bez dat"
     try:
@@ -2544,7 +2709,7 @@ def _preco_neobnovit(summary, now):
         trvanie = float(summary.get("duration_s"))
     except (TypeError, ValueError):
         return "bez casu zaciatku"
-    # Porovnania zhora chytaju aj NaN a nekonecno (vtedy su vsetky False).
+    # Upper-bound comparisons catch NaN and infinity too (all are False then).
     if not ROZPRACOVANA_OD <= zaciatok < float("inf"):
         return "nemozny cas zaciatku"
     if not 0.0 <= trvanie < float("inf"):
@@ -2567,13 +2732,14 @@ def _uz_v_historii(sessions, started):
 
 
 def obnov_rozpracovanu(sessions_path, now=None, log=None):
-    """Po starte: rozpracovanu relaciu z minula prida do historie. RAZ.
+    """At start: adds last time's unfinished session to the history. ONCE.
 
-    Vracia ulozeny suhrn (s `recovered: True`), alebo None. Nevierohodny
-    kontrolny bod (kratky, s nemoznym casom, necitatelny) alebo taky, co uz
-    v historii je (appka spadla az po ulozeni relacie), sa zmaze bez
-    zapisu - inak by sa posudzoval pri kazdom starte znova. Ked zlyha
-    zapis do historie (plny disk), subor OSTAVA a skusi sa pri dalsom starte.
+    Returns the saved summary (with `recovered: True`), or None. An
+    implausible checkpoint (short, with an impossible time, unreadable) or
+    one that is already in the history (the app crashed only after saving
+    the session) is deleted without writing - otherwise it would be judged
+    again at every start. When writing to the history fails (full disk),
+    the file STAYS and it is retried at the next start.
     """
     cesta = cesta_rozpracovanej(sessions_path)
     if not os.path.exists(cesta):
@@ -2603,29 +2769,30 @@ def obnov_rozpracovanu(sessions_path, now=None, log=None):
 
 
 # --------------------------------------------------------------------------
-# Neulozena relacia (0.2.2)
+# Unsaved session (0.3)
 # --------------------------------------------------------------------------
 #
-# PRECO: `save_session` pri chybe zapisu (plny disk, zakazany pristup,
-# zamknuty subor) vratil False a relacia zmizla - v denniku ostal len
-# technicky riadok. Teraz sa jej suhrn odlozi sem (zoznam, moze ich byt
-# viac) a pri dalsom starte alebo po dalsom uspesnom ulozeni sa doplni do
-# historie rovnako ako kontrolny bod - s `recovered: True`, takze sa z nej
-# prahy neucia (`ciste_relacie`). Subor sa maze az PO uspesnom zapise.
+# WHY: on a write error (full disk, access denied, locked file)
+# `save_session` returned False and the session vanished - only a
+# technical line was left in the journal. Now its summary is set aside
+# here (a list, there may be more of them) and at the next start or after
+# the next successful save it is added to the history the same way as the
+# checkpoint - with `recovered: True`, so thresholds are not learned from
+# it (`ciste_relacie`). The file is deleted only AFTER a successful write.
 #
-# Ten isty priecinok ako hr_sessions.json - "Zmazat historiu" ho maze tiez
+# The same folder as hr_sessions.json - "Delete history" deletes it too
 # (`data_io.MAZATELNE`).
 CAKAJUCA_MENO = "hr_session_pending.json"
 
 
 def cesta_cakajucej(sessions_path):
-    """Neulozene relacie lezia vedla hr_sessions.json (ako kontrolny bod)."""
+    """Unsaved sessions lie next to hr_sessions.json (like the checkpoint)."""
     return os.path.join(os.path.dirname(os.path.abspath(sessions_path)),
                         CAKAJUCA_MENO)
 
 
 def nacitaj_cakajuce(sessions_path):
-    """Zoznam cakajucich suhrnov. Necitatelny subor = prazdny zoznam."""
+    """List of pending summaries. Unreadable file = empty list."""
     try:
         with open(cesta_cakajucej(sessions_path), "r", encoding="utf-8") as fh:
             obsah = json.load(fh)
@@ -2654,15 +2821,17 @@ def _zapis_cakajuce(sessions_path, zoznam):
 
 
 def _odloz_pokazenu_cakajucu(sessions_path, prisne=False):
-    """Subor cakajucich relacii je, ale necitatelny (nie JSON zoznam)?
+    """The pending sessions file exists but is unreadable (not a JSON list)?
 
-    Potom sa NEZMAZE ani NEPREPISE - su v nom uplne vecery, ktore inde nie
-    su. Odlozi sa bokom pod `.corrupt-<cas>` ako pokazena historia v
-    `save_session` (`_odloz_pokazeny`), nech sa da zachranit; "Zmazat
-    historiu" ho maze tiez (`data_io` maze aj `hr_session_pending.json.*`).
-    Vracia True, ked subor citatelny NIE JE (aj ked ho odlozit neslo) -
-    vtedy sa mazat nesmie. `prisne=True` (volajuci ho hned prepise): ked
-    nevyjde ani presun, ani kopia, vyhodi chybu - prepisat ho nesmie."""
+    Then it is NOT DELETED and NOT OVERWRITTEN - it holds whole evenings
+    that are nowhere else. It is set aside as `.corrupt-<cas>` like the
+    broken history in `save_session` (`_odloz_pokazeny`), so it can be
+    rescued; "Delete history" deletes it too (`data_io` also deletes
+    `hr_session_pending.json.*`). Returns True when the file is NOT
+    readable (even if setting it aside failed) - then it must not be
+    deleted. `prisne=True` (the caller overwrites it right away): when
+    neither the move nor the copy works, it raises an error - it must not
+    be overwritten."""
     cesta = cesta_cakajucej(sessions_path)
     if not os.path.exists(cesta):
         return False
@@ -2681,16 +2850,18 @@ def _odloz_pokazenu_cakajucu(sessions_path, prisne=False):
 
 
 def zapis_cakajucu(sessions_path, summary, log=None):
-    """Odlozi suhrn relacie, ktoru sa nepodarilo ulozit. True pri uspechu.
+    """Sets aside a summary of a session that failed to save. True on success.
 
-    Ta ista relacia (rovnaky `started`) sa neodklada dvakrat - novsi suhrn
-    nahradi starsi. Atomicky (.tmp + os.replace). Necitatelny subor z minula
-    sa novym zoznamom neprepise, odlozi sa bokom (`_odloz_pokazenu_cakajucu`)."""
+    The same session (the same `started`) is not set aside twice - the
+    newer summary replaces the older one. Atomic (.tmp + os.replace). An
+    unreadable file from before is not overwritten by the new list, it is
+    set aside (`_odloz_pokazenu_cakajucu`)."""
     if not je_ulozitelna(summary):
         return False
     try:
-        # prisne: necitatelny subor, ktory sa nedal odlozit ani skopirovat,
-        # by zapis nizsie prepisal - radsej False (kontrolny bod ostava).
+        # strict: an unreadable file that could be neither set aside nor
+        # copied would be overwritten by the write below - better False (the
+        # checkpoint stays).
         _odloz_pokazenu_cakajucu(sessions_path, prisne=True)
         zoznam = [s for s in nacitaj_cakajuce(sessions_path)
                   if not _uz_v_historii([s], summary.get("started"))]
@@ -2703,15 +2874,17 @@ def zapis_cakajucu(sessions_path, summary, log=None):
 
 
 def obnov_cakajuce(sessions_path, now=None, log=None):
-    """Cakajuce relacie do historie. Vracia zoznam naozaj ulozenych suhrnov.
+    """Pending sessions into history. Returns a list of the summaries saved.
 
-    Kazda dostane `recovered: True` (prahy sa z nej neucia, ako z kontrolneho
-    bodu). Ta, co uz v historii je (rovnaky `started`), alebo nevierohodna
-    (`_preco_neobnovit`), sa zahodi bez zapisu. Ta, ktoru sa ulozit nepodarilo
-    ani teraz, v subore OSTAVA na dalsi pokus; subor zmizne az ked je prazdny."""
+    Each one gets `recovered: True` (thresholds are not learned from it,
+    like from the checkpoint). One that is already in the history (the
+    same `started`), or an implausible one (`_preco_neobnovit`), is thrown
+    away without writing. One that could not be saved even now STAYS in
+    the file for the next attempt; the file goes away only when it is
+    empty."""
     zoznam = nacitaj_cakajuce(sessions_path)
     if not zoznam:
-        # Prazdny sa zmaze; necitatelny sa odlozi bokom, nezmaze sa.
+        # An empty one is deleted; an unreadable one is set aside, not deleted.
         if (os.path.exists(cesta_cakajucej(sessions_path))
                 and not _odloz_pokazenu_cakajucu(sessions_path)):
             _zapis_cakajuce(sessions_path, [])
@@ -2741,12 +2914,13 @@ def obnov_cakajuce(sessions_path, now=None, log=None):
 
 
 def delete_session(path, started, log=None):
-    """Zmaze z historie JEDNU relaciu (podla `started`). True = zmazana.
+    """Deletes ONE session from the history (by `started`). True = deleted.
 
-    Detail v Historii ("Zmazat tuto relaciu", 0.2.2): napr. 14-hodinova
-    "relacia" cez uspany PC, ktora inak tlaci spankovy tep do pokojovej
-    zakladne. Atomicky (.tmp + os.replace); necitatelny subor sa NEPREPISUJE
-    - radsej nic nez zahodit celu historiu."""
+    The detail in History ("Delete this session", 0.3): e.g. a 14-hour
+    "session" over a sleeping PC, which otherwise pushes the sleeping heart
+    rate into the resting baseline. Atomic (.tmp + os.replace); an
+    unreadable file is NOT OVERWRITTEN - better nothing than throwing away
+    the whole history."""
     try:
         with open(path, "r", encoding="utf-8") as fh:
             data = json.load(fh)
@@ -2773,56 +2947,64 @@ def delete_session(path, started, log=None):
 
 
 # --------------------------------------------------------------------------
-# Export do tabulky
+# Export to a spreadsheet
 # --------------------------------------------------------------------------
 
-# PRECO CSV A NIE .xlsx
-# Excel otvori CSV dvojklikom rovnako ako vlastny format, takze pre hraca
-# je to to iste - ale appka na to nepotrebuje ziadnu kniznicu navyse, a
-# teda ani nic naviac v builde (openpyxl je ~2 MB a dalsi diel, ktory sa
-# moze v zabalenej appke pokazit). Dve veci to ale potrebuje, inak to
-# Excel v strednej Europe otvori ako jeden stlpec:
-#   * oddelovac BODKOCIARKA (v lokalizacii s desatinnou ciarkou je to on),
-#   * BOM na zaciatku, inak Excel precita subor ako ANSI a zmrsi diakritiku.
+# WHY CSV AND NOT .xlsx
+# Excel opens CSV with a double click just like its own format, so for the
+# player it is the same - but the app needs no extra library for it, and
+# so nothing extra in the build either (openpyxl is ~2 MB and another part
+# that can break in the packaged app). It does need two things, though,
+# otherwise Excel in central Europe opens it as one column:
+#   * a SEMICOLON separator (in a locale with a decimal comma, that is the
+#     one),
+#   * a BOM at the start, otherwise Excel reads the file as ANSI and
+#     mangles the diacritics.
 CSV_SEPARATOR = ";"
 CSV_COLUMNS = ("date", "start", "duration_min", "avg_bpm", "min_bpm", "max_bpm",
                "baseline_bpm", "over_min", "breathing", "peak_stress",
                "hrr_bpm", "hrpi", "calm_min", "raised_min", "high_min",
                "critical_min",
-               # PRECO SA (NE)OZVALA. Bez tychto stlpcov je "0 hlasok" len
-               # konstatovanie: nedalo by sa rozlisit "telo nebolo hore" od
-               # "bolo, ale nie dost dlho" a od "vypadaval tep".
+               # WHY IT DID (NOT) SPEAK UP. Without these columns "0 cues" is
+               # just a statement: there would be no way to tell "the body was
+               # not up" from "it was, but not long enough" and from "the heart
+               # rate kept dropping out".
                "longest_above_s", "above_runs", "cancelled_dip",
                "cancelled_gap", "hold_s",
-               # Co hrac o veceri povedal (kofein, alkohol, hovor...).
-               # Najvacsi vysvetlitelny zdroj rozptylu v celom meraní.
+               # What the player said about the evening (caffeine, alcohol,
+               # a call...). The biggest explainable source of variance in the
+               # whole measurement.
                "context",
-               # Cinnost (hral/pracoval), kolko % relacie bol HUD viditelny
-               # (biofeedback - videny tep sa podvedome reguluje) a volna
-               # poznamka hraca. Realne data k rozlisovaniu vecerov, nie dohady.
+               # Activity (played/worked), what % of the session the HUD was
+               # visible (biofeedback - a heart rate that is seen gets
+               # regulated subconsciously) and the player's free note. Real
+               # data for telling evenings apart, not guesses.
                "activity", "hud_seen", "note",
-               # Subjektivna vrstva (vyskum 2026-09-22): spanok, vnimana zataz
-               # 0-10, valencia, telo pocas spicky, verdikt o hlaske. Hlavna
-               # evaluacia = ROZCHOD merane (tep) x citene (tieto). `confounded`
-               # = ci sa relacia NEucila do zakladne (alkohol/choroba/namaha).
+               # Subjective layer (research of 2026-09-22): sleep, perceived
+               # load 0-10, valence, body during the peak, verdict about the
+               # cue. Main evaluation = the GAP measured (heart rate) x felt
+               # (these). `confounded` = whether the session was NOT learned
+               # into the baseline (alcohol/illness/exertion).
                "sleep", "felt_load", "valence", "body_peak", "cue_verdict",
                "confounded",
-               # Pokrytie signalu (0.2): aku cast relacie naozaj chodil tep
-               # (`pokrytie_signalu`). Na KONCI, nie vedla pasiem, z ktorych
-               # sa rata: stlpce pred nim tak ostavaju na svojich miestach
-               # pre kazdeho, kto si export uz spracuva podla poradia.
+               # Signal coverage (0.2): what share of the session the heart
+               # rate really came in (`pokrytie_signalu`). At the END, not
+               # next to the zones it is computed from: the columns before it
+               # thus stay in their places for anyone who already processes
+               # the export by column order.
                "signal",
-               # 0.2, tiez na konci z toho isteho dovodu: svet relacie
-               # (`session_world` - ten isty, podla ktoreho ju triedi
-               # Historia), kolkokrat tep vypadol a kolko sekund bola appka
-               # slepa, a kolko pauz vo vstupe za relaciu videla (brana
-               # hlasky na ne caka). Stare relacie ich nemaju - prazdna bunka.
+               # 0.2, also at the end for the same reason: the session world
+               # (`session_world` - the same one History sorts it by), how
+               # many times the heart rate dropped out and how many seconds
+               # the app was blind, and how many pauses in input it saw per
+               # session (the cue gate waits for them). Old sessions do not
+               # have them - an empty cell.
                "world", "dropouts", "blind_s", "pause_episodes")
 
 
 def _csv_cell(value, decimals=1):
-    """Cislo s desatinnou CIARKOU (Excel v SK/CZ inak vidi text), prazdno
-    pre chybajucu hodnotu."""
+    """A number with a decimal COMMA (otherwise Excel in SK/CZ sees text),
+    empty for a missing value."""
     if value is None:
         return ""
     if isinstance(value, float):
@@ -2831,11 +3013,11 @@ def _csv_cell(value, decimals=1):
 
 
 def _csv_context(ctx):
-    """Kontext relacie do bunky. Rozlisuje tri stavy (B20):
+    """Session context into a cell. It distinguishes three states (B20):
 
-      None -> hrac sa nevyjadril  (prazdno)
-      []   -> "nic z toho sa nedialo"  (pomlcka)
-      [..] -> vymenovane polozky
+      None -> the player did not answer  (empty)
+      []   -> "none of these happened"  (dash)
+      [..] -> listed items
     """
     if ctx is None:
         return ""
@@ -2845,8 +3027,9 @@ def _csv_context(ctx):
 
 
 def _csv_hud_seen(summary):
-    """Kolko % relacie bol HUD viditelny, alebo prazdno (stara relacia to
-    cislo nema). Cele percento - v CSV sa cita lahsie nez zlomok."""
+    """What % of the session the HUD was visible, or empty (an old session
+    does not have that number). A whole percent - easier to read in CSV
+    than a fraction."""
     frac = summary.get("hud_visible_frac")
     if frac is None:
         return ""
@@ -2857,8 +3040,8 @@ def _csv_hud_seen(summary):
 
 
 def _csv_signal(summary):
-    """Pokrytie signalu v celych percentach ("97%"), alebo prazdno, ked sa
-    nevie (relacia bez pasiem). Ten isty tvar ako `hud_seen`."""
+    """Signal coverage in whole percent ("97%"), or empty when unknown (a
+    session without zones). The same form as `hud_seen`."""
     pokrytie = pokrytie_signalu(summary)
     if pokrytie is None:
         return ""
@@ -2866,8 +3049,9 @@ def _csv_signal(summary):
 
 
 def _csv_pocet(value):
-    """Nezaporny pocet (vypadky, pauzy) ako cele cislo, alebo prazdno, ked
-    ho relacia nema alebo je pokazeny (import, rucna uprava)."""
+    """A non-negative count (dropouts, pauses) as a whole number, or empty
+    when the session does not have it or it is broken (import, manual
+    edit)."""
     v = _cislo(value)
     if v is None or v < 0:
         return ""
@@ -2875,7 +3059,7 @@ def _csv_pocet(value):
 
 
 def _csv_sekundy(value):
-    """Nezaporne sekundy s desatinnou ciarkou, alebo prazdno."""
+    """Non-negative seconds with a decimal comma, or empty."""
     v = _cislo(value)
     if v is None or v < 0:
         return ""
@@ -2883,15 +3067,16 @@ def _csv_sekundy(value):
 
 
 def _csv_note(note):
-    """Volna poznamka do bunky. `;` je oddelovac stlpcov a novy riadok rozbije
-    riadok CSV - oboje sa nahradi, aby jedna poznamka nerozhodila tabulku."""
+    """Free note into a cell. `;` is the column separator and a newline breaks
+    the CSV row - both are replaced so that one note does not wreck the
+    table."""
     if not note:
         return ""
     return str(note).replace(";", ",").replace("\n", " ").replace("\r", " ")
 
 
 def session_row(summary):
-    """Jedna relacia ako zoznam buniek v poradi `CSV_COLUMNS`."""
+    """One session as a list of cells in `CSV_COLUMNS` order."""
     started = summary.get("started")
     when = datetime.fromtimestamp(started) if started else None
     zones = summary.get("zone_seconds") or {}
@@ -2911,7 +3096,7 @@ def session_row(summary):
         _csv_cell(summary.get("max_bpm")),
         _csv_cell(summary.get("baseline_bpm")),
         _csv_cell(minutes(summary.get("time_over_s"))),
-        # To iste cislo ako tabulka, detail aj graf Historie.
+        # The same number as the table, detail and chart of History.
         _csv_cell(hlasky_relacie(summary)),
         _csv_cell(summary.get("peak_stress")),
         _csv_cell(summary.get("hrr_bpm")),
@@ -2925,17 +3110,20 @@ def session_row(summary):
         _csv_cell(summary.get("runs_cancelled_dip")),
         _csv_cell(summary.get("runs_cancelled_gap")),
         _csv_cell(summary.get("stress_hold_s")),
-        # None = hráč sa nevyjadril, [] = "nič z toho" - dve rôzne veci, inde
-        # ich chráni vlastný test. CSV ich zlievalo do prázdnej bunky (B20).
+        # None = the player did not answer, [] = "none of these" - two
+        # different things, guarded elsewhere by their own test. CSV merged
+        # them into an empty cell (B20).
         _csv_context(summary.get("context")),
-        # Cez normalize_activity: zaruci retazec ('play'/'work'/''), takze
-        # ani cislo/nezmysel z importovanej ci rucne upravenej relacie
-        # nezhodi CELY export (ako jedina bunka tu inak nesla cez sanitizer).
+        # Via normalize_activity: it guarantees a string ('play'/'work'/''),
+        # so not even a number/nonsense from an imported or hand-edited
+        # session brings down the WHOLE export (otherwise this was the only
+        # cell here that did not go through the sanitizer).
         normalize_activity(summary.get("activity")) or "",
         _csv_hud_seen(summary),
         _csv_note(summary.get("note")),
-        # Subjektivna vrstva - vsetko cez normalizatory, aby zly import
-        # nezhodil export (rovnaka poistka ako pri activity).
+        # Subjective layer - everything through the normalisers, so that a
+        # bad import does not bring down the export (the same safeguard as for
+        # activity).
         normalize_sleep(summary.get("sleep")) or "",
         _csv_cell(normalize_felt_load(summary.get("felt_load"))),
         _csv_cell(normalize_valence(summary.get("valence"))),
@@ -2951,10 +3139,11 @@ def session_row(summary):
 
 
 def export_sessions_csv(sessions, path, headers=None):
-    """Zapise relacie do CSV pre Excel. Vrati pocet zapisanych riadkov.
+    """Writes sessions to a CSV for Excel. Returns the number of rows written.
 
-    `headers` su prelozene nazvy stlpcov v poradi `CSV_COLUMNS`; bez nich
-    sa pouziju anglicke kluce (modul neriesi preklady).
+    `headers` are translated column names in `CSV_COLUMNS` order; without
+    them the English keys are used (the module does not deal with
+    translations).
     """
     rows = sorted((s for s in sessions or [] if isinstance(s, dict)),
                   key=lambda s: float(s.get("started") or 0))
@@ -2963,7 +3152,7 @@ def export_sessions_csv(sessions, path, headers=None):
     for summary in rows:
         lines.append(CSV_SEPARATOR.join(session_row(summary)))
     tmp = path + ".tmp"
-    # utf-8-sig = UTF-8 s BOM; bez neho Excel zjedol diakritiku
+    # utf-8-sig = UTF-8 with BOM; without it Excel ate the diacritics
     with open(tmp, "w", encoding="utf-8-sig", newline="") as fh:
         fh.write("\r\n".join(lines) + "\r\n")
     nahrad_subor(tmp, path, uprac_zdroj=True)
@@ -2971,7 +3160,8 @@ def export_sessions_csv(sessions, path, headers=None):
 
 
 def load_sessions(path, log=None):
-    # "Súbor neexistuje" = hráč ešte nič nenameral, to je v poriadku a ticho.
+    # "The file does not exist" = the player has not measured anything
+    # yet; that is fine and quiet.
     if not os.path.exists(path):
         return []
     try:
@@ -2982,10 +3172,11 @@ def load_sessions(path, log=None):
         if log:
             log("HR: súbor histórie nie je zoznam")
     except Exception as exc:
-        # POZOR: prázdny zoznam tu znamená "NEDALO SA PREČÍTAŤ", nie "žiadne
-        # relácie". Bez záznamu by História tvrdila, že si nič nenameral,
-        # hoci súbor s mesiacmi dát leží vedľa (bug B15). `save_session` pri
-        # najbližšej relácii pokazený súbor odloží bokom a začne čistý.
+        # WARNING: an empty list here means "COULD NOT BE READ", not "no
+        # sessions". Without a record History would claim you measured
+        # nothing, even though a file with months of data lies next to it
+        # (bug B15). At the next session `save_session` sets the broken file
+        # aside and starts clean.
         if log:
             log(f"HR: história sa nedala prečítať: {exc}")
     return []

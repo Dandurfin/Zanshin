@@ -1,23 +1,26 @@
 # -*- coding: utf-8 -*-
-"""Automaticky GUI harness pre ONBOARDING + GUIDED TOUR (Windows).
+"""Automatic GUI harness for ONBOARDING + GUIDED TOUR (Windows).
 
-Doplnok ku gui_harness_auto.py (ten testuje bezne stranky). Tento:
-  * zalohuje dandurf_settings.json a ZMAZE ho -> appka ide ako pri prvom
-    starte (onboarding + tour); na konci subor obnovi;
-  * onboarding: 5 krokov Dalej/Spat, Esc otvori otazku "Ukoncit Zanshin?",
-    "Preskocit na hodinky" -> krok 3 (hodinky), popisy tem na 2 riadky
-    (ziadne doslovne '\\n'), krok 5 (styl hlasky: styri rovnake odpovede,
-    nic predvybrane, volba sa ulozi), realny klik mysou na Dalej;
-  * guided tour: auto-start po onboardingu, pri kazdom zo 6 krokov zmeria
-    polohu bubliny a zvyraznenia voci cielovemu widgetu (right/below/above/
-    center), realny klik na Dalej v bubline, Preskocit, cleanup okien,
-    tour_seen ulozene, opakovane spustenie cez start_tour (= Nastavenia);
-  * rezim --pair: v kroku 3 "Sparovat hodinky teraz" -> uvod pokracuje
-    krokmi 4-5, po nom parovaci dialog na stranke V hre; tour sa spusti az
-    po jeho zavreti (harness dialog nici priamo, preto ju spusti sam).
+A complement to gui_harness_auto.py (that one tests the ordinary pages).
+This one:
+  * backs up dandurf_settings.json and DELETES it -> the app runs as on
+    first start (onboarding + tour); at the end it restores the file;
+  * onboarding: 5 steps Next/Back, Esc opens the question "Quit Zanshin?",
+    "Skip to the watch" -> step 3 (watch), theme descriptions on 2 lines
+    (no literal '\\n'), step 5 (cue style: four equal answers, nothing
+    preselected, the choice gets saved), a real mouse click on Next;
+  * guided tour: auto-start after onboarding, at each of the 6 steps it
+    measures the position of the bubble and the highlight relative to the
+    target widget (right/below/above/center), a real click on Next in the
+    bubble, Skip, cleanup of windows, tour_seen saved, a repeated start via
+    start_tour (= Settings);
+  * --pair mode: in step 3 "Pair a watch now" -> the introduction goes on
+    with steps 4-5, after it the pairing dialog on the In-game page; the
+    tour starts only after it is closed (the harness destroys the dialog
+    directly, so it starts the tour itself).
 
-Spustenie:  python gui_harness_onboarding.py [--pair]   (appka nesmie bezat)
-Hybe realnou mysou; screenshoty a JSON idu do logs/gui_harness/.
+Run:  python gui_harness_onboarding.py [--pair]   (the app must not be running)
+Moves the real mouse; screenshots and JSON go to logs/gui_harness/.
 """
 import ctypes, json, os, shutil, sys, traceback
 
@@ -32,7 +35,7 @@ SETTINGS = os.path.join(PROJ, "dandurf_settings.json")
 SETTINGS_BAK = os.path.join(OUT, "dandurf_settings.pred_onboarding_harnessom.json")
 if os.path.exists(SETTINGS):
     shutil.copy2(SETTINGS, SETTINGS_BAK)
-    os.remove(SETTINGS)          # prvy start = ziadne nastavenia
+    os.remove(SETTINGS)          # first start = no settings
 
 
 def restore_settings():
@@ -66,10 +69,11 @@ def rec(name, ok, detail=""):
     print(("PASS " if ok else "FAIL ") + name + (f"  -- {detail}" if detail else ""), flush=True)
 
 
-# Hlavne okno sa pri starte ukaze az cele nakreslene; dovtedy je zahalene
-# (DWM cloak, viz app._odhal_hotove_okno). Zahalene okno ma winfo_viewable()
-# stale True, screenshot by odfotil PLOCHU ZA NIM (sukromie!) a realny klik
-# by trafil cudzie okno. Preto kazdy krok najprv pocka, kym sa okno ukaze.
+# At startup the main window shows only once fully drawn; until then it is
+# cloaked (DWM cloak, see app._odhal_hotove_okno). A cloaked window still
+# has winfo_viewable() True, a screenshot would capture the DESKTOP BEHIND
+# IT (privacy!) and a real click would hit someone else's window. So every
+# step first waits for the window to show.
 ODHALENIE_TIMEOUT_MS = 5000
 
 
@@ -133,7 +137,7 @@ root.report_callback_exception = _cb_exc
 
 
 class SpyWizard(ui_dialogs.OnboardingWizard):
-    """Zachyti instanciu wizardu, ktoru DandurfApp vytvori vo svojom __init__."""
+    """Captures the wizard instance that DandurfApp creates in its __init__."""
 
     def __init__(self, *a, **k):
         super().__init__(*a, **k)
@@ -184,13 +188,13 @@ def ob_start():
     rec("onboarding wizard opened on first run", wz is not None and wz.top.winfo_exists())
     if wz is None:
         return
-    wz.top.attributes("-topmost", True)      # harness bezi spod okna Claude
+    wz.top.attributes("-topmost", True)      # the harness runs from under the Claude window
     rec("wizard has 5 steps", wz.STEP_COUNT == 5 and wz._step == 0, f"step={wz._step}")
     rec("step 1: Back disabled, Skip visible",
         wz.back_btn.cget("state") == "disabled" and wz.skip_btn.winfo_ismapped())
     rec("wizard X of the OS goes through the quit question",
         "_on_close_request" in str(wz.top.protocol("WM_DELETE_WINDOW")))
-    # vlastna lista namiesto Windows ramu
+    # custom title bar instead of the Windows frame
     chrome = getattr(wz, "chrome", None)
     rec("wizard is frameless (own DialogChrome bar, no OS title)",
         bool(wz.top.overrideredirect()) and chrome is not None and chrome.bar.winfo_ismapped())
@@ -199,7 +203,7 @@ def ob_start():
     rec("wizard has modal grab", root.grab_current() is not None and root.grab_current().winfo_toplevel() is wz.top,
         str(root.grab_current()))
     shot("ob_step1", widget=wz.top)
-    # realne tahanie za listu
+    # real dragging by the title bar
     state["wz_xy0"] = (wz.top.winfo_x(), wz.top.winfo_y())
     bx, by = chrome.bar.winfo_rootx() + 150, chrome.bar.winfo_rooty() + chrome.bar.winfo_height() // 2
     state["wz_bar"] = (bx, by)
@@ -218,9 +222,9 @@ for _i in range(1, 7):
         user32.SetCursorPos(int(x + 90 * i // 6), int(y + 60 * i // 6))
         user32.mouse_event(MOVE, 0, 0, 0, 0)
     _wd.__name__ = f"ob_drag_move_{_i}"
-    # prvy pohyb az po pauze: Tk berie pri ButtonPress AKTUALNU polohu
-    # kurzora v case spracovania, nie v case stlacenia - ak je zaneprazdneny
-    # (assets thread, kreslenie), pohyb hned po stlaceni posunie pociatok
+    # the first move only after a pause: on ButtonPress Tk takes the CURRENT
+    # cursor position at processing time, not at press time - if it is busy
+    # (assets thread, drawing), a move right after the press shifts the origin
     step(200 if _i == 1 else 35)(_wd)
 
 
@@ -238,7 +242,8 @@ def ob_drag_check():
         abs((x1 - x0) - 90) <= 6 and abs((y1 - y0) - 60) <= 6, f"{(x0, y0)} -> {(x1, y1)}")
     rec("wizard still has grab after drag", root.grab_current() is not None
         and root.grab_current().winfo_toplevel() is wz.top)
-    # Escape otvori otazku "Ukoncit Zanshin?" - uvod sa nezavrie sam
+    # Escape opens the question "Quit Zanshin?" - the introduction does not
+    # close by itself
     user32.keybd_event(0x1B, 0, 0, 0); user32.keybd_event(0x1B, 0, 2, 0)
 
 
@@ -248,13 +253,13 @@ def ob_escape_check():
     rec("Escape opens the quit question, wizard stays",
         wz.top.winfo_exists() and wz._otazka is not None and not wz.quit_requested)
     shot("ob_quit_question", widget=wz.top)
-    wz._hide_quit_question()                 # = Pokracovat
+    wz._hide_quit_question()                 # = Continue
 
 
 @step(400)
 def ob_click_next():
-    # realny klik na Dalej - az PO tom, co Tk spracoval topmost (inak klik
-    # trafi okno, ktore wizard prekryvalo)
+    # real click on Next - only AFTER Tk has processed topmost (otherwise the
+    # click hits the window the wizard was covering)
     wz = state["wizard"]
     mouse_click_at(*center_of(wz.next_btn))
 
@@ -272,7 +277,7 @@ def ob_step2():
 def ob_step3():
     wz = state["wizard"]
     rec("Next -> step 3 (watch)", wz._step == 2, f"step={wz._step}")
-    # druhy dovod pre hodinky (historia) - tlmeny riadok pod hlavnym textom
+    # second reason for the watch (history) - a dim line under the main text
     body2 = getattr(wz, "step3_body2", None)
     rec("step 3: second reason (history) shown under main text",
         body2 is not None and body2.winfo_ismapped() and body2.cget("text") == tr("ob.step3.body2"))
@@ -284,7 +289,7 @@ def ob_step3():
         lowest <= footer_top, f"content bottom={lowest} footer top={footer_top}")
     shot("ob_step3", widget=wz.top)
     if PAIR_MODE:
-        # "Sparovat hodinky teraz" - najdi tlacidlo podla textu a klikni realne
+        # "Pair a watch now" - find the button by its text and really click it
         btns = [b for b in find_widgets(wz.body, ctk.CTkButton, [])
                 if tr("ob.step3.pair_now") in str(b.cget("text"))]
         rec("step 3 has 'Pair now' button", len(btns) == 1)
@@ -299,15 +304,15 @@ def ob_step3():
 def ob_back_then_skip():
     wz = state["wizard"]
     if PAIR_MODE:
-        # "Sparovat teraz" uvod NEukonci (0.2.2): ide na krok 4, parovanie
-        # sa otvori az po uvode
+        # "Pair now" does NOT end the introduction (0.3): it goes to step 4,
+        # pairing opens only after the introduction
         rec("'Pair now' goes on to step 4, pairing queued",
             wz.top.winfo_exists() and wz._step == 3 and wz.wants_pairing, f"step={wz._step}")
         wz._on_next()
         wz._confirm()
         return
     rec("Back from step 3 -> step 2", state.get("_back_ok"), f"step={wz._step}")
-    # Preskocit -> krok 3 (hodinky), nie volba sveta
+    # Skip -> step 3 (watch), not the world choice
     mouse_click_at(*center_of(wz.skip_btn))
 
 
@@ -321,8 +326,8 @@ def ob_step4():
     rec("step 4: Skip hidden, Next still says Next (step 5 follows)",
         not wz.skip_btn.winfo_ismapped() and wz.next_btn.cget("text") == tr("ob.next"),
         wz.next_btn.cget("text"))
-    # popisy svetov (B3-worlds: Hra/Sumi, Praca/Aizome): 2 riadky,
-    # ziadne doslovne '\n'
+    # world descriptions (B3-worlds: Play/Sumi, Work/Aizome): 2 lines,
+    # no literal '\n'
     labels = find_widgets(wz.body, ctk.CTkLabel, [])
     descs = [str(l.cget("text")) for l in labels
              if str(l.cget("text")) in (tr("ob.world.play.desc"), tr("ob.world.work.desc"))]
@@ -330,7 +335,7 @@ def ob_step4():
     rec("theme descriptions have a real line break, no literal backslash-n",
         all("\n" in d and "\\n" not in d for d in descs), repr(descs))
     shot("ob_step4", widget=wz.top)
-    # Spat na krok 3 a znova na 4 a 5 (Dalej/Spat funguje aj tu)
+    # Back to step 3 and again to 4 and 5 (Next/Back works here too)
     wz._on_back()
     state["_back3"] = wz._step == 2
     wz._on_next()
@@ -370,7 +375,7 @@ def ob_confirm():
         return
     wz = state["wizard"]
     rec("step 5: 'not sure' is stored as voice", state.get("_neviem_je_hlas"))
-    mouse_click_at(*center_of(wz.next_btn))      # realny klik na "Vstupit"
+    mouse_click_at(*center_of(wz.next_btn))      # real click on "Enter"
 
 
 @step(2500)
@@ -387,10 +392,10 @@ def ob_after():
         rec("cue style from step 5 stored", getattr(app, "cue_style", None) == "sound",
             getattr(app, "cue_style", None))
     if app is not None:
-        # Tour krok 2 uz neukazuje na QuickDock.stop_btn (redizajn "Sumi noc"
-        # ho zrusil) ANI na widget enso: znacka je od 2.1 kresba na strede
-        # Dnes (`_EnsoHero` na `app.dnes_canvas`), takze bublina miery na
-        # canvas (viz guided_tour._target "enso").
+        # Tour step 2 no longer points at QuickDock.stop_btn (the "Sumi noc"
+        # redesign removed it) NOR at the enso widget: since 2.1 the mark is a
+        # drawing in the centre of Today (`_EnsoHero` on `app.dnes_canvas`), so
+        # the bubble aims at the canvas (see guided_tour._target "enso").
         rec("dnes canvas has real size (tour step 2 target)",
             wrect(app.dnes_canvas)[2] > 10,
             f"canvas={wrect(app.dnes_canvas)}")
@@ -425,8 +430,9 @@ def pair_check():
 
 
 # ============================ GUIDED TOUR ============================
-# guided_tour._STEPS: uvod, enso, prijem tepu, spustace, historia, koniec
-# (bez tepu koniec ukazuje na kontrolku hodiniek v bocnom paneli)
+# guided_tour._STEPS: intro, enso, heart-rate receiving, cues, history, end
+# (without heart rate the end points at the watch indicator in the side
+# panel)
 SIDES = ["center", "right", "left", "below", "right", "right"]
 GAP, PAD = 14, 4
 
@@ -489,7 +495,7 @@ def check_tour_step(expected_index, tag):
             f"target={(tx, ty, tw, th)} bubble={(bx, by, bw, bh)}")
         overlap = not (bx >= tx + tw or bx + bw <= tx or by >= ty + th or by + bh <= ty)
         rec(f"tour step {t._index + 1}: bubble does not cover the target", not overlap)
-    # screenshot: okno + okolie (bubliny mozu trcat von)
+    # screenshot: window + surroundings (bubbles may stick out)
     rx, ry, rw, rh = wrect(root)
     shot(f"tour_step{t._index + 1}", bbox=(rx - 40, ry - 40, rx + rw + 360, ry + rh + 40))
 
@@ -511,21 +517,21 @@ def skip_button(bubble):
 @step(1500)
 def tour_autostart():
     if PAIR_MODE:
-        state["app"].start_tour()          # rucne ako z Nastaveni
+        state["app"].start_tour()          # by hand, as from Settings
         return
     rec("tour auto-started after onboarding", tour() is not None and tour()._bubble is not None)
 
 
 @step(900)
 def tour_s1():
-    root.attributes("-topmost", False)      # bubliny su topmost, root nesmie byt nad nimi
+    root.attributes("-topmost", False)      # bubbles are topmost, the root must not be above them
     check_tour_step(0, "welcome")
     t = tour()
     if t and t._bubble:
         b = next_button(t._bubble)
         rec("bubble has Next button", b is not None)
         if b:
-            mouse_click_at(*center_of(b))    # realny klik
+            mouse_click_at(*center_of(b))    # real click
 
 
 def make_tour_steps():
@@ -564,12 +570,12 @@ def tour_after_done():
     except Exception as exc:
         on_disk = repr(exc)
     rec("tour_seen persisted to settings file", on_disk is True, str(on_disk))
-    # tlacidlo v Nastaveniach (chip s textom settings.tour_btn)
+    # the button in Settings (a chip with the settings.tour_btn text)
     page = app.pages.pages.get("nastavenia")
     btns = [b for b in find_widgets(page, ctk.CTkButton, [])
             if str(b.cget("text")) == tr("settings.tour_btn")] if page is not None else []
     rec("Settings has 'Start tour' button", len(btns) == 1, f"found={len(btns)}")
-    # znovu spustit (ako z Nastaveni) a preskocit v strede
+    # start again (as from Settings) and skip in the middle
     app.start_tour()
 
 
@@ -578,8 +584,8 @@ def tour_replay_skip():
     t = tour()
     rec("tour replay starts at step 1", t is not None and t._index == 0 and t._bubble is not None)
     if t:
-        # dvojite Dalej v jednom ticku = to, co robi rychly dvojklik; stary
-        # odlozeny _place() nesmie nakreslit bublinu naviac
+        # a double Next in one tick = what a quick double click does; an old
+        # deferred _place() must not draw an extra bubble
         t._next()
         t._next()
 
@@ -606,7 +612,8 @@ def tour_replay_after_skip():
     app = state["app"]
     rec("Skip in the middle: no windows left", not visible_tops())
     rec("Skip in the middle: tour cleared", getattr(app, "_tour", None) is None)
-    # kontrola, ze pri dalsom starte sa tour sam nespusti: rovnaka podmienka ako v app
+    # check that on the next start the tour does not start by itself: the same
+    # condition as in app
     try:
         with open(SETTINGS, encoding="utf-8") as fh:
             d = json.load(fh)
@@ -640,7 +647,7 @@ def finish():
 
 try:
     root.after(300, run_steps)
-    # DandurfApp blokuje vo wait_window(wizard) - after-retazec bezi aj vtedy
+    # DandurfApp blocks in wait_window(wizard) - the after chain runs even then
     state["app"] = DandurfApp(root)
     root.mainloop()
 finally:

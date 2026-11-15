@@ -1,66 +1,73 @@
-"""Zanshin (predtym Zanshin DojoSync a Dandurf) - mindfulness/biofeedback asistent
-pre hranie hier.
+"""Zanshin (formerly Zanshin DojoSync and Dandurf) - a mindfulness/biofeedback
+assistant for playing games.
 
-Toto je len vstupny bod - overi zavislosti a spusti hlavnu appku
-(DandurfApp v app.py). Cela architektura je rozdelena na moduly:
+This is only the entry point - it checks the dependencies and starts the
+main app (DandurfApp in app.py). The whole architecture is split into
+modules:
 
-  paths.py           - cesty k datam (%APPDATA%), migracia zo starsich verzii
-  theme.py           - farebne tokeny vzhladov Sumi (hra) / Aizome (praca)
-  i18n.py            - preklady rozhrania (11 jazykov; cs/bg v i18n_cs_bg.py)
-  settings_model.py  - datovy model slotov/nastaveni (predvolene hodnoty,
-                        normalizacia, popisky)
-  sfx_assets.py       - zabudovana SFX kniznica (syntéza aj stiahnutie)
-  audio_engine.py     - TTS (Edge Natural + SAPI5) a prehravanie SFX/nahravok
-  gamepad.py          - ovladace cez pygame/SDL2; UZ NIE SPUSTAC, len druhy
-                        zdroj informacie o tom, ci je hrac aktivny
-  game_profiles.py    - Auto-Profile Engine (rozpoznanie beziacej hry)
-  activity.py         - ci hrac prave nieco robi (GetLastInputInfo, ZIADNY
-                        hook) a z coho hra (ovladac / klavesnica)
-  trigger.py          - stavovy automat hlasky: natiahnutie po 90 s zataze,
-                        odklad na prestavku, tiche kontrolne rameno
-  measure.py          - meracie okna okolo hlasky a ich platnost
-  data_io.py          - export/import/mazanie dat (prisny parser, bez pickle)
-  overlay.py          - in-game somaticke vizualy (click-through okna)
+  paths.py           - data paths (%APPDATA%), migration from older versions
+  theme.py           - colour tokens of the Sumi (play) / Aizome (work) looks
+  i18n.py            - interface translations (11 languages; cs/bg in
+                        i18n_cs_bg.py)
+  settings_model.py  - data model of slots/settings (default values,
+                        normalisation, labels)
+  sfx_assets.py       - built-in SFX library (synthesis and download)
+  audio_engine.py     - TTS (Edge Natural + SAPI5) and playback of SFX/recordings
+  gamepad.py          - controllers via pygame/SDL2; NO LONGER A TRIGGER, only a
+                        second source of information on whether the player is
+                        active
+  game_profiles.py    - Auto-Profile Engine (detecting the running game)
+  activity.py         - whether the player is doing something right now
+                        (GetLastInputInfo, NO hook) and what they play with
+                        (controller / keyboard)
+  trigger.py          - cue state machine: arming after 90 s of load,
+                        postponing to a break, silent control arm
+  measure.py          - measurement windows around a cue and their validity
+  data_io.py          - export/import/deletion of data (strict parser, no pickle)
+  overlay.py          - in-game somatic visuals (click-through windows)
   guide_content.py,
-  guide_panel.py       - panel "Sprievodca / Čo je za tým"
-  ui_dialogs.py        - dialogy a karty hlavneho okna (vratane Onboardingu)
-  app.py              - DandurfApp: hlavne okno, prepojenie vsetkeho
-  app_audio.py        - AudioMixin (cast DandurfApp): SFX kniznica, hlasitost,
-                        hlasy, priprava Edge hlasok, prehratie slotu
-  app_controls.py     - ControlsMixin (cast DandurfApp): paleta prikazov,
-                        "teraz nie", dennik, ovladac a rucna hlaska (Test)
-  app_cues.py         - CuesMixin (cast DandurfApp): stav spustaca hlasky,
-                        stupen rebrika pre relaciu, styl hlasky
-  app_data.py         - DataMixin (cast DandurfApp): export/import/mazanie
-                        dat, ulozenie relacie, zdielanie profilov kodom
-  app_history.py      - HistoryMixin (cast DandurfApp): stranka Historia
-                        (trend, tabulka, detail relacie, export do CSV) a
-                        analyza historie na pozadi
-  app_hud.py          - HudMixin (cast DandurfApp): HUD v hre a riadok ikon,
-                        jazyk hry, monitor, kontrolka tepu, in-game vizualy
-  app_prefs.py        - PrefsMixin (cast DandurfApp): prepinanie jazyka,
-                        sveta a temy, nacitanie/ulozenie nastaveni
-  app_profiles.py     - ProfilesMixin (cast DandurfApp): sloty, profily hier
-                        a auto-profil (rozpoznanie beziacej hry)
-  app_session.py      - SessionMixin (cast DandurfApp): senzor tepu, prijem
-                        tepu a stavu spojenia, otvorenie meracej relacie
-  app_spolocne.py     - mena spolocne pre app.py a jej mixiny (app_log,
-                        nazvy jazykov, skratka "Teraz nie", ImageTk)
-  app_today.py        - TodayMixin (cast DandurfApp): stred (kreslenie) a
-                        zivy blok stranky Dnes, dorucenie hlasky,
-                        "Moje statistiky"
+  guide_panel.py       - the "Guide / What's behind it" panel
+  ui_dialogs.py        - dialogs and cards of the main window (incl. Onboarding)
+  app.py              - DandurfApp: main window, wiring everything together
+  app_audio.py        - AudioMixin (part of DandurfApp): SFX library, volume,
+                        voices, preparing Edge cues, playing a slot
+  app_controls.py     - ControlsMixin (part of DandurfApp): command palette,
+                        "not now", journal, controller and manual cue (Test)
+  app_cues.py         - CuesMixin (part of DandurfApp): state of the cue
+                        trigger, ladder step for the session, cue style
+  app_data.py         - DataMixin (part of DandurfApp): export/import/deletion
+                        of data, saving a session, sharing profiles by code
+  app_history.py      - HistoryMixin (part of DandurfApp): History page
+                        (trend, table, session detail, CSV export) and
+                        background history analysis
+  app_hud.py          - HudMixin (part of DandurfApp): HUD in game and the icon
+                        row, game language, monitor, heart rate indicator,
+                        in-game visuals
+  app_prefs.py        - PrefsMixin (part of DandurfApp): switching language,
+                        world and theme, loading/saving settings
+  app_profiles.py     - ProfilesMixin (part of DandurfApp): slots, game
+                        profiles and auto-profile (detecting the running game)
+  app_session.py      - SessionMixin (part of DandurfApp): heart rate sensor,
+                        receiving heart rate and connection state, opening a
+                        measurement session
+  app_spolocne.py     - names shared by app.py and its mixins (app_log,
+                        language names, the "Not now" shortcut, ImageTk)
+  app_today.py        - TodayMixin (part of DandurfApp): the centre (drawing)
+                        and the live block of the Today page, cue delivery,
+                        "My stats"
 
-Dva TTS motory:
-  * "edge"  - Microsoft Edge Natural (neuronove hlasy). Hlasky sa
-              generuju DOPREDU do cache v audio/tts_cache/ a ked sa hlaska
-              doruci, uz sa len prehra hotovy MP3 subor - ziadna sietova
-              komunikacia ani latencia pocas hrania.
-  * "sapi"  - klasicke offline Windows SAPI5 hlasy.
+Two TTS engines:
+  * "edge"  - Microsoft Edge Natural (neural voices). Cues are
+              generated IN ADVANCE into a cache in audio/tts_cache/ and when
+              a cue is delivered, the ready MP3 file is just played - no
+              network communication or latency while playing.
+  * "sapi"  - classic offline Windows SAPI5 voices.
 
-Rozhranie ma dva vzhlady a idu so svetom: Sumi pre hru, Aizome pre pracu
-(kluce `zen` / `modern`, viz `theme.WORLD_THEME`). Prepnutie sveta ich
-prefarbi kedykolvek bez restartu - farebne tokeny su v theme.py. Zabudovana SFX
-kniznica (stiahnuta alebo lokalne vygenerovana) je v sfx_assets.py.
+The interface has two looks and they go with the world: Sumi for play,
+Aizome for work (keys `zen` / `modern`, see `theme.WORLD_THEME`).
+Switching the world recolours them at any time without a restart - the
+colour tokens are in theme.py. The built-in SFX library (downloaded or
+generated locally) is in sfx_assets.py.
 """
 
 import os
@@ -70,18 +77,18 @@ import tkinter as tk
 import types
 from tkinter import messagebox
 
-# DPI-awareness MUSI byt nastavena EST PRED importom customtkinter
-# (ten si pri svojom importe nastavuje vlastny, slabsi rezim) a
-# pred vznikom prveho Tk okna - potom uz Windows rezim procesu
-# nemeni. Bez toho appka na 4K monitore so skalovanim dostava
-# klamlive rozmery obrazovky a Windows ju navyse rozmaze
-# bitmapovym zvacsenim. Viz display.py.
+# DPI awareness MUST be set EVEN BEFORE importing customtkinter
+# (which sets its own, weaker mode on import) and before the first Tk
+# window is created - after that Windows no longer changes the
+# process's mode. Without it the app on a 4K monitor with scaling gets
+# misleading screen dimensions and Windows also blurs it with bitmap
+# upscaling. See display.py.
 import display
 display.enable_dpi_awareness()
 
 try:
     import customtkinter as ctk
-except Exception as exc:  # pragma: no cover - sanity guard pre chybajucu zavislost
+except Exception as exc:  # pragma: no cover - sanity guard for a missing dependency
     root = tk.Tk()
     root.withdraw()
     messagebox.showerror(
@@ -96,32 +103,33 @@ except Exception as exc:  # pragma: no cover - sanity guard pre chybajucu zavisl
 
 
 def _install_crash_hooks():
-    """Nastavi zapis neosetrenych vynimok do crash.log (hlavne vlakno aj
-    vlastne vlakna) a vrati `log_crash` pre Tk callbacky.
+    """Sets up writing unhandled exceptions to crash.log (main thread and
+    own threads) and returns `log_crash` for Tk callbacks.
 
-    logging_setup je lahky (len stdlib + paths), takze ho mozeme natiahnut
-    skor nez app bez spomalenia startu. Import paths pri tom urci DATA_DIR
-    (v builde %APPDATA%\\Zanshin) a spravi migraciu starych dat - presne to,
-    co by inak spravil az import app. Priecinok logs/ vznikne az pri prvom
-    zapise do logu, teda az PO migracii - ta sa riadi tym, ci cielovy
-    priecinok uz existuje, takze logs/ ju nesmie predbehnut.
+    logging_setup is light (only stdlib + paths), so we can load it
+    before app without slowing down the start. Importing paths determines
+    DATA_DIR (in the build %APPDATA%\\Zanshin) and migrates old data -
+    exactly what the import of app would otherwise do later. The logs/
+    folder is only created on the first write to the log, i.e. only AFTER
+    the migration - that one is driven by whether the target folder
+    already exists, so logs/ must not get ahead of it.
     """
     from logging_setup import log_crash
 
-    # Vynimky MIMO Tk na HLAVNOM vlakne (napr. import app, este pred
-    # vytvorenim root-u) zachyti sys.excepthook.
+    # Exceptions OUTSIDE Tk on the MAIN thread (e.g. the import of app, even
+    # before root is created) are caught by sys.excepthook.
     def _sys_excepthook(exc_type, exc_value, exc_tb):
         log_crash(exc_type, exc_value, exc_tb)
         sys.__excepthook__(exc_type, exc_value, exc_tb)
 
     sys.excepthook = _sys_excepthook
 
-    # Vynimky vo VLASTNYCH VLAKNACH. Od Pythonu 3.8 uz NEidu cez
-    # sys.excepthook (comment vyssie to kedysi tvrdil - bola to nepravda),
-    # ale sem. Appka ma ~20 vlakien (siet, audio, TTS, analyza); bez tohto
-    # by pad ktorehokolvek z nich nezanechal v crash.log ani bajt a v
-    # zabalenom builde (console=False) ide stderr nikam - chyba by zmizla
-    # uplne bez stopy.
+    # Exceptions in OUR OWN THREADS. Since Python 3.8 they do NOT go through
+    # sys.excepthook (the comment above once claimed that - it was untrue),
+    # but here. The app has ~20 threads (network, audio, TTS, analysis);
+    # without this a crash of any of them would leave not a byte in
+    # crash.log, and in the packaged build (console=False) stderr goes
+    # nowhere - the error would vanish completely without a trace.
     def _thread_excepthook(args):
         if args.exc_type is SystemExit:
             return
@@ -131,21 +139,24 @@ def _install_crash_hooks():
     return log_crash
 
 
-# --- JEDNA KOPIA APPKY (0.2.2) ---------------------------------------------
+# --- SINGLE INSTANCE OF THE APP (0.3) ---------------------------------------
 #
-# × appku len schova do listy a na Windowse 11 je ikona v liste predvolene
-# skryta pod sipkou ^. Kto ju tam nenasiel, spustil Zanshin.exe znova - a
-# druha kopia zlyhala na skratke Ctrl+Alt+Z ("drzi ju ina appka") aj na porte
-# tepu, ktory drzi prva. Do 0.2.2 navyse po ~24 s ULOZILA vypnuty senzor do
-# spolocnych nastaveni, takze tep sa neprijimal ani pri dalsom starte. Preto
-# pomenovany mutex: druha kopia len povie prvej "ukaz okno" (pomenovana
-# udalost) a ticho skonci. "Local\\" = v ramci prihlasenia jedneho hraca.
+# × only hides the app in the tray, and on Windows 11 the tray icon is
+# hidden under the ^ arrow by default. Whoever did not find it there ran
+# Zanshin.exe again - and the second copy failed on the Ctrl+Alt+Z
+# shortcut ("another app holds it") and on the heart rate port that the
+# first one holds. Until 0.3 it also SAVED, after ~24 s, the sensor as
+# turned off into the shared settings, so heart rate was not received at
+# the next start either. Hence a named mutex: the second copy only tells
+# the first one "show the window" (a named event) and quietly exits.
+# "Local\\" = within one player's login session.
 _MUTEX_MENO = "Local\\Zanshin-single"
 _UDALOST_MENO = "Local\\Zanshin-show"
-# Obchadzka pre vyvoj a testy, ktore naozaj potrebuju dve kopie naraz. Pod
-# pytestom sa straz preskakuje sama (`PYTEST_CURRENT_TEST` dedia aj procesy,
-# ktore test spusti) - inak by test so spustenym main.py zlyhal len preto,
-# ze na tom istom PC prave bezi Zanshin.
+# A bypass for development and tests that really need two copies at once.
+# Under pytest the guard is skipped by itself (`PYTEST_CURRENT_TEST` is
+# inherited by processes the test starts too) - otherwise a test that
+# runs main.py would fail just because Zanshin happens to be running on
+# the same PC.
 POVOL_VIAC_KOPII = "ZANSHIN_ALLOW_MULTI"
 _ERROR_ACCESS_DENIED = 5
 _ERROR_ALREADY_EXISTS = 183
@@ -155,11 +166,13 @@ _WAIT_TIMEOUT = 0x102
 _ASFW_ANY = 0xFFFFFFFF
 _MB_ICONINFORMATION = 0x40
 _MB_SETFOREGROUND = 0x10000
-# Kym proces zije, drzi sa tu handle mutexu (a udalosti). Handle v ctypes je
-# len cislo, ktore nic samo nezatvori - mutex zanikne az s procesom, presne
-# vtedy, ked sa druha kopia uz smie spustit.
+# While the process lives, the mutex handle (and the event's) is kept
+# here. A handle in ctypes is just a number that closes nothing by
+# itself - the mutex goes away only with the process, exactly when the
+# second copy may start.
 _JEDNA_KOPIA = None
-# Len ked by zlyhal aj import i18n - normalne ide text z `tray.already_running`.
+# Only if importing i18n failed too - normally the text comes from
+# `tray.already_running`.
 _UZ_BEZI_ZALOHA = (
     "Zanshin is already running — you'll find it in the tray by the clock "
     "(if you don't see the icon, click the ^ arrow).\n\n"
@@ -168,8 +181,9 @@ _UZ_BEZI_ZALOHA = (
 
 
 def _win32():
-    """kernel32 a user32 s presnymi typmi - vlastne WinDLL, nie
-    `ctypes.windll`, aby `argtypes` nezmenili volania v inych moduloch."""
+    """kernel32 and user32 with exact types - our own WinDLL, not
+    `ctypes.windll`, so that `argtypes` do not change the calls in other
+    modules."""
     import ctypes
     from ctypes import wintypes
 
@@ -195,13 +209,14 @@ def _win32():
 
 
 def _straz_jednej_kopie(api=None, environ=None, platforma=None):
-    """Prva kopia: vrati {api, mutex, udalost} - drzat do konca procesu.
-    Uz bezi ina kopia: da jej znamenie "ukaz okno" a skonci (SystemExit 0).
-    None: straz sa preskakuje (iny OS, obchadzka, chyba Windows API).
+    """First copy: returns {api, mutex, udalost} - keep until the process ends.
+    Another copy already running: gives it the "show window" signal and exits
+    (SystemExit 0).
+    None: the guard is skipped (another OS, bypass, Windows API error).
 
-    Straz NIKDY nesmie zabranit startu - ked jej nieco zlyha, appka sa spusti
-    ako do 0.2.2. Zle zachytena druha kopia je mensia skoda nez appka, ktora
-    sa neda spustit vobec.
+    The guard must NEVER prevent the start - when something fails for it,
+    the app starts as before 0.3. A second copy caught wrongly is less harm
+    than an app that cannot be started at all.
     """
     environ = os.environ if environ is None else environ
     platforma = sys.platform if platforma is None else platforma
@@ -215,18 +230,19 @@ def _straz_jednej_kopie(api=None, environ=None, platforma=None):
         chyba = api.posledna_chyba()
     except Exception:
         return None
-    # ACCESS_DENIED bez handle: mutex existuje, len ho vytvoril proces s
-    # vyssimi pravami (Zanshin spusteny ako spravca). Tiez uz bezi.
+    # ACCESS_DENIED without a handle: the mutex exists, it was just created by
+    # a process with higher rights (Zanshin run as administrator). Also
+    # already running.
     if chyba == _ERROR_ALREADY_EXISTS or (not mutex and chyba == _ERROR_ACCESS_DENIED):
         if not _daj_znamenie_prvej_kopii(api):
             _ukaz_uz_bezi(api)
         sys.exit(0)
     if not mutex:
         return None
-    # Udalost hned za mutexom, este pred dlhym importom app: druha kopia
-    # spustena pocas nacitania tak najde udalost a znamenie sa nestrati -
-    # auto-reset udalost ostane nastavena, kym si ju vlakno prvej kopie
-    # nevyzdvihne (`_cakaj_na_dalsi_start`).
+    # The event right after the mutex, even before the long import of app: a
+    # second copy started during loading thus finds the event and the signal
+    # is not lost - an auto-reset event stays set until the first copy's
+    # thread picks it up (`_cakaj_na_dalsi_start`).
     try:
         udalost = api.k32.CreateEventW(None, False, False, _UDALOST_MENO)
     except Exception:
@@ -235,11 +251,11 @@ def _straz_jednej_kopie(api=None, environ=None, platforma=None):
 
 
 def _daj_znamenie_prvej_kopii(api):
-    """Povie beziacej kopii "ukaz okno". True, ked sa znamenie podarilo."""
+    """Tells the running copy "show window". True if the signal worked."""
     try:
-        # Do popredia smie okno dat len proces, ktory hrac prave spustil -
-        # teda tento. Bez povolenia by okno prvej kopie len blikalo v liste
-        # uloh za tym, co je prave navrchu.
+        # Only the process the player has just started may bring a window to
+        # the foreground - i.e. this one. Without permission the first copy's
+        # window would just flash in the taskbar behind whatever is on top.
         api.u32.AllowSetForegroundWindow(_ASFW_ANY)
     except Exception:
         pass
@@ -261,10 +277,11 @@ def _daj_znamenie_prvej_kopii(api):
 
 
 def _ulozeny_jazyk():
-    """Jazyk z ulozenych nastaveni, None ked sa neda bezpecne precitat.
+    """Language from the saved settings, None when it cannot be read safely.
 
-    Len `json` - appka sa tu este nenacitala a kvoli jednej vete sa ani
-    nema. Pokazeny ci chybajuci subor znamena "nevieme", nie pad."""
+    Only `json` - the app has not been loaded here yet and should not be
+    for one sentence. A broken or missing file means "we don't know", not
+    a crash."""
     try:
         import json
         from paths import SETTINGS_PATH
@@ -277,7 +294,7 @@ def _ulozeny_jazyk():
 
 
 def _text_uz_bezi(lang=None):
-    """Veta pre okienko: v jazyku hraca, inak anglicky a slovensky."""
+    """Box text: in the player's language, otherwise English and Slovak."""
     try:
         import i18n
         if lang in i18n.LANGUAGES:
@@ -289,9 +306,10 @@ def _text_uz_bezi(lang=None):
 
 
 def _ukaz_uz_bezi(api):
-    """Znamenie neprislo (prva kopia sa prave zatvara alebo bezi pod inymi
-    pravami) - aspon povedat, kde appku hladat. Nativne okienko, nie Tk:
-    druha kopia nema kvoli jednej vete nacitavat cele GUI."""
+    """The signal did not arrive (the first copy is just closing or runs with
+    different rights) - at least say where to find the app. A native
+    message box, not Tk: the second copy should not load the whole GUI for
+    one sentence."""
     try:
         api.u32.MessageBoxW(None, _text_uz_bezi(_ulozeny_jazyk()), "Zanshin",
                             _MB_ICONINFORMATION | _MB_SETFOREGROUND)
@@ -300,12 +318,13 @@ def _ukaz_uz_bezi(api):
 
 
 def _cakaj_na_dalsi_start(kopia, ukaz, stop, krok_ms=500):
-    """Vlakno prvej kopie: kym nie je `stop`, caka na znamenie druheho startu
-    a pri nom zavola `ukaz` (DandurfApp.show_window - sama ide cez ui_call).
+    """Thread of the first copy: until `stop`, waits for the signal of a second
+    start and on it calls `ukaz` (DandurfApp.show_window - it goes through
+    ui_call itself).
 
-    Caka po kuskoch `krok_ms`, aby sa pri ukonceni zastavilo samo a nevisi
-    v nekonecnom cakani. Pri chybe handle (WAIT_FAILED) skonci - tocit sa
-    naprazdno nema zmysel."""
+    It waits in chunks of `krok_ms`, so that it stops by itself on quit and
+    does not hang in an endless wait. On a handle error (WAIT_FAILED) it
+    ends - spinning idly makes no sense."""
     k32 = kopia.api.k32
     while not stop.is_set():
         try:
@@ -325,7 +344,7 @@ def _cakaj_na_dalsi_start(kopia, ukaz, stop, krok_ms=500):
 
 
 def _spusti_cakanie_na_dalsi_start(kopia, ukaz, stop):
-    """Vrati vlakno (alebo None, ked nie je na co cakat)."""
+    """Returns the thread (or None when there is nothing to wait for)."""
     if kopia is None or not getattr(kopia, "udalost", None):
         return None
     vlakno = threading.Thread(target=_cakaj_na_dalsi_start,
@@ -336,38 +355,40 @@ def _spusti_cakanie_na_dalsi_start(kopia, ukaz, stop):
 
 
 def main():
-    # Hooky PRED importom app. Import app nataha desiatky modulov (audio,
-    # siet, ovladac, TTS...) a chyba v ktoromkolvek z nich - chybajuca
-    # zavislost, preklep - je presne ta, ktoru appka bez konzoly nikde
-    # neulozi: pythonw ju zahodi, zabaleny .exe (console=False) ju ukaze
-    # len v okne PyInstalleru, ktore po zatvoreni zmizne. Kym bol import
-    # app prvy riadok main(), takyto pad nezanechal ani crash.log.
+    # Hooks BEFORE importing app. Importing app pulls in dozens of modules
+    # (audio, network, controller, TTS...) and an error in any of them - a
+    # missing dependency, a typo - is exactly the one that the app without a
+    # console saves nowhere: pythonw throws it away, the packaged .exe
+    # (console=False) shows it only in a PyInstaller window that disappears
+    # once closed. While importing app was the first line of main(), such a
+    # crash did not even leave a crash.log.
     log_crash = _install_crash_hooks()
-    # Jedna kopia PRED importom app: druha kopia nema co nacitavat - povie
-    # prvej "ukaz okno" a skonci skor, nez by siahla na port, skratku ci
-    # nastavenia. Az za hookmi, aby aj pad v nej skoncil v crash.log.
+    # Single instance BEFORE importing app: the second copy has nothing to
+    # load - it tells the first one "show window" and exits before it would
+    # touch the port, the shortcut or the settings. Only after the hooks, so
+    # that a crash in it also ends up in crash.log.
     global _JEDNA_KOPIA
     _JEDNA_KOPIA = _straz_jednej_kopie()
     from app import DandurfApp
 
-    # Neosetrene vynimky VNUTRI Tk callbackov (napr. command= na tlacidle)
-    # nezastavia mainloop a nepropaguju sa hore ako normalna Python
-    # vynimka - Tk ich len vypise na stderr cez report_callback_exception.
-    # Prepiseme ho, aby sa zapisali aj do crash.log.
+    # Unhandled exceptions INSIDE Tk callbacks (e.g. command= on a button)
+    # do not stop the mainloop and do not propagate up like a normal Python
+    # exception - Tk only prints them to stderr via report_callback_exception.
+    # We override it so that they are written to crash.log too.
     def _tk_callback_exception(exc_type, exc_value, exc_tb):
         log_crash(exc_type, exc_value, exc_tb)
 
     root = ctk.CTk()
     root.report_callback_exception = _tk_callback_exception
-    # Pad v konstruktore ci v mainloop-e zapise do crash.log sys.excepthook
-    # (nastaveny vyssie, pred importom app; volaju ho Python aj bootloader
-    # PyInstalleru). Do 0.2.1 tu bol este try/except s vlastnym log_crash,
-    # takze jeden pad bol v crash.log dvakrat - ako keby appka spadla dva
-    # razy.
+    # A crash in the constructor or in the mainloop is written to crash.log by
+    # sys.excepthook (set above, before importing app; both Python and the
+    # PyInstaller bootloader call it). Until 0.2.1 there was also a
+    # try/except here with its own log_crash, so one crash was in crash.log
+    # twice - as if the app had crashed twice.
     app = DandurfApp(root)
-    # Druhy start ukaze okno tejto kopie - ta ista cesta ako "Zobrazit" v
-    # liste. Vlakno sa pusta az teraz, ked appka stoji: znamenie z druheho
-    # startu pocas nacitania pocka v udalosti.
+    # A second start shows this copy's window - the same path as "Show" in
+    # the tray. The thread is started only now that the app is up: a signal
+    # from a second start during loading waits in the event.
     stop = threading.Event()
     _spusti_cakanie_na_dalsi_start(_JEDNA_KOPIA, app.show_window, stop)
     try:

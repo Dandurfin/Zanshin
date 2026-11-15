@@ -1,17 +1,21 @@
 # -*- coding: utf-8 -*-
-"""Úvod (sprievodca prvým spustením) a prehliadka appky - 0.2.2.
+"""Introduction (first-start guide) and the app tour - 0.3.
 
-Čo tieto testy strážia (audit 0.2.2):
-  * "Spárovať hodinky teraz" úvod NEukončí: kroky 4-5 (svet, štýl, jediná
-    zmienka o Microsofte) prídu aj tak, párovanie sa otvorí po úvode a prvá
-    prehliadka až po zatvorení párovania - nie nikdy,
-  * "Preskočiť" na krokoch 1-2 vedie na krok s hodinkami, nie cez neho,
-  * úvod sa dá zavrieť (✕, Esc, Alt+F4) - pri prvom štarte s pokojnou
-    otázkou "Ukončiť Zanshin?"; Ukončiť nič neuloží a appka skončí,
-  * krok 5 má ukážku podľa vybranej odpovede; hlas je VŽDY hlas z Windows,
-    úvod nikam nič neposiela; pri Práci veta, že otázka platí pre Hru,
-  * prehliadka: päť miest namiesto desiatich bublín, text o ensō tvrdí len
-    to, čo kód naozaj robí, a koniec bez hodiniek povie, že appka mlčí.
+What these tests guard (audit 0.3):
+  * "Pair a watch now" does NOT end the introduction: steps 4-5 (world,
+    style, the only mention of Microsoft) come anyway, pairing opens after
+    the introduction and the first tour only after pairing is closed - not
+    never,
+  * "Skip" on steps 1-2 leads to the watch step, not past it,
+  * the introduction can be closed (✕, Esc, Alt+F4) - on the first start
+    with the calm question "Quit Zanshin?"; Quit saves nothing and the app
+    ends,
+  * step 5 has a preview based on the chosen answer; the voice is ALWAYS
+    the Windows voice, the introduction sends nothing anywhere; for Work a
+    sentence that the question applies to Play,
+  * tour: five places instead of ten bubbles, the text about the ensō
+    claims only what the code really does, and the ending without a watch
+    says that the app stays silent.
 """
 import ast
 import os
@@ -61,7 +65,7 @@ def _slovencina():
 
 
 class _Zaznam:
-    """Atrapa widgetu: zapisuje volania configure/pack/place."""
+    """Widget fake: records configure/pack/place calls."""
 
     def __init__(self):
         self.volania = []
@@ -78,7 +82,7 @@ class _Zaznam:
 
 
 # --------------------------------------------------------------------------
-# Úvod: hodinky a preskočenie
+# Introduction: watch and skipping
 # --------------------------------------------------------------------------
 
 def test_sparovat_teraz_uvod_neukonci_a_ide_dalej():
@@ -116,7 +120,7 @@ def test_preskocit_vedie_na_hodinky_a_od_nich_sa_skryje():
 
 
 # --------------------------------------------------------------------------
-# Úvod: zavretie
+# Introduction: closing
 # --------------------------------------------------------------------------
 
 def _wz_zavretie(prvy_start):
@@ -150,11 +154,11 @@ def test_pri_prvom_starte_sa_zavretie_pyta():
     wz, stav = _wz_zavretie(prvy_start=True)
     W._on_close_request(wz)
     assert stav["otazka"] == 1 and not stav["zatvorene"], "nie do prazdna"
-    # Alt+F4 pride ako klaves aj ako WM_DELETE_WINDOW - druhy signal hned
-    # po prvom otazku nesmie zavriet
+    # Alt+F4 comes as a key and also as WM_DELETE_WINDOW - the second signal
+    # right after the first must not close the question
     W._on_close_request(wz)
     assert stav["skryta"] == 0 and wz._otazka is not None
-    # neskorsie Esc / krizik = Pokracovat
+    # a later Esc / the X = Continue
     wz._otazka_od -= 1.0
     W._on_close_request(wz)
     assert stav["skryta"] == 1 and wz._otazka is None and not stav["zatvorene"]
@@ -198,7 +202,7 @@ def test_app_po_ukonceni_z_uvodu_nic_neulozi_a_skonci():
 
 
 # --------------------------------------------------------------------------
-# Krok 4 a 5: svet, ukážka, Práca
+# Steps 4 and 5: world, preview, Work
 # --------------------------------------------------------------------------
 
 def test_krok4_uz_nema_test_zvuku():
@@ -230,9 +234,9 @@ def test_bez_odpovede_ukazka_nie_je():
 
 @pytest.mark.parametrize("volba, kluc, s_hlasitostou", [
     ("voice", "ob.preview.voice", True),
-    (W.NEVIEM, "ob.preview.voice", True),          # neviem = hlas
+    (W.NEVIEM, "ob.preview.voice", True),          # "not sure" = voice
     ("sound", "ob.preview.sound", True),
-    ("visual", "ob.preview.visual", False),        # obrazok nema hlasitost
+    ("visual", "ob.preview.visual", False),        # a picture has no volume
 ])
 def test_ukazka_podla_odpovede(volba, kluc, s_hlasitostou):
     btn, riadok, hlasitost = _wz_ukazka(volba)
@@ -284,15 +288,15 @@ def test_ukazka_hlasu_je_hlas_z_windows(monkeypatch):
         time.sleep(0.01)
     assert povedane == [(tr("slot.default.breath"), None, 0, 55)]
     assert wz._hovori is False
-    # kym znie, druhy klik nic nespusti
+    # while it is sounding, a second click starts nothing
     wz._hovori = True
     W._speak_preview(wz)
     assert len(povedane) == 1
 
 
 def test_uvod_nikam_nic_neposiela():
-    """Žiadny Edge, žiadna príprava hlášok: o tom, čo posiela prirodzený
-    hlas, sa hráč dozvie až v riadku pod otázkou."""
+    """No Edge, no cue preparation: the player learns what the natural voice
+    sends only in the line under the question."""
     trieda = _trieda("ui_dialogs.py", "OnboardingWizard")
     mena = set()
     for u in ast.walk(trieda):
@@ -315,7 +319,7 @@ def test_pri_praci_krok5_povie_ze_otazka_plati_pre_hru():
 
 
 # --------------------------------------------------------------------------
-# Úvod naživo (Tk) - len Windows s displejom
+# Introduction live (Tk) - Windows with a display only
 # --------------------------------------------------------------------------
 
 @pytest.mark.skipif(sys.platform != "win32", reason="len Windows")
@@ -347,7 +351,7 @@ def test_uvod_nazivo(monkeypatch):
         assert not wz.skip_btn.winfo_ismapped()
         wz._pair_now()
         assert wz._step == 3 and wz.wants_pairing and wz.top.winfo_exists()
-        # krizik OS (WM_CLOSE len nasmu oknu) -> otazka, nie zavretie
+        # OS X button (WM_CLOSE only to our window) -> question, not closing
         u = ctypes.WinDLL("user32")
         u.PostMessageW.argtypes = [ctypes.c_void_p, ctypes.c_uint,
                                    ctypes.c_void_p, ctypes.c_void_p]
@@ -357,7 +361,7 @@ def test_uvod_nazivo(monkeypatch):
         wz._quit()
         assert wz.quit_requested and not wz.confirmed and not wz.top.winfo_exists()
 
-        # z palety: zavretie len zrusi, bez otazky a bez topmost
+        # from the command palette: closing just cancels, no question/topmost
         wz = W(root)
         pump(wz)
         assert int(wz.top.attributes("-topmost")) == 0
@@ -368,14 +372,14 @@ def test_uvod_nazivo(monkeypatch):
 
 
 # --------------------------------------------------------------------------
-# Prehliadka
+# Tour
 # --------------------------------------------------------------------------
 
 def test_prehliadka_ma_pat_miest():
     kluce = [k for k, *_ in guided_tour._STEPS]
     assert kluce == ["welcome", "dock", "sensor", "triggers", "history", "done"]
     assert guided_tour.GuidedTour.STEP_COUNT == 6
-    # uvodna bublina + pat miest; kazde miesto na nieco ukazuje
+    # intro bubble + five places; each place points at something
     assert guided_tour._STEPS[0][2] is None
     assert all(spec is not None for _k, _p, spec, _s, _a in guided_tour._STEPS[1:])
     assert [k for k, *_r, akcia in guided_tour._STEPS if akcia] == ["sensor"]
@@ -430,7 +434,7 @@ def test_koniec_bez_hodiniek_povie_ze_mlcim():
     assert tr("tour.done.no_watch") == (
         "Ešte jedno: bez hodiniek mlčím. Spáruj ich, keď budeš mať chvíľu.")
     assert koniec.target_fn() is app.sidebar.pair_btn, "ukaze na kontrolku hodiniek"
-    # prijem vypnuty, hoci posledne BPM by tam este bolo
+    # receiving off, although the last BPM would still be there
     app = _app(tep=72, prijem=False)
     assert guided_tour.GuidedTour(app)._body(koniec) == tr("tour.done.no_watch")
 
@@ -441,7 +445,7 @@ def test_koniec_s_tepom_ukaze_kde_prehliadku_spustit_znova():
     koniec = tour.steps[-1]
     assert tour._body(koniec) == tr("tour.done.body")
     assert koniec.target_fn() is app.nastavenia_row
-    # ine kroky si text nevyberaju
+    # other steps do not pick their text
     assert tour._body(tour.steps[1]) == tr("tour.dock.body")
 
 
@@ -453,7 +457,7 @@ def test_parovanie_z_prehliadky_pokracuje_dalsim_krokom():
     tour._pair()
     assert app.progres == [3], "pozicia uz za krokom o tepe"
     assert len(app.parovanie) == 1 and callable(app.parovanie[0])
-    app.parovanie[0]()                       # navod sa zavrel
+    app.parovanie[0]()                       # the how-to was closed
     assert tour._index == 3 and app.stranky[-1] == "spustace"
     assert app.root.after_volania, "dalsia bublina sa kresli"
 
@@ -461,15 +465,15 @@ def test_parovanie_z_prehliadky_pokracuje_dalsim_krokom():
 def test_parovanie_nepokracuje_v_nahradenej_prehliadke():
     app = _app()
     tour = guided_tour.GuidedTour(app, start_index=2)
-    app._tour = object()                     # medzitym nova z Nastaveni
+    app._tour = object()                     # meanwhile a new one from Settings
     tour._pair()
     app.parovanie[0]()
     assert tour._index == 2 and not app.root.after_volania
 
 
 def test_stara_pozicia_prehliadky_sa_zmesti():
-    """Do 0.2.1 mala prehliadka 10 krokov - ulozene "8" by v Nastaveniach
-    ukazalo "krok 9 z 6"."""
+    """Up to 0.2.1 the tour had 10 steps - a saved "8" would show "step 9 of
+    6" in Settings."""
     init = zdroj_metody("__init__")
     riadok = init[init.index("self.tour_step = "):]
     riadok = riadok[:riadok.index("\n        #")]
@@ -479,7 +483,7 @@ def test_stara_pozicia_prehliadky_sa_zmesti():
 
 
 # --------------------------------------------------------------------------
-# Prehliadka po párovaní z úvodu
+# Tour after pairing from the introduction
 # --------------------------------------------------------------------------
 
 def test_prehliadka_pride_po_parovani():
@@ -503,7 +507,7 @@ def test_navod_na_parovanie_ma_on_close():
 
 
 # --------------------------------------------------------------------------
-# Text o ensō hovorí pravdu
+# The text about the ensō tells the truth
 # --------------------------------------------------------------------------
 
 def test_enso_v_prehliadke_bez_farieb_ktore_neexistuju():
@@ -523,31 +527,32 @@ def test_enso_v_prehliadke_bez_farieb_ktore_neexistuju():
 
 
 def test_kazde_tvrdenie_o_enso_sedi_s_kodom():
-    # farba je vzdy akcent temy, nie stav
+    # the colour is always the theme accent, not the state
     fn = next(u for u in ast.parse(_read("hud_paint.py")).body
               if isinstance(u, ast.FunctionDef) and u.name == "render_enso")
-    enso = ast.unparse(ast.Module(body=fn.body[1:], type_ignores=[]))   # bez docstringu
+    enso = ast.unparse(ast.Module(body=fn.body[1:], type_ignores=[]))   # without the docstring
     assert "base = color or style.accent" in enso
     assert "success" not in enso and "danger" not in enso
-    # "pomaly dycha / zastavene stoji": zastavene ma jedinu snimku
+    # "slowly breathes / when stopped, it is still": stopped has a single frame
     shell = _read("ui_shell.py")
     hero = shell[shell.index("class _EnsoHero"):shell.index("class _WatchPulse")]
-    assert "bucket = 0        # zastavene enso stoji" in hero
-    # "pomaly prstenec vnutri" = natiahnuty spustac, len pri sledovani
+    assert "bucket = 0        # a stopped enso stands still" in hero
+    # "A slow ring inside" = an armed trigger, only while watching
     assert "armed = self._armed and self._live" in hero
     assert "if armed and live:" in enso
-    # "klikom ma spustis alebo zastavis"
+    # "Click it to start or stop me"
     klik = zdroj_metody("_dnes_canvas_click")
     assert 'hit.get("enso")' in klik and "self.toggle_listening()" in klik
-    # "bodka vlavo hore": bodka stavu je v bocnom paneli NAD navigaciou
-    # (od 0.2.2 davka 4 je navigacia jedna skupina - vsetky PAGES naraz)
+    # "The dot at the top left": the status dot is in the sidebar ABOVE the
+    # navigation (since 0.3 batch 4 the navigation is one group - all PAGES at
+    # once)
     sidebar = shell[shell.index("class Sidebar"):shell.index("class _NavRow")]
     assert sidebar.index("self.state_dot = _StateDot(") < sidebar.index(
         "for key, icon, default_label in self.PAGES:")
 
 
 # --------------------------------------------------------------------------
-# Texty: všetky jazyky, slovník 0.2.2
+# Texts: all languages, the 0.3 vocabulary
 # --------------------------------------------------------------------------
 
 NOVE_A_ZMENENE = ("ob.skip", "ob.quit.title", "ob.quit.body", "ob.quit.yes", "ob.quit.no",
@@ -572,7 +577,7 @@ def test_texty_maju_vsetkych_jedenast_jazykov_a_vlastny_preklad():
 
 
 def test_nove_texty_hovoria_novym_slovnikom():
-    """Hlavný vypínač = sledovať (nie počúvať/odpočúvať), bez žargónu."""
+    """Main switch = watch (not listen/eavesdrop), no jargon."""
     for kluc in NOVE_A_ZMENENE:
         sk = i18n.STRINGS[kluc]["sk"].lower()
         en = i18n.STRINGS[kluc]["en"].lower()

@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
-"""Veta pod vyberom jazyka hovori pravdu (review 0.2.1, bug 4).
+"""The sentence under the language picker is true (review 0.2.1, bug 4).
 
-Do 0.2.1 tam stalo „Mení sa aj jazyk ukážkových hlások.“ / "Also changes
-the language of the sample phrases." - nepravda. Prepnutie jazyka texty
-hlasok v existujucich profiloch neprepise: zabudovane slova sa beru v jazyku
-appky len pri zalozeni profilu (`settings_model.default_slots`, pre sk/cs
-anglicke). Spravanie sa NEMENI, opravena je len veta.
+Until 0.2.1 it said „Mení sa aj jazyk ukážkových hlások.“ / "Also changes
+the language of the sample phrases." - untrue. Switching the language
+does not rewrite the cue texts in existing profiles: the built-in words
+are taken in the app's language only when a profile is created
+(`settings_model.default_slots`, English for sk/cs). The behaviour does
+NOT change, only the sentence is fixed.
 """
 import os
 import sys
@@ -18,7 +19,7 @@ from _zdroj_appky import zdroj_metody  # noqa: E402
 
 KLUC = "settings.language_sub"
 
-# Povodne (nepravdive) znenia - nesmu sa vratit v ziadnom jazyku.
+# The original (untrue) wordings - they must not come back in any language.
 STARE = {
     "Mení sa aj jazyk ukážkových hlások.",
     "Also changes the language of the sample phrases.",
@@ -45,8 +46,9 @@ def test_veta_uz_neslubuje_preklad_hlasok_v_ziadnom_jazyku():
 
 
 def test_veta_je_prelozena_a_kratka():
-    """Kazdy jazyk ma vlastny preklad (nie anglicku kopiu) a veta sa zmesti
-    do riadku nastavenia (SettingRow, wrap 430 px pri pisme 11)."""
+    """Every language has its own translation (not an English copy) and the
+    sentence fits into a settings row (SettingRow, wrap 430 px at font
+    11)."""
     zaznam = i18n.STRINGS[KLUC]
     for jazyk in i18n.LANGUAGES:
         if jazyk != "en":
@@ -55,9 +57,10 @@ def test_veta_je_prelozena_a_kratka():
 
 
 def test_prepnutie_jazyka_naozaj_neprepisuje_hlasky():
-    """Veta tvrdi, ze hlasky, ktore uz hrac ma, si nechaju svoje slova.
-    Ked niekto raz prida pretlmocenie hlasok pri prepnuti jazyka, tento test
-    padne - a pripomenie, ze treba prepisat aj vetu v Nastaveniach."""
+    """The sentence claims that cues the player already has keep their words.
+    When someone one day adds re-translating cues on a language switch, this
+    test fails - and reminds that the sentence in Settings has to be
+    rewritten too."""
     src = zdroj_metody("on_lang_switch")
     assert "default_slots" not in src
     assert "slot.default" not in src

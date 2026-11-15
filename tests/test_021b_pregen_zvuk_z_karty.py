@@ -1,15 +1,17 @@
 # -*- coding: utf-8 -*-
-"""0.2.1 (zaverecna kontrola): vlastny zvuk z karty hlasky zastavi pripravu.
+"""0.2.1 (final check): a custom sound from the cue card stops the preparation.
 
-`SlotCard.choose_file` (vyber suboru) a `SlotCard.record_audio` (nahratie
-zvuku) prepnu hlasku s hlasom (TTS) na zvuk bez slov (SFX). Na rozdiel od
-`on_mode_change` doteraz nevolali `schedule_pregenerate`, takze rozbehnuta
-priprava poslala Microsoftu aj text hlasky, ktora uz nehovori - hoci
-PRIVACY/README slubuju, ze po "give it your own recording" priprava hned
-konci. Teraz obe cesty pripravu zastavia rovnako ako prepnutie rezimu.
+`SlotCard.choose_file` (picking a file) and `SlotCard.record_audio`
+(recording a sound) switch a cue with voice (TTS) to a sound without words
+(SFX). Unlike `on_mode_change` they did not call `schedule_pregenerate`
+until now, so a preparation already running also sent Microsoft the text
+of a cue that no longer speaks - although PRIVACY/README promise that
+after "give it your own recording" the preparation ends right away. Now
+both paths stop the preparation the same way as switching the mode.
 
-Popri tom: zoznam "kedy sa pripravuje" v README/PRIVACY menuje aj kazdy
-start a import profilu - obe pripravu naozaj spustia.
+Along the way: the "when preparation happens" list in README/PRIVACY also
+names every start and a profile import - both really start the
+preparation.
 """
 import os
 import sys
@@ -43,7 +45,7 @@ class _Root:
 
 
 def _karta(index, text):
-    """Karta hlasky bez Tk: len to, co `choose_file` / `record_audio` citaju."""
+    """Cue card without Tk: only what `choose_file` / `record_audio` read."""
     k = types.SimpleNamespace(
         index=index, uid=f"uid{index}", mode=MODE_TTS, text_value=text,
         voice_edge="", voice_sapi="", enabled_value=True, voice_path="",
@@ -56,8 +58,9 @@ def _karta(index, text):
 
 
 def _atrapa(monkeypatch):
-    """Ozajstna priprava (`pregenerate`, `schedule_pregenerate`, `pregen_jobs`
-    ...) na atrape appky. Vlakno sa nespusta, len zapise (`a.vlakna`)."""
+    """The real preparation (`pregenerate`, `schedule_pregenerate`,
+    `pregen_jobs` ...) on an app dummy. The thread is not started, only
+    recorded (`a.vlakna`)."""
     import app as app_mod
     import app_audio
     import audio_engine
@@ -80,7 +83,7 @@ def _atrapa(monkeypatch):
         a.posielane.append(text)
         a.hotove.add(text)
         if len(a.posielane) == 1:
-            a.zmena()                  # hrac zmeni kartu pocas prvej hlasky
+            a.zmena()                  # the player changes the card during the first cue
         return "hotova.mp3"
 
     a.edge_cache = types.SimpleNamespace(
@@ -129,7 +132,7 @@ def test_vlastny_zvuk_z_karty_zastavi_rozbehnutu_pripravu(monkeypatch):
         assert jaw.mode == MODE_SFX, zmena.__name__
         assert a.posielane == ["Breathe"], (
             zmena.__name__, "hlaska uz nehovori - zvysok pripravy ju neposle")
-        # Naplanovana priprava posle len to, co este chyba a smie ist.
+        # Scheduled preparation sends only what is still missing and may go.
         a.root.spusti()
         a.vlakna[-1]["target"]()
         assert a.posielane == ["Breathe", "Release"], zmena.__name__
@@ -143,16 +146,18 @@ def _plain(meno):
 
 
 def test_dokumenty_menuju_kazdy_start_a_import_profilu():
-    """Zoznam "kedy sa pripravuje" v README a PRIVACY je uplny: kazdy start
-    s prirodzenym hlasom spusti pripravu chybajucich hlasok a import profilu
-    (novy aktivny profil) tiez. Ked sa kod zmeni, tieto vety musia ist prec."""
+    """The "when preparation happens" list in README and PRIVACY is complete:
+    every start with the natural voice starts preparing the missing cues,
+    and so does a profile import (a new active profile). When the code
+    changes, these sentences have to go."""
     from _zdroj_appky import zdroj_metody
     assert "self._load_edge_voices()" in zdroj_metody("__init__")
     assert "def _load_edge_voices(self, pregen=True)" in zdroj_metody("_load_edge_voices")
     assert "self.pregenerate()" in zdroj_metody("_apply_edge_voices")
     assert "self.schedule_pregenerate(200)" in zdroj_metody("import_profile_from_code")
 
-    # Od 0.2.2d je zoznam v docs/HOW-IT-WORKS.md (README ma len kratku verziu).
+    # Since 0.3d the list is in docs/HOW-IT-WORKS.md (the README has only
+    # a short version).
     ako, privacy = _plain("docs/HOW-IT-WORKS.md"), _plain("PRIVACY.md")
     assert "That happens at every start (the first time for all of them)" in ako
     assert "only for lines that aren't in the cache yet — at every start" in privacy

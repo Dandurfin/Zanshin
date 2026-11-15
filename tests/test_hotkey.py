@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
-"""Globálny kláves „teraz nie" (zadanie §1.9).
+"""Global "not now" key (spec §1.9).
 
-Testuje sa čítanie kombinácií a to, čím sa `RegisterHotKey` líši od hooku,
-ktorý fáza 3 zrušila. Samotná registrácia potrebuje Windows a beží preto
-len tam, kde je — zvyšok je čistá logika a prejde všade.
+The tests cover reading combinations and how `RegisterHotKey` differs from
+the hook that phase 3 removed. The registration itself needs Windows and
+so runs only where it is available — the rest is pure logic and passes
+everywhere.
 """
 import ast
 import io
@@ -19,7 +20,7 @@ from _zdroj_appky import strom_appky  # noqa: E402
 
 
 # --------------------------------------------------------------------------
-# Čítanie kombinácií
+# Reading combinations
 # --------------------------------------------------------------------------
 
 def test_zakladna_kombinacia():
@@ -38,16 +39,17 @@ def test_velke_pismena_a_medzery():
 
 
 def test_norepeat_je_vzdy():
-    """Bez MOD_NOREPEAT vygeneruje držanie klávesu záplavu správ a „teraz
-    nie" by sa zaplo a vyplo desaťkrát za sekundu."""
+    """Without MOD_NOREPEAT, holding the key generates a flood of messages
+    and "not now" would switch on and off ten times a second."""
     for combo in ("ctrl+alt+z", "shift+f9", "win+space"):
         mody, _vk = hotkey.parse_combo(combo)
         assert mody & hotkey.MOD_NOREPEAT, combo
 
 
 def test_holy_klaves_sa_odmietne():
-    """Holý kláves ako globálny hotkey by hráčovi zobral písmeno v každej hre
-    aj v každom chate — a on by netušil prečo."""
+    """A bare key as a global hotkey would take a letter away from the
+    player in every game and every chat — and they would have no idea
+    why."""
     with pytest.raises(hotkey.BadCombo):
         hotkey.parse_combo("z")
     with pytest.raises(hotkey.BadCombo):
@@ -69,7 +71,7 @@ def test_format_pre_rozhranie():
 
 
 # --------------------------------------------------------------------------
-# Čím sa to líši od hooku
+# How it differs from a hook
 # --------------------------------------------------------------------------
 
 def _zdroj(meno):
@@ -78,10 +80,11 @@ def _zdroj(meno):
 
 
 def test_modul_nesiaha_na_hooky():
-    """To je celý dôvod, prečo `RegisterHotKey` a nie `pynput`.
+    """That is the whole reason for `RegisterHotKey` and not `pynput`.
 
-    Hook vidí KAŽDÝ stlačený kláves a navonok sa nedá odlíšiť od keyloggera.
-    Hotkey povie Windowsu jednu kombináciu a nič iné nedostane.
+    A hook sees EVERY key pressed and from the outside cannot be told apart
+    from a keylogger. A hotkey tells Windows one combination and gets
+    nothing else.
     """
     src = _zdroj("hotkey.py")
     strom = ast.parse(src)
@@ -94,8 +97,9 @@ def test_modul_nesiaha_na_hooky():
 
 
 def test_appka_neimportuje_pynput():
-    """Poistka proti návratu. Číta sa AST, nie surový text — docstring
-    vysvetľuje, prečo tam pynput NIE JE, a test na tom kedysi padal."""
+    """A guard against a comeback. The AST is read, not the raw text — the
+    docstring explains why pynput is NOT there, and the test used to fail
+    on that."""
     strom = strom_appky()
     for uzol in ast.walk(strom):
         if isinstance(uzol, ast.Import):
@@ -106,17 +110,18 @@ def test_appka_neimportuje_pynput():
 
 
 def test_import_nepadne_bez_win32():
-    """Modul sa musí dať importovať aj tam, kde žiadny user32 nie je — inak
-    by padol import celej appky. Rovnaká disciplína ako `activity.py`."""
+    """The module must be importable even where there is no user32 —
+    otherwise the import of the whole app would fail. The same discipline
+    as `activity.py`."""
     assert isinstance(hotkey.AVAILABLE, bool)
 
 
 # --------------------------------------------------------------------------
-# Zapojenie do appky
+# Wiring into the app
 # --------------------------------------------------------------------------
 
 def _telo(meno_suboru, meno_funkcie):
-    # "app.py" = cela appka: app.py aj mixiny DandurfApp v app_*.py
+    # "app.py" = the whole app: app.py and the DandurfApp mixins in app_*.py
     if meno_suboru == "app.py":
         strom = strom_appky()
     else:
@@ -133,34 +138,37 @@ def _telo(meno_suboru, meno_funkcie):
 
 
 def test_stlacenie_ide_cez_ui_call():
-    """Callback beží na vlastnom vlákne `hotkey.py`. `HeartStats`,
-    `ActivityTracker` aj `overlay_manager` sú výhradne Tk-vláknové, takže
-    siahnuť na ne odtiaľ priamo by bola tichá chyba."""
+    """The callback runs on `hotkey.py`'s own thread. `HeartStats`,
+    `ActivityTracker` and `overlay_manager` are Tk-thread-only, so touching
+    them directly from there would be a silent bug."""
     telo = _telo("app.py", "_on_snooze_hotkey")
     assert "ui_call" in telo, "stlačenie sa musí preniesť do Tk cez ui_call"
 
 
 def test_skratka_je_prepinac():
-    """Druhé stlačenie ticho zruší. Nechať hráča čakať pol hodiny na niečo,
-    čo si omylom zapol, by bolo horšie než samotné hlášky."""
+    """A second press silently cancels. Making the player wait half an hour
+    for something they switched on by mistake would be worse than the cues
+    themselves."""
     telo = _telo("app.py", "_toggle_snooze_from_hotkey")
     assert "_cancel_snooze" in telo and "_start_snooze" in telo
 
 
 def test_skratka_prezije_zastavenie_pocuvania():
-    """„Teraz nie" má fungovať, aj keď appka práve nepočúva, aj keď je
-    minimalizovaná v lište. Vypína sa až pri skutočnom ukončení."""
+    """The "not now" key must work even when the app is not listening right
+    now, and even when it is minimised to the tray. It is switched off only
+    on a real quit."""
     assert "stop_snooze_hotkey" not in _telo("app.py", "stop_listening")
     assert "stop_snooze_hotkey" not in _telo("app.py", "on_close")
     assert "stop_snooze_hotkey" in _telo("app.py", "_quit")
 
 
 def test_zlyhana_registracia_nezhodi_appku():
-    """Kombináciu môže držať iná appka. Nie je to chyba appky - beží ďalej
-    a riadok v denníku povie, čo zostáva (zastaviť počúvanie)."""
+    """Another app may hold the combination. That is not the app's fault - it
+    keeps running and a line in the journal says what is left (stop
+    listening)."""
     telo = _telo("app.py", "start_snooze_hotkey")
     assert "except Exception" in telo
-    # riadok do dennika po skutocnom vysledku registracie (0.2.2 davka 4b)
+    # journal line after the real registration result (0.3 batch 4b)
     assert "self._ohlas_vysledok_skratky(ok)" in telo
     assert "log.hotkey_failed" in _telo("app.py", "_ohlas_vysledok_skratky")
 
@@ -176,13 +184,14 @@ def test_predvolena_kombinacia_je_platna():
 
 
 # --------------------------------------------------------------------------
-# Skutočná registrácia (len Windows)
+# Real registration (Windows only)
 # --------------------------------------------------------------------------
 
 @pytest.mark.skipif(not hotkey.AVAILABLE, reason="user32 nie je k dispozícii")
 def test_registracia_a_ciste_zastavenie():
-    """Vlákno sa musí dať zastaviť. Bez `PostThreadMessageW` by viselo na
-    `GetMessageW` až do konca procesu a kombinácia by ostala zabratá."""
+    """The thread must be stoppable. Without `PostThreadMessageW` it would
+    hang on `GetMessageW` until the end of the process and the combination
+    would stay taken."""
     import threading
     h = hotkey.GlobalHotkey("ctrl+alt+shift+f9", lambda: None)
     assert h.start() is True, h.error
@@ -202,10 +211,11 @@ def test_neplatna_kombinacia_sa_vobec_nespusti():
 
 
 def test_hotkey_neloguje_cez_ui_call():
-    """Hotkey sa registruje na vlastnom vlákne už počas `__init__`, teda
-    PRED `root.mainloop()`. `ui_call` vtedy plánovať nevie a správa sa ticho
-    stratí — presne to sa aj dialo: „skratka zaregistrovaná" sa do okna
-    nikdy nedostala a v app.log pribudlo len zlyhanie `ui_call`.
+    """The hotkey is registered on its own thread already during `__init__`,
+    i.e. BEFORE `root.mainloop()`. `ui_call` cannot schedule then and the
+    message is silently lost — that is exactly what happened: „skratka
+    zaregistrovaná" (shortcut registered) never reached the window and
+    app.log only got a `ui_call` failure.
     """
     telo = _telo("app.py", "start_snooze_hotkey")
     assert "log=app_log" in telo, \
@@ -214,10 +224,11 @@ def test_hotkey_neloguje_cez_ui_call():
 
 
 def test_log_pri_starte_hovori_pravdu_o_skratke():
-    """Riadok pri štarte už nesľubuje „Anti-Cheat Safe Mode“ ani „žiadne
-    blokovanie“: skratku „teraz nie“ si appka rezervuje (`RegisterHotKey`),
-    takže tú kombináciu hra nedostane. Dá sa zmeniť (súbor nastavení), preto
-    veta menuje predvolenú kombináciu ako predvolenú."""
+    """The start-up line no longer promises „Anti-Cheat Safe Mode“ or
+    „žiadne blokovanie“ (no blocking): the app reserves the "not now"
+    shortcut (`RegisterHotKey`), so the game does not get that combination.
+    It can be changed (settings file), which is why the sentence names the
+    default combination as the default."""
     import i18n
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
     import app as app_mod
@@ -226,7 +237,7 @@ def test_log_pri_starte_hovori_pravdu_o_skratke():
     zaznam = i18n.STRINGS["log.safe_mode"]
     assert set(zaznam) == set(i18n.LANGUAGES)
     for jazyk, text in zaznam.items():
-        # po nemecky "Strg+Alt+Z" - mena klaves podla jazyka (0.2.2 davka 4b)
+        # in German "Strg+Alt+Z" - key names by language (0.3 batch 4b)
         assert hotkey.format_combo(app_mod.DEFAULT_SNOOZE_HOTKEY,
                                    lang=jazyk).replace(" ", "") in text, jazyk
         for stare in ("Anti-Cheat", "anti-cheat", "Safe Mode", "アンチチート", "反作弊",
@@ -234,5 +245,5 @@ def test_log_pri_starte_hovori_pravdu_o_skratke():
             assert stare not in text, (jazyk, stare)
     assert "blokovan" not in zaznam["sk"] and "blocking" not in zaznam["en"]
     assert "„teraz nie“" in zaznam["sk"] and "“not now”" in zaznam["en"]
-    # 0.2.2: appka hovori o sebe v 1. osobe ("rezervujem", "I reserve")
+    # 0.3: the app speaks in the 1st person ("rezervujem", "I reserve")
     assert "rezervuje" in zaznam["sk"] and "reserve" in zaznam["en"]

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
-"""Nič sa nesmie pokaziť POTICHU. Neošetrené výnimky musia skončiť v
-crash.log — aj z vlastných vlákien, aj z Tk callbackov.
+"""Nothing may break SILENTLY. Unhandled exceptions must end up in
+crash.log — from our own threads as well as from Tk callbacks.
 """
 import os
 
@@ -12,9 +12,10 @@ def _read(name):
 
 
 def test_vlaknove_vynimky_koncia_v_crash_logu():
-    """B13: od Pythonu 3.8 idú výnimky z vlákien do `threading.excepthook`,
-    NIE do `sys.excepthook`. Appka má ~20 vlákien; bez tohto by ich pád
-    nezanechal v crash.log ani bajt (a v zabalenom builde ide stderr nikam)."""
+    """B13: since Python 3.8 exceptions from threads go to
+    `threading.excepthook`, NOT to `sys.excepthook`. The app has ~20 threads;
+    without this their crash would not leave a single byte in crash.log (and in
+    the packaged build stderr goes nowhere)."""
     src = _read("main.py")
     assert "threading.excepthook" in src, (
         "main.py musí nastaviť threading.excepthook, inak pády vlákien miznú")
@@ -23,15 +24,15 @@ def test_vlaknove_vynimky_koncia_v_crash_logu():
 
 def test_tk_aj_hlavne_vlakno_maju_svoj_hook():
     src = _read("main.py")
-    assert "report_callback_exception" in src   # Tk callbacky
-    assert "sys.excepthook" in src              # hlavné vlákno / pred root-om
+    assert "report_callback_exception" in src   # Tk callbacks
+    assert "sys.excepthook" in src              # main thread / before root
 
 
 def test_zvukove_vlakno_prezije_zlyhanie_startu():
-    """B14: `SpeechWorker.run` aplikoval uložený hlas/rýchlosť MIMO try —
-    jedna COM chyba (odinštalovaný/poškodený SAPI hlas) zabila zvukové
-    vlákno PRED slučkou a od tej chvíle nebolo počuť nič (TTS, SFX, hlášky),
-    bez slova. Štart musí byť v try a padnúť späť na pyttsx3."""
+    """B14: `SpeechWorker.run` applied the saved voice/rate OUTSIDE the try —
+    one COM error (an uninstalled/broken SAPI voice) killed the sound thread
+    BEFORE the loop and from then on nothing was heard (TTS, SFX, cues),
+    without a word. The start must be in a try and fall back to pyttsx3."""
     import ast
     src = _read("audio_engine.py")
     strom = ast.parse(src)
@@ -39,7 +40,8 @@ def test_zvukove_vlakno_prezije_zlyhanie_startu():
         if isinstance(uzol, ast.ClassDef) and uzol.name == "SpeechWorker":
             run = next(u for u in uzol.body
                        if isinstance(u, ast.FunctionDef) and u.name == "run")
-            # prvý výkonný príkaz v run() musí byť Try, ktorý obalí štart
+            # the first executable statement in run() must be a Try that wraps
+            # the start
             prvy = run.body[0]
             assert isinstance(prvy, ast.Try), (
                 "SpeechWorker.run musí začínať try okolo _init_sapi/_apply_*")

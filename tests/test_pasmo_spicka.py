@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
-"""Najvyššie pásmo tepu sa volá „Špička“ / „Peak“, nie „Kritická“ (0.2).
+"""The top heart-rate zone is called „Špička“ / „Peak“, not „Kritická“ (0.2).
 
-Pásmo znamená len „tep nad tvojou vlastnou hranicou vysokého tepu“ - nič
-zdravotné ani poplašné. „Kritická“, „Critical“, 危険域 („nebezpečná zóna“)
-zneli ako diagnóza. Interný kľúč `critical` (hr_stats, trigger, HUD, CSV)
-ostáva; mení sa len to, čo hráč číta.
+The zone only means „heart rate above your own high heart-rate limit“ -
+nothing medical or alarming. „Kritická“, „Critical“, 危険域 („danger zone“)
+sounded like a diagnosis. The internal key `critical` (hr_stats, trigger,
+HUD, CSV) stays; only what the player reads changes.
 """
 import os
 import re
@@ -20,7 +20,7 @@ NOVE_MENO = {"sk": "Špička", "en": "Peak", "ja": "ピーク", "zh": "高峰",
              "ru": "Пик", "es": "Pico", "de": "Spitze", "fr": "Pic",
              "pt": "Pico", "cs": "Špička", "bg": "Връх"}
 
-# Staré mená pásma aj vety, ktoré ho menovali, vo všetkých jazykoch.
+# The old names of the zone and the sentences that named it, in all languages.
 STARE = re.compile(
     r"Kritick|kritick|Critical|critical zone|危険域|临界|Критическ|критическ"
     r"|Критичн|критичн|Crítica|zona crítica|Kritisch|kritischen Zone"
@@ -32,7 +32,7 @@ def test_meno_pasma_vo_vsetkych_jazykoch():
         zaznam = i18n.STRINGS[kluc]
         assert set(zaznam) == set(i18n.LANGUAGES), kluc
         for jazyk, meno in NOVE_MENO.items():
-            # legenda pásiem píše malým (okrem nemčiny, kde je to podstatné meno)
+            # the zone legend is lower case (except German, where it is a noun)
             assert zaznam[jazyk].lower() == meno.lower(), (kluc, jazyk)
     stlpec = i18n.STRINGS["history.export_col.critical_min"]
     for jazyk, meno in NOVE_MENO.items():
@@ -46,8 +46,8 @@ def test_ziadny_text_uz_nemenuje_pasmo_po_starom():
 
 
 def test_vety_o_mlcani_menuju_nove_pasmo():
-    """Každá veta, ktorá hovorí „v najvyššom pásme appka mlčí“, menuje to
-    isté slovo, aké hráč vidí v HUD."""
+    """Every sentence saying „in the top zone the app stays silent“ names the
+    same word the player sees in the HUD."""
     for kluc in ("slots.hint", "tour.triggers.body", "ob.step1.how",
                  "session.end.none_withheld"):
         z = i18n.STRINGS[kluc]
@@ -65,29 +65,31 @@ def test_interny_kluc_ostal():
 
 
 def test_karta_spicky_zataze_sa_s_pasmom_nebije():
-    """Karta „Špička záťaže“ (0-100) nie je pásmo tepu - jej popisok pod
-    číslom už nesmie byť to isté slovo ako pásmo."""
+    """The „Špička záťaže“ (Peak load) card (0-100) is not a heart-rate zone -
+    its label under the number must no longer be the same word as the zone."""
     tag = i18n.STRINGS["metric.peak.tag"]
     pasmo = i18n.STRINGS["metric.zones.critical"]
     for jazyk in i18n.LANGUAGES:
         assert tag[jazyk].lower() != pasmo[jazyk].lower(), jazyk
-        # Popisok pod číslom má v karte ~117 px (stĺpec 300 px, dve karty);
-        # dlhší by roztiahol stĺpec na úkor stredu (viz ui_kit.StatCard).
+        # The label under the number has ~117 px in the card (a 300 px column,
+        # two cards); a longer one would stretch the column at the expense of
+        # the centre (see ui_kit.StatCard).
         assert len(tag[jazyk]) <= 14, (jazyk, tag[jazyk])
     assert tag["sk"] == "špička záťaže" and tag["en"] == "peak load"
 
 
 def test_najvyssi_tep_a_telo_v_exporte_nevyzeraju_ako_pasmo():
-    """Karta Najvyšší tep (`session_max` - maximum tejto relácie) a stĺpec
-    exportu o tele v najintenzívnejšej chvíli (otázka `session.felt.body_q`)
-    stoja vedľa pásma Špička / stĺpca „Špička (min)“; ich popisky preto
-    nesmú znieť ako meno pásma."""
+    """The Najvyšší tep (Highest heart rate) card (`session_max` - the maximum
+    of this session) and the export column about the body at the most
+    intense moment (question `session.felt.body_q`) stand next to the
+    Špička zone / the „Špička (min)“ (Peak (min)) column; so their labels
+    must not sound like the zone name."""
     maximum = i18n.STRINGS["dashboard.unit.max"]
     telo = i18n.STRINGS["history.export_col.body_peak"]
     for jazyk, meno in NOVE_MENO.items():
         for zaznam in (maximum, telo):
             assert meno.lower() not in zaznam[jazyk].lower(), (jazyk, zaznam[jazyk])
-        # rovnaký rozsah ako karta Priemer; popisok sa zmestí pod číslo
+        # same range as the Priemer (Average) card; label fits under the number
         assert maximum[jazyk] == i18n.STRINGS["dashboard.unit.avg"][jazyk], jazyk
         assert len(maximum[jazyk]) <= 14, jazyk
     assert telo["sk"] == "telo v najintenzívnejšej chvíli"

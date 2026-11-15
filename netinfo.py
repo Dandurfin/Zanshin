@@ -1,44 +1,46 @@
-"""Adresy tohto PC v lokalnej sieti - pre parovanie hodiniek.
+"""Addresses of this PC on the local network - for pairing the watch.
 
-Preco samostatny modul
-----------------------
-Hrac musi do telefonu prepisat IP tohto pocitaca. Stroj s Wi-Fi + Ethernet
-+ VPN (+ Hyper-V/WSL virtualne adaptery) ma ale IP viacero a "ta spravna"
-je ta, na ktorej je telefon (appka v nom posiela tep z hodiniek) - to appka
-nevie uhadnut. Preto:
+Why a separate module
+---------------------
+The player has to type the IP of this computer into the phone. A machine
+with Wi-Fi + Ethernet + VPN (+ Hyper-V/WSL virtual adapters) has several
+IPs, though, and "the right one" is the one the phone is on (the app on it
+sends the heart rate from the watch) - the app cannot guess that. So:
 
-  * `preferred_local_ip()` - adresa, cez ktoru by OS poslal paket von
-    (typicky Wi-Fi/Ethernet s default route). Nikam sa nic neposiela: UDP
-    socket sa len "pripoji" (co pri UDP znamena iba vyber zdrojovej adresy)
-    a precita sa jeho vlastna adresa.
-  * `local_ip_candidates()` - VSETKY IPv4 adresy stroja bez loopbacku a
-    APIPA (169.254.x.x - "nedostal som DHCP", tam telefon nikdy nie je),
-    preferovana prva, potom sukromne rozsahy (192.168 / 10 / 172.16-31),
-    potom zvysok. UI ukaze prvu velkym a ostatne ako "alebo".
+  * `preferred_local_ip()` - the address through which the OS would send a
+    packet out (typically Wi-Fi/Ethernet with the default route). Nothing
+    is sent anywhere: a UDP socket only gets "connected" (which for UDP
+    only means choosing the source address) and its own address is read.
+  * `local_ip_candidates()` - ALL IPv4 addresses of the machine except
+    loopback and APIPA (169.254.x.x - "I did not get DHCP", the phone is
+    never there), the preferred one first, then the private ranges
+    (192.168 / 10 / 172.16-31), then the rest. The UI shows the first one
+    big and the others as "or".
 
-Ziadny modul appky nepocuva na konkretnej IP natvrdo - server pocuva na
-0.0.0.0 (vsetky siete), toto je len napoveda pre cloveka.
+No module of the app listens on a specific hard-coded IP - the server
+listens on 0.0.0.0 (all networks), this is just a hint for a human.
 
-Skryta IP (0.2)
+Hidden IP (0.2)
 ---------------
-IP adresa PC sa na obrazovke NEUKAZE sama. Streamer ma okno appky casto
-priamo na streame a tester posiela screenshoty - lokalna adresa tam nema co
-robit. Okno parovania, pole IP v Nastaveniach aj riadky v denniku appky ju
-preto ukazuju zamaskovanu (`mask_ip`), kym si ju hrac neodkryje tlacidlom
-"Ukazat IP". Odkrytie plati len do restartu appky: `app.show_ip` je len v
-pamati a do nastaveni sa nezapisuje.
+The PC's IP address is NOT shown on screen by itself. A streamer often has
+the app window right on the stream and a tester sends screenshots - the
+local address has no business being there. The pairing window, the IP
+field in Settings and the lines in the app journal therefore show it
+masked (`mask_ip`) until the player reveals it with the "Show IP" button.
+Revealing lasts only until the app restarts: `app.show_ip` is in memory
+only and is not written into the settings.
 """
 
 import ipaddress
 import re
 import socket
 
-# "Pocuvaj na vsetkych sietach" - nie je to adresa tohto PC, takze sa
-# neskryva (rada "v nastaveniach nechaj 0.0.0.0" ju potrebuje ukazat).
+# "Listen on all networks" - it is not an address of this PC, so it is
+# not hidden (the tip "leave 0.0.0.0 in the settings" needs to show it).
 ANY = "0.0.0.0"
 MASKA_IPV4 = "•••.•••.•••.•••"
 MASKA = "•••"
-# Znak, ktorym CTkEntry kresli skryte pole (ako pri hesle).
+# The character CTkEntry uses to draw a hidden field (as with a password).
 ZNAK_MASKY = "•"
 
 
@@ -52,11 +54,11 @@ def _is_usable(ip):
 
 
 def preferred_local_ip():
-    """IPv4, ktoru by OS pouzil pre odchadzajuce spojenie; None ak sa neda."""
+    """IPv4 the OS would use for outgoing connections; None if impossible."""
     sock = None
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.connect(("10.255.255.255", 1))     # UDP connect = ziadny paket
+        sock.connect(("10.255.255.255", 1))     # UDP connect = no packet
         ip = sock.getsockname()[0]
         return ip if _is_usable(ip) else None
     except Exception:
@@ -83,16 +85,16 @@ def _all_host_ips():
 
 
 def local_ip_candidates(virtualne=None, preferovana=None, vsetky=None):
-    """Zoznam IPv4 adries tohto PC, ta s najvacsou sancou prva; prazdny ak nic.
+    """IPv4 addresses of this PC, the likeliest first; empty if none.
 
-    PORADIE (0.2.2, audit 4): fyzicke adaptery pred VPN a virtualnymi
-    (`virtualne_adresy`) - so zapnutou VPN ide predvolena cesta von cez
-    tunel a dialog parovania ukazoval adresu, na ktoru sa telefon nikdy
-    nedostane. Medzi rovnakymi potom adresa predvolenej cesty, potom
-    domace rozsahy 192.168.* > 10.* > 172.16-31.*, potom zvysok.
+    ORDER (0.3, audit 4): physical adapters before VPN and virtual ones
+    (`virtualne_adresy`) - with a VPN on, the default route goes out
+    through the tunnel and the pairing dialog showed an address the phone
+    can never reach. Among equals then the default-route address, then the
+    home ranges 192.168.* > 10.* > 172.16-31.*, then the rest.
 
-    `virtualne` (mnozina IP), `preferovana` a `vsetky` sa daju vlozit
-    (testy); predvolene sa pyta OS."""
+    `virtualne` (a set of IPs), `preferovana` and `vsetky` can be injected
+    (tests); by default the OS is asked."""
     preferred = preferred_local_ip() if preferovana is None else preferovana
     if virtualne is None:
         virtualne = virtualne_adresy()
@@ -110,8 +112,8 @@ def local_ip_candidates(virtualne=None, preferovana=None, vsetky=None):
 
 
 def _poradie_rozsahu(ip):
-    """192.168.* (domaca Wi-Fi) < 10.* < 172.16-31.* < ostatne sukromne <
-    verejne. Telefon je takmer vzdy v domacej sieti."""
+    """192.168.* (home Wi-Fi) < 10.* < 172.16-31.* < other private < public.
+    The phone is almost always on the home network."""
     try:
         addr = ipaddress.IPv4Address(ip)
     except Exception:
@@ -126,16 +128,17 @@ def _poradie_rozsahu(ip):
 
 
 # ---------------------------------------------------------------------------
-# VPN a virtualne adaptery (0.2.2, audit 4)
+# VPN and virtual adapters (0.3, audit 4)
 # ---------------------------------------------------------------------------
 #
-# PRECO: telefon (appka, ktora posiela tep z hodiniek) je v domacej Wi-Fi.
-# Adresa VPN tunela, Hyper-V / WSL prepinaca ci VirtualBoxu je z neho
-# nedosiahnutelna - a appka ju aj tak ukazovala ako "adresu tohto PC".
-# Adapter sa posudzuje podla mena,
-# popisu a typu rozhrania z Windowsu (`_adaptery_windows`). Bezne "Ethernet"
-# / "Wi-Fi" / "Realtek PCIe GbE" / "Intel Wi-Fi 6" sa NEOZNACIA - slova
-# kratsie nez styri znaky sa hladaju len ako cele slova.
+# WHY: the phone (the app that sends the heart rate from the watch) is on
+# the home Wi-Fi. The address of a VPN tunnel, a Hyper-V / WSL switch or
+# VirtualBox cannot be reached from it - and the app still showed it as
+# "the address of this PC". An adapter is judged by the name, description
+# and interface type from Windows (`_adaptery_windows`). The usual
+# "Ethernet" / "Wi-Fi" / "Realtek PCIe GbE" / "Intel Wi-Fi 6" are NOT
+# flagged - words shorter than four characters are only matched as whole
+# words.
 
 _VIRTUALNE_SLOVA = (
     "wireguard", "wintun", "tailscale", "zerotier", "nordlynx", "openvpn",
@@ -147,32 +150,35 @@ _VIRTUALNE_SLOVA = (
 )
 _VIRTUALNE_CELE_SLOVA = re.compile(r"(?<![a-z0-9])(?:tap|tun|tun\d+|wg\d*|wsl|vpn|"
                                    r"vbox|utun\d*|ppp\d*|warp)(?![a-z0-9])")
-# Typy rozhrania z Windowsu (IFTYPE): softverova slucka, tunel, "proprietary
-# virtual" (Wintun/WireGuard, TAP, Hamachi), PPP (stare VPN).
+# Interface types from Windows (IFTYPE): software loopback, tunnel,
+# "proprietary virtual" (Wintun/WireGuard, TAP, Hamachi), PPP (old VPNs).
 _VIRTUALNE_TYPY = frozenset({24, 131, 53, 23})
 
 
-# Druh adresy (0.2.2 davka 4b). Hotspot NIE JE virtualny v tom zmysle, ktory
-# hraca zaujima: Mobilny hotspot Windowsu bezi na "Microsoft Wi-Fi Direct
-# Virtual Adapter" (meno "Local Area Connection* 10" a podobne) a telefon
-# pripojeny na ten hotspot sa na jeho adresu dostane. Slovo "Virtual" v
-# popise ho predtym oznacilo "(VPN/virtualna)" aj s varovanim.
+# Kind of address (0.3 batch 4b). A hotspot is NOT virtual in the sense the
+# player cares about: the Windows Mobile hotspot runs on the "Microsoft
+# Wi-Fi Direct Virtual Adapter" (name "Local Area Connection* 10" and
+# similar) and a phone connected to that hotspot can reach its address.
+# The word "Virtual" in the description used to flag it "(VPN/virtual)",
+# warning included.
 FYZICKY, HOTSPOT, VIRTUALNY = "fyzicky", "hotspot", "virtualny"
 
 _HOTSPOT_POPIS = re.compile(r"wi-?fi direct")
-# "Local Area Connection* 10" - hviezdicka a cislo dava Windows adapterom
-# Wi-Fi Direct v kazdom jazyku. Plati len ked popis chyba (zaloha psutil).
+# "Local Area Connection* 10" - Windows gives the asterisk and a number to
+# Wi-Fi Direct adapters in every language. Applies only when the
+# description is missing (the psutil fallback).
 _HOTSPOT_MENO = re.compile(r"\*\s*\d+\s*$")
 
 
 def druh_adaptera(meno="", popis="", typ=None):
-    """FYZICKY / HOTSPOT / VIRTUALNY pre jeden adapter. Cista funkcia -
-    meno ("Ethernet 2", "vEthernet (WSL)"), popis z Windowsu ("TAP-Windows
-    Adapter V9") a typ rozhrania (IFTYPE) alebo None.
+    """FYZICKY / HOTSPOT / VIRTUALNY for one adapter. A pure function - the
+    name ("Ethernet 2", "vEthernet (WSL)"), the description from Windows
+    ("TAP-Windows Adapter V9") and the interface type (IFTYPE) or None.
 
-    Hotspot sa posudzuje PRVY: jeho popis obsahuje slovo "Virtual". Externy
-    prepinac Hyper-V tu ostava VIRTUALNY - ci drzi domacu siet, vie az
-    `druhy_adries` (potrebuje predvolenu cestu a ostatne adaptery)."""
+    The hotspot is judged FIRST: its description contains the word
+    "Virtual". An external Hyper-V switch stays VIRTUALNY here - whether it
+    holds the home network only `druhy_adries` knows (it needs the default
+    route and the other adapters)."""
     text = f"{meno or ''} {popis or ''}".lower()
     if _HOTSPOT_POPIS.search(text) or (
             not (popis or "").strip() and _HOTSPOT_MENO.search(meno or "")):
@@ -188,15 +194,16 @@ def druh_adaptera(meno="", popis="", typ=None):
 
 
 def je_virtualny_adapter(meno="", popis="", typ=None):
-    """Je adapter VPN alebo virtualny (telefon sa nan nedostane)? Hotspot
-    nie (`druh_adaptera`)."""
+    """Is the adapter a VPN or virtual (the phone cannot reach it)? A hotspot
+    is not (`druh_adaptera`)."""
     return druh_adaptera(meno, popis, typ) == VIRTUALNY
 
 
 def _je_externy_prepinac(meno="", popis=""):
-    """Adapter prepinaca Hyper-V ("vEthernet (...)"), ktory MOZE byt externy
-    - teda premosteny na fyzicku sietovku. WSL a "Default Switch" su vzdy
-    vnutorne siete s NAT (telefon sa na ne nedostane), Docker tiez."""
+    """A Hyper-V switch adapter ("vEthernet (...)") that MAY be external - i.e.
+    bridged to the physical network card. WSL and "Default Switch" are
+    always internal networks with NAT (the phone cannot reach them), Docker
+    too."""
     text = f"{meno or ''} {popis or ''}".lower()
     if "vethernet" not in text and "hyper-v virtual ethernet" not in text:
         return False
@@ -209,8 +216,8 @@ _LAN_ROZSAHY = (ipaddress.IPv4Network("10.0.0.0/8"),
 
 
 def _lan_siet(ip):
-    """Domaca siet adresy (/24 - Windows masku adaptera appka necita), ale
-    len pre sukromne rozsahy LAN. Inak None."""
+    """The home network of an address (/24 - the app does not read the Windows
+    adapter mask), but only for private LAN ranges. Otherwise None."""
     try:
         addr = ipaddress.IPv4Address(ip)
     except Exception:
@@ -221,9 +228,9 @@ def _lan_siet(ip):
 
 
 def _adaptery_windows():
-    """[(ip, meno, popis, typ)] IPv4 adries zapnutych adapterov z
-    GetAdaptersAddresses (iphlpapi). Nikam sa nic neposiela - len sa pyta
-    Windowsu. Mimo Windowsu alebo pri chybe []."""
+    """[(ip, meno, popis, typ)] of the IPv4 addresses of enabled adapters from
+    GetAdaptersAddresses (iphlpapi). Nothing is sent anywhere - Windows is
+    only asked. Outside Windows or on an error []."""
     import sys
     if sys.platform != "win32":
         return []
@@ -260,7 +267,7 @@ def _adaptery_windows():
     fn.argtypes = [wintypes.ULONG, wintypes.ULONG, ctypes.c_void_p,
                    ctypes.c_void_p, ctypes.POINTER(wintypes.ULONG)]
     fn.restype = wintypes.ULONG
-    af_inet, skip = 2, 0x2 | 0x4 | 0x8          # bez anycast/multicast/DNS
+    af_inet, skip = 2, 0x2 | 0x4 | 0x8          # no anycast/multicast/DNS
     velkost = wintypes.ULONG(16 * 1024)
     for _pokus in range(3):
         buf = ctypes.create_string_buffer(velkost.value)
@@ -291,7 +298,7 @@ def _adaptery_windows():
 
 
 def _adaptery_psutil():
-    """Zaloha bez Windowsu/ctypes: len mena adapterov (bez popisu a typu)."""
+    """Fallback without Windows/ctypes: just names (no description or type)."""
     try:
         import psutil
         out = []
@@ -309,10 +316,10 @@ _CACHE_ADAPTEROV_S = 30.0
 
 
 def adaptery(zdroj=None):
-    """[(ip, meno, popis, typ, virtualny)] - IPv4 adresy s adapterom.
+    """[(ip, meno, popis, typ, virtualny)] - IPv4 addresses with their adapter.
 
-    Vysledok z Windowsu plati 30 s (pole IP v Nastaveniach sa pyta pri
-    kazdom pismene). `zdroj()` sa da vlozit (testy). Ziadna chyba von nejde."""
+    The result from Windows is valid for 30 s (the IP field in Settings asks
+    on every letter). `zdroj()` can be injected (tests). No error gets out."""
     import time as _time
     if zdroj is None:
         teraz = _time.monotonic()
@@ -337,23 +344,24 @@ def adaptery(zdroj=None):
 
 
 def druhy_adries(zdroj=None, preferovana=None):
-    """{ip: FYZICKY / HOTSPOT / VIRTUALNY} pre IPv4 adresy tohto PC.
+    """{ip: FYZICKY / HOTSPOT / VIRTUALNY} for the IPv4 addresses of this PC.
 
-    Adresa, ktoru ma aj fyzicky adapter, je fyzicka; ktoru ma hotspot (a
-    ziadny fyzicky), je hotspot.
+    An address that a physical adapter also has is physical; one that a
+    hotspot has (and no physical adapter) is a hotspot.
 
-    EXTERNY PREPINAC HYPER-V (0.2.2 davka 4b): ked si hrac v Hyper-V spravi
-    externy prepinac, Windows premosti fyzicku sietovku na "vEthernet (...)"
-    a domacu adresu aj predvolenu cestu von potom drzi ten vEthernet -
-    fyzicka sietovka adresu nema. Telefon sa na nu dostane, takze sa taka
-    adresa berie ako fyzicka, ked: patri prepinacu Hyper-V (nie WSL ani
-    "Default Switch"), drzi predvolenu cestu (`preferovana`, inak sa pyta
-    OS), je v sukromnom rozsahu LAN a ziadny fyzicky adapter nema adresu
-    v tej istej sieti. VPN, ktora drzi cestu von, sa neprepise - nie je to
-    prepinac Hyper-V.
+    EXTERNAL HYPER-V SWITCH (0.3 batch 4b): when the player makes an
+    external switch in Hyper-V, Windows bridges the physical network card
+    to "vEthernet (...)" and the home address and the default route out are
+    then held by that vEthernet - the physical card has no address. The
+    phone can reach it, so such an address is taken as physical when: it
+    belongs to a Hyper-V switch (not WSL nor "Default Switch"), it holds the
+    default route (`preferovana`, otherwise the OS is asked), it is in a
+    private LAN range and no physical adapter has an address in the same
+    network. A VPN that holds the route out is not overridden - it is not a
+    Hyper-V switch.
 
-    S vlozenym `zdroj` (testy) sa OS na predvolenu cestu nepyta - bez
-    `preferovana` vtedy externy prepinac neplati."""
+    With an injected `zdroj` (tests) the OS is not asked for the default
+    route - without `preferovana` the external switch then does not apply."""
     zoznam = adaptery(zdroj)
     if preferovana is None and zdroj is None:
         preferovana = preferred_local_ip()
@@ -376,37 +384,39 @@ def druhy_adries(zdroj=None, preferovana=None):
 
 
 def virtualne_adresy(zdroj=None, preferovana=None):
-    """Mnozina IPv4 adries, ktore patria VPN alebo virtualnemu adapteru
-    (`druhy_adries`). Adresa, ktoru ma aj fyzicky adapter, hotspot ani
-    externy prepinac Hyper-V s domacou sietou medzi ne nepatri."""
+    """Set of IPv4 addresses that belong to a VPN or virtual adapter
+    (`druhy_adries`). An address that a physical adapter also has, a
+    hotspot or an external Hyper-V switch with the home network are not
+    among them."""
     return {ip for ip, druh in druhy_adries(zdroj, preferovana).items()
             if druh == VIRTUALNY}
 
 
 def hotspot_adresy(zdroj=None, preferovana=None):
-    """Mnozina IPv4 adries Mobilneho hotspotu Windowsu (Wi-Fi Direct). Telefon
-    pripojeny na hotspot sa na ne dostane - dostavaju stitok "(hotspot)",
-    nie varovanie."""
+    """Set of IPv4 addresses of the Windows Mobile hotspot (Wi-Fi Direct). A
+    phone connected to the hotspot can reach them - they get the label
+    "(hotspot)", not a warning."""
     return {ip for ip, druh in druhy_adries(zdroj, preferovana).items()
             if druh == HOTSPOT}
 
 
 # ---------------------------------------------------------------------------
-# Skryta IP - co sa smie ukazat na obrazovke
+# Hidden IP - what may be shown on screen
 # ---------------------------------------------------------------------------
 
 def _je_adresa(ip):
-    """Skutocna adresa, ktoru treba skryt - nie prazdno ani 0.0.0.0."""
+    """A real address that has to be hidden - not empty, not 0.0.0.0."""
     return ip is not None and str(ip).strip() not in ("", ANY)
 
 
 def mask_ip(ip):
-    """IP adresa tak, ako sa ukaze, kym si ju hrac neodkryje.
+    """The IP address as it is shown until the player reveals it.
 
-    "", None a "0.0.0.0" sa vracaju bez zmeny: 0.0.0.0 nie je adresa PC,
-    len "pocuvaj vsade", a rada "nechaj 0.0.0.0" ju potrebuje vidiet.
-    IPv4 -> bodky v tvare adresy (hrac vidi, ze tam adresa je), cokolvek
-    ine (IPv6, meno) -> len •••, aby maska neprezradila ani dlzku.
+    "", None and "0.0.0.0" are returned unchanged: 0.0.0.0 is not the PC's
+    address, only "listen everywhere", and the tip "leave 0.0.0.0" needs to
+    see it. IPv4 -> dots in the shape of the address (the player sees there
+    is an address there), anything else (IPv6, a name) -> just •••, so that
+    the mask does not give away even the length.
     """
     if not _je_adresa(ip):
         return ip
@@ -418,14 +428,15 @@ def mask_ip(ip):
 
 
 def ip_for_screen(ip, show=False):
-    """Adresa pre okno aj dennik: cela len ked si ju hrac odkryl."""
+    """Address for window and journal: full only if the player revealed it."""
     return ip if show else mask_ip(ip)
 
 
-# Kandidati na adresu vo volnom texte. Ci to naozaj adresa je, rozhodne az
-# `ipaddress` - cas "12:34:56" ani verzia "0.2.2" sa tak nezamaskuju.
-# Okolie strazi len dalsie cislo ("1.2.3.4.5" nie je adresa), nie samotnu
-# bodku - adresa na konci vety ("... z 10.0.0.5.") sa musi zamaskovat tiez.
+# Address candidates in free text. Whether it really is an address only
+# `ipaddress` decides - so neither the time "12:34:56" nor the version
+# "0.2.1" get masked. The context guards only against a further number
+# ("1.2.3.4.5" is not an address), not against a dot on its own - an
+# address at the end of a sentence ("... z 10.0.0.5.") must be masked too.
 _IPV4_V_TEXTE = re.compile(r"(?<!\d)(?<!\d\.)(?:\d{1,3}\.){3}\d{1,3}(?!\.?\d)")
 _IPV6_V_TEXTE = re.compile(
     r"(?<![0-9A-Fa-f:])[0-9A-Fa-f]{0,4}(?::[0-9A-Fa-f]{0,4}){2,7}(?![0-9A-Fa-f:])")
@@ -441,13 +452,14 @@ def _maskuj_zhodu(zhoda):
 
 
 def mask_ips_in_text(text):
-    """Hotovy riadok textu bez adries - pre subor logu.
+    """A finished line of text without addresses - for the log file.
 
-    Riadky dennika ukazuju adresu cez `ip_for_screen`, cize po "Ukazat IP"
-    v nich je cela. Ked taky riadok musi ist do app.log (dennik v okne uz
-    nie je, viz `DandurfApp.log`), adresa tam nesmie - PRIVACY.md slubuje,
-    ze app.log adresu PC neobsahuje. IPv4 ide prva, aby z "::ffff:a.b.c.d"
-    neostala cast adresy."""
+    Journal lines show the address through `ip_for_screen`, so after
+    "Show IP" it is in them in full. When such a line has to go to app.log
+    (the in-window journal is no longer there, see `DandurfApp.log`), the
+    address must not go there - PRIVACY.md promises that app.log does not
+    contain the PC's address. IPv4 goes first, so that no part of the
+    address is left of "::ffff:a.b.c.d"."""
     if not text:
         return text
     text = _IPV4_V_TEXTE.sub(_maskuj_zhodu, str(text))
@@ -455,20 +467,22 @@ def mask_ips_in_text(text):
 
 
 def pairing_address(ip, port, show=False, stitok=""):
-    """Hlavny riadok okna parovania "adresa   :   port". Port nie je
-    citlivy (4455 ma kazdy), ostava viditelny aj pri skrytej adrese.
+    """The main line of the pairing window "address   :   port". The port is
+    not sensitive (everyone has 4455), it stays visible even with a hidden
+    address.
 
-    `stitok` (0.2.2) ide za port - "(VPN/virtualna)", ked adresa patri
-    virtualnemu adapteru. Nic o adrese neprezradi, preto aj pri skrytej."""
+    `stitok` (0.3) goes after the port - "(VPN/virtual)" when the address
+    belongs to a virtual adapter. It gives nothing away about the address,
+    so it is shown even when hidden."""
     riadok = f"{ip_for_screen(ip, show)}   :   {port}"
     return f"{riadok}  {stitok}" if stitok else riadok
 
 
 def pairing_other_ips(ips, show=False, virtualne=(), stitok="",
                       hotspot=(), stitok_hotspot=""):
-    """Riadok "dalsie adresy tohto PC" - kazda skryta rovnako ako hlavna.
-    Adresa z `virtualne` dostane za seba `stitok` (0.2.2), adresa z
-    `hotspot` zase `stitok_hotspot` (0.2.2 davka 4b)."""
+    """The line "other addresses of this PC" - each hidden the same way as the
+    main one. An address from `virtualne` gets `stitok` after it (0.3), an
+    address from `hotspot` gets `stitok_hotspot` (0.3 batch 4b)."""
     kusy = []
     for ip in ips or ():
         kus = str(ip_for_screen(ip, show))
@@ -481,9 +495,9 @@ def pairing_other_ips(ips, show=False, virtualne=(), stitok="",
 
 
 def entry_mask(value, show=False):
-    """Hodnota `show=` pre pole IP v Nastaveniach: "" = citatelne.
+    """The `show=` value for the IP field in Settings: "" = readable.
 
-    Skryva sa len skutocna adresa. Prazdne pole a 0.0.0.0 ostavaju
-    citatelne - tam nie je co prezradit a hrac musi vidiet, ze tam je
-    bezpecna predvolba."""
+    Only a real address is hidden. An empty field and 0.0.0.0 stay readable
+    - there is nothing to give away and the player has to see that the safe
+    default is there."""
     return "" if show or not _je_adresa(value) else ZNAK_MASKY

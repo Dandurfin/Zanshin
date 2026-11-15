@@ -1,8 +1,9 @@
-"""Spolocne cesty k datam appky - zdielane medzi main.py a sfx_assets.py.
+"""Common paths to the app's data - shared between main.py and sfx_assets.py.
 
-Aj `nahrad_subor`: posledny krok atomickeho zapisu (.tmp -> ciel), ktory
-prezije kratky zamok suboru vo Windows. Je tu, lebo tento modul nenatahuje
-ziadny iny modul appky - importovat ho moze kazdy bez kruhoveho importu.
+Also `nahrad_subor`: the last step of an atomic write (.tmp -> target)
+that survives a short file lock on Windows. It is here because this module
+does not pull in any other app module - anyone can import it without a
+circular import.
 """
 
 import errno
@@ -16,23 +17,24 @@ import time
 APP_NAME = "Zanshin"
 IS_WINDOWS = sys.platform == "win32"
 
-# Predchadzajuce nazvy appky - pouziva sa len na migraciu existujucich
-# nastaveni/nahravok pod novy nazov priecinka v %APPDATA%.
+# Previous names of the app - used only to migrate existing
+# settings/recordings to the new folder name in %APPDATA%.
 #
-# "Zanshin DojoSync" pribudlo pri premenovani na holy "Zanshin": prívlastok
-# "DojoSync" nic nehovoril (synchronizuje co s cim?) a zrozumitelnost nesie
-# veta vedla mena, nie meno samo. Bez tohto zaznamu by nainstalovanej appke
-# zmizli data - `data_dir()` ich hlada pod APP_NAME.
+# "Zanshin DojoSync" was added when renaming to plain "Zanshin": the
+# qualifier "DojoSync" said nothing (syncs what with what?), and the
+# clarity is carried by the sentence next to the name, not by the name
+# itself. Without this record an installed app would lose its data -
+# `data_dir()` looks for it under APP_NAME.
 LEGACY_APP_NAMES = ["Zanshin DojoSync", "Dandurf"]
 
 
 def data_dir():
-    """Kam zapisujeme nastavenia, nahravky, cache hlasok a SFX kniznicu.
+    """Where we write settings, recordings, the cue cache and the SFX library.
 
-    Nainstalovana (zamrazena) appka moze sediet v Program Files, kam Windows
-    beznemu pouzivatelovi zapisat nedovoli - vsetko pouzivatelske preto ide
-    do %APPDATA%\\Zanshin. Pri spusteni zo zdrojakov ostava vsetko
-    vedla main.py, aby sa vyvoj nemiesal s ostrymi datami.
+    An installed (frozen) app may sit in Program Files, where Windows does
+    not let an ordinary user write - so everything user-related goes to
+    %APPDATA%\\Zanshin. When run from source, everything stays next to
+    main.py, so that development does not mix with live data.
     """
     if getattr(sys, "frozen", False):
         base = os.environ.get("APPDATA") or os.path.expanduser("~")
@@ -40,18 +42,21 @@ def data_dir():
     return os.path.dirname(os.path.abspath(__file__))
 
 
-# Datove subory prenasane pri premenovani priecinka appky. NIE LEN nastavenia:
-# aj CELA HISTORIA TEPU - relacie (zakladne, krivky), okna, z ktorych algoritmus
-# rata prah, dennik udalosti a insighty. Bez nich by sa pri migracii dlhodoba
-# data ticho stratili a algoritmus by zacinal od nuly (prah/zakladna prec).
+# Data files carried over when the app folder is renamed. NOT JUST the
+# settings: also the WHOLE HEART RATE HISTORY - sessions (baselines,
+# curves), the windows the algorithm computes the threshold from, the
+# event journal and the insights. Without them the long-term data would
+# be silently lost in the migration and the algorithm would start from
+# zero (threshold/baseline gone).
 _MIGROVANE_DATA = ["dandurf_settings.json", "hr_sessions.json", "hr_windows.json",
                    "hr_events.jsonl", "hr_insights.json"]
 
 
 def _copy_data_dir(old, target):
     os.makedirs(target, exist_ok=True)
-    # Kazdy datovy subor aj s jeho .bak / rotaciami / .corrupt-* surodencami;
-    # kopirujeme len ked v cieli este nie je (rovnaka poistka ako predtym).
+    # Every data file together with its .bak / rotation / .corrupt-*
+    # siblings; we copy only when it is not in the target yet (the same
+    # safeguard as before).
     subory = set()
     for meno in _MIGROVANE_DATA:
         for sib in glob.glob(os.path.join(old, meno + "*")):
@@ -64,7 +69,7 @@ def _copy_data_dir(old, target):
                 shutil.copy2(src, dst)
             except OSError:
                 pass
-    # audio/ = vlastne SFX + nahravky hlasu (nie su regenerovatelne)
+    # audio/ = own SFX + voice recordings (not regenerable)
     old_audio = os.path.join(old, "audio")
     new_audio = os.path.join(target, "audio")
     if os.path.isdir(old_audio) and not os.path.isdir(new_audio):
@@ -72,15 +77,16 @@ def _copy_data_dir(old, target):
 
 
 def migrate_legacy_data(target):
-    """Prenesie data od starsej prenosnej verzie (vedla .exe) a od
-    predoslych nazvov appky (LEGACY_APP_NAMES) do %APPDATA%\\Zanshin.
+    """Carries data over from an older portable version (next to the .exe)
+    and from previous app names (LEGACY_APP_NAMES) to %APPDATA%\\Zanshin.
 
-    LEN PRI PRVOM STARTE na novom mieste (v cieli este nie su nastavenia).
-    Kopia od .exe sa predtym spustala pri KAZDOM starte a doplnala, co v
-    cieli chyba - takze "Zmazat historiu" nevydrzala: pri dalsom spusteni
-    sa stara historia spoza .exe vratila. Stare priecinky sa nepresuvaju
-    (copy2/copytree), preto ich `legacy_data_dirs` vie najst a mazanie
-    historie (`data_io.delete_plan`) aj odinstalovanie ich zmazu tiez."""
+    ONLY ON THE FIRST START in the new place (there are no settings in the
+    target yet). The copy from next to the .exe used to run at EVERY start
+    and fill in what was missing in the target - so "Delete history" did
+    not hold: at the next start the old history from next to the .exe
+    came back. The old folders are not moved (copy2/copytree), so
+    `legacy_data_dirs` can find them, and deleting the history
+    (`data_io.delete_plan`) as well as uninstalling delete them too."""
     if not getattr(sys, "frozen", False):
         return
     try:
@@ -101,14 +107,14 @@ def migrate_legacy_data(target):
 
 
 def legacy_data_dirs(target=None):
-    """Stare priecinky s datami, z ktorych mohla kopirovat migracia.
+    """Old data folders that the migration may have copied from.
 
-    %APPDATA%\\Zanshin DojoSync, %APPDATA%\\Dandurf a priecinok vedla .exe
-    (stara prenosna verzia) - len tie, co existuju, a nikdy nie samotny
-    `target`. Migracia ich len KOPIROVALA, takze v nich ostala kopia
-    historie tepu; mazanie historie ich preto musi zmazat tiez, inak by
-    "Zmazat" nechalo druhu kopiu. Pri behu zo zdrojakov sa nemigruje nic,
-    takze nie je co vracat.
+    %APPDATA%\\Zanshin DojoSync, %APPDATA%\\Dandurf and the folder next to
+    the .exe (the old portable version) - only those that exist, and never
+    `target` itself. The migration only COPIED them, so a copy of the
+    heart rate history stayed in them; deleting the history therefore has
+    to delete them too, otherwise "Delete" would leave a second copy. When
+    run from source nothing is migrated, so there is nothing to return.
     """
     if not getattr(sys, "frozen", False):
         return []
@@ -136,20 +142,20 @@ VOICE_LIB_NAME = "voice_lib"
 
 
 def voice_lib_dir():
-    """Priecinok stiahnutej kniznice prirodzeneho hlasu (hlas_kniznica.py,
-    tlacidlo "Aktualizovat hlas"): v builde %APPDATA%\\Zanshin\\voice_lib,
-    zo zdrojakov vedla main.py. DATA_DIR sa cita az pri volani, takze ho
-    testy (conftest) presmeruju rovnako ako ostatne cesty."""
+    """Folder of the downloaded natural voice library (hlas_kniznica.py, the
+    "Update voice" button): in the build %APPDATA%\\Zanshin\\voice_lib,
+    from source next to main.py. DATA_DIR is read only at call time, so
+    tests (conftest) redirect it the same way as the other paths."""
     return os.path.join(DATA_DIR, VOICE_LIB_NAME)
 
 
 def images_dir():
-    """Obrazky dodavane s appkou (QR na appku do hodiniek a pod.).
+    """Images shipped with the app (the QR for the watch app, etc.).
 
-    Rovnaka logika ako `guides_dir()` - su to sucasti instalacie, nie
-    pouzivatelske data, takze sa hladaju vedla zdrojaku / vo vnutri
-    zabaleneho .exe, nie v %APPDATA%. Oba `.spec` subory balia cely
-    priecinok `assets`, takze netreba nic dopisovat do buildu.
+    The same logic as `guides_dir()` - they are part of the installation,
+    not user data, so they are looked for next to the source / inside the
+    packaged .exe, not in %APPDATA%. Both `.spec` files package the whole
+    `assets` folder, so nothing needs to be added to the build.
     """
     if getattr(sys, "frozen", False):
         base = getattr(sys, "_MEIPASS", os.path.dirname(sys.executable))
@@ -159,13 +165,13 @@ def images_dir():
 
 
 def guides_dir():
-    """Priecinok s (docasnymi) ilustraciami pre panel 'Sprievodca'.
+    """Folder with (temporary) illustrations for the 'Guide' panel.
 
-    Su to suceasti appky dodavane s instalaciou (nie pouzivatelske data),
-    preto sa hladaju vedla zdrojaku / vo vnutri zabaleneho .exe, nie v
-    %APPDATA%. Umiestni sem PNG s nazvom podla id karty (napr.
-    grounding.png), aby appka pouzila realnu ilustraciu namiesto
-    docasneho vektoroveho nacrtu.
+    They are parts of the app shipped with the installation (not user
+    data), so they are looked for next to the source / inside the packaged
+    .exe, not in %APPDATA%. Put a PNG here named after the card id (e.g.
+    grounding.png) so that the app uses a real illustration instead of the
+    temporary vector sketch.
     """
     if getattr(sys, "frozen", False):
         base = getattr(sys, "_MEIPASS", os.path.dirname(sys.executable))
@@ -174,9 +180,9 @@ def guides_dir():
     return os.path.join(base, "assets", "guides")
 
 
-# AppId instalacky z Dandurf.iss (tam je zapisany so zdvojenou zatvorkou
-# `{{...}`, co je v Inno Setup len escapovanie). Inno podla neho zaklada
-# kluc odinstalovania `<AppId>_is1`.
+# The installer's AppId from Dandurf.iss (written there with a doubled
+# brace `{{...}`, which in Inno Setup is just escaping). Inno uses it to
+# create the uninstall key `<AppId>_is1`.
 INSTALLER_APP_ID = "{30295CDB-462B-4151-B225-582E82027A33}"
 _UNINSTALL_KEY = ("Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\"
                   + INSTALLER_APP_ID + "_is1")
@@ -191,17 +197,19 @@ def _hodnota_registra(winreg_mod, kluc, meno):
 
 
 def stara_instalacia(winreg_mod=None, exe=None):
-    """Je na PC nainstalovany Zanshin z instalacky 0.2? Alebo None.
+    """Is Zanshin from the 0.2 installer installed on the PC? Or None.
 
-    PRECO: 0.2 sa instalovala instalackou (Dandurf.iss) a jej odinstalator
-    sa pyta "Ponechat nastavenia...?". Pri Nie zmaze %APPDATA%\\Zanshin -
-    a ten isty priecinok pouziva aj verzia zo ZIP-u, takze by zmizla aj jej
-    historia. Vracia {"location", "version"} z kluca odinstalovania.
+    WHY: 0.2 was installed with an installer (Dandurf.iss) and its
+    uninstaller asks "Ponechat nastavenia...?" (Keep settings...?). On
+    "Nie" (No) it deletes %APPDATA%\\Zanshin - and the ZIP version uses the
+    same folder, so its history would vanish too. Returns {"location",
+    "version"} from the uninstall key.
 
-    Instalacka bola bez admin prav (HKCU), HKLM sa skusa pre istotu v oboch
-    pohladoch registra (64/32 bit). Ked bezi prave ta nainstalovana appka
-    (exe lezi v jej priecinku), nie je pred cim varovat. Chybajuci winreg
-    alebo kluc nie je chyba - vrati None.
+    The installer was without admin rights (HKCU); HKLM is tried just in
+    case, in both registry views (64/32 bit). When it is the installed app
+    itself that is running (the exe lies in its folder), there is nothing
+    to warn about. A missing winreg or key is not an error - it returns
+    None.
     """
     if winreg_mod is None:
         try:
@@ -226,8 +234,8 @@ def stara_instalacia(winreg_mod=None, exe=None):
                           or _hodnota_registra(winreg_mod, kluc, "Inno Setup: App Path"))
                 verzia = _hodnota_registra(winreg_mod, kluc, "DisplayVersion")
         except Exception:
-            # OSError = kluc nie je; cokolvek ine (pokazeny register) tiez
-            # nesmie zhodit start appky.
+            # OSError = the key is not there; anything else (a broken
+            # registry) must not bring down the app start either.
             continue
         if miesto:
             priecinok = os.path.normcase(os.path.abspath(miesto)).rstrip("\\/")
@@ -238,10 +246,11 @@ def stara_instalacia(winreg_mod=None, exe=None):
 
 
 def resolve_audio_path(path):
-    """Po presune dat drzia stare nastavenia absolutne cesty k .wav suborom.
+    """After a data move, old settings hold absolute paths to .wav files.
 
-    Ak subor na povodnom mieste uz nie je, skusime rovnaky nazov v novom
-    priecinku audio/ - inak by slot po instalacii stratil svoju nahravku.
+    If the file is no longer at the original place, we try the same name
+    in the new audio/ folder - otherwise a slot would lose its recording
+    after installation.
     """
     if not path or os.path.exists(path):
         return path
@@ -250,42 +259,48 @@ def resolve_audio_path(path):
 
 
 # --------------------------------------------------------------------------
-# Atomicky zapis, ktory prezije kratky zamok suboru vo Windows
+# Atomic write that survives a short file lock on Windows
 # --------------------------------------------------------------------------
 #
-# PRECO: data sa zapisuju cez `.tmp` + `os.replace`. Hned po zapise si vsak
-# subor na chvilu otvori Defender, indexovanie Windows Search alebo
-# synchronizacia - bez FILE_SHARE_DELETE - a `os.replace` vtedy spadne na
-# PermissionError: WinError 5, ked drzia ciel, WinError 32, ked drzia .tmp.
-# V logu skusobnej kopie (0.2.2) presne takto padla zaloha nastaveni
-# ("zalohu nastaveni sa nepodarilo zapisat", .bak.tmp -> .bak). Taky zamok
-# trva milisekundy, preto staci par kratkych pokusov.
+# WHY: data is written via `.tmp` + `os.replace`. Right after the write,
+# though, the file gets opened for a moment by Defender, Windows Search
+# indexing or sync - without FILE_SHARE_DELETE - and `os.replace` then
+# fails with PermissionError: WinError 5 when they hold the target,
+# WinError 32 when they hold the .tmp. In the log of a test copy (0.3)
+# the settings backup failed exactly like this ("zalohu nastaveni sa
+# nepodarilo zapisat", .bak.tmp -> .bak). Such a lock lasts milliseconds,
+# so a few short attempts are enough.
 #
-# Pauzy rastu a spolu davaju 0.31 s na jeden subor. Viac nie: `save_settings`
-# bezi vo vlakne GUI (uklada sa pri kazdom posune slidera) a nahradza DVA
-# subory (.bak aj nastavenia) - pri zamku oboch caka okno 0.62 s naraz.
+# The pauses grow and add up to 0.31 s per file. No more: `save_settings`
+# runs in the GUI thread (it saves on every slider move) and replaces TWO
+# files (.bak and the settings) - with both locked the window waits
+# 0.62 s at once.
 NAHRADA_PAUZY_S = (0.01, 0.02, 0.04, 0.08, 0.16)
-# Kody Windows pre docasne drzany subor: 5 pristup odmietnuty (ciel otvoreny
-# bez FILE_SHARE_DELETE), 32 subor pouziva iny proces, 33 zamknuta cast.
+# Windows codes for a temporarily held file: 5 access denied (target open
+# without FILE_SHARE_DELETE), 32 file used by another process, 33 locked
+# region.
 _DOCASNY_ZAMOK_WIN = (5, 32, 33)
-# Ciel, ktory nevydrzal ani posledny pokus, nedrzi kratky zamok (subor len na
-# citanie, otvoreny v inom programe). Kym zapis donho pada dalej, skusa sa
-# len raz, bez cakania - inak by pri tahani slidera kazde ulozenie zaseklo
-# okno o 0.31-0.62 s (10 ulozeni = 3 az 6 s, namerane so skutocnym zamkom).
-# Plne opakovanie plati zas po prvom uspechu alebo ked do ciela
-# `NAHRADA_ODDYCH_S` nikto nezapisoval (dalsia relacia o hodinu caka znova).
+# A target that did not survive even the last attempt does not hold a
+# short lock (a read-only file, open in another program). While writing
+# to it keeps failing, it is tried only once, without waiting - otherwise
+# while dragging a slider every save would freeze the window for
+# 0.31-0.62 s (10 saves = 3 to 6 s, measured with a real lock). Full
+# retrying applies again after the first success or when nobody has
+# written to the target for `NAHRADA_ODDYCH_S` (the next session an hour
+# later waits again).
 NAHRADA_ODDYCH_S = 5.0
-_zlyhane_ciele = {}         # normcase(abspath(ciel)) -> _hodiny() zlyhania
-_hodiny = time.monotonic    # vlastny odkaz: testy nahradzaju `paths.time`
+_zlyhane_ciele = {}         # normcase(abspath(ciel)) -> _hodiny() of the failure
+_hodiny = time.monotonic    # own reference: tests replace `paths.time`
 
 _log = logging.getLogger("zanshin.paths")
 
 
 def _je_docasny_zamok(exc):
-    """Ma zmysel `os.replace` skusit znova? Len pri PermissionError s kodom
-    drzaneho suboru. Bez kodu Windows (iny system, umela chyba v teste)
-    rozhoduje errno - EACCES ano, EPERM (zakazana operacia) nie. Ina chyba
-    (plny disk, chybajuci subor) sa opakovanim nezlepsi - vyhodi sa hned."""
+    """Does it make sense to try `os.replace` again? Only on a PermissionError
+    with a held-file code. Without a Windows code (another system, an
+    artificial error in a test) errno decides - EACCES yes, EPERM
+    (forbidden operation) no. Another error (full disk, missing file) does
+    not get better by retrying - it is raised right away."""
     if not isinstance(exc, PermissionError):
         return False
     winerror = getattr(exc, "winerror", None)
@@ -302,18 +317,19 @@ def _zmaz_potichu(cesta):
 
 
 def nahrad_subor(zdroj, ciel, uprac_zdroj=False):
-    """`os.replace(zdroj, ciel)`, ktory prezije kratky zamok suboru vo Windows.
+    """`os.replace(zdroj, ciel)` that survives a short file lock on Windows.
 
-    Pri docasnom zamku (`_je_docasny_zamok`) skusa znova po pauzach
-    `NAHRADA_PAUZY_S`. Ked nevyjde ani posledny pokus, vyhodi POSLEDNU chybu,
-    takze volajuci ju osetri rovnako ako predtym chybu holeho `os.replace`.
-    Ina chyba sa vyhodi hned, bez cakania. Ciel, ktory prave takto nevydrzal,
-    sa skusa len raz, kym pada dalej (`NAHRADA_ODDYCH_S`).
+    On a temporary lock (`_je_docasny_zamok`) it retries after the
+    `NAHRADA_PAUZY_S` pauses. When even the last attempt fails, it raises
+    the LAST error, so the caller handles it the same as the error of a
+    bare `os.replace` before. Another error is raised right away, without
+    waiting. A target that has just failed like this is tried only once
+    while it keeps failing (`NAHRADA_ODDYCH_S`).
 
-    `uprac_zdroj=True`: pri neuspechu zmaze `zdroj` (vlastny .tmp volajuceho),
-    nech vedla dat neostane zabudnuty docasny subor; zlyhanie mazania sa
-    prehltne. NIKDY nie pri odkladani pokazeneho suboru bokom - tam je
-    `zdroj` jedina kopia dat.
+    `uprac_zdroj=True`: on failure it deletes `zdroj` (the caller's own
+    .tmp), so no forgotten temporary file is left next to the data; a
+    failure to delete is swallowed. NEVER when setting a broken file
+    aside - there `zdroj` is the only copy of the data.
     """
     try:
         _nahrad_s_pokusmi(zdroj, ciel)
@@ -325,7 +341,7 @@ def nahrad_subor(zdroj, ciel, uprac_zdroj=False):
 
 def _zapamataj_zlyhanie(kluc):
     teraz = _hodiny()
-    # stare zaznamy prec - slovnik ostane maly aj pri mnohych cieloch
+    # old records out - the dict stays small even with many targets
     for k, kedy in list(_zlyhane_ciele.items()):
         if teraz - kedy >= NAHRADA_ODDYCH_S:
             _zlyhane_ciele.pop(k, None)
@@ -333,8 +349,9 @@ def _zapamataj_zlyhanie(kluc):
 
 
 def _nahrad_s_pokusmi(zdroj, ciel):
-    # Do logu len meno suboru a kod chyby, nie text vynimky: v nom je cela
-    # cesta a cesta v %APPDATA% nesie meno uctu.
+    # Only the file name and the error code go to the log, not the
+    # exception text: it holds the whole path, and a path in %APPDATA%
+    # carries the account name.
     meno = os.path.basename(ciel)
     kluc = os.path.normcase(os.path.abspath(ciel))
     zlyhal = _zlyhane_ciele.get(kluc)
@@ -351,7 +368,7 @@ def _nahrad_s_pokusmi(zdroj, ciel):
                 pokus += 1
                 continue
             if zamok:
-                # aj pri jedinom pokuse bez cakania: kym pada, necaka sa
+                # even for the single no-wait try: no waiting while it fails
                 _zapamataj_zlyhanie(kluc)
             if pokus > 1:
                 _log.warning("nahrad_subor: %s sa nepodarilo nahradit ani na "

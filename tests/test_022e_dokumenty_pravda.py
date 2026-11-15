@@ -1,18 +1,20 @@
 # -*- coding: utf-8 -*-
-"""Kontrola pravdivosti dokumentov po davke 4 (0.2.2) - opravy skeptika.
+"""Truth check of the documents after batch 4 (0.3) - the skeptic's fixes.
 
-  * Riadok skratky v Nastaveniach povie obsadenu skratku uz OD STARTU (nie
-    az po volbe) a po vymene predvolenej skratky pri starte ukaze novu -
-    CHANGELOG, HOW-IT-WORKS aj SAFETY to slubuju ("the row says so").
-  * HOW-IT-WORKS / CHANGELOG: pravidlo ulozenia relacie je minuta A aspon
-    10 vzoriek (`hr_stats.je_ulozitelna`), nie "minuta tepu".
-  * Dotaznik pri ukonceni: dotknute odpovede uklada len DRUHE "Ukoncit"
-    (`_quit` pozna len dotaznik otvoreny pri zatvarani) - dokumenty to tak
-    aj hovoria.
-  * PRIVACY: "Zmazat historiu" maze aj pripraveny hlas a starsie logy.
-  * HOW-IT-WORKS: z adapterov sa pouziva meno, popis, typ a stav - nie MAC.
+  * The shortcut row in Settings reports a taken shortcut right FROM THE START
+    (not only after choosing) and after the default shortcut is swapped at
+    start it shows the new one - CHANGELOG, HOW-IT-WORKS and SAFETY all
+    promise it ("the row says so").
+  * HOW-IT-WORKS / CHANGELOG: the session save rule is a minute AND at least
+    10 samples (`hr_stats.je_ulozitelna`), not "a minute of heart rate".
+  * The questionnaire on quitting: touched answers are saved only by the
+    SECOND "Quit" (`_quit` knows only a questionnaire opened while closing) -
+    and the documents say so.
+  * PRIVACY: "Delete history" also deletes the prepared voice and older logs.
+  * HOW-IT-WORKS: from adapters the name, description, type and state are
+    used - not the MAC.
 
-Vsetko na atrapach a syntetickych datach.
+Everything on stubs and synthetic data.
 """
 import os
 import sys
@@ -36,7 +38,7 @@ def _read(meno):
 
 
 # --------------------------------------------------------------------------
-# Riadok skratky po starte
+# The shortcut row after start
 # --------------------------------------------------------------------------
 
 class _Popis:
@@ -63,7 +65,7 @@ class _Skratka:
         self.combo, self.registered = combo, False
 
     def start(self):
-        self.registered = self.combo != "ctrl+alt+z"       # Z "drzi iny program"
+        self.registered = self.combo != "ctrl+alt+z"       # Z: "another program holds it"
         return self.registered
 
     def stop(self):
@@ -71,8 +73,8 @@ class _Skratka:
 
 
 def _appka_s_riadkom(kolizia):
-    """Stav po `_build_ui`: riadok postaveny pre predvolenu skratku, este
-    pred `_vyber_skratku_pri_starte` a registraciou."""
+    """State after `_build_ui`: the row built for the default shortcut, still
+    before `_vyber_skratku_pri_starte` and registration."""
     a = app_mod.DandurfApp.__new__(app_mod.DandurfApp)
     a.snooze_hotkey = DEFAULT_SNOOZE_HOTKEY
     a.snooze_hotkey_chosen = False
@@ -123,7 +125,7 @@ def test_vymena_skratky_pri_starte_prepise_aj_ponuku(monkeypatch):
 
 def test_refresh_bez_riadku_nic_nerobi():
     a = app_mod.DandurfApp.__new__(app_mod.DandurfApp)
-    a._refresh_snooze_hotkey_row()          # ziadny riadok, ziadna chyba
+    a._refresh_snooze_hotkey_row()          # no row, no error
 
 
 def test_start_obnovi_riadok_az_po_registracii():
@@ -131,13 +133,13 @@ def test_start_obnovi_riadok_az_po_registracii():
     assert init.index("self._build_ui()") < init.index("self.start_snooze_hotkey()")
     assert init.index("self.start_snooze_hotkey()") < init.index(
         "self._refresh_snooze_hotkey_row()")
-    # a to, co dokumenty slubuju, plati
+    # and what the documents promise holds
     assert "If another program holds yours, the row says so." in _read("CHANGELOG.md")
     assert "od 0.3 to povie aj riadok v nastaveniach" in _read("SAFETY.md")
 
 
 # --------------------------------------------------------------------------
-# Kedy sa relacia ulozi
+# When a session is saved
 # --------------------------------------------------------------------------
 
 def test_pravidlo_ulozenia_relacie_v_dokumentoch_sedi_s_kodom():
@@ -145,7 +147,7 @@ def test_pravidlo_ulozenia_relacie_v_dokumentoch_sedi_s_kodom():
     assert hr_stats.je_ulozitelna(ok)
     assert not hr_stats.je_ulozitelna(dict(ok, samples=9))
     assert not hr_stats.je_ulozitelna(dict(ok, duration_s=59.0))
-    # 2 minuty s 30 vzorkami (menej nez minuta tepu) sa ULOZIA
+    # 2 minutes with 30 samples (less than a minute of heart rate) ARE SAVED
     assert hr_stats.je_ulozitelna({"duration_s": 120.0, "samples": 30})
     a = _read("docs/HOW-IT-WORKS.md")
     assert "A session of at least a minute with at least 10 heart-rate readings is saved" in a
@@ -153,19 +155,19 @@ def test_pravidlo_ulozenia_relacie_v_dokumentoch_sedi_s_kodom():
     c = _read("CHANGELOG.md")
     assert "session without even a minute of heart rate still isn't saved" not in c
     assert "(fewer than 10 readings) still isn't saved, but the log now says so" in c
-    # denník: len relacia od minuty s menej nez 10 vzorkami
+    # journal: only a session from a minute with fewer than 10 samples
     kod = zdroj_metody("_kratka_relacia_bez_tepu")
     assert "trvanie >= 60 and vzorky < 10" in kod
 
 
 # --------------------------------------------------------------------------
-# Dotaznik pri ukonceni
+# The questionnaire on quitting
 # --------------------------------------------------------------------------
 
 def test_dotknute_odpovede_uklada_len_druhe_ukoncenie():
     quit_kod = zdroj_metody("_quit")
     assert "_dotaznik_pri_zatvarani" in quit_kod
-    # dotaznik si `_quit` pamata LEN ked sa otvoril pri zatvarani
+    # `_quit` remembers the questionnaire ONLY when it was opened while closing
     otazka = zdroj_metody("_ask_session_context")
     assert otazka.index('getattr(self, "_zatvara_sa", False)') < otazka.index(
         "self._dotaznik_pri_zatvarani = dialog")
@@ -177,7 +179,7 @@ def test_dotknute_odpovede_uklada_len_druhe_ukoncenie():
 
 
 # --------------------------------------------------------------------------
-# PRIVACY: co zmaze "Zmazat historiu"
+# PRIVACY: what "Delete history" deletes
 # --------------------------------------------------------------------------
 
 def test_privacy_menuje_vsetko_co_zmazanie_historie_zmaze():
@@ -192,7 +194,7 @@ def test_privacy_menuje_vsetko_co_zmazanie_historie_zmaze():
 
 
 # --------------------------------------------------------------------------
-# HOW-IT-WORKS: co appka z adapterov pouziva
+# HOW-IT-WORKS: what the app uses from adapters
 # --------------------------------------------------------------------------
 
 def test_adaptery_len_meno_popis_typ_a_stav():

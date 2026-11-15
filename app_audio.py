@@ -1,29 +1,30 @@
-"""Zvuk a hlasy - cast hlavnej appky (DandurfApp z app.py).
+"""Sound and voices - part of the main app (DandurfApp from app.py).
 
-AudioMixin je mixin DandurfApp: app.py ho dedi a cely stav (motor TTS,
-hlasy, rychlost, hlasitost, cache Edge hlasok, sloty, prehravac) zije na
-DandurfApp. Tu su len metody, ktore s nim pracuju cez `self` - mixin nema
-__init__ ani vlastne atributy.
+AudioMixin is a DandurfApp mixin: app.py inherits it and the whole state
+(TTS engine, voices, rate, volume, Edge cue cache, slots, player) lives on
+DandurfApp. Only the methods that work with it through `self` are here - the
+mixin has no __init__ and no attributes of its own.
 
-Pat sekcii presunutych z app.py bez zmeny:
-  * SFX kniznica - priprava zabudovanych zvukov a pas s priebehom,
-  * hlasitost (master + vyvazenie SFX/hlas) - efektivna hlasitost SFX a
-    hlasu; sekcia nesie aj `_apply_diagnostics` (ktore sloty zapnut podla
-    diagnostiky z onboardingu), ktora v nej bola uz v app.py,
-  * hlasy - zoznamy hlasov SAPI / Edge, vyber motora, hlasu a rychlosti,
-  * predgenerovanie Edge hlasok - priprava hlasok do cache dopredu (len
-    tych, ktore v hre naozaj povie prirodzeny hlas; pocas pocuvania sa
-    odklada na po hre),
-  * rozhodovanie o SFX subore - ktory zvuk slot zahra a samotne prehratie
-    slotu (`_emit`, `_speak_text`, vlastna nahravka hlasu).
-Od 0.2.2 aj "Aktualizovat hlas" (`aktualizuj_hlas`) - novsi edge-tts z PyPI
-na klik, jadro je v `hlas_kniznica.py`.
+Five sections moved from app.py unchanged:
+  * SFX library - preparing the built-in sounds and the progress bar,
+  * volume (master + SFX/voice balance) - effective SFX and voice volume;
+    the section also carries `_apply_diagnostics` (which slots to switch on
+    based on the onboarding diagnostics), which was already in it in app.py,
+  * voices - SAPI / Edge voice lists, choosing the engine, voice and rate,
+  * Edge cue pregeneration - preparing cues into the cache ahead of time
+    (only those the natural voice will really say in game; while listening
+    it is postponed until after the game),
+  * SFX file decision - which sound a slot plays, and playing the slot
+    itself (`_emit`, `_speak_text`, the player's own voice recording).
+Since 0.3 also "Update voice" (`aktualizuj_hlas`) - a newer edge-tts from
+PyPI on click; the core is in `hlas_kniznica.py`.
 
-Pozor v testoch: `pregenerate`, `_prune_cache`, `_play_concurrent`,
-`_play_voice_file`, `_speak_text` a `aktualizuj_hlas` citaju `threading` z
-tohto modulu - nahrada celeho modulu `threading` na module app ich
-nezasiahne (treba `app_audio.threading`). Zmena atributu zdielaneho modulu
-(`app.threading.Thread`, `audio_engine.EDGE_AVAILABLE`) plati aj tu.
+Watch out in tests: `pregenerate`, `_prune_cache`, `_play_concurrent`,
+`_play_voice_file`, `_speak_text` and `aktualizuj_hlas` read `threading` from
+this module - replacing the whole `threading` module on the app module does
+not reach them (you need `app_audio.threading`). Changing an attribute of a
+shared module (`app.threading.Thread`, `audio_engine.EDGE_AVAILABLE`) applies
+here too.
 """
 
 import os
@@ -49,8 +50,8 @@ from settings_model import (DEFAULT_EDGE_VOICE, ENGINE_EDGE, ENGINE_SAPI,
 
 
 def _posledna_chyba_edge(cache):
-    """(druh, vynimka) posledneho zlyhaneho `ensure` v tomto vlakne alebo
-    None. Atrapy cache v testoch `posledna_chyba` nemaju."""
+    """(kind, exception) of the last failed `ensure` in this thread, or
+    None. Cache stubs in tests have no `posledna_chyba`."""
     zisti = getattr(cache, "posledna_chyba", None)
     if not callable(zisti):
         return None
@@ -61,12 +62,13 @@ def _posledna_chyba_edge(cache):
 
 
 def hlavna_chyba_edge(chyby):
-    """Z chyb jednej pripravy vyberie tu, o ktorej sa hracovi povie.
+    """Picks the error of one preparation that the player is told about.
 
-    Odmietnutie Microsoftom ma prednost (rada je ina: skus neskor / prepni
-    na Windows, a ked to trva, nova verzia Zanshinu - stary edge-tts
-    Microsoft odmieta), potom vypadok siete, potom ostatne. Bez jedinej znamej
-    chyby `(EDGE_CHYBA_INA, None)` - vseobecna veta, nie "internet"."""
+    A rejection by Microsoft takes precedence (the advice is different: try
+    later / switch to Windows, and if it lasts, a new Zanshin version -
+    Microsoft rejects the old edge-tts), then a network outage, then the
+    rest. Without a single known error `(EDGE_CHYBA_INA, None)` - a general
+    sentence, not "internet"."""
     druhy = [c for c in (chyby or ()) if c]
     for druh in (audio_engine.EDGE_CHYBA_ODMIETNUTE, audio_engine.EDGE_CHYBA_OFFLINE):
         for chyba in druhy:
@@ -75,16 +77,17 @@ def hlavna_chyba_edge(chyby):
     return druhy[0] if druhy else (audio_engine.EDGE_CHYBA_INA, None)
 
 
-# Pismeno disku nesmie nasledovat za pismenom/cislom: inak by "s:/" z
-# "wss://speech..." (odmietnutie Microsoftom, aiohttp) zmenilo URL sluzby
-# na "wsv1?..." - v denniku aj v app.log. "C:\", "\\?\C:\" a "file:///C:/"
-# sa orezu ako predtym.
+# The drive letter must not follow a letter/digit: otherwise "s:/" from
+# "wss://speech..." (Microsoft rejection, aiohttp) would turn the service URL
+# into "wsv1?..." - in the journal and in app.log. "C:\", "\\?\C:\" and
+# "file:///C:/" are trimmed as before.
 _CESTA_V_CHYBE = re.compile(r"(?:(?<![A-Za-z0-9])[A-Za-z]:|\\\\)[\\/][^'\"\n]*")
 
 
 def _kratka_chyba(exc):
-    """Chyba do vety v denniku - meno triedy, ked text chyba; najviac 120
-    znakov a bez celych ciest (v %APPDATA% je meno uctu, PRIVACY.md)."""
+    """Error for a sentence in the journal - the class name if there is no
+    text; at most 120 characters and no full paths (%APPDATA% contains the
+    account name, PRIVACY.md)."""
     if exc is None:
         return "?"
     text = str(exc).strip() or type(exc).__name__
@@ -94,14 +97,15 @@ def _kratka_chyba(exc):
 
 
 def _verzia_edge_tts():
-    """Verzia PRAVE POUZIVANEHO edge-tts do app.log ("?", ked sa neda zistit).
-    Stara verzia je najcastejsia pricina trvaleho odmietnutia: Microsoft od
-    novembra 2026 starsie edge-tts odmieta (HTTP 403, minimum je v
-    requirements.txt).
+    """Version of the edge-tts CURRENTLY IN USE for app.log ("?" when it cannot
+    be determined). An old version is the most common cause of a permanent
+    rejection: since November 2026 Microsoft rejects older edge-tts (HTTP
+    403, the minimum is in requirements.txt).
 
-    Po "Aktualizovat hlas" bezi stiahnuta kniznica (`audio_engine.EDGE_
-    STIAHNUTY`) a `importlib.metadata` by hovorilo o pribalenej - stiahnuty
-    balik dist-info nema. Inak je pouzivana prave ta pribalena."""
+    After "Update voice" the downloaded library runs (`audio_engine.EDGE_
+    STIAHNUTY`) and `importlib.metadata` would talk about the bundled one -
+    the downloaded package has no dist-info. Otherwise the one in use is
+    exactly the bundled one."""
     verzia = getattr(audio_engine, "EDGE_VERZIA", None)
     if verzia and getattr(audio_engine, "EDGE_STIAHNUTY", False):
         return "%s (stiahnuta)" % verzia
@@ -113,8 +117,8 @@ def _verzia_edge_tts():
 
 
 def _prepni_balenie(widget, ukaz, **pack_kw):
-    """Zabali (`pack(**pack_kw)`) alebo schova widget - len ked sa nieco
-    meni. Nikdy nevyhodi: stranka sa moze prave prestavovat."""
+    """Packs (`pack(**pack_kw)`) or hides the widget - only when something
+    changes. Never raises: the page may be rebuilding right now."""
     if widget is None:
         return
     try:
@@ -127,13 +131,15 @@ def _prepni_balenie(widget, ukaz, **pack_kw):
         pass
 
 
-# Vysledok "Aktualizovat hlas" (`hlas_kniznica.STAV_*`) -> (kluc stavu pod
-# Zdrojom hlasu, kluc riadku dennika, uspech, odkaz na nove vydanie).
-# Odkaz na oficialne vydania ide len tam, kde hlas opravi az novy Zanshin:
-# Microsoft odmieta aj najnovsi edge-tts, alebo ho tento Zanshin nevie pouzit.
-# "busy" (ina aktualizacia prave bezi) tu nie je - tlacidlo je pocas behu
-# vypnute, takze by prisiel len z cudzieho volania; dostane vseobecnu vetu.
-# "cancelled" ma vlastnu vetvu (`_aktualizacia_hlasu_hotova`).
+# Result of "Update voice" (`hlas_kniznica.STAV_*`) -> (status key under
+# Voice source, journal line key, success, link to the new release).
+# The link to the official releases goes only where only a new Zanshin fixes
+# the voice: Microsoft rejects even the newest edge-tts, or this Zanshin
+# cannot use it.
+# "busy" (another update is running right now) is not here - the button is
+# disabled while it runs, so it could only come from an outside call; it gets
+# the general sentence.
+# "cancelled" has its own branch (`_aktualizacia_hlasu_hotova`).
 _VYSLEDKY_AKTUALIZACIE = {
     hlas_kniznica.STAV_AKTUALNY: (
         "edge.update.up_to_date", "log.edge_update.up_to_date", True, False),
@@ -153,17 +159,17 @@ _VYSLEDKY_AKTUALIZACIE = {
 
 
 def stranka_zvuku():
-    """Kde je "Skusit znova" pripravy hlasu - tak, ako to hrac naozaj vidi:
-    stranka Nastavenia, karta Zvuk ("Nastavenia → Zvuk", 0.2.2 davka 4b).
-    Predtym `nav.zvuk` ("Zvuk / Audio") - to je len polozka palety Ctrl+K,
-    ziadna stranka sa tak nevola."""
+    """Where "Try again" of the voice preparation is - the way the player
+    really sees it: the Settings page, the Sound tab ("Settings → Sound",
+    0.3 batch 4b). Before, `nav.zvuk` ("Sound / Audio") - that is only a
+    Ctrl+K command palette item, no page is called that."""
     return f"{tr('nav.nastavenia')} → {tr('nav.nastavenia_tabs.zvuk')}"
 
 
 class AudioMixin:
-    """Zvuky, hlasy, priprava Edge hlasok a prehratie slotu (mixin DandurfApp)."""
+    """Sounds, voices, Edge cue preparation, slot playback (DandurfApp mixin)."""
 
-    # ---------- SFX kniznica ----------
+    # ---------- SFX library ----------
 
     def _ensure_sfx_assets(self):
         def progress(done, total):
@@ -171,8 +177,8 @@ class AudioMixin:
         sfx_assets.ensure_assets(log=self.log_threadsafe, progress=progress)
 
     def show_assets_progress(self):
-        """Maly nenapadny prúžok v hornej casti okna - len ked naozaj
-        chybaju SFX subory (napr. po precistení %APPDATA%)."""
+        """A small unobtrusive strip at the top of the window - only when SFX
+        files are really missing (e.g. after %APPDATA% was cleaned out)."""
         if self._assets_progress_frame is not None:
             return
         pal = self.pal
@@ -206,14 +212,14 @@ class AudioMixin:
             self._assets_progress_frame = None
             self._assets_progress_bar = None
 
-    # ---------- hlasitost (master + vyvazenie SFX/hlas) ----------
+    # ---------- volume (master + SFX/voice balance) ----------
 
     def _recompute_volumes(self):
-        """Master hlasitost + posuvnik Vyvazenie -> samostatna efektivna
-        hlasitost pre SFX a pre hlas (TTS), obe v rozsahu 0-100.
+        """Master volume + the Balance slider -> a separate effective
+        volume for SFX and for the voice (TTS), both in the range 0-100.
 
-        balance 50 = obe na plnej masterovej hlasitosti; 0 = len SFX
-        (hlas stiseny), 100 = len hlas (SFX stiseny)."""
+        balance 50 = both at the full master volume; 0 = SFX only
+        (voice muted), 100 = voice only (SFX muted)."""
         master = self.volume_value
         balance = self.balance_value
         sfx_mult = min(1.0, (100 - balance) / 50.0)
@@ -222,28 +228,28 @@ class AudioMixin:
         self.tts_volume = round(master * tts_mult)
 
     def _apply_diagnostics(self, settings, diagnostics):
-        """Diagnostika herneho tiena (Onboarding krok 2) rozhoduje, ktore
-        zo 4 uz pripravenych zakladnych slotov (data/klavesy/hlasky/zvuky
-        su vzdy rovnake) su po onboardingu ZAPNUTE. Zaskrtnuty symptom ->
-        prislusny slot ostava enabled=True (predvolene z DEFAULT_SLOT);
-        nezaskrtnuty -> slot sa vypne (enabled=False), ale zostava v
-        zozname pripraveny - pouzivatel si ho kedykolvek sam zapne."""
+        """The gaming shadow diagnostics (Onboarding step 2) decides which
+        of the 4 already prepared basic slots (data/keys/cues/sounds are
+        always the same) are ON after onboarding. Checked symptom -> the
+        matching slot stays enabled=True (default from DEFAULT_SLOT);
+        unchecked -> the slot is switched off (enabled=False), but stays
+        prepared in the list - the user can switch it on any time."""
         if not diagnostics:
             return
         try:
             slots = settings["profiles"][0]["slots"]
         except (KeyError, IndexError):
             return
-        # diagnostika 0 = zovreta ruka/trasenie pri mierení -> slot 2
-        # (Release), 1 = zatate zuby/celust -> slot 1 (Jaw), 2 =
-        # predklananie/nestabilita -> slot 0 (Grounded), 3 = zadrziavanie
-        # dychu/panika -> slot 3 (Breathe).
+        # diagnostics 0 = clenched hand/trembling when aiming -> slot 2
+        # (Release), 1 = clenched teeth/jaw -> slot 1 (Jaw), 2 =
+        # leaning forward/instability -> slot 0 (Grounded), 3 = holding
+        # breath/panic -> slot 3 (Breathe).
         mapping = {0: 2, 1: 1, 2: 0, 3: 3}
         for diag_index, slot_index in mapping.items():
             if slot_index < len(slots):
                 slots[slot_index]["enabled"] = bool(diagnostics.get(diag_index, True))
 
-    # ---------- hlasy ----------
+    # ---------- voices ----------
 
     def on_voices_ready(self, items):
         self.ui_call(lambda: self._apply_sapi_voices(items))
@@ -259,8 +265,8 @@ class AudioMixin:
         self.refresh_slot_summaries()
 
     def _load_edge_voices(self, pregen=True):
-        """Naplni vyber Edge hlasov z pevneho zoznamu - bez siete, takze
-        priamo na Tk vlakne (predtym vlakno + stiahnutie katalogu)."""
+        """Fills the Edge voice picker from a fixed list - no network, so
+        right on the Tk thread (before: a thread + catalogue download)."""
         self._apply_edge_voices(EdgeTTSCache.list_voices(), pregen=pregen)
 
     def _apply_edge_voices(self, items, pregen=True):
@@ -309,8 +315,9 @@ class AudioMixin:
         current = (self.edge_voice_id if self.engine == ENGINE_EDGE
                    else self.saved_voice_id)
         names = list(mapping.keys())
-        # Nove hlasy = nova sirka (0.2.2 davka 4b): rozbalovacka sa stavia s
-        # "Nacitavam..." a dlhe meno hlasu Windows sa v nej orezalo.
+        # New voices = new width (0.3 batch 4b): the dropdown is built with
+        # "Nacitavam..." (Loading...) and a long Windows voice name got cut off
+        # in it.
         ui_kit.nastav_hodnoty_menu(self.voice_box, names or [tr("voice.none")])
         label = next((n for n, vid in mapping.items() if vid == current), None)
         if label is None and names:
@@ -324,10 +331,10 @@ class AudioMixin:
                 self.worker.set_voice(self.saved_voice_id)
         elif not names:
             self.voice_var.set(tr("voice.loading"))
-        # "Aktualizovat hlas" patri k prirodzenemu hlasu: tato metoda sa vola
-        # po kazdej zmene motora (prepinac, "Skusit znova" pri chybajucom
-        # edge-tts cez `_apply_edge_voices`, novy uvod), takze riadok
-        # s tlacidlom sa ukaze alebo schova presne vtedy.
+        # "Update voice" belongs to the natural voice: this method is called
+        # after every engine change (the switch, "Try again" for a missing
+        # edge-tts via `_apply_edge_voices`, a new introduction), so the row
+        # with the button is shown or hidden exactly then.
         self._obnov_aktualizaciu_hlasu()
 
     def on_engine_change(self):
@@ -337,7 +344,7 @@ class AudioMixin:
             self.engine_var.set(engine_labels()[ENGINE_SAPI])
             self.save_settings()
             self.refresh_edge_banner()
-            # okno appky, nie systemove (0.2.2, davka 4)
+            # the app's window, not the system one (0.3, batch 4)
             ui_kit.notify(getattr(self, "root", None), getattr(self, "pal", None),
                           APP_NAME, tr("msgbox.edge_missing_body"), kind="warning")
             return
@@ -350,14 +357,16 @@ class AudioMixin:
         self.save_settings()
         self.log(tr("log.engine_switched", engine=engine_labels()[engine]))
         if engine == ENGINE_EDGE:
-            # Poistka: vyber Edge hlasov sa plni pri starte (bez siete); keby
-            # bol prazdny, naplni sa teraz - inak by bol combobox prazdny.
+            # Safety net: the Edge voice picker is filled at start (no
+            # network); if it were empty, it is filled now - otherwise the
+            # combobox would be empty.
             if not getattr(self, "edge_voice_map", None):
                 self._load_edge_voices(pregen=False)
             self.pregenerate()
         else:
-            # Kto prepol na hlas z Windows, nechce nic posielat Microsoftu -
-            # ani zvysok pripravy, ktora prave bezi. Doteraz dobehla cela.
+            # Whoever switched to the Windows voice wants nothing sent to
+            # Microsoft - not even the rest of a preparation running right now.
+            # Until now it ran to the end.
             self._zrus_rozbehnutu_pripravu()
             self.set_edge_status("")
 
@@ -389,25 +398,26 @@ class AudioMixin:
         if self.engine == ENGINE_EDGE:
             self.schedule_pregenerate()
 
-    # ---------- predgenerovanie Edge hlasok ----------
+    # ---------- Edge cue pregeneration ----------
 
     def set_edge_status(self, text, color=None):
-        # "Skusit znova" patri len k zlyhanej priprave - kazdy iny stav (aj
-        # prazdny) ho schova; `_edge_priprava_zlyhala` ho ukaze az po tomto.
-        # Rovnako odkaz na nove vydanie Zanshinu - patri len k vysledku
-        # "Aktualizovat hlas", ktory ho ukaze az po tomto.
+        # "Try again" belongs only to a failed preparation - every other state
+        # (even an empty one) hides it; `_edge_priprava_zlyhala` shows it only
+        # after this. Likewise the link to a new Zanshin release - it belongs
+        # only to an "Update voice" result, which shows it only after this.
         self._ukaz_skusit_hlas_znova(False)
         _prepni_balenie(getattr(self, "edge_releases_btn", None), False)
         if self.edge_status_label is not None:
             try:
                 self.edge_status_label.configure(text=text,
                                                  text_color=color or self.pal["text_dim"])
-                # Stitok je v riadku "Zdroj hlasu" (0.2.2 davka 4b) a vidno ho,
-                # len ked nieco hovori - prazdny by bol riadok medzery.
+                # The label sits in the "Voice source" row (0.3 batch 4b) and
+                # is visible only when it says something - empty, it would be
+                # just a blank row.
                 zabaleny = bool(self.edge_status_label.winfo_manager())
                 if text and not zabaleny:
-                    # Stav ide NAD riadok "Aktualizovat hlas", nie pod neho -
-                    # veta hovori o tlacidlach "nizsie".
+                    # The status goes ABOVE the "Update voice" row, not under
+                    # it - the sentence talks about buttons "below".
                     rad = getattr(self, "edge_update_row", None)
                     if rad is not None and rad.winfo_manager():
                         self.edge_status_label.pack(fill="x", pady=(6, 0), before=rad)
@@ -419,15 +429,17 @@ class AudioMixin:
                 pass
 
     def _hlasky_hovoria(self):
-        """Povie hlaska v hre vobec nieco hlasom (TTS)? Len v style "hlas"
-        a mimo sveta Praca - tam ide len obrazom (`rebrik.vrchol`). Styl
-        "zvuk" hra zvuk slotu bez slov a "obraz" len obrazok.
+        """Does a cue in game say anything with the voice (TTS) at all? Only in
+        the "hlas" style and outside the Work world - there it goes only as a
+        picture (`rebrik.vrchol`). The "zvuk" style plays the slot sound
+        without words and "obraz" only a picture.
 
-        POCAS OTVORENEJ RELACIE plati SVET RELACIE (`_session_world`, 0.2.2),
-        nie prave zobrazeny: prepnutie Hra <-> Praca uprostred sledovania
-        meni len pohlad (historia, vzhlad), nie relaciu a jej pripomienky -
-        to iste pravidlo ako hlas v `_open_hr_session` a zvuky v
-        `resolve_sfx_path`. Novy svet plati od dalsej relacie."""
+        DURING AN OPEN SESSION THE SESSION'S WORLD applies (`_session_world`,
+        0.3), not the one currently shown: switching Play <-> Work in the
+        middle of watching changes only the view (history, appearance), not
+        the session and its cues - the same rule as the voice in
+        `_open_hr_session` and the sounds in `resolve_sfx_path`. The new
+        world applies from the next session."""
         styl = rebrik.normalize_cue_style(getattr(self, "cue_style", None))
         svet = getattr(self, "world", None)
         if getattr(self, "_hr_session_open", False):
@@ -436,21 +448,23 @@ class AudioMixin:
                 and rebrik.vrchol(svet, styl) == rebrik.HLAS)
 
     def _slot_na_pripravu(self, slot):
-        """Moze text tejto hlasky v hre naozaj povedat prirodzeny hlas?
+        """Can the natural voice really say the text of this cue in game?
 
-        Len vtedy sa smie poslat Microsoftu na pripravu. Doteraz sa posielali
-        texty vsetkych slotov s hlasom, aj tych, ktore Edge nikdy nevyslovi:
-          * vypnutej hlasky - `_dalsi_cue_slot` ju v hre preskakuje,
-          * hlasky s vypnutym obrazkom v hre - `_dalsi_cue_slot` ju
-            preskakuje tiez (ta ista podmienka, `_ma_obrazok_v_hre`); jej
-            text isiel Microsoftu, hoci ho v hre nikdy nepovie,
-          * hlasky s vlastnou nahravkou - `_speak_text` prehra nahravku,
-            nie TTS (ta ista podmienka ako tam, `_slot_voice_clip`),
-          * slotu navyse z 0.1 (index 4+, "+ Pridat spustac") - nema
-            kategoriu ani obrazok a appka ho sama nespusta
-            (`settings_model.je_kategoria`).
-        Ked sa hlaska alebo jej obrazok neskor zapne, alebo sa jej zmaze
-        nahravka, pripravu znova spusti ta zmena (`schedule_pregenerate`).
+        Only then may it be sent to Microsoft for preparation. Until now the
+        texts of all slots with a voice were sent, even those Edge never says:
+          * of a switched-off cue - `_dalsi_cue_slot` skips it in game,
+          * of a cue with its in-game picture switched off - `_dalsi_cue_slot`
+            skips it too (the same condition, `_ma_obrazok_v_hre`); its
+            text went to Microsoft even though it never says it in game,
+          * of a cue with its own recording - `_speak_text` plays the
+            recording, not TTS (the same condition as there,
+            `_slot_voice_clip`),
+          * of an extra slot from 0.1 (index 4+, "+ Pridat spustac" (+ Add
+            trigger)) - it has no category or picture and the app does not
+            fire it by itself (`settings_model.je_kategoria`).
+        When the cue or its picture is switched on later, or its recording
+        is deleted, that change starts the preparation again
+        (`schedule_pregenerate`).
         """
         return bool(
             je_kategoria(slot.index)
@@ -461,12 +475,12 @@ class AudioMixin:
             and not self._slot_voice_clip(slot))
 
     def pregen_jobs(self):
-        """[(text, hlas)] pre hlasky, ktore v hre povie prirodzeny hlas
-        (`_slot_na_pripravu`) - respektuje hlas kazdeho slotu.
+        """[(text, voice)] for the cues the natural voice says in game
+        (`_slot_na_pripravu`) - respects each slot's voice.
 
-        Prazdne, ked hlasky v hre nehovoria (`_hlasky_hovoria`): hracovi,
-        ktory zvolil len obrazok alebo zvuk bez slov, alebo je vo svete
-        Praca, by sa inak texty hlasok posielali do Microsoftu zbytocne.
+        Empty when cues do not speak in game (`_hlasky_hovoria`): for a player
+        who chose only a picture or a sound without words, or is in the Work
+        world, the cue texts would otherwise be sent to Microsoft for nothing.
         """
         if not self._hlasky_hovoria():
             return []
@@ -481,22 +495,23 @@ class AudioMixin:
         return jobs
 
     def _zrus_rozbehnutu_pripravu(self):
-        """Zvysok rozbehnutej pripravy uz na siet nepojde.
+        """The rest of a running preparation will no longer go to the network.
 
-        Vlakno pripravy (`work` v `pregenerate`) sa na svoje `seq` pyta pred
-        kazdou dalsou hlaskou aj tesne pred odoslanim (`abort` po ziskani
-        zamku cache). Hlaska, ktora uz leti, dobehne - dalsia sa nezacne.
-        Rovnako ako ked sa zapne pocuvanie.
+        The preparation thread (`work` in `pregenerate`) checks its `seq`
+        before each next cue and also right before sending (`abort` after
+        getting the cache lock). A cue already in flight finishes - the next
+        one does not start. The same as when listening is switched on.
         """
         self._pregen_seq += 1
 
     def schedule_pregenerate(self, delay_ms=700):
-        # Kazda zmena, ktora pripravu planuje (hlaska vypnuta, styl bez slov,
-        # svet Praca, iny text/hlas/rychlost...), meni aj to, co sa smie
-        # poslat. Stara priprava preto konci HNED, nie az po `delay_ms` -
-        # za ten cas by mohla zacat posielat hlasku, ktora uz nezaznie.
-        # Nova priprava si po odklade zisti, co este chyba (hotove hlasky
-        # su v cache a na siet nejdu).
+        # Every change that schedules a preparation (cue switched off, style
+        # without words, the Work world, another text/voice/rate...) also
+        # changes what may be sent. So the old preparation ends RIGHT AWAY, not
+        # only after `delay_ms` - in that time it could start sending a cue
+        # that will no longer be heard. After the delay the new preparation
+        # finds out what is still missing (finished cues are in the cache and
+        # do not go to the network).
         self._zrus_rozbehnutu_pripravu()
         if self.engine != ENGINE_EDGE:
             return
@@ -509,32 +524,36 @@ class AudioMixin:
 
     def pregenerate(self, force=False):
         self._pregen_job = None
-        # Kazde volanie zacina odznova - aj ked vyjde, ze netreba nic (iny
-        # motor, styl bez slov, Praca, vsetky hlasky vypnute). Doteraz sa
-        # `seq` zvysoval az pri neprazdnom zozname, takze priprava rozbehnuta
-        # predtym dobehla cela, hoci jej hlasky uz nemali zazniet.
+        # Every call starts over - even when it turns out nothing is needed
+        # (another engine, style without words, Work, all cues switched off).
+        # Until now `seq` was raised only for a non-empty list, so a
+        # preparation started earlier ran to the end, even though its cues
+        # were no longer meant to be heard.
         self._zrus_rozbehnutu_pripravu()
         seq = self._pregen_seq
         if self.engine != ENGINE_EDGE or not audio_engine.EDGE_AVAILABLE:
             return
         if getattr(self, "_aktualizacia_hlasu_bezi", False):
-            # Kym bezi "Aktualizovat hlas", priprava caka: hlasky by isli
-            # Microsoftu kniznicou, ktoru aktualizacia prave vymiena, a stav
-            # pripravy by prepisal stav aktualizacie. Spusti ju az jej vysledok
-            # (`_aktualizacia_hlasu_hotova`), ked sa hlas podaril.
+            # While "Update voice" runs, the preparation waits: cues would go
+            # to Microsoft through the library the update is replacing right
+            # now, and the preparation status would overwrite the update
+            # status. Only its result (`_aktualizacia_hlasu_hotova`) starts it,
+            # once the voice update succeeded.
             self._pregen_po_aktualizacii = True
-            # Stav ostava "aktualizujem hlas" - aj ked ho medzitym zmazalo
-            # prepnutie na hlas z Windows a spat (`on_engine_change` vola
-            # potom prave toto); inak by bolo tlacidlo vypnute bez slova.
+            # The status stays "updating the voice" - even if switching to
+            # the Windows voice and back erased it in the meantime
+            # (`on_engine_change` then calls exactly this); otherwise the
+            # button would be disabled without a word.
             self.set_edge_status(tr("edge.update.running"), self.pal["warn"])
             return
         rate = self.rate_value
         jobs = self.pregen_jobs()
         if not jobs:
-            # Relacia z Prace, hrac medzitym prepol na Hru (0.2.2): kym bezi,
-            # plati jej svet a hlasky mlcia (`_hlasky_hovoria`) - lenze dalsia
-            # relacia v Hre uz hovorit bude. Pripravi sa po sledovani, tym
-            # istym odkladom ako hlaska, ktora v hre chybala.
+            # A session from Work, the player switched to Play meanwhile (0.3):
+            # while it runs, its world applies and cues stay silent
+            # (`_hlasky_hovoria`) - but the next session in Play will speak. It
+            # is prepared after watching, with the same delay as a cue that was
+            # missing in game.
             if (getattr(self, "listening", False)
                     and getattr(self, "_hr_session_open", False)
                     and getattr(self, "_session_world", None) != getattr(self, "world", None)):
@@ -548,15 +567,17 @@ class AudioMixin:
             return
 
         if getattr(self, "listening", False):
-            # POCAS POCUVANIA SA NA MICROSOFT NECHODI - ani kvoli priprave.
-            # Auto-profil prepne profil hry pri jej starte (`_handle_game_found`
-            # -> `switch_profile` -> `schedule_pregenerate`) a pocuvanie sa
-            # zapne hned za tym, takze priprava by inak isla na siet presne
-            # vtedy, ked sa hra nacitava. Rovnako rucne prepnutie profilu alebo
-            # zmena hlasu uprostred hry. Priprava sa odlozi a spusti ju az
-            # `stop_listening` (`_dopriprav_hlasky_po_hre`) - ten isty
-            # mechanizmus ako pre hlasku, ktora v hre chybala (`_speak_text`).
-            # `_pregen_seq` vyssie uz zastavil pripadnu rozbehnutu pripravu.
+            # WHILE LISTENING NOTHING GOES TO MICROSOFT - not even to prepare.
+            # Auto-profile switches to the game's profile when the game starts
+            # (`_handle_game_found` -> `switch_profile` ->
+            # `schedule_pregenerate`) and listening is switched on right after,
+            # so the preparation would otherwise hit the network exactly while
+            # the game is loading. The same goes for a manual profile switch or
+            # a voice change mid-game. The preparation is postponed, and it is
+            # started only by `stop_listening` (`_dopriprav_hlasky_po_hre`) -
+            # the same mechanism as for a cue that was missing in game
+            # (`_speak_text`). `_pregen_seq` above has already stopped any
+            # running preparation.
             self._pregen_po_hre = True
             self.set_edge_status(tr("edge.after_game"), self.pal["text_dim"])
             return
@@ -565,20 +586,21 @@ class AudioMixin:
 
         def work():
             ok = 0
-            chyby = []          # (druh, vynimka) zlyhanych hlasok (0.2.2)
+            chyby = []          # (kind, exception) of failed cues (0.3)
             for text, voice in jobs:
                 if seq != self._pregen_seq:
                     return
                 if getattr(self, "listening", False):
-                    # Pocuvanie sa zaplo uprostred pripravy: dalsia hlaska uz
-                    # na siet nejde. O zvysku rozhodne `pregenerate` na
-                    # GUI vlakne - pocas pocuvania ho odlozi na po hre.
+                    # Listening was switched on mid-preparation: the next cue
+                    # no longer goes to the network. `pregenerate` on the GUI
+                    # thread decides about the rest - while listening it
+                    # postpones it until after the game.
                     self.ui_call(self.pregenerate)
                     return
-                # Kontrola vyssie nestaci: `ensure` moze cakat na zamku cache,
-                # kym ine (starsie) vlakno pripravy dokonci svoju hlasku - a
-                # medzitym sa moze zapnut pocuvanie. `abort` sa preto pyta
-                # znova az po ziskani zamku, tesne pred odoslanim.
+                # The check above is not enough: `ensure` may wait on the cache
+                # lock while another (older) preparation thread finishes its
+                # cue - and listening may be switched on meanwhile. So `abort`
+                # checks again only once it has the lock, just before sending.
                 if self.edge_cache.ensure(
                         text, voice, rate,
                         abort=lambda: (seq != self._pregen_seq
@@ -592,9 +614,10 @@ class AudioMixin:
                 return
             total = len(jobs)
             if ok < total and getattr(self, "listening", False):
-                # Posledna hlaska sa vzdala na zamku, lebo sa zaplo pocuvanie
-                # (alebo zlyhala a hra uz bezi) - nie je to chyba pripravy,
-                # zvysok odlozi `pregenerate` na po hre.
+                # The last cue gave up on the lock because listening was
+                # switched on (or it failed and the game is already running) -
+                # that is not a preparation error; `pregenerate` postpones the
+                # rest until after the game.
                 self.ui_call(self.pregenerate)
                 return
             if ok == total:
@@ -609,25 +632,28 @@ class AudioMixin:
 
         threading.Thread(target=work, daemon=True).start()
 
-    # ---------- zlyhana priprava prirodzeneho hlasu (0.2.2) ----------
+    # ---------- failed natural voice preparation (0.3) ----------
 
     def _edge_priprava_zlyhala(self, druh, ok, total, exc=None):
-        """Cast hlasok nema prirodzeny hlas. Stav pod Zdrojom hlasu a jeden
-        riadok do dennika POVEDIA PRECO (`audio_engine.druh_chyby_edge`) a ako
-        to skusit znova - doteraz vzdy "skontroluj internet", aj ked Microsoft
-        poziadavku len odmietol. Pod stavom sa ukaze "Skusit znova".
+        """Some cues have no natural voice. The status under Voice source and
+        one journal line SAY WHY (`audio_engine.druh_chyby_edge`) and how to
+        try again - until now always "check your internet connection", even
+        when Microsoft had only rejected the request. "Try again" is shown
+        under the status.
 
-        Na siet sa ani teraz nechodi pocas sledovania: tlacidlo aj Ctrl+K
-        volaju `pregenerate`, ktore ho vtedy odlozi na po hre (PRIVACY.md).
-        Riadok do dennika ide raz za druh chyby - kym sa priprava nepodari,
-        dalsie neuspesne pokusy dennik nezaplnia. Rovnako raz ide riadok do
-        app.log (dennik v okne sa po restarte strati): druh, kratka chyba bez
-        ciest (`_kratka_chyba`) a verzia edge-tts - stara verzia je pri
-        odmietnuti najcastejsia pricina."""
+        Even now nothing goes to the network while watching: both the button
+        and Ctrl+K call `pregenerate`, which then postpones it until after
+        the game (PRIVACY.md). The journal line goes once per error kind -
+        until the preparation succeeds, further failed attempts do not fill
+        the journal. Likewise one line goes to app.log once (the journal in
+        the window is lost after a restart): the kind, a short error without
+        paths (`_kratka_chyba`) and the edge-tts version - an old version is
+        the most common cause of a rejection."""
         kluc_stavu = {audio_engine.EDGE_CHYBA_OFFLINE: "edge.partial",
                       audio_engine.EDGE_CHYBA_ODMIETNUTE: "edge.partial_refused"}
-        # `danger_text`, nie `danger`: veta je drobny text (ui 10) a nesie
-        # navod - `danger` ma na `surface` len ~3,7:1 (pravidlo v theme.py).
+        # `danger_text`, not `danger`: the sentence is small text (ui 10) and
+        # carries instructions - `danger` has only ~3,7:1 on `surface` (rule in
+        # theme.py).
         self.set_edge_status(tr(kluc_stavu.get(druh, "edge.partial_other"),
                                 ok=ok, total=total),
                              self.pal.get("danger_text", self.pal["danger"]))
@@ -645,7 +671,7 @@ class AudioMixin:
                         "edge-tts %s: %s", druh, ok, total, _verzia_edge_tts(), kratka)
 
     def _ukaz_skusit_hlas_znova(self, ukaz):
-        """Tlacidlo "Skusit znova" pod stavom pripravy hlasu (Nastavenia → Zvuk)."""
+        """The "Try again" button under the voice-prep status (Settings → Sound)."""
         tlacidlo = getattr(self, "edge_retry_btn", None)
         stav = getattr(self, "edge_status_label", None)
         if tlacidlo is None:
@@ -656,36 +682,39 @@ class AudioMixin:
                 if stav is not None and stav.winfo_manager():
                     tlacidlo.pack(anchor="w", pady=(6, 0), after=stav)
                 elif rad is not None and rad.winfo_manager():
-                    # bez stavu aspon nad riadok "Aktualizovat hlas"
+                    # without a status at least above the "Update voice" row
                     tlacidlo.pack(anchor="w", pady=(6, 0), before=rad)
                 else:
                     tlacidlo.pack(anchor="w", pady=(6, 0))
             elif not ukaz and tlacidlo.winfo_manager():
                 tlacidlo.pack_forget()
         except Exception:
-            pass            # stranka sa prave prestavuje
+            pass            # the page is being rebuilt right now
 
     def skus_hlas_znova(self):
-        """Klik na "Skusit znova": ta ista priprava ako Ctrl+K -> "Pripravit
-        hlas pripomienok". Pocas sledovania sa na siet nejde - `pregenerate`
-        to odlozi na po hre a povie to v stave."""
+        """Click on "Try again": the same preparation as Ctrl+K -> "Prepare
+        the cue voice". While watching nothing goes to the network -
+        `pregenerate` postpones it until after the game and says so in the
+        status."""
         self._ukaz_skusit_hlas_znova(False)
         self.pregenerate(force=True)
 
-    # ---------- "Aktualizovat hlas" na klik (0.2.2) ----------
+    # ---------- "Update voice" on click (0.3) ----------
     #
-    # Microsoft v novembri 2026 odmietol edge-tts 7.2.8 a opravou bola zmena
-    # KODU kniznice - vydany Zanshin sa datami opravit neda. Rozhodnutie
-    # autora (15. 11. 2026): hrac si novsi edge-tts stiahne sam, kym nevyjde
-    # novy Zanshin. Pravidla (PRIVACY.md, SAFETY.md): len na klik, nikdy samo
-    # (ani pri starte, ani pri prepnuti motora) a nikdy pocas sledovania.
-    # Siet, overenie, skusobne slovo aj vymenu modulu robi `hlas_kniznica.
-    # aktualizuj` v pomocnom vlakne; tu je len tlacidlo, stav a dennik.
+    # In November 2026 Microsoft rejected edge-tts 7.2.8, and the fix was a
+    # change to the library's CODE - a released Zanshin cannot be fixed with
+    # data. The author's decision (15. 11. 2026): the player downloads a newer
+    # edge-tts themselves until a new Zanshin comes out. Rules (PRIVACY.md,
+    # SAFETY.md): only on click, never by itself (not at start, not on an
+    # engine switch) and never while watching.
+    # The network, verification, test word and module swap are all done by
+    # `hlas_kniznica.aktualizuj` in a helper thread; here there is only the
+    # button, the status and the journal.
 
     def _obnov_aktualizaciu_hlasu(self):
-        """Riadok "Aktualizovat hlas" pod Zdrojom hlasu: vidno ho len pri
-        prirodzenom hlase (hlas z Windows nic neposiela, ani skusobne slovo)
-        a kym aktualizacia bezi, tlacidlo je vypnute."""
+        """The "Update voice" row under Voice source: visible only with the
+        natural voice (the Windows voice sends nothing, not even a test word),
+        and while the update runs, the button is disabled."""
         rad = getattr(self, "edge_update_row", None)
         if rad is None:
             return
@@ -700,37 +729,39 @@ class AudioMixin:
                 pass
 
     def _ukaz_vydania_zanshinu(self, ukaz):
-        """Odkaz na oficialne vydania vedla "Aktualizovat hlas" - len pri
-        vysledku, ktory opravi az novy Zanshin (`_VYSLEDKY_AKTUALIZACIE`).
-        Kazdy dalsi stav ho schova (`set_edge_status`)."""
+        """Link to the official releases next to "Update voice" - only with a
+        result that only a new Zanshin fixes (`_VYSLEDKY_AKTUALIZACIE`).
+        Every other status hides it (`set_edge_status`)."""
         _prepni_balenie(getattr(self, "edge_releases_btn", None), ukaz,
                         side="left", padx=(8, 0))
 
     def otvor_vydania_zanshinu(self):
-        """Klik na odkaz: oficialna stranka vydani Zanshinu v predvolenom
-        prehliadaci - ten isty mechanizmus ako odkazy v O appke a v
-        Sprievodcovi (`webbrowser.open`). Appka sama nic nestahuje."""
+        """Click on the link: the official Zanshin releases page in the default
+        browser - the same mechanism as the links in About and in the
+        Guide (`webbrowser.open`). The app itself downloads nothing."""
         try:
             webbrowser.open(hlas_kniznica.RELEASES_URL)
         except Exception:
             app_log.debug("stranku vydani sa nepodarilo otvorit", exc_info=True)
 
     def aktualizuj_hlas(self):
-        """Klik na "Aktualizovat hlas" (Nastavenia → Zvuk alebo Ctrl+K).
+        """Click on "Update voice" (Settings → Sound or Ctrl+K).
 
-        Pocas sledovania sa na siet NEJDE ani na klik - stav povie, ze to
-        pojde po sledovani (ako `edge.after_game`), a nic sa neodklada:
-        aktualizacia nikdy nebezi sama. Inak vypne tlacidlo, zastavi
-        rozbehnutu pripravu (dalsia hlaska by isla kniznicou, ktora sa prave
-        meni) a spusti `hlas_kniznica.aktualizuj` v pomocnom vlakne. Vysledok
-        ide na GUI vlakno cez `ui_call` - z vlakna sa na Tk nesiaha.
+        While watching, it does NOT go to the network even on click - the
+        status says it will go after watching (like `edge.after_game`), and
+        nothing is postponed: the update never runs by itself. Otherwise it
+        disables the button, stops a running preparation (the next cue would
+        go through the library that is being changed right now) and starts
+        `hlas_kniznica.aktualizuj` in a helper thread. The result goes to the
+        GUI thread via `ui_call` - the thread does not touch Tk.
 
-        `abort` sa pyta pred kazdym krokom, ktory ide na siet: zaplo sa
-        sledovanie alebo hrac prepol na hlas z Windows -> "cancelled"."""
+        `abort` is checked before every step that goes to the network:
+        watching was switched on or the player switched to the Windows voice
+        -> "cancelled"."""
         if getattr(self, "_aktualizacia_hlasu_bezi", False):
-            return              # tlacidlo je vypnute; poistka pre Ctrl+K
+            return              # the button is disabled; safety net for Ctrl+K
         if getattr(self, "engine", None) != ENGINE_EDGE:
-            return              # hlas z Windows nic neposiela
+            return              # the Windows voice sends nothing
         if getattr(self, "listening", False):
             self.set_edge_status(tr("edge.update.after_watching"), self.pal["text_dim"])
             return
@@ -748,8 +779,8 @@ class AudioMixin:
         def work():
             try:
                 vysledok = hlas_kniznica.aktualizuj(cache=cache, abort=zrus)
-            except Exception as exc:    # `aktualizuj` nevyhadzuje - poistka,
-                # aby tlacidlo neostalo navzdy vypnute
+            except Exception as exc:    # `aktualizuj` does not raise - safety net,
+                # so the button does not stay disabled forever
                 vysledok = hlas_kniznica.Vysledok(
                     hlas_kniznica.STAV_CHYBA, dovod=type(exc).__name__)
             self.ui_call(lambda: self._aktualizacia_hlasu_hotova(vysledok))
@@ -757,24 +788,27 @@ class AudioMixin:
         threading.Thread(target=work, daemon=True).start()
 
     def _aktualizacia_hlasu_hotova(self, vysledok):
-        """Vysledok "Aktualizovat hlas" na GUI vlakne: stav pod Zdrojom hlasu,
-        jeden kratky riadok do dennika a pri uspechu priprava hlasok, ktorym
-        hlas chyba. Technicky dovod (`vysledok.dovod`) uz zapisalo jadro do
-        app.log - hracovi idu len vety z i18n podla stavu."""
+        """Result of "Update voice" on the GUI thread: the status under Voice
+        source, one short journal line and, on success, preparing the cues
+        that lack the voice. The technical reason (`vysledok.dovod`) has
+        already been written by the core to app.log - the player only gets
+        the i18n sentences by status."""
         self._aktualizacia_hlasu_bezi = False
         po_zmene = getattr(self, "_pregen_po_aktualizacii", False)
         self._pregen_po_aktualizacii = False
         self._obnov_aktualizaciu_hlasu()
         stav = getattr(vysledok, "stav", hlas_kniznica.STAV_CHYBA)
-        # Hlas z Windows stav pod Zdrojom hlasu nema (`on_engine_change` ho
-        # zmaze a `pregenerate` pri nom nic nehovori). Hrac mohol prepnut
-        # uprostred aktualizacie - vysledok, ktory pride potom, ide len do
-        # dennika, inak by pod hlasom z Windows visela veta o prirodzenom.
+        # The Windows voice has no status under Voice source
+        # (`on_engine_change` erases it and `pregenerate` says nothing with
+        # it). The player could switch in the middle of an update - a result
+        # that arrives after that goes only to the journal, otherwise a
+        # sentence about the natural voice would hang under the Windows voice.
         prirodzeny = getattr(self, "engine", None) == ENGINE_EDGE
         if stav == hlas_kniznica.STAV_ZRUSENY:
-            # Zaplo sa sledovanie (alebo hlas z Windows) - nic sa nezmenilo.
-            # Veta "az po sledovani" len vtedy, ked sa naozaj sleduje (hrac
-            # mohol medzitym prepnut na hlas z Windows a spat).
+            # Watching started (or the Windows voice was chosen) - nothing
+            # changed. The "only after watching" sentence only when watching is
+            # really on (the player could have switched to the Windows voice
+            # and back in the meantime).
             if prirodzeny and getattr(self, "listening", False):
                 self.set_edge_status(tr("edge.update.after_watching"),
                                      self.pal["text_dim"])
@@ -792,7 +826,7 @@ class AudioMixin:
         else:
             verzia = getattr(vysledok, "najnovsia", None) or getattr(vysledok, "aktivna", None)
         verzia = verzia or "?"
-        # `danger_text`, nie `danger`: drobny text s navodom (pravidlo v theme.py)
+        # `danger_text`, not `danger`: small text with guidance (theme.py rule)
         farba = (self.pal["success"] if ok
                  else self.pal.get("danger_text", self.pal["danger"]))
         if prirodzeny:
@@ -803,27 +837,30 @@ class AudioMixin:
         if not ok:
             self._priprava_po_neuspechu(po_zmene)
             return
-        # Prirodzeny hlas mohol prave ozit (EDGE_AVAILABLE) - banner o
-        # chybajucom edge-tts sa prepocita. Hlasky bez hlasu (odmietnute
-        # starou kniznicou) sa pripravia hned (`force=True`); ked netreba
-        # nic, ostane na ociach veta o aktualizacii, nie "hlas pripraveny".
+        # The natural voice may have just come back (EDGE_AVAILABLE) - the
+        # banner about a missing edge-tts is recomputed. Cues without a voice
+        # (rejected with the old library) are prepared right away
+        # (`force=True`); when nothing is needed, the sentence about the
+        # update stays in sight, not "voice ready".
         self.refresh_edge_banner()
         if po_zmene or self._chyba_hlas_pripomienkam():
             self.pregenerate(force=True)
 
     def _priprava_po_neuspechu(self, po_zmene, hned=False):
-        """Priprava, ktoru `pregenerate` odlozil, kym bezala aktualizacia
-        (`_pregen_po_aktualizacii`), sa pri neuspechu nesmie stratit.
+        """A preparation that `pregenerate` postponed while the update was
+        running (`_pregen_po_aktualizacii`) must not get lost on failure.
 
-        Pocas sledovania ide na po hre (`_pregen_po_hre`, ten isty odklad ako
-        v `pregenerate`) - bez siete a bez zmeny stavu. Typicky pripad:
-        auto-profil pri starte hry prepne profil (`schedule_pregenerate`) a
-        hned sa zapne sledovanie, ktore aktualizaciu zrusi; bez tohto by sa
-        hlasky noveho profilu nepripravili ani po hre.
+        While watching it goes to after the game (`_pregen_po_hre`, the same
+        postponement as in `pregenerate`) - no network and no status change.
+        Typical case: auto-profile switches the profile when the game starts
+        (`schedule_pregenerate`) and watching is switched on right away,
+        which cancels the update; without this the new profile's cues would
+        not be prepared even after the game.
 
-        Mimo sledovania sa spusti hned len pri zruseni (`hned=True`) - vtedy
-        nie je co ukazat. Pri inom neuspechu ostava na ociach jeho veta
-        (a odkaz na nove vydanie); pripravu spusti dalsia zmena alebo hra."""
+        Outside watching it starts right away only on cancellation
+        (`hned=True`) - then there is nothing to show. On another failure
+        its sentence stays in sight (and the link to the new release); the
+        next change or game starts the preparation."""
         if not po_zmene:
             return
         if getattr(self, "listening", False):
@@ -832,8 +869,8 @@ class AudioMixin:
             self.pregenerate()
 
     def _chyba_hlas_pripomienkam(self):
-        """Chyba v cache prirodzeny hlas niektorej pripomienke, ktoru v hre
-        povie (`pregen_jobs`)? Len subory na disku, bez siete."""
+        """Is the natural voice missing in the cache for some cue that it says
+        in game (`pregen_jobs`)? Only files on disk, no network."""
         if getattr(self, "engine", None) != ENGINE_EDGE:
             return False
         rate = self.rate_value
@@ -847,7 +884,7 @@ class AudioMixin:
         threading.Thread(target=lambda: EdgeTTSCache.prune(keep),
                          daemon=True).start()
 
-    # ---------- rozhodovanie o SFX subore ----------
+    # ---------- SFX file decision ----------
 
     def resolve_sfx_path(self, slot):
         key = slot.sfx_key
@@ -859,9 +896,10 @@ class AudioMixin:
             return sfx_assets.sound_path(pack, sound_key)
         if not key and slot.audio_path:
             return slot.audio_path if os.path.exists(slot.audio_path) else None
-        # Predvolena sada ide za vzhladom - ale pocas relacie za SVETOM
-        # RELACIE (B3-worlds): kto si uprostred hry len pozrie Pracu, nema
-        # od dalsej hlasky pocut zvuky druheho sveta.
+        # The default set follows the appearance - but during a session it
+        # follows the SESSION'S WORLD (B3-worlds): someone who only glances at
+        # Work in the middle of a game should not hear the other world's
+        # sounds from the next cue.
         pack = self.theme_key
         if getattr(self, "_hr_session_open", False):
             pack = theme_mod.WORLD_THEME.get(
@@ -882,9 +920,10 @@ class AudioMixin:
             self.log_threadsafe(tr("log.sfx_playback_error", err=exc))
 
     def _play_voice_file(self, path):
-        """Prehra VLASTNU nahravku hlasu - hlasitostou TTS a bez notch filtra
-        (2-4 kHz), aby znela cela a zrozumitelna ako vlastny hlas. Vzdy vo
-        vlastnom vlakne (subezne), rovnako ako SFX v kombinacii."""
+        """Plays the OWN voice recording - at the TTS volume and without the
+        notch filter (2-4 kHz), so that it sounds whole and intelligible,
+        like one's own voice. Always in its own thread (concurrent), the
+        same as SFX in a combination."""
         threading.Thread(target=self._voice_now_safe, args=(path,), daemon=True).start()
 
     def _voice_now_safe(self, path):
@@ -894,18 +933,20 @@ class AudioMixin:
             self.log_threadsafe(tr("log.sfx_playback_error", err=exc))
 
     def _slot_voice_clip(self, slot):
-        """Cesta k platnej vlastnej nahravke hlasu slotu, alebo None."""
+        """Path to the slot's valid own voice recording, or None."""
         vp = getattr(slot, "voice_path", "")
         return vp if vp and os.path.exists(vp) else None
 
     def _slot_has_voice(self, slot):
-        """Ma slot co povedat hlasom? Bud napisany text, alebo nahravka.
-        Vdaka tomu sa nahravka prehra aj ked je textove pole prazdne."""
+        """Does the slot have something to say by voice? Either typed
+        text, or a recording. Thanks to this the recording plays even
+        when the text field is empty."""
         return bool(slot.text_value.strip() or self._slot_voice_clip(slot))
 
     def _speak_text(self, text, slot, concurrent=False):
-        # Vlastna nahravka hlasu ma prednost pred TTS: ak si clovek nahral
-        # svoj hlas, prehra sa on - nie strojovy prevod textu.
+        # The own voice recording takes precedence over TTS: if someone
+        # recorded their own voice, that plays - not a machine reading of the
+        # text.
         clip = self._slot_voice_clip(slot)
         if clip:
             self._play_voice_file(clip)
@@ -920,15 +961,15 @@ class AudioMixin:
                     self.audio.play_tts(path)
                 return
             if not self._hlasky_hovoria() or not self._slot_na_pripravu(slot):
-                # Styl bez slov / svet Praca, alebo hlaska, ktoru v hre Edge
-                # nepovie (vypnuta, s vypnutym obrazkom v hre, slot navyse
-                # z 0.1): nic sa pre nu
-                # nepripravuje (`pregen_jobs`) - Test/ukazka zaznie cez SAPI
-                # a dennik neslubuje pripravu, ktora nepride.
+                # Style without words / the Work world, or a cue Edge does not
+                # say in game (switched off, with its in-game picture switched
+                # off, extra slot from 0.1): nothing is prepared for it
+                # (`pregen_jobs`) - Test/preview plays through SAPI and the
+                # journal does not promise a preparation that will not come.
                 pass
             elif getattr(self, "listening", False):
-                # Pocas hry sa na Microsoft nechodi: hlaska zaznie hlasom
-                # z Windows a dopripravi sa po `stop_listening`.
+                # During a game nothing goes to Microsoft: the cue plays in the
+                # Windows voice and is prepared after `stop_listening`.
                 self._pregen_po_hre = True
                 self.log_threadsafe(tr("log.edge_not_cached_later"))
             else:
@@ -944,24 +985,25 @@ class AudioMixin:
             self.audio.speak(text, voice_id)
 
     def _slot_zaznie(self, slot, bez_slov=False):
-        """Zaznie z `_emit(slot, bez_slov)` vobec nieco? Rovnake vetvy ako
-        `_emit`, len bez prehravania - pre `audible` v zazname hlasky (graf
-        ucinnosti rata len hlasky, ktore naozaj zazneli)."""
+        """Will `_emit(slot, bez_slov)` play anything at all? The same branches
+        as `_emit`, just without playback - for `audible` in the cue record
+        (the effectiveness chart counts only cues that were really heard)."""
         mode = slot.mode
         sfx_path = self.resolve_sfx_path(slot) if mode in (MODE_SFX, MODE_COMBO) else None
         zvuk = bool(sfx_path and os.path.exists(sfx_path))
         if bez_slov or mode == MODE_SFX:
-            # V rezime SFX `_emit` text nema (`text` je len pre TTS/COMBO),
-            # takze bez suboru nezaznie nic.
+            # In SFX mode `_emit` has no text (`text` is only for TTS/COMBO),
+            # so without a file nothing plays.
             return zvuk
         if mode == MODE_COMBO:
             return zvuk or self._slot_has_voice(slot)
         return self._slot_has_voice(slot)
 
     def _emit(self, slot, bez_slov=False):
-        """Prehra slot. `bez_slov=True` (styl hlasky "zvuk", `rebrik.py`)
-        zahra LEN zvuk slotu - ziadne TTS, ziadnu vlastnu nahravku, ani ako
-        zalohu za chybajuci zvuk. Slot bez zvuku potom mlci."""
+        """Plays the slot. `bez_slov=True` (cue style "zvuk", `rebrik.py`)
+        plays ONLY the slot sound - no TTS, no own recording, not even as
+        a fallback for a missing sound. A slot without a sound then stays
+        silent."""
         mode = slot.mode
         sfx_path = self.resolve_sfx_path(slot) if mode in (MODE_SFX, MODE_COMBO) else None
         text = slot.text_value if mode in (MODE_TTS, MODE_COMBO) else ""
@@ -982,9 +1024,10 @@ class AudioMixin:
                 self.log_threadsafe(tr("log.slot_sfx_missing", n=slot.index + 1,
                                        name=os.path.basename(sfx_path)))
             if self._slot_has_voice(slot):
-                # Kombinacia hraje vzdy subezne (naraz) - bez ohladu na globalny
-                # prepinac "cez seba", inak by SFX+TTS zneli za sebou. `_speak_text`
-                # sam rozhodne, ci povie text (TTS) alebo prehra vlastnu nahravku.
+                # A combination always plays concurrently (at once) - regardless
+                # of the global "cez seba" (overlapping) switch, otherwise SFX+TTS
+                # would sound one after the other. `_speak_text` decides by itself
+                # whether to say the text (TTS) or play the own recording.
                 self._speak_text(text, slot, concurrent=played_sfx)
             return
 

@@ -1,14 +1,15 @@
 # -*- coding: utf-8 -*-
-"""Kontrola vizualnej davky 0.2.2 na cerstvych snimkach - co sa nasiel.
+"""Check of the 0.3 visual batch on fresh screenshots - what was found.
 
-  * deliaca linka (`ui_kit.linka`) po prepnuti sveta Hra <-> Praca zmizla:
-    rodic pri prefarbeni rozposle detom svoje pozadie a linka 1 px ma byt
-    vidno len vdaka `bg_color` vo vlastnej farbe (snimky 09/09b),
-  * potvrdenie v okne appky (`ui_kit.confirm`) sa nesmie vratit skor, nez
-    clovek odpovie - ani ked zlyha samotny `grab_set`,
-  * karta pripomienky stoji na tej istej lavej hrane ako panely okolo nej.
+  * the divider line (`ui_kit.linka`) disappeared after switching the
+    world Play <-> Work: on recolouring, the parent sends its background
+    to its children and the 1 px line is visible only thanks to
+    `bg_color` in its own colour (screenshots 09/09b),
+  * the confirmation in the app window (`ui_kit.confirm`) must not return
+    before the person answers - not even when `grab_set` itself fails,
+  * the cue card stands on the same left edge as the panels around it.
 
-Bez skutocneho okna - Tk triedy su atrapy.
+No real window - the Tk classes are fakes.
 """
 import os
 import sys
@@ -24,7 +25,7 @@ from _zdroj_appky import zdroj_suboru  # noqa: E402
 
 
 class _Ram:
-    """Atrapa CTkFrame: pamata si vypln a pozadie ako CTk (`_fg_color`)."""
+    """CTkFrame fake: remembers fill and background like CTk (`_fg_color`)."""
 
     def __init__(self, master=None, **kw):
         self.kw = dict(kw)
@@ -47,15 +48,15 @@ def test_linka_po_zmene_temy_neprevezme_pozadie_rodica(monkeypatch):
     linka = ui_kit.linka(None, sumi)
     assert linka.cget("bg_color") == sumi["rule"]
 
-    # 1) rodic (Panel) dostane novu vypln a rozposle ju detom - presne
-    #    ako `CTkFrame.configure(fg_color=...)` v CTk
+    # 1) the parent (Panel) gets a new fill and sends it to its children -
+    #    exactly like `CTkFrame.configure(fg_color=...)` in CTk
     linka.configure(bg_color=aizome["surface"])
     assert linka.cget("bg_color") == sumi["rule"], "pozadie panela linku skryje"
-    # priehladny rodic posiela "transparent"
+    # a transparent parent sends "transparent"
     linka.configure(bg_color="transparent")
     assert linka.cget("bg_color") == sumi["rule"]
 
-    # 2) potom `theme_recolor` prefarbi samotnu linku
+    # 2) then `theme_recolor` recolours the line itself
     mapa = theme_recolor.build_color_map(sumi, aizome)
     theme_recolor.recolor_widget(linka, mapa)
     assert linka.cget("fg_color").lower() == aizome["rule"].lower()
@@ -63,7 +64,7 @@ def test_linka_po_zmene_temy_neprevezme_pozadie_rodica(monkeypatch):
 
 
 def test_linka_bez_configure_nespadne(monkeypatch):
-    """Atrapa bez `configure` (stary test v test_022d_vizual) nesmie padnut."""
+    """No `configure` on the fake (old test in test_022d_vizual): no crash."""
 
     class _Holy:
         def __init__(self, *a, **kw):
@@ -75,7 +76,7 @@ def test_linka_bez_configure_nespadne(monkeypatch):
 
 
 class _Kus:
-    """Atrapa CTkFrame/CTkLabel/tlacidla: len pack."""
+    """CTkFrame/CTkLabel/button fake: pack only."""
 
     def __init__(self, *a, **kw):
         pass
@@ -137,7 +138,7 @@ def _priprav_confirm(monkeypatch):
 
 def test_potvrdenie_caka_na_odpoved_aj_ked_grab_zlyha(monkeypatch):
     tlacidla = _priprav_confirm(monkeypatch)
-    # wait_window = clovek klikne na "Zmazat" (danger)
+    # wait_window = the person clicks "Delete" (danger)
     owner = types.SimpleNamespace(wait_window=lambda top: tlacidla["danger"]())
     ok = ui_kit.confirm(owner, theme.tokens(theme.ZEN), "Zmazat?", "text",
                         ok_label="Zmazat", cancel_label="Zrusit", danger=True)

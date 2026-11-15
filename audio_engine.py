@@ -1,19 +1,20 @@
-"""Zvukovy engine: TTS (Edge Natural + SAPI5) a prehravanie SFX/nahravok.
+"""Sound engine: TTS (Edge Natural + SAPI5) and playback of SFX/recordings.
 
-Dva TTS motory:
-  * "edge"  - Microsoft Edge Natural (neuronove hlasy). Hlasky sa
-              generuju DOPREDU do cache v audio/tts_cache/ a v hre sa uz
-              len prehra hotovy MP3 subor. Chybajucu hlasku app.py pocas
-              pocuvania negeneruje (zaznie SAPI5, dopripravi sa po hre).
-  * "sapi"  - klasicke offline Windows SAPI5 hlasy.
+Two TTS engines:
+  * "edge"  - Microsoft Edge Natural (neural voices). Cues are
+              generated AHEAD into the cache in audio/tts_cache/, and
+              in-game only a ready MP3 file is played. app.py does not
+              generate a missing cue while listening (SAPI5 speaks it,
+              it is prepared after the game).
+  * "sapi"  - classic offline Windows SAPI5 voices.
 
-DOLEZITE poradie importov v app.py: modul `gamepad` MUSI byt naimportovany
-skor nez tento modul. `gamepad` pri importe nastavi SDL_AUDIODRIVER=dummy
-(bezokenny joystick), co by potichu umlcalo aj mixer nizsie - preto tu,
-tesne pred pygame.mixer.init(), tento env var odstranime a necháme SDL,
-nech si samo vyberie realny zvukovy ovladac (WASAPI/DirectSound). Ak by sa
-tento modul naimportoval SKOR nez gamepad, poradie prostredia by sa
-prehodilo a mixer by ostal nemy.
+IMPORTANT import order in app.py: the `gamepad` module MUST be imported
+before this module. On import, `gamepad` sets SDL_AUDIODRIVER=dummy (the
+windowless joystick), which would also silently mute the mixer below -
+so here, right before pygame.mixer.init(), we remove this env var and let
+SDL pick a real audio driver by itself (WASAPI/DirectSound). If this
+module were imported BEFORE gamepad, the environment order would be
+reversed and the mixer would stay mute.
 """
 
 import ctypes
@@ -32,7 +33,7 @@ from paths import IS_WINDOWS, TTS_CACHE_DIR, nahrad_subor
 from settings_model import EDGE_FALLBACK_VOICES, EDGE_PREMIUM_HINT
 
 os.environ.pop("SDL_AUDIODRIVER", None)
-import pygame  # noqa: E402  (musi byt az po odstraneni SDL_AUDIODRIVER)
+import pygame  # noqa: E402  (must come after SDL_AUDIODRIVER is removed)
 
 try:
     pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=512)
@@ -43,29 +44,32 @@ except Exception:
 
 
 # --------------------------------------------------------------------------
-# edge-tts sa da doinstalovat aj za behu -> import je vo funkcii, aby sa dal
-# zopakovat tlacidlom "Skusit znova" bez restartu aplikacie.
+# edge-tts can also be installed at runtime -> the import is in a function
+# so it can be retried with the "Try again" button without restarting the
+# application.
 # --------------------------------------------------------------------------
 
 EDGE_AVAILABLE = False
 asyncio = None
 edge_tts = None
 EDGE_IMPORT_ERROR = ""
-# Verzia prave pouzivaneho edge-tts a ci je to kniznica stiahnuta tlacidlom
-# "Aktualizovat hlas" (hlas_kniznica.py). `importlib.metadata` hovori vzdy
-# o PRIBALENEJ verzii - stiahnuty balik dist-info nema.
+# The version of the edge-tts currently in use, and whether it is the
+# library downloaded with the "Update voice" button (hlas_kniznica.py).
+# `importlib.metadata` always reports the BUNDLED version - the downloaded
+# package has no dist-info.
 EDGE_VERZIA = None
 EDGE_STIAHNUTY = False
 
 
 def load_edge():
-    """Skusi (znovu) naimportovat edge-tts. Vracia True pri uspechu.
+    """Tries to import edge-tts (again). Returns True on success.
 
-    Novsia STIAHNUTA kniznica (tlacidlo "Aktualizovat hlas") ma prednost
-    pred pribalenou - `hlas_kniznica.nacitaj_pri_starte` ju natiahne pod
-    skutocnym menom "edge_tts". Ked sa nenacita, ide pribalena a stiahnuta sa
-    oznaci ako pokazena (app.log), aby sa neskusala pri kazdom starte. Dalsie
-    vydanie Zanshinu s novsim pribalenym edge-tts vyhra samo (novsia verzia)."""
+    A newer DOWNLOADED library (the "Update voice" button) takes priority
+    over the bundled one - `hlas_kniznica.nacitaj_pri_starte` loads it
+    under the real name "edge_tts". When it does not load, the bundled one
+    is used and the downloaded one is marked as broken (app.log), so it is
+    not tried on every start. The next Zanshin release with a newer bundled
+    edge-tts wins by itself (newer version)."""
     global EDGE_AVAILABLE, asyncio, edge_tts, EDGE_IMPORT_ERROR, EDGE_VERZIA, EDGE_STIAHNUTY
     try:
         importlib.invalidate_caches()
@@ -73,7 +77,7 @@ def load_edge():
         try:
             stiahnuta = hlas_kniznica.nacitaj_pri_starte()
         except Exception:
-            stiahnuta = None    # poistka: stiahnuta kniznica nesmie zhodit start
+            stiahnuta = None    # safeguard: the downloaded library must not break startup
         if stiahnuta is not None:
             _edge_tts, verzia = stiahnuta
         else:
@@ -91,15 +95,17 @@ def load_edge():
 
 
 def nastav_edge_tts(modul, verzia, stiahnuty=False, cache=None, cakanie_s=30.0):
-    """Vymeni modul edge-tts za behu - `hlas_kniznica.aktualizuj` po
-    uspesnom skusobnom slove. Od navratu ide kazda hlaska novym modulom.
+    """Swaps the edge-tts module at runtime - `hlas_kniznica.aktualizuj`
+    after a successful test word. From the return on, every cue goes
+    through the new module.
 
-    Volaj z POMOCNEHO vlakna: pocka (najviac `cakanie_s`) na zamok
-    `cache._lock`, ktory `EdgeTTSCache.ensure` drzi pocas celej syntezy
-    a `edge_tts` cita az vo vnutri neho - po navrate teda ziadna hlaska nie
-    je rozpracovana starym modulom. Ked sa zamok ziskat nepodari, vymeni sa
-    aj tak: priradenie modulu je atomicke a hlaska, ktora prave leti, dobehne
-    so starym modulom, ktory uz drzi. Vracia True, ked sa zamok drzal."""
+    Call it from a HELPER thread: it waits (at most `cakanie_s`) for the
+    `cache._lock` lock, which `EdgeTTSCache.ensure` holds during the whole
+    synthesis and only reads `edge_tts` inside it - so after the return no
+    cue is half-done with the old module. When the lock cannot be
+    acquired, the swap happens anyway: assigning the module is atomic, and
+    a cue that is in flight finishes with the old module it already holds.
+    Returns True when the lock was held."""
     global EDGE_AVAILABLE, asyncio, edge_tts, EDGE_IMPORT_ERROR, EDGE_VERZIA, EDGE_STIAHNUTY
     import asyncio as _asyncio
     zamok = getattr(cache, "_lock", None)
@@ -110,7 +116,7 @@ def nastav_edge_tts(modul, verzia, stiahnuty=False, cache=None, cakanie_s=30.0):
         except Exception:
             drzim = False
     try:
-        # modul skor nez EDGE_AVAILABLE: kto vidi True, ma aj modul
+        # module before EDGE_AVAILABLE: whoever sees True has the module too
         asyncio, edge_tts = _asyncio, modul
         EDGE_VERZIA, EDGE_STIAHNUTY = verzia, bool(stiahnuty)
         EDGE_IMPORT_ERROR = ""
@@ -125,7 +131,7 @@ load_edge()
 
 
 # --------------------------------------------------------------------------
-# Prehravanie / nahravanie audia cez Windows MCI (winmm) - bez extra zavislosti
+# Audio playback / recording via Windows MCI (winmm) - no extra dependencies
 # --------------------------------------------------------------------------
 
 if IS_WINDOWS:
@@ -138,7 +144,7 @@ else:
 
 
 def mci(command):
-    """Posle MCI prikaz, pri chybe vyhodi RuntimeError s popisom."""
+    """Sends an MCI command; on error raises RuntimeError with details."""
     if _winmm is None:
         raise RuntimeError("MCI je dostupne len na Windows")
     buf = ctypes.create_unicode_buffer(512)
@@ -151,10 +157,11 @@ def mci(command):
 
 
 # --------------------------------------------------------------------------
-# Notch filter (2000-4000 Hz) - ochrana citatelnosti krokov/prebijania v
-# kompetitivnych FPS. Aplikuje sa na KAZDE prehratie (SFX aj predgenerovana
-# Edge TTS hlaska), pretoze obe idu cez `play_audio_file` - filtruje sa az
-# po dekodovani (funguje teda rovnako pre .wav aj .mp3 zdroje).
+# Notch filter (2000-4000 Hz) - protects the audibility of footsteps/reloads
+# in competitive FPS games. It is applied to EVERY playback (SFX and the
+# pre-generated Edge TTS cue alike), because both go through
+# `play_audio_file` - filtering happens only after decoding (so it works the
+# same for .wav and .mp3 sources).
 # --------------------------------------------------------------------------
 
 FOOTSTEP_NOTCH_LOW = 2000.0
@@ -172,9 +179,9 @@ def _notch_channel(samples, sr, low, high):
 
 
 def _notch_pcm16(raw_bytes, channels, sr, low=FOOTSTEP_NOTCH_LOW, high=FOOTSTEP_NOTCH_HIGH):
-    """Vynuluje frekvencne pasmo [low, high] Hz v 16-bit PCM bufferi
-    (interleaved, ak je stereo). Pouziva FFT - pre kratke SFX/TTS klipy je
-    prakticky okamzite."""
+    """Zeroes the frequency band [low, high] Hz in a 16-bit PCM buffer
+    (interleaved, if stereo). Uses an FFT - for short SFX/TTS clips it is
+    practically instant."""
     samples = np.frombuffer(raw_bytes, dtype=np.int16).astype(np.float64)
     if channels == 2 and len(samples) % 2 == 0:
         stereo = samples.reshape(-1, 2)
@@ -186,14 +193,15 @@ def _notch_pcm16(raw_bytes, channels, sr, low=FOOTSTEP_NOTCH_LOW, high=FOOTSTEP_
     return np.clip(out, -32768, 32767).astype(np.int16).tobytes()
 
 
-_NOTCH_MAX_S = 12.0     # nad tuto dlzku klipu notch preskocime (viz nizsie)
+_NOTCH_MAX_S = 12.0     # above this clip length we skip the notch (see below)
 
 
 def _apply_footstep_notch(sound):
-    """Vytvori novy `pygame.mixer.Sound` s vynulovanym pasmom 2-4 kHz.
+    """Creates a new `pygame.mixer.Sound` with the 2-4 kHz band zeroed.
 
-    Ak sa nieco pokazi (nepodporovany format, ticho, chyba FFT), vrati
-    povodny zvuk bez filtra - radsej nefiltrovany zvuk nez ziadny."""
+    If something goes wrong (unsupported format, silence, FFT error), it
+    returns the original sound without the filter - better an unfiltered
+    sound than none."""
     try:
         init = pygame.mixer.get_init()
         if not init:
@@ -204,9 +212,10 @@ def _apply_footstep_notch(sound):
         raw = sound.get_raw()
         if not raw:
             return sound
-        # Dlhy vlastny klip (napr. 2-min hudba ako SFX) by cely presiel FFT-om
-        # na prehravacom vlakne = viacsekundove seknutie pred prehratim. Notch
-        # ma zmysel pre kratke SFX/hlasky; pri dlhych ho radsej preskocime.
+        # A long custom clip (e.g. 2 min of music as SFX) would go through the
+        # FFT whole on the playback thread = a stutter of several seconds
+        # before playing. The notch makes sense for short SFX/cues; for long
+        # ones we would rather skip it.
         if len(raw) > _NOTCH_MAX_S * max(1, freq) * max(1, channels) * 2:
             return sound
         filtered = _notch_pcm16(raw, channels, freq)
@@ -216,20 +225,23 @@ def _apply_footstep_notch(sound):
 
 
 def play_audio_file(path, volume=100, notch=True):
-    """Prehra WAV/MP3 subor cez pygame.mixer a pocka na dokoncenie (blokuje
-    volajuce vlakno - volaj vzdy z pomocneho vlakna, nikdy z GUI).
+    """Plays a WAV/MP3 file through pygame.mixer and waits for it to finish
+    (blocks the calling thread - always call it from a helper thread, never
+    from the GUI).
 
-    Kazde volanie pouziva vlastny `pygame.mixer.Sound`, takze viacero
-    suborov moze znieť naraz na roznych kanaloch - to je zaklad rezimu
-    "hlasky/SFX cez seba" aj kombinacie TTS+SFX. Hlasitost sa nastavuje
-    priamo na danom zvuku (0-100 -> 0.0-1.0), takze posuvnik Hlasitost
-    okamzite ovplyvnuje aj prave bezice aj vsetky dalsie prehratia.
+    Every call uses its own `pygame.mixer.Sound`, so several files can
+    sound at once on different channels - that is the basis of the
+    "cues/SFX over each other" mode as well as the TTS+SFX combination.
+    The volume is set directly on the given sound (0-100 -> 0.0-1.0), so
+    the Volume slider immediately affects both what is playing right now
+    and all further playbacks.
 
-    `notch=True` (predvolba, pouziva sa pre SFX aj Edge TTS): pred prehratim
-    sa z vystupu vynuluje pasmo 2-4 kHz (kroky/prebijanie protihracov v FPS),
-    aby DojoSync nikdy neprekryl herny zvuk. `notch=False` prehra subor cely
-    a cisty - pouziva sa pre VLASTNU NAHRAVKU HLASU, ktora je zamerne cloveku
-    zrozumitelna rovnako ako offline (SAPI) hlas, co filtrom tiez neprechadza."""
+    `notch=True` (the default, used for SFX and Edge TTS): before playing,
+    the 2-4 kHz band (opponents' footsteps/reloads in FPS games) is zeroed
+    in the output, so DojoSync never covers the game sound. `notch=False`
+    plays the file whole and clean - used for a CUSTOM VOICE RECORDING,
+    which is deliberately as intelligible to a person as the offline
+    (SAPI) voice, which does not go through the filter either."""
     if not MIXER_AVAILABLE:
         raise RuntimeError("pygame.mixer nie je dostupny")
     sound = pygame.mixer.Sound(path)
@@ -243,7 +255,7 @@ def play_audio_file(path, volume=100, notch=True):
 
 
 def speak_sapi_isolated(text, voice_id, rate, volume=100):
-    """Povie text vlastnou SAPI instanciou - pouzitelne z viacerych vlakien."""
+    """Speaks text with its own SAPI instance - usable from several threads."""
     import comtypes
     import comtypes.client
     try:
@@ -276,7 +288,7 @@ def speak_sapi_isolated(text, voice_id, rate, volume=100):
 
 
 class MicRecorder:
-    """Nahravanie z mikrofonu cez MCI waveaudio."""
+    """Recording from the microphone via MCI waveaudio."""
 
     ALIAS = "dandurf_rec"
 
@@ -299,11 +311,12 @@ class MicRecorder:
     def stop_and_save(self, path):
         if not self.active:
             return False
-        # Ulozime najprv do .part a hotovy subor az potom atomicky presunieme
-        # na cielove miesto. Keby MCI save zlyhal v polovici (plny disk, chyba
-        # ovladaca), predosla dobra nahravka na `path` ostane nedotknuta - nie
-        # prepisana polovicnou, neprehratelnou (B3). Stara logika mazala `path`
-        # este pred ulozenim, takze zlyhanie znamenalo stratu oboch.
+        # We save to .part first and only then atomically move the finished
+        # file to its target place. If the MCI save failed halfway (full disk,
+        # driver error), the previous good recording at `path` stays
+        # untouched - not overwritten by a half-written, unplayable one (B3).
+        # The old logic deleted `path` even before saving, so a failure meant
+        # losing both.
         tmp = path + ".part"
         try:
             mci(f"stop {self.ALIAS}")
@@ -314,8 +327,8 @@ class MicRecorder:
                 except OSError:
                     pass
             mci(f'save {self.ALIAS} "{tmp}"')
-            # Cerstvu nahravku si hned otvori antivirus - `nahrad_subor`
-            # prezije taky kratky zamok (.part maze `finally` nizsie).
+            # The antivirus opens a fresh recording right away - `nahrad_subor`
+            # survives such a short lock (.part is deleted by `finally` below).
             nahrad_subor(tmp, path)
         finally:
             if os.path.exists(tmp):
@@ -344,30 +357,32 @@ class MicRecorder:
 
 
 # --------------------------------------------------------------------------
-# Edge Natural TTS s predgenerovanou cache
+# Edge Natural TTS with a pre-generated cache
 # --------------------------------------------------------------------------
 
 def edge_rate_str(rate):
-    """Slider -10..10 -> retazec pre edge-tts, napr. '-20%'."""
+    """Slider -10..10 -> a string for edge-tts, e.g. '-20%'."""
     pct = int(rate) * 5
     return f"{pct:+d}%"
 
 
 # --------------------------------------------------------------------------
-# Druh chyby prirodzeneho hlasu (0.2.2, audit 4)
+# Kind of natural-voice error (0.3, audit 4)
 # --------------------------------------------------------------------------
 #
-# PRECO: kazde zlyhanie pripravy hlasilo "skontroluj internet" - aj ked
-# internet fungoval a Microsoft poziadavku len odmietol (HTTP 401/403/429,
-# odmietnuty handshake WebSocketu). Hrac potom hladal chybu v sieti, ktora
-# bola v poriadku. Tri druhy, kazdy s inou radou:
-#   offline - spojenie, DNS, vyprsany cas: "skontroluj internet"
-#   refused - Microsoft povedal nie: "skus neskor alebo prepni na Windows",
-#             a ked to trva, nova verzia Zanshinu (stary edge-tts odmieta)
-#   other   - cokolvek ine (prazdny vystup, plny disk, chyba knižnice)
-# Rozhoduje sa podla MIEN tried vo vynimke a jej pricinach (`__cause__`,
-# `__context__`), nie podla importu aiohttp - ten tu byt nemusi a testy
-# podstrcia vlastne triedy. Cista funkcia, ziadna chyba von nejde.
+# WHY: every preparation failure said "check your internet" - even when the
+# internet worked and Microsoft merely refused the request (HTTP
+# 401/403/429, a refused WebSocket handshake). The player then looked for a
+# fault in a network that was fine. Three kinds, each with different advice:
+#   offline - connection, DNS, timeout: "check your internet"
+#   refused - Microsoft said no: "try later or switch to Windows",
+#             and if it persists, a new Zanshin version (an old edge-tts
+#             gets refused)
+#   other   - anything else (empty output, full disk, library error)
+# The decision is made by the class NAMES in the exception and its causes
+# (`__cause__`, `__context__`), not by importing aiohttp - it does not have
+# to be here and the tests slip in their own classes. A pure function, no
+# error gets out.
 EDGE_CHYBA_OFFLINE = "offline"
 EDGE_CHYBA_ODMIETNUTE = "refused"
 EDGE_CHYBA_INA = "other"
@@ -385,7 +400,7 @@ _EDGE_OFFLINE_TRIEDY = frozenset({
 
 
 def druh_chyby_edge(exc):
-    """Druh chyby pri priprave prirodzeneho hlasu: `EDGE_CHYBA_*`."""
+    """Kind of error while preparing the natural voice: `EDGE_CHYBA_*`."""
     try:
         offline = False
         videne = set()
@@ -407,24 +422,26 @@ def druh_chyby_edge(exc):
 
 
 class EdgeTTSCache:
-    """Generuje MP3 hlasky cez edge-tts a drzi ich v audio/tts_cache/.
+    """Generates MP3 cues via edge-tts and keeps them in audio/tts_cache/.
 
-    Cielom je, aby sa pocas hrania nevolala siet: vsetky hlasky su hotove
-    dopredu a trigger uz len prehra lokalny subor. Ked niektora chyba,
-    `app._speak_text` pocas pocuvania na siet nejde a odlozi ju na potom.
+    The goal is that no network is called during play: all cues are ready
+    in advance and the trigger only plays a local file. When one is
+    missing, `app._speak_text` does not go to the network while listening
+    and postpones it until later.
     """
 
     def __init__(self, log):
         self.log = log
         self._lock = threading.Lock()
-        # Posledna chyba `ensure` - ZA KAZDE VLAKNO zvlast: pripravu aj
-        # hlasku odlozenu na po hre volaju rozne vlakna a jedno nesmie
-        # druhemu prepisat, preco zlyhalo (`posledna_chyba`, 0.2.2).
+        # The last `ensure` error - SEPARATELY FOR EACH THREAD: the preparation
+        # and a cue postponed until after the game are called by different
+        # threads, and one must not overwrite why the other failed
+        # (`posledna_chyba`, 0.3).
         self._chyba = threading.local()
 
     def posledna_chyba(self):
-        """(druh, vynimka) posledneho zlyhaneho `ensure` v TOMTO vlakne, alebo
-        None, ked posledne `ensure` nezlyhalo. Druh je `EDGE_CHYBA_*`."""
+        """(kind, exception) of the last failed `ensure` in THIS thread, or
+        None when the last `ensure` did not fail. Kind is `EDGE_CHYBA_*`."""
         chyba = getattr(self, "_chyba", None)
         return getattr(chyba, "posledna", None) if chyba is not None else None
 
@@ -434,7 +451,7 @@ class EdgeTTSCache:
             return
         chyba.posledna = None if exc is None else (druh_chyby_edge(exc), exc)
 
-    # ---- cesty ----
+    # ---- paths ----
 
     @staticmethod
     def key_for(text, voice, rate):
@@ -450,19 +467,21 @@ class EdgeTTSCache:
         except OSError:
             return False
 
-    # ---- generovanie ----
+    # ---- generation ----
 
     def ensure(self, text, voice, rate, abort=None):
-        """Vygeneruje hlasku, ak este nie je v cache. Vracia cestu alebo None.
+        """Generates a cue if it is not in the cache yet. Returns a path or None.
 
-        Blokuje - volaj vzdy z pomocneho vlakna, nikdy z GUI ani z listenera.
+        Blocks - always call it from a helper thread, never from the GUI
+        or from a listener.
 
-        `abort` (volitelne, bez argumentov) sa pyta tesne pred odoslanim na
-        Microsoft - uz PO ziskani zamku. Vlakno pripravy moze na zamku cakat,
-        kym ine vlakno dokonci svoju hlasku; ak sa medzitym zaplo pocuvanie
-        (alebo pripravu nahradila novsia), `abort()` vrati True a nova
-        poziadavka sa nezacne - vrati sa None. Hotovy subor z cache sa vrati
-        aj tak (na siet nejde).
+        `abort` (optional, no arguments) is asked right before sending to
+        Microsoft - already AFTER acquiring the lock. The preparation
+        thread may wait on the lock while another thread finishes its cue;
+        if listening was turned on in the meantime (or the preparation was
+        replaced by a newer one), `abort()` returns True and the new
+        request is not started - None is returned. A finished file from
+        the cache is returned anyway (it does not go to the network).
         """
         self._zapamataj_chybu(None)
         if not (EDGE_AVAILABLE and text and text.strip() and voice):
@@ -487,8 +506,8 @@ class EdgeTTSCache:
                 asyncio.run(_run())
                 if os.path.getsize(tmp) <= 0:
                     raise RuntimeError(tr("internal.empty_output"))
-                # kratky zamok cerstveho .part (antivirus) prezije
-                # `nahrad_subor`; .part pri chybe maze except nizsie
+                # `nahrad_subor` survives a short lock on the fresh
+                # .part (antivirus); on error the except below deletes .part
                 nahrad_subor(tmp, path)
             except Exception as exc:
                 try:
@@ -500,19 +519,20 @@ class EdgeTTSCache:
                 return None
         return path
 
-    # ---- zoznam hlasov ----
+    # ---- voice list ----
 
     @staticmethod
     def list_voices():
-        """Vyber Edge hlasov pre combobox - pevny zoznam z
-        `EDGE_FALLBACK_VOICES`, BEZ SIETE.
+        """Selection of Edge voices for the combobox - a fixed list from
+        `EDGE_FALLBACK_VOICES`, WITHOUT THE NETWORK.
 
-        Predtym sa tu z Microsoftu tahal zivy katalog (pri kazdom starte,
-        kym bol zvoleny Edge - a ten je predvoleny), len aby sa orezal
-        presne na tento rucne vybrany zoznam a doplnilo prelozene slovo
-        pre pohlavie. Rod je teraz priamo v zozname a popis sa sklada cez
-        tr(), takze na Microsoft ide appka az pri priprave samotnych hlasok
-        (`ensure`). Vracia [(short_name, popis)] v poradi zoznamu."""
+        Previously a live catalogue was pulled from Microsoft here (on
+        every start, while Edge was selected - and it is the default),
+        only to be trimmed down to exactly this hand-picked list and to
+        add a translated word for the gender. The gender is now right in
+        the list and the description is put together via tr(), so the app
+        goes to Microsoft only when preparing the cues themselves
+        (`ensure`). Returns [(short_name, popis)] in list order."""
         rod = {"f": tr("voice.female"), "m": tr("voice.male")}
         items = []
         for short, meno, pohlavie in EDGE_FALLBACK_VOICES:
@@ -522,11 +542,11 @@ class EdgeTTSCache:
             items.append((short, f"{locale} · {meno} ({rod.get(pohlavie, '')}{suffix})"))
         return items
 
-    # ---- udrzba ----
+    # ---- maintenance ----
 
     @staticmethod
     def prune(keep_paths):
-        """Zmaze z cache subory, ktore uz ziadny slot nepouziva."""
+        """Deletes files from the cache that no slot uses any more."""
         keep = {os.path.normcase(p) for p in keep_paths if p}
         try:
             names = os.listdir(TTS_CACHE_DIR)
@@ -543,15 +563,15 @@ class EdgeTTSCache:
 
 
 # --------------------------------------------------------------------------
-# Zvukove vlakno: TTS (SAPI5) + prehravanie suborov v jednom fronte
+# Sound thread: TTS (SAPI5) + file playback in one queue
 # --------------------------------------------------------------------------
 
 class SpeechWorker(threading.Thread):
-    """Jedno vlakno pre vsetok zvuk. GUI ani listenery sa nikdy neblokuju.
+    """One thread for all sound. The GUI and listeners never get blocked.
 
-    TTS ide primarne priamo cez SAPI.SpVoice (comtypes) - je to
-    spolahlivejsie ako opakovane pyttsx3 runAndWait(), ktore po prvom
-    prehrani casto zamrzne a dalsie hlasky sa uz neozvu.
+    TTS goes primarily straight through SAPI.SpVoice (comtypes) - that is
+    more reliable than repeated pyttsx3 runAndWait(), which often freezes
+    after the first playback, and further cues no longer sound.
     """
 
     def __init__(self, log, on_voices=None):
@@ -569,15 +589,15 @@ class SpeechWorker(threading.Thread):
         self._rate = 0
         self._volume = 100
 
-    # ---- verejne API (volatelne z lubovolneho vlakna) ----
+    # ---- public API (callable from any thread) ----
 
     def speak(self, text, voice_id=None):
         if text and text.strip():
             self.queue.put(("say", (text, voice_id)))
 
     def play(self, path, volume=None):
-        """`volume` prebije aktualnu globalnu hlasitost pre toto jedno
-        prehratie - pouzivane na oddelene SFX/TTS hlasitosti."""
+        """`volume` overrides the current global volume for this one
+        playback - used for the separate SFX/TTS volumes."""
         self.queue.put(("play", (path, volume)))
 
     def set_voice(self, voice_id):
@@ -593,7 +613,7 @@ class SpeechWorker(threading.Thread):
         self._running = False
         self.queue.put(("quit", None))
 
-    # ---- interne ----
+    # ---- internal ----
 
     def _init_sapi(self):
         try:
@@ -631,8 +651,8 @@ class SpeechWorker(threading.Thread):
         self._voice.Speak(text)
 
     def _say_pyttsx3(self, text, voice_id):
-        # Vzdy cerstvy engine - zdielany engine v pyttsx3 po prvom
-        # runAndWait() casto prestane hovorit.
+        # Always a fresh engine - a shared engine in pyttsx3 often stops
+        # speaking after the first runAndWait().
         import pyttsx3
         engine = pyttsx3.init()
         try:
@@ -660,12 +680,12 @@ class SpeechWorker(threading.Thread):
             del engine
 
     def run(self):
-        # ŠTART V try = jedna COM chyba (odinštalovaný/poškodený SAPI hlas,
-        # zlyhaný init, uložený hlas, ktorý už neexistuje) zabila celé
-        # zvukové vlákno PRED slučkou - a od tej chvíle žiadny TTS, žiadny
-        # SFX, žiadna hláška, bez jediného slova (bug B14). Keď štart zlyhá,
-        # spadneme na pyttsx3 (`_voice = None`) a vlákno beží ďalej, takže
-        # appka aspoň hovorí a prehráva zvuky.
+        # START INSIDE try = a single COM error (an uninstalled/broken SAPI
+        # voice, a failed init, a saved voice that no longer exists) killed the
+        # whole sound thread BEFORE the loop - and from then on no TTS, no SFX,
+        # no cue, without a single word (bug B14). When the start fails, we
+        # fall back to pyttsx3 (`_voice = None`) and the thread keeps running,
+        # so the app at least speaks and plays sounds.
         try:
             if IS_WINDOWS:
                 self._init_sapi()
@@ -727,11 +747,13 @@ class SpeechWorker(threading.Thread):
 
 
 class AudioDispatcher:
-    """Rozhoduje, ci zvuky idu za sebou (fronta) alebo znejú cez seba.
+    """Decides whether sounds play one after another (a queue) or over
+    each other.
 
-    SFX (zvukove efekty) a TTS (hlas) maju oddelenu hlasitost - `sfx_volume`
-    a `tts_volume` - obe odvodene z globalneho posuvnika Hlasitost a
-    posuvnika Vyvazenie SFX/Hlas (pozri DandurfApp._recompute_volumes)."""
+    SFX (sound effects) and TTS (voice) have separate volumes -
+    `sfx_volume` and `tts_volume` - both derived from the global Volume
+    slider and the SFX/Voice balance slider (see
+    DandurfApp._recompute_volumes)."""
 
     def __init__(self, worker, log):
         self.worker = worker
@@ -742,8 +764,8 @@ class AudioDispatcher:
         self.tts_volume = 100
 
     def play(self, path, volume=None):
-        """Prehra SFX subor. `volume` (ak je zadany) prebije `sfx_volume` -
-        pouzivane, ked ide v skutocnosti o TTS obsah (pozri `play_tts`)."""
+        """Plays an SFX file. `volume` (if given) overrides `sfx_volume` -
+        used when it is in fact TTS content (see `play_tts`)."""
         vol = self.sfx_volume if volume is None else volume
         if self.overlap:
             threading.Thread(target=self._play_now, args=(path, vol),
@@ -752,7 +774,7 @@ class AudioDispatcher:
             self.worker.play(path, vol)
 
     def play_tts(self, path):
-        """Prehra predgenerovanu Edge TTS hlasku (.mp3) - vzdy hlasitostou TTS."""
+        """Plays a pre-generated Edge TTS cue (.mp3) - always at TTS volume."""
         self.play(path, volume=self.tts_volume)
 
     def speak(self, text, voice_id):

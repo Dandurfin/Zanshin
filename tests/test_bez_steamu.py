@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
-"""Zanshin nema ziadnu integraciu so Steamom (rozhodnutie autora, 0.2).
+"""Zanshin has no Steam integration at all (the author's decision, 0.2).
 
-Steam vrstva, Steam spec, build skript aj depot su v _archiv. Tieto testy
-strazia, ze sa potichu nevratili - a ze dokumenty hovoria to iste.
+The Steam layer, the Steam spec, the build script and the depot are in
+_archiv. These tests guard that they did not quietly come back - and that
+the documents say the same.
 """
 import os
 import re

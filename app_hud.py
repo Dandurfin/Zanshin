@@ -1,27 +1,30 @@
-"""HUD a in-game vizualy - cast hlavnej appky (DandurfApp z app.py).
+"""HUD and in-game visuals - part of the main app (DandurfApp from app.py).
 
-HudMixin je mixin DandurfApp: app.py ho dedi a cely stav (HUD okno a jeho
-konfiguracia, overlay manager a konfiguracia vizualov, cielovy monitor,
-jazyk hry, dlzka dychu, senzor tepu) zije na DandurfApp. Tu su len metody,
-ktore s nim pracuju cez `self` - mixin nema __init__ ani vlastne atributy.
+HudMixin is a mixin of DandurfApp: app.py inherits it and the whole state (the
+HUD window and its configuration, the overlay manager and the visuals
+configuration, the target monitor, the game language, the breath length, the
+heart-rate sensor) lives on DandurfApp. Here are only the methods that work
+with it through `self` - the mixin has no __init__ and no attributes of its
+own.
 
-Tri sekcie presunute z app.py bez zmeny:
-  * Panel v hre so 4 zakladnymi funkciami (HUD trigger row) - riadok ikon
-    pod HUD panelom v hre,
-  * HUD (zivy panel so statistikou tepu) - jazyk a popisky toho, co appka
-    kresli do hry, konfiguracia HUD-u, vyber monitora a text relacie;
-    sekcia nesie aj male menu dlzky stisenia (`_toggle_snooze_menu`), ktore
-    v nej bolo uz v app.py,
-  * In-Game Vizualy (Overlay) - kontrolka tepu v bocnom paneli, parovanie
-    hodiniek (zapnutie senzora), konfiguracia, farba a test vizualov.
+Three sections moved from app.py unchanged:
+  * In-game panel with the 4 basic functions (HUD trigger row) - the row of
+    icons under the HUD panel in the game,
+  * HUD (live panel with heart-rate statistics) - the language and labels of
+    what the app draws into the game, HUD configuration, monitor choice and the
+    session text; the section also carries the small snooze-length menu
+    (`_toggle_snooze_menu`), which was already in it in app.py,
+  * In-Game Visuals (Overlay) - the heart-rate indicator in the sidebar,
+    pairing the watch (switching the sensor on), configuration, colour and
+    visuals test.
 
-Konstanta `WATCH_ZONE_HOLD_S` (hysterezia kontrolky tepu) ostala v triede
-DandurfApp medzi ostatnymi konstantami triedy - `_watch_pulse_state` ju
-cita cez `self`.
+The constant `WATCH_ZONE_HOLD_S` (hysteresis of the heart-rate indicator)
+stayed in the DandurfApp class among the other class constants -
+`_watch_pulse_state` reads it through `self`.
 
-Pozor v testoch: `_watch_pulse_state` a `_refresh_hud_session_text` citaju
-`time` z tohto modulu - falosne hodiny na module app ich nezasiahnu (treba
-`app_hud.time`).
+Watch out in tests: `_watch_pulse_state` and `_refresh_hud_session_text` read
+`time` from this module - fake clocks on the app module do not reach them (you
+need `app_hud.time`).
 """
 
 import time
@@ -40,25 +43,25 @@ from app_spolocne import LABEL_TO_LANG, LANG_NATIVE_LABELS
 
 
 class HudMixin:
-    """HUD, riadok 4 funkcii, jazyk hry a in-game vizualy (mixin DandurfApp)."""
+    """HUD, 4-function row, game language, in-game visuals (DandurfApp mixin)"""
 
-    # ---------- Panel v hre so 4 zakladnymi funkciami (HUD trigger row) ----------
+    # ---------- In-game panel with 4 basic functions (HUD trigger row) ----------
     #
-    # POZNAMKA K HISTORII: toto boli povodne dve metody pre celoappkovy
-    # "Minimalisticky rezim" (zmensoval cele okno appky na 320x160 -
-    # `set_minimal_mode`/`_apply_minimal_mode`, teraz odstranene). Rovnaky
-    # zoznam 4 funkcii sa ale hodi aj tu - je to ten isty udaj (nazov
-    # vizualu + popisok + kombinacia klaves pre sloty 0..3), len teraz
-    # kresleny ako riadok pod HUD panelom v hre (`hud_paint.render_hud_
-    # trigger_row`), nie ako samostatne okno appky.
+    # NOTE ON HISTORY: these were originally two methods for the app-wide
+    # "Minimalist mode" (it shrank the whole app window to 320x160 -
+    # `set_minimal_mode`/`_apply_minimal_mode`, now removed). The same list
+    # of 4 functions is useful here too, though - it is the same data
+    # (visual name + label + key combination for slots 0..3), only now drawn
+    # as a row under the HUD panel in the game
+    # (`hud_paint.render_hud_trigger_row`), not as a separate app window.
 
     def show_hud_settings(self):
-        """⚙ pri "Tep v hre" na Dnes: Nastavenia -> Vseobecne, sekcia panela
-        s tepom rozbalena a posunuta hore.
+        """⚙ next to "Tep v hre" on Today: Settings -> General, the heart-rate
+        panel section expanded and scrolled to the top.
 
-        Do 0.2.2 viedlo ⚙ na stranku V hre - tam ziadne nastavenia HUD-u
-        nie su, a bocny panel pritom dalej svietil na "Dnes". Posun az po
-        prekresleni, rovnako ako `show_about`."""
+        Before 0.3 the ⚙ led to the In game page - there are no HUD settings
+        there, and the sidebar meanwhile kept highlighting "Today". The scroll
+        happens only after a redraw, just like `show_about`."""
         self._navigate("vseobecne")
         sekcia = getattr(self, "hud_section", None)
         try:
@@ -69,12 +72,12 @@ class HudMixin:
         self.root.after(80, lambda: self._posun_vseobecne_na(sekcia))
 
     def _sync_hud_trigger_state(self):
-        """Zosedivi ikonky, kym je panel s tepom vypnuty.
+        """Greys out the icons while the heart-rate panel is off.
 
-        Bez toho je to prepinac, ktory sa da zapnut a nic nespravi - a to je
-        horsie nez prepinac, ktory sa zapnut neda. Prepinac sa tlmi cely
-        (draha aj gombik), nie len text - zapnuta zlata draha by inak dalej
-        tvrdila "funguje".
+        Without that it is a switch that can be turned on and does nothing -
+        and that is worse than a switch that cannot be turned on. The whole
+        switch is dimmed (track and knob), not just the text - a gold track
+        that is on would otherwise keep claiming "it works".
         """
         aktivny = bool(self.hud_config.get("enabled"))
         prepinac = getattr(self, "hud_trigger_switch", None)
@@ -88,25 +91,25 @@ class HudMixin:
             pass
 
     def _hud_trigger_info(self):
-        """[(nazov vizualu, enabled)] pre riadok 4 zakladnych funkcii pod HUD
-        panelom - poziciou zodpovedaju self.slots[0..3].
+        """[(visual name, enabled)] for the row of 4 basic functions under the
+        HUD panel - by position they match self.slots[0..3].
 
-        POPISOK POD IKONKOU TU UZ NIE JE.
-        Do 19. 9. sa pod kazdu ikonku kreslil `slot.display_key()`, cize
-        'C', 'R', 'Mys: right', 'F'. Boli to klavesy z `DEFAULT_SLOT`, ktore
-        od fazy 3 nespustaju nic - appka klavesy vobec necita. Hrac teda
-        priamo v hre cital navod, ktory neplatil, a stlacanim tych klaves
-        nedosiahol nic.
+        THE LABEL UNDER THE ICON IS NO LONGER HERE. Until 19. 9.
+        `slot.display_key()` was drawn under each icon, i.e. 'C', 'R', 'Mys:
+        right', 'F'. Those were keys from `DEFAULT_SLOT`, which since phase 3
+        trigger nothing - the app does not read keys at all. So the player
+        read, right in the game, instructions that were not valid, and pressing
+        those keys achieved nothing.
 
-        Nahradzat ich popiskom nema zmysel: riadok je vysoky par pixelov a
-        ma byt periferny. Ikonka je ta ista grafika, ktoru hrac uvidi, ked
-        hlaska pride - to staci.
+        Replacing them with a label makes no sense: the row is a few pixels
+        tall and is meant to be peripheral. The icon is the same graphic the
+        player sees when the cue comes - that is enough.
         """
         visuals = ("grounding", "jaw", "release", "breath")
         out = []
-        # getattr, nie self.slots priamo: _apply_hud_config() sa vola z
-        # __init__ este PRED self.slots = [] (riadok nizsie v __init__),
-        # takze pri prvom zavolani atribut este neexistuje vobec.
+        # getattr, not self.slots directly: _apply_hud_config() is called from
+        # __init__ still BEFORE self.slots = [] (a line lower in __init__),
+        # so on the first call the attribute does not exist at all yet.
         slots = getattr(self, "slots", [])
         for i, visual_name in enumerate(visuals):
             enabled = True
@@ -116,15 +119,16 @@ class HudMixin:
         return out
 
     def _on_hud_trigger_click(self, index):
-        """Klik na ikonu v HUD riadku (len v nahlade v appke, v hre je
-        panel click-through - viz hud.StatsHud.handle_click) spusti tu
-        istu funkciu, ako keby hrac stlacil priradeny kláves."""
+        """A click on an icon in the HUD row (only in the preview in the app,
+        in the game the panel is click-through - see hud.StatsHud.handle_click)
+        triggers the same function as if the player had pressed the assigned
+        key."""
         if 0 <= index < len(self.slots):
             self.fire_slot(self.slots[index], source="hud_panel")
 
     def _refresh_hud_trigger_row(self):
-        """Prekresli zoznam 4 funkcii v HUD paneli - vola sa pri zmene
-        slotov (rebind klavesy, zapnutie/vypnutie) aj pri zmene jazyka."""
+        """Redraws the list of 4 functions in the HUD panel - called on a
+        change of slots (key rebind, on/off) and on a language change."""
         hud = getattr(self, "hud", None)
         if hud is None:
             return
@@ -133,14 +137,14 @@ class HudMixin:
         except Exception:
             pass
 
-    # ---------- HUD (zivy panel so statistikou tepu) ----------
+    # ---------- HUD (live panel with heart-rate statistics) ----------
 
     def _apply_overlay_labels(self):
-        """Popisky pod in-game vizualmi + slova dychoveho cyklu.
+        """Labels under the in-game visuals + the words of the breathing cycle.
 
-        Kreslia sa do obrazka, takze pri zmene jazyka ich treba manageru
-        podat znova - preto je to samostatna metoda a nie parameter
-        konstruktora.
+        They are drawn into the image, so on a language change they have to be
+        handed to the manager again - that is why this is a separate method and
+        not a constructor parameter.
         """
         g = self._game_text
         self.overlay_manager.set_labels(
@@ -156,8 +160,9 @@ class HudMixin:
                 else tr("settings.game_lang_same"))
 
     def on_game_lang_change(self, label):
-        """Prepne jazyk toho, co appka kresli do hry. Prekresli sa hned -
-        HUD aj vizualy si popisky drzia ako hotovy obrazok."""
+        """Switches the language of what the app draws into the game. Redrawn
+        right away - the HUD and the visuals hold their labels as a finished
+        image."""
         self.game_lang = LABEL_TO_LANG.get(label, LANG_SAME_AS_APP)
         self.save_settings()
         self._apply_overlay_labels()
@@ -165,12 +170,13 @@ class HudMixin:
         self.log(tr("log.game_lang", lang=self._game_lang_label(self.game_lang)))
 
     def _game_text(self, key, **kwargs):
-        """Text, ktory appka kresli DO HRY - vlastny jazyk, nie jazyk okna.
+        """Text the app draws INTO THE GAME - its own language, not the window
+        language.
 
-        HUD sedi vlavo dole na hernej obrazovke a popisky su pod vizualmi;
-        oboje konci na streame a na screenshotoch v obchode, kde to citaju
-        aj ludia, ktori jazyk rozhrania nevedia. Predvolena je preto
-        anglictina, aj ked appka bezi po slovensky.
+        The HUD sits bottom left on the game screen and the labels are under
+        the visuals; both end up on stream and in store screenshots, where they
+        are also read by people who do not know the interface language. So the
+        default is English, even when the app runs in Slovak.
         """
         return tr_lang(getattr(self, "game_lang", LANG_EN), key, **kwargs)
 
@@ -190,7 +196,7 @@ class HudMixin:
         self.hud.set_labels(self._hud_labels())
 
     def _apply_hud_config(self):
-        """Prenesie ulozenu konfiguraciu HUD-u do bezuceho okna."""
+        """Carries the saved HUD configuration over into the running window."""
         cfg = self.hud_config
         self.hud.set_style(self.overlay_manager.style)
         self._apply_hud_labels()
@@ -218,16 +224,19 @@ class HudMixin:
         if "show_triggers" in kwargs:
             cfg["show_triggers"] = bool(kwargs["show_triggers"])
         if "trigger_color" in kwargs:
-            # "" (prazdny retazec) znamena "vrat sa na farbu temy", rovnaka
-            # konvencia ako pri farbe piktogramov vizualov (on_overlay_config_change)
+            # "" (empty string) means "go back to the theme colour", the same
+            # convention as for the colour of the visuals' pictograms
+            # (on_overlay_config_change)
             value = kwargs["trigger_color"]
             cfg["trigger_color"] = normalize_hud_config(
                 {"trigger_color": value})["trigger_color"] if value else None
         self._apply_hud_config()
-        # Zapnutie/vypnutie panela meni, ci maju podriadene ikonky co robit.
+        # Turning the panel on/off changes whether the child icons have
+        # anything to do.
         self._sync_hud_trigger_state()
-        # Dva prepinace na to iste (v Nastaveniach aj rychly na Dnes) drzime v
-        # zhode. `.set()` nezavola command CTkSwitch-a, takze to nerekurzuje.
+        # Two switches for the same thing (in Settings and the quick one on
+        # Today) are kept in sync. `.set()` does not call the CTkSwitch's
+        # command, so it does not recurse.
         if "enabled" in kwargs:
             for meno in ("hud_enabled_var", "hud_quick_var"):
                 var = getattr(self, meno, None)
@@ -239,14 +248,15 @@ class HudMixin:
         self.save_settings()
 
     def _hud_trigger_color_display(self):
-        """Farba vzorky pri "Ukazat panel v hre" - vlastna, alebo akcent
-        temy (rovnaka konvencia ako _overlay_color pre 4 vizualy)."""
+        """Swatch colour next to "Show the panel in game" - custom, or the
+        theme accent (the same convention as _overlay_color for the 4
+        visuals)."""
         return self.hud_config.get("trigger_color") or self.pal["accent"]
 
     def pick_hud_trigger_color(self):
-        """Vyber farby ikoniek v riadku 4 zakladnych funkcii pod HUD
-        panelom - rovnaky system-native color picker ako pri vizualoch
-        (pick_overlay_color), len ulozeny do hud_config namiesto
+        """Choice of the icon colour in the row of 4 basic functions under the
+        HUD panel - the same system-native color picker as for the visuals
+        (pick_overlay_color), only saved to hud_config instead of
         overlay_configs."""
         from color_picker import ask_color, DEFAULT
         current = self._hud_trigger_color_display()
@@ -257,36 +267,37 @@ class HudMixin:
         swatch = getattr(self, "hud_trigger_swatch", None)
         if swatch is not None:
             try:
-                display = self._hud_trigger_color_display()   # None -> akcent temy
+                display = self._hud_trigger_color_display()   # None -> theme accent
                 swatch.configure(fg_color=display, hover_color=display)
             except Exception:
                 pass
 
     def _toggle_snooze_menu(self):
-        """Rozbali/zabali male menu s vyberom dlzky stisenia (5/20/40/60
-        min) pri tlacidle 😴 v doku bocneho panela.
+        """Expands/collapses the small menu for choosing the snooze length
+        (5/20/40/60 min) next to the 😴 button in the sidebar dock.
 
-        POZOR - TOTO MENU NEMA V 2.1 SPUSTAC. Tlacidlo 😴 odislo s rychlym
-        dokom (viz `_build_ui`) a odlozenie sa zapina globalnou skratkou na
-        pevnych `SNOOZE_HOTKEY_MINUTES` minut. Volba dlzky tak nie je
-        dostupna nikde.
+        WARNING - IN 2.1 THIS MENU HAS NO TRIGGER. The 😴 button left with the
+        quick dock (see `_build_ui`) and snooze is switched on with a global
+        shortcut for a fixed `SNOOZE_HOTKEY_MINUTES` minutes. So the length
+        choice is not available anywhere.
 
-        Kod je NECHANY zamerne, nie prehliadnutim: volba dlzky je prirodzeny
-        kandidat na jeden z piatich jednoduchych ovladacov zo zadania §3.1,
-        o ktorych sa este nerozhodlo. Ked padne rozhodnutie, staci to
-        zavolat odtial; ak sa rozhodne inak, patri to prec.
+        The code is KEPT on purpose, not by oversight: the length choice is a
+        natural candidate for one of the five simple controls from spec §3.1,
+        which have not been decided yet. When the decision is made, it is
+        enough to call it from there; if it is decided otherwise, it should go.
 
-        Anchor si berie z `quick_dock`, ktory uz neexistuje, takze metoda
-        skonci hned na `anchor is None` - nespadne, len nic neurobi.
+        It takes its anchor from `quick_dock`, which no longer exists, so the
+        method ends right at `anchor is None` - it does not crash, it just does
+        nothing.
 
-        Kreslene ako CTkToplevel bez OS ramu (rovnaky vzor ako ostatne
-        docasne popup-y v appke), zatvara sa klikom mimo neho alebo
-        opakovanym klikom na 😴.
+        Drawn as a CTkToplevel without an OS frame (the same pattern as the
+        other temporary popups in the app), it closes with a click outside it
+        or another click on 😴.
 
-        POZN: menu predtym viselo pod ozubenym kolieskom na stranke V hre.
-        Kotvi sa preto teraz VPRAVO od tlacidla, nie pod nim - dok sedi pri
-        dolnom okraji okna, takze pod nim uz nie je miesto a menu by
-        vyliezlo mimo obrazovky."""
+        NOTE: the menu used to hang under the gear wheel on the In game page.
+        That is why it is now anchored to the RIGHT of the button, not below
+        it - the dock sits at the bottom edge of the window, so there is no
+        room below it and the menu would stick out off the screen."""
         existing = getattr(self, "_snooze_menu", None)
         if existing is not None and existing.winfo_exists():
             existing.destroy()
@@ -324,17 +335,19 @@ class HudMixin:
                                           setattr(self, "_snooze_menu", None))
                          ).pack(fill="x", padx=4, pady=(2, 4))
 
-        # Poloha az TERAZ, ked je menu naplnene: pred zabalenim poloziek je
-        # winfo_reqheight() rovne 1 a menu by sa zarovnalo uplne mimo.
+        # Position only NOW, when the menu is filled: before the items are
+        # packed winfo_reqheight() equals 1 and the menu would be aligned
+        # completely off.
         menu.update_idletasks()
         x = anchor.winfo_rootx() + anchor.winfo_width() + 6
         y = anchor.winfo_rooty() + anchor.winfo_height() - menu.winfo_reqheight()
         menu.geometry(f"+{x}+{max(0, y)}")
 
         menu.bind("<FocusOut>", lambda _e: self.root.after(120, self._close_snooze_menu))
-        # Klik inam v hlavnom okne menu zavrie. Viazeme raz za beh appky
-        # (nie pri kazdom otvoreni), obsluha sama nic nerobi, ked menu nie
-        # je otvorene - tak netreba nic odviazovat a nehromadia sa vazby.
+        # A click elsewhere in the main window closes the menu. We bind once
+        # per app run (not on every open), the handler itself does nothing when
+        # the menu is not open - so nothing has to be unbound and bindings do
+        # not pile up.
         if not getattr(self, "_snooze_click_bound", False):
             self.root.bind("<ButtonRelease-1>", self._on_click_outside_snooze, add="+")
             self._snooze_click_bound = True
@@ -342,17 +355,18 @@ class HudMixin:
         self._snooze_menu = menu
 
     def _close_snooze_menu(self):
-        """Zavrie snooze menu, ked hrac prepol na INU APPKU (FocusOut).
+        """Closes the snooze menu when the player switched to ANOTHER APP
+        (FocusOut).
 
-        Podmienka `focus_get() is None` znamena "ziadny prvok TEJTO appky
-        nema fokus". Vyzera prilis volne, ale prisnejsie kriterium ("fokus
-        nie je v menu") tu NEFUNGUJE: menu je overrideredirect Toplevel a
-        jeho `focus_force()` na Windows fokus neudrzi - FocusOut priletí
-        hned po otvoreni a menu by zmizlo skor, nez by si ho hrac vobec
-        vsimol (overene naživo, zavrelo sa do 150 ms).
+        The condition `focus_get() is None` means "no widget of THIS app has
+        focus". It looks too loose, but a stricter criterion ("focus is not in
+        the menu") does NOT WORK here: the menu is an overrideredirect Toplevel
+        and its `focus_force()` does not keep focus on Windows - FocusOut
+        arrives right after opening and the menu would vanish before the player
+        even noticed it (verified live, it closed within 150 ms).
 
-        Klik inam VO VNUTRI okna appky preto rieši `_on_click_outside_snooze`,
-        nie tato metoda."""
+        A click elsewhere INSIDE the app window is therefore handled by
+        `_on_click_outside_snooze`, not by this method."""
         menu = getattr(self, "_snooze_menu", None)
         if menu is not None and menu.winfo_exists():
             try:
@@ -363,19 +377,19 @@ class HudMixin:
                 pass
 
     def _on_click_outside_snooze(self, _event=None):
-        """Klik kamkolvek v hlavnom okne zavrie otvorene snooze menu.
+        """A click anywhere in the main window closes an open snooze menu.
 
-        Menu je samostatny Toplevel, takze kliky V NOM sa sem vobec
-        nedostanu - tato obsluha vidi len kliky do hlavneho okna, teda
-        presne tie "mimo menu".
+        The menu is a separate Toplevel, so clicks IN IT never get here at
+        all - this handler only sees clicks into the main window, i.e. exactly
+        the ones "outside the menu".
 
-        Viazane na <ButtonRelease-1>, NIE <Button-1>, a je to podstatne:
-        CTkButton spusta svoj command az na release a vazba widgetu bezi
-        PRED vazbou okna. Klik na 😴 teda najprv prejde cez
-        `_toggle_snooze_menu` (ktore menu zavrie) a sem uz dojde None.
-        Keby to viselo na <Button-1>, press by menu zavrel a nasledny
-        release na tlacidle by ho hned znova otvoril - druhy klik na 😴
-        by menu nikdy nezavrel."""
+        Bound to <ButtonRelease-1>, NOT <Button-1>, and that matters: CTkButton
+        runs its command only on release and the widget binding runs BEFORE the
+        window binding. So a click on 😴 first goes through
+        `_toggle_snooze_menu` (which closes the menu) and by the time it gets
+        here it is None. If this hung on <Button-1>, the press would close the
+        menu and the following release on the button would open it again right
+        away - a second click on 😴 would never close the menu."""
         menu = getattr(self, "_snooze_menu", None)
         if menu is None or not menu.winfo_exists():
             return
@@ -386,8 +400,8 @@ class HudMixin:
         self._snooze_menu = None
 
     def test_hud(self):
-        """Ukaze HUD aj ked je vypnuty, aby si hrac overil polohu voci
-        HUD-u svojej hry. Po 4 sekundach ho zase schova."""
+        """Shows the HUD even when it is off, so the player can check its
+        position against their game's HUD. Hides it again after 4 seconds."""
         was_enabled = self.hud_config["enabled"]
         self.hud.configure(enabled=True)
         if not was_enabled:
@@ -395,7 +409,7 @@ class HudMixin:
                 enabled=self.hud_config["enabled"]))
 
     def on_monitor_target_change(self, target):
-        """Prepnutie cieloveho monitora pre vizualy aj HUD."""
+        """Switching the target monitor for the visuals and the HUD."""
         self.monitor_target = normalize_monitor_target(target)
         self.overlay_manager.set_monitor_target(self.monitor_target)
         self.hud.configure(monitor_target=self.monitor_target)
@@ -416,7 +430,7 @@ class HudMixin:
         return tr("overlay.monitor.auto")
 
     def monitor_choices(self):
-        """[(popisok, hodnota)] pre dropdown vyberu monitora."""
+        """[(label, value)] for the monitor-choice dropdown."""
         options = [(tr("overlay.monitor.auto"), "auto"),
                    (tr("overlay.monitor.cursor"), "cursor"),
                    (tr("overlay.monitor.primary"), "primary")]
@@ -430,49 +444,53 @@ class HudMixin:
         parts = [f"{elapsed // 60:02d}:{elapsed % 60:02d}",
                  self._game_text("hud.session.triggers", n=stats.triggers)]
         if stats.time_over >= 1.0:
-            # od hodiny "1 h 15 min", nie "75:12" - v jazyku HRY (0.2.2 4b)
+            # from one hour on "1 h 15 min", not "75:12" - in the GAME language
+            # (0.3 4b)
             parts.append(self._game_text(
                 "hud.session.over",
                 time=ui_kit.cas_text(int(stats.time_over), preklad=self._game_text)))
         self.hud.set_session_text("  ·  ".join(parts))
 
-    # ---------- In-Game Vizualy (Overlay) ----------
+    # ---------- In-Game Visuals (Overlay) ----------
 
     def _watch_pulse_state(self):
-        """Stav kontrolky tepu v bocnom paneli:
-        (spojene, caka_na_tep, pasmo, faza_tepu).
+        """State of the heart-rate indicator in the sidebar:
+        (connected, waiting_for_heart_rate, zone, beat_phase).
 
-        Faza ide z `HeartStats.beat_phase()` - z toho isteho zdroja ako
-        srdce na HUD-e v hre, takze oba bijú naraz. Pevna animacia (napr.
-        raz za sekundu) je bezna chyba: kontrolka by potom ukazovala iny
-        tep, nez aky hodinky naozaj hlasia.
+        The phase comes from `HeartStats.beat_phase()` - from the same source
+        as the heart on the in-game HUD, so both beat together. A fixed
+        animation (e.g. once a second) is a common mistake: the indicator would
+        then show a different heart rate than the one the watch really reports.
         """
         if not self.hr_monitoring_enabled:
-            # Senzor je vypnuty - zahod aj drzane pasmo, inak by kontrolka
-            # po opatovnom zapnuti bliskala 1,5 s STARYM pasmom z predoslej
-            # relacie (hysterezia by drzala napr. cervenu, hoci hrac medzitym
-            # vychladol).
+            # The sensor is off - drop the held zone as well, otherwise after
+            # being switched back on the indicator would flash for 1.5 s with
+            # the OLD zone from the previous session (the hysteresis would hold
+            # e.g. red, although the player has cooled down in the meantime).
             self._watch_zone = None
             self._watch_zone_cakajuce = None
             return False, False, None, 0.0
         stats = self.hr_stats
         bpm = getattr(stats, "last_bpm", None)
         if not bpm:
-            # Senzor bezi, ale data nechodia (este neprisli, alebo hodinky
-            # vypadli). Pasmo zahadzujeme z rovnakeho dovodu ako vyssie.
+            # The sensor is running, but no data comes in (not yet arrived, or
+            # the watch dropped out). We drop the zone for the same reason as
+            # above.
             self._watch_zone = None
             self._watch_zone_cakajuce = None
             return True, True, None, 0.0
 
-        # Pocas kalibracie HUD aj Dnes pisu "kalibrujem…" - kontrolka nesmie
-        # popri tom svietit pasmom. Neutralna farba, tep bije dalej. To iste
-        # par vzoriek po navrate tepu (`is_settling`): zataz sa rozbieha od
-        # nuly a zelena by tvrdila pokoj, ktory appka nevie.
+        # During calibration the HUD and Today show "kalibrujem…"
+        # (calibrating…) - the indicator must not show a zone alongside that.
+        # Neutral colour, the heartbeat goes on. The same for a few samples
+        # after the heart rate comes back (`is_settling`): the load ramps up
+        # from zero and green would claim a calm the app does not know about.
         if (getattr(stats, "is_calibrating", False)
                 or getattr(stats, "is_settling", False)):
             nove = "neutral"
         else:
-            # To iste pasmo ako HUD a Dnes - pocita sa len v `HeartStats.zone`.
+            # The same zone as the HUD and Today - computed only in
+            # `HeartStats.zone`.
             nove = stats.zone
         teraz = time.monotonic()
         drzane = getattr(self, "_watch_zone", None)
@@ -480,8 +498,8 @@ class HudMixin:
             self._watch_zone_cakajuce = nove
             self._watch_zone_od = teraz
         if drzane is None:
-            # prve pasmo po pripojeni sa berie HNED, nie az po hysterezii -
-            # inak by kontrolka zacala v nahodnom pasme
+            # the first zone after connecting is taken AT ONCE, not after the
+            # hysteresis - otherwise the indicator would start in a random zone
             self._watch_zone = nove
         elif (nove != drzane
               and teraz - getattr(self, "_watch_zone_od", teraz) >= self.WATCH_ZONE_HOLD_S):
@@ -489,41 +507,45 @@ class HudMixin:
         return True, False, self._watch_zone, stats.beat_phase()
 
     def open_watch_pairing(self, on_close=None):
-        """Ikona hodiniek ZAPINA a otvara panel. Vypnut sa nou neda (§1.10).
+        """The watch icon SWITCHES ON and opens the panel. It cannot switch off
+        (§1.10).
 
-        `on_close` sa zavola raz po zavreti navodu - prvy start po nom
-        spusti prehliadku appky a prehliadka z neho pokracuje dalsim krokom.
+        `on_close` is called once after the instructions are closed - the first
+        start then runs the app tour, and the tour continues from it with the
+        next step.
 
-        Predtym len otvarala dialog. Ked bol senzor vypnuty, hrac tak dostal
-        parovaci panel nad vypnutym senzorom: postupoval podla neho, appka
-        nic neprijala a nikde nestalo preco. Teraz klik znamena "chcem to",
-        cize sa senzor rovno zapne.
+        Before, it only opened the dialog. When the sensor was off, the player
+        got the pairing panel on top of a switched-off sensor: they followed
+        it, the app received nothing and nowhere did it say why. Now a click
+        means "I want this", so the sensor is switched on right away.
 
-        Vypinanie zostava tam, kde bolo - prepinac v nastaveniach. Ikona,
-        ktora raz zapne a inokedy vypne, je pri jednom piktograme bez
-        popisku necitatelna: hrac nevie, ci klikom zapina alebo vypina, kym
-        neklikne.
+        Switching off stays where it was - the switch in the settings. An icon
+        that switches on once and off another time is unreadable with one
+        pictogram and no label: the player does not know whether a click
+        switches on or off until they click.
 
-        Vsetci volajuci su za klikom hraca - dvaja z nich az po tom, co si
-        v uvode vybral "Sparovat hodinky teraz" (prvy start v `__init__`,
-        `replay_onboarding`), jeden je tlacidlo v bubline prehliadky. Appka
-        teda senzor nezapne nikdy sama od seba.
+        All callers are behind a player's click - two of them only after the
+        player chose "Pair a watch now" in the introduction (first start in
+        `__init__`, `replay_onboarding`), one is the button in the tour bubble.
+        So the app never switches the sensor on by itself.
         """
         self._enable_hr_monitoring()
         WatchPairingDialog(self, on_close=on_close)
 
     def _enable_hr_monitoring(self):
-        """Zapne senzor tepu, ak este nebezi. Vrati True, ak sa naozaj zapol.
+        """Switches the heart-rate sensor on if it is not running yet. Returns
+        True if it really got switched on.
 
-        Ked uz bezi, NEROBI NIC - `start_heart_rate_monitor` vynuluje
-        relaciu (`hr_stats.reset_session`), takze zavolat ho na beziacej
-        relacii by zahodilo vecer nazbieranych dat len preto, ze hrac
-        otvoril parovaci panel.
+        When it is already running, it DOES NOTHING - the
+        `start_heart_rate_monitor` call resets the session
+        (`hr_stats.reset_session`), so calling it on a running session
+        would throw away an evening of collected data just because the
+        player opened the pairing panel.
         """
         if self.hr_monitoring_enabled:
             return False
         self.hr_monitoring_enabled = True
-        # Prepinac v nastaveniach existuje az po postaveni tej stranky.
+        # The switch in the settings exists only once that page has been built.
         if self.hr_enabled_var is not None:
             try:
                 self.hr_enabled_var.set(True)
@@ -544,8 +566,9 @@ class HudMixin:
         if "enabled" in kwargs:
             cfg["enabled"] = bool(kwargs["enabled"])
             if index == 3 and cfg["enabled"]:
-                # dychaci kruh je zas zapnuty - radu o vypnutom vizuali
-                # smieme hracovi pripomenut, ak si ho znova vypne
+                # the breathing circle is on again - we may remind the player
+                # of the tip about a switched-off visual if they switch it off
+                # again
                 self._hr_overlay_warned = False
         if "scale" in kwargs:
             cfg["scale"] = clamp_float(kwargs["scale"], 0.5, 2.0, cfg["scale"])
@@ -554,7 +577,7 @@ class HudMixin:
             cfg["pos_x"] = clamp_float(pos_x, 0.0, 100.0, cfg["pos_x"])
             cfg["pos_y"] = clamp_float(pos_y, 0.0, 100.0, cfg["pos_y"])
         if "color" in kwargs:
-            # None / "" = farba temy; inak overeny #rrggbb
+            # None / "" = theme colour; otherwise a validated #rrggbb
             cfg["color"] = normalize_overlay_config({"color": kwargs["color"]},
                                                     index)["color"]
         self.overlay_manager.configure(index, enabled=cfg["enabled"], scale=cfg["scale"],
@@ -562,17 +585,18 @@ class HudMixin:
                                        color=cfg["color"] or "")
         self.save_settings()
         if "enabled" in kwargs:
-            # Hlaska s vypnutym obrazkom v hre sa nepripravuje
-            # (`_slot_na_pripravu`) - rovnako ako vypnuta hlaska
-            # (`SlotCard.on_enabled_change`): zapnuty obrazok ju treba
-            # pripravit (mimo hry hned, inak po hre), po vypnuti zvysok
-            # rozbehnutej pripravy jej text uz neposle. Velkost, poloha a
-            # farba na to, co sa posiela, nemaju vplyv - pripravu nerusia.
+            # A cue with its in-game picture off is not prepared
+            # (`_slot_na_pripravu`) - just like a disabled cue
+            # (`SlotCard.on_enabled_change`): with the picture turned on it has
+            # to be prepared (right away outside a game, otherwise after the
+            # game), after switching off the rest of a running preparation no
+            # longer sends its text. Size, position and colour have no effect
+            # on what is sent - they do not cancel the preparation.
             self.schedule_pregenerate(200)
 
     def on_breath_seconds_change(self, inhale=None, exhale=None):
-        """Dlzka nadychu/vydychu dychoveho kruhu (v sekundach) - slider v
-        "In-Game Vizuály" pri slote Dych."""
+        """Inhale/exhale length of the breathing circle (in seconds) - the
+        slider in "In-Game Visuals" at the Breath slot."""
         new_inhale = self.breath_inhale_s if inhale is None else inhale
         new_exhale = self.breath_exhale_s if exhale is None else exhale
         self.breath_inhale_s, self.breath_exhale_s = normalize_breath_seconds(
@@ -581,33 +605,35 @@ class HudMixin:
         self.save_settings()
 
     def _overlay_color(self, index):
-        """Farba piktogramu slotu pre UI - vlastna, alebo akcent temy."""
+        """Slot pictogram colour for the UI - custom, or the theme accent."""
         cfg = self.overlay_configs[index]
         return cfg.get("color") or self.pal["accent"]
 
     def toggle_overlay_test(self, index):
-        """Prepne drag-test rezim vizualu.
+        """Toggles the drag-test mode of a visual.
 
-        Prve kliknutie zobrazi vizual NASTALO a da sa tahat mysou; tlacidlo
-        sa zmeni na "Hotovo". Druhe kliknutie test ukonci a ULOZI polohu,
-        na ktoru ho hrac potiahol. Poloha sa vrati cez callback
-        set_test_moved_callback -> _on_overlay_test_moved.
+        The first click shows the visual PERMANENTLY and it can be dragged with
+        the mouse; the button changes to "Done". The second click ends the test
+        and SAVES the position the player dragged it to. The position comes
+        back through the callback set_test_moved_callback ->
+        _on_overlay_test_moved.
         """
-        # nauc manager, kam ulozit novu polohu po skonceni tohto testu
+        # teach the manager where to save the new position after this test ends
         self.overlay_manager.set_test_moved_callback(
             index, lambda px, py, i=index: self._on_overlay_test_moved(i, px, py))
         testing = self.overlay_manager.test(index)
         self._refresh_test_button(index, testing)
-        # ak sa zaplo testovanie ineho slotu, jeho tlacidlo treba vratit
+        # if testing of another slot was switched on, its button has to be
+        # reset
         for i in range(4):
             if i != index:
                 self._refresh_test_button(i, self.overlay_manager.is_testing(i))
 
     def _refresh_all_test_buttons(self):
-        """Zosuladi vsetky styri tlacidla Test so skutocnym stavom.
+        """Brings all four Test buttons in line with the real state.
 
-        Volat po hromadnom ukonceni testov - inak by tlacidlo dalej hlasilo
-        "Hotovo" pri vizuale, ktory uz nebezi.
+        Call after ending tests in bulk - otherwise a button would keep saying
+        "Done" for a visual that is no longer running.
         """
         for index in range(4):
             try:
@@ -620,8 +646,9 @@ class HudMixin:
         btn = getattr(self, "vhre_test_buttons", {}).get(index)
         if btn is None:
             return
-        # Prave bezi test = ZAPNUTE, teda ram v `accent` a pod nim tlmena
-        # vypln `accent2`; inak vedlajsie tlacidlo (`ui_kit.button`).
+        # A test running right now = ON, i.e. the border in `accent` and under
+        # it a muted `accent2` fill; otherwise a secondary button
+        # (`ui_kit.button`).
         try:
             btn.configure(
                 text=tr("overlay.test_done") if testing else tr("overlay.test"),
@@ -632,7 +659,7 @@ class HudMixin:
             pass
 
     def _on_overlay_test_moved(self, index, px, py):
-        """Vizual bol potiahnuty na novu polohu - uloz ju do konfiguracie."""
+        """Visual dragged to a new position - save it to the configuration."""
         cfg = self.overlay_configs[index]
         cfg["pos_x"], cfg["pos_y"] = round(px, 1), round(py, 1)
         self.overlay_manager.configure(index, pos=(cfg["pos_x"], cfg["pos_y"]))
@@ -640,10 +667,11 @@ class HudMixin:
         self._refresh_test_button(index, False)
 
     def pick_overlay_color(self, index):
-        """Otvori vlastny (Zanshin) vyber farby piktogramu pre dany vizual.
+        """Opens the own (Zanshin) pictogram colour picker for the given
+        visual.
 
-        Vrati hex farbu, DEFAULT (vrat farbu temy = color=None), alebo None
-        pri zruseni (vtedy sa nic nemeni).
+        Returns a hex colour, DEFAULT (go back to the theme colour =
+        color=None), or None on cancel (then nothing changes).
         """
         from color_picker import ask_color, DEFAULT
         current = self._overlay_color(index)
@@ -654,11 +682,11 @@ class HudMixin:
         swatch = getattr(self, "vhre_color_swatches", {}).get(index)
         if swatch is not None:
             try:
-                display = self._overlay_color(index)   # None -> akcent temy
+                display = self._overlay_color(index)   # None -> theme accent
                 swatch.configure(fg_color=display, hover_color=display)
             except Exception:
                 pass
 
     def test_overlay(self, index):
-        # zachovane pre spatnu kompatibilitu (paleta prikazov, onboarding)
+        # kept for backward compatibility (command palette, onboarding)
         self.toggle_overlay_test(index)

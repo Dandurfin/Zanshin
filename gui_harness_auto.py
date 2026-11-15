@@ -1,41 +1,48 @@
 # -*- coding: utf-8 -*-
-"""Automaticky GUI harness (Windows) - overenie appky v skutocnom okne.
+"""Automatic GUI harness (Windows) - checking the app in a real window.
 
-Co robi
--------
-Spusti DandurfApp V TOMTO PROCESE (ziadny pyautogui nad cudzim oknom),
-a potom cez Tk `after()` retazec:
-  * prekliká vsetkych 6 stranok a meria geometriu stranky Dnes (skok),
-  * necha dychat KamaeBar a kontroluje, ze nemeni vysku,
-  * na kazdom slideri posle REALNE koliesko (user32.mouse_event) aj
-    event_generate a overi, ze hodnota ostala,
-  * zapne Test vizualu, precita WS_EX_TRANSPARENT z okna, prejde mriezku
-    WindowFromPoint (chytitelnost), overi kurzor fleur, potiahne okno
-    REALNOU mysou, ulozi polohu, znova otvori, prepne na iny slot,
-  * otvori parovaci dialog, overi override/fokus/grab, potiahne ho za
-    listu a zavrie realnym Escape,
-  * ulozi farbu piktogramu a overi na screenshote, ze vizual je cerveny,
-  * hromadne oznaci sloty (odmietnutie "vsetky" + zmazanie dvoch),
-  * karty statistik na Dnes: vyber ma vsetky riadky cele (SK aj DE) a je
-    na obrazovke, strop 4 karty, posledna ostava, ✕ <-> ✓, a vymena kariet
-    potiahnutim REALNOU mysou (klik, medzera ani ⓘ poradie nemenia),
-  * prepne jazyk na EN a spat, temu Sumi/Aizome a spat.
+What it does
+------------
+Starts DandurfApp IN THIS PROCESS (no pyautogui over someone else's window),
+and then via a Tk `after()` chain:
+  * clicks through all 6 pages and measures the geometry of the Today page
+    (jump),
+  * lets KamaeBar breathe and checks that it does not change height,
+  * on every slider sends a REAL mouse wheel (user32.mouse_event) and
+    event_generate and checks that the value stayed,
+  * switches on the visual test, reads WS_EX_TRANSPARENT from the window,
+    walks a WindowFromPoint grid (grabbability), checks the fleur cursor,
+    drags the window with the REAL mouse, saves the position, reopens,
+    switches to another slot,
+  * opens the pairing dialog, checks override/focus/grab, drags it by the
+    bar and closes it with a real Escape,
+  * saves a pictogram colour and checks on a screenshot that the visual is
+    red,
+  * bulk-selects slots (refusing "all" + deleting two),
+  * stats cards on Today: the picker has all rows whole (SK and DE) and is
+    on screen, cap of 4 cards, the last one stays, ✕ <-> ✓, and swapping
+    cards by dragging with the REAL mouse (a click, a gap or ⓘ do not
+    change the order),
+  * switches the language to EN and back, the theme Sumi/Aizome and back.
 
-Co treba vediet
----------------
-  * HYBE REALNOU MYSOU a posiela klavesy - pocas behu (~2 min) nechaj PC tak.
-  * Hlavne okno da docasne `topmost`, inak ho prekryje terminal/IDE.
-  * Nastavenia (dandurf_settings.json aj jeho .bak) a historiu tepu
-    (hr_sessions.json, hr_insights.json, kontrolny bod relacie
-    hr_session_open.json) si na zaciatku zalohuje NA DISK vedla originalov
-    (`<subor>.pred-harnessom`) a na konci ich OBNOVI - hromadne mazanie,
-    drag a test historie by ich inak zmenili. Po behu, ktory niekto tvrdo
-    zabil, ich vrati najblizsi beh hned na zaciatku (viz "Zaloha dat").
-  * Screenshoty a harness_results.json idu do logs/gui_harness/.
-  * messagebox.showinfo/askyesno sa pocas hromadneho mazania nahradia
-    zaznamom (inak by modalne okno beh zablokovalo).
+What you need to know
+---------------------
+  * IT MOVES THE REAL MOUSE and sends keys - leave the PC alone while it
+    runs (~2 min).
+  * It makes the main window temporarily `topmost`, otherwise the
+    terminal/IDE covers it.
+  * The settings (dandurf_settings.json and its .bak) and the heart-rate
+    history (hr_sessions.json, hr_insights.json, the session checkpoint
+    hr_session_open.json) are backed up at the start ON DISK next to the
+    originals (`<subor>.pred-harnessom`) and RESTORED at the end - bulk
+    deletion, drag and the history test would otherwise change them. After
+    a run that someone killed hard, the next run restores them right at
+    the start (see "Data backup").
+  * Screenshots and harness_results.json go to logs/gui_harness/.
+  * messagebox.showinfo/askyesno are replaced by a record during bulk
+    deletion (otherwise a modal window would block the run).
 
-Spustenie:  python gui_harness_auto.py   (appka NESMIE bezat vedla)
+Run:  python gui_harness_auto.py   (the app MUST NOT be running alongside)
 """
 import atexit, ctypes, filecmp, json, os, shutil, sys, time, traceback
 from ctypes import wintypes
@@ -47,49 +54,56 @@ sys.path.insert(0, PROJ)
 os.chdir(PROJ)
 
 # ---------------------------------------------------------------------------
-# Zaloha dat (nastavenia + historia tepu) - na disku, nie v pamati
+# Data backup (settings + heart-rate history) - on disk, not in memory
 # ---------------------------------------------------------------------------
-# Harness bezi nad datami Zanshinu zo zdrojakov vedla main.py, teda nad
-# ozajstnou historiou tepu. Do 0.2.1c ju odkladal len v PAMATI a posledny
-# `finally` ju ani nevracal: Ctrl+C, zavretie okna ci pad medzi odlozenim a
-# vratenim ju zmazali navzdy. Zaloha nastaveni bola na disku, ale dalsi beh
-# ju prepisal nastaveniami, ktore zmenil preruseny beh. Preto teraz:
-#   * PRED prvym dotykom sa kazdy subor skopiruje vedla seba ako
-#     `<subor>.pred-harnessom`; subor, ktory pred behom nebol, dostane
-#     znacku `<subor>.pred-harnessom-nebol`. Na disku prezije aj zabitie
-#     procesu.
-#   * Vracia sa v `finish()`, vo `finally` okolo mainloop (Ctrl+C, zavrete
-#     okno) aj cez `atexit` (pad este pred mainloop) - kazda cesta von.
-#   * Ked beh zabil niekto tvrdo (Task Manager, zavretie konzoly), zaloha
-#     ostane na disku a vrati ju najblizsi beh SKOR, nez sa cohokolvek
-#     dotkne (`obnov_po_prerusenom_behu`). Novu zalohu cez nevratenu staru
-#     `zaloz_zalohy` nezapise - to bola ta strata nastaveni.
-# Mena `.pred-harnessom*` aj `.pred-obnovou-*` .gitignore uz pokryva
-# (`*.pred-*`; historiu aj `hr_*.json*`), takze na GitHub nejdu. Zalohy
-# historie tepu su surodenci jej suborov, takze ich "Zmazat historiu" zmaze
-# tiez (`data_io._plan_priecinka`); nastavenia ta volba nemaze, ani ich zalohu.
+# The harness runs on the Zanshin data of the source tree next to main.py,
+# i.e. on the real heart-rate history. Up to 0.2.1c it put it aside only in
+# MEMORY and the last `finally` did not even restore it: Ctrl+C, closing the
+# window or a crash between setting aside and restoring deleted it forever.
+# The settings backup was on disk, but the next run overwrote it with the
+# settings the interrupted run had changed. So now:
+#   * BEFORE the first touch every file is copied next to itself as
+#     `<subor>.pred-harnessom`; a file that did not exist before the run
+#     gets the marker `<subor>.pred-harnessom-nebol`. On disk it survives
+#     even the process being killed.
+#   * It is restored in `finish()`, in the `finally` around mainloop
+#     (Ctrl+C, closed window) and via `atexit` (a crash even before
+#     mainloop) - every way out.
+#   * When someone killed the run hard (Task Manager, closing the console),
+#     the backup stays on disk and the next run restores it BEFORE it
+#     touches anything (`obnov_po_prerusenom_behu`). `zaloz_zalohy` does not
+#     write a new backup over an unrestored old one - that was the loss of
+#     settings.
+# The names `.pred-harnessom*` and `.pred-obnovou-*` are already covered by
+# .gitignore (`*.pred-*`; the history also by `hr_*.json*`), so they do not
+# go to GitHub. The heart-rate history backups are siblings of its files,
+# so "Delete history" deletes them too (`data_io._plan_priecinka`); that
+# option does not delete the settings, nor their backup.
 ZALOHA = ".pred-harnessom"
 NEBOL = ".pred-harnessom-nebol"
 
 
 def _zapis_kopiu(zdroj, ciel):
-    """Kopia cez `.tmp` + `os.replace`: prerusenie uprostred kopirovania
-    nenecha polovicnu zalohu, ktoru by dalsi beh vratil namiesto dat."""
+    """Copy via `.tmp` + `os.replace`: an interruption in the middle of
+    copying does not leave a half backup that the next run would restore
+    instead of the data."""
     tmp = ciel + ".tmp"
     shutil.copy2(zdroj, tmp)
     os.replace(tmp, ciel)
 
 
 def obnov_po_prerusenom_behu(cesty, znacka=None):
-    """Vrati zalohy, ktore po sebe nechal preruseny beh. Vola sa ako prve.
+    """Restores backups that an interrupted run left behind. Called first.
 
-    Pravidlo: zaloha spred harnessu je ozajstny stav hraca a vrati sa. Co je
-    na jej mieste teraz, sa vsak naslepo neprepise ani nezmaze - mohol to
-    zapisat preruseny harness (synteticke data), ale aj appka spustena
-    medzitym (nova ozajstna relacia), a to sa rozlisit neda. Ak sa subor od
-    zalohy lisi (alebo pred behom nebol), odlozi sa vedla ako
-    `<subor>.pred-obnovou-<cas>` a vypise sa, kde je. Nestrati sa tak nic;
-    zhodny so zalohou netreba drzat. Vracia zoznam vratenych suborov.
+    Rule: the backup from before the harness is the player's real state and
+    is restored. What is in its place now, however, is not blindly
+    overwritten or deleted - the interrupted harness may have written it
+    (synthetic data), but so may the app started in the meantime (a new
+    real session), and the two cannot be told apart. If the file differs
+    from the backup (or did not exist before the run), it is set aside next
+    to it as `<subor>.pred-obnovou-<cas>` and it is printed where it is.
+    That way nothing is lost; one identical to the backup need not be kept.
+    Returns the list of restored files.
     """
     znacka = znacka or time.strftime("%Y%m%d-%H%M%S")
     vratene = []
@@ -118,12 +132,13 @@ def obnov_po_prerusenom_behu(cesty, znacka=None):
 
 
 def zaloz_zalohy(cesty):
-    """Zaloha kazdeho suboru na disk, skor nez sa ho beh dotkne."""
+    """Backs up every file to disk before the run touches it."""
     for p in cesty:
         if os.path.exists(p + ZALOHA) or os.path.exists(p + NEBOL):
-            # Zaloha, ktoru `obnov_po_prerusenom_behu` nevratil (napr.
-            # zamknuty subor). Prepisat ju aktualnym suborom by bola presne
-            # ta strata dat, pred ktorou je - beh radsej nezacne.
+            # A backup that `obnov_po_prerusenom_behu` did not restore (e.g. a
+            # locked file). Overwriting it with the current file would be
+            # exactly the data loss it protects against - the run would rather
+            # not start.
             raise SystemExit("harness: %s ma nevratenu zalohu z preruseneho "
                              "behu - vrat ju rucne a spusti znova" % p)
     for p in cesty:
@@ -134,11 +149,12 @@ def zaloz_zalohy(cesty):
 
 
 def vrat_zalohy(cesty, nechat_zalohy=False):
-    """Vrati subory spred behu; co pred behom nebolo, zmaze (zapisal to tento
-    beh). `nechat_zalohy=True` (uprostred behu) vrati kopiu a zalohu necha,
-    lebo appka aj harness do suborov este pisu; na konci sa zaloha vrati
-    presunom a zmizne. Druhe volanie uz nic nenajde - `finish()`, `finally`
-    aj `atexit` ho mozu zavolat po sebe."""
+    """Restores the files from before the run; what did not exist before the
+    run is deleted (this run wrote it). `nechat_zalohy=True` (mid-run)
+    restores a copy and keeps the backup, because the app and the harness
+    still write to the files; at the end the backup is restored by a move
+    and disappears. A second call finds nothing - `finish()`, `finally` and
+    `atexit` may call it one after another."""
     for p in cesty:
         try:
             if os.path.exists(p + ZALOHA):
@@ -152,21 +168,23 @@ def vrat_zalohy(cesty, nechat_zalohy=False):
                 if not nechat_zalohy:
                     os.remove(p + NEBOL)
         except Exception as exc:
-            # Zaloha ostava na disku - vrati ju najblizsi beh.
+            # The backup stays on disk - the next run restores it.
             print("harness: subor sa nepodarilo vratit", p, exc, flush=True)
 
 
 SETTINGS = os.path.join(PROJ, "dandurf_settings.json")
 HR_SESSIONS = os.path.join(PROJ, "hr_sessions.json")
 HR_INSIGHTS = os.path.join(PROJ, "hr_insights.json")
-# Od 0.2.2 appka pri starte prida do historie kontrolny bod relacie, ktora sa
-# minule neulozila (hr_session_open.json), a ten zmaze. Bez zalohy by ho
-# harness takto "spotreboval" a historiu potom vratil do stavu pred behom -
-# relacia z padnutej appky by bola navzdy prec. Rovnako .bak nastaveni: inak
-# by po behu ostal s nastaveniami, ktore si harness upravil.
+# Since 0.3 the app at start adds to history the checkpoint of a session
+# that was not saved last time (hr_session_open.json), and deletes it.
+# Without a backup the harness would "consume" it this way and then restore
+# the history to the state before the run - the session from the crashed
+# app would be gone forever. The same for the settings .bak: otherwise it
+# would be left after the run with the settings the harness modified.
 HR_SESSION_OPEN = os.path.join(PROJ, "hr_session_open.json")
-# Relacie, ktore sa nedali ulozit (0.2.2, hr_stats.CAKAJUCA_MENO) - start ich
-# doplni do historie a subor zmaze, presne ako kontrolny bod vyssie.
+# Sessions that could not be saved (0.3, hr_stats.CAKAJUCA_MENO) - start
+# adds them to history and deletes the file, exactly like the checkpoint
+# above.
 HR_SESSION_PENDING = os.path.join(PROJ, "hr_session_pending.json")
 SETTINGS_BAK = SETTINGS + ".bak"
 ODLOZENE = (SETTINGS, HR_SESSIONS, HR_INSIGHTS, HR_SESSION_OPEN, SETTINGS_BAK,
@@ -175,11 +193,12 @@ obnov_po_prerusenom_behu(ODLOZENE)
 zaloz_zalohy(ODLOZENE)
 atexit.register(vrat_zalohy, ODLOZENE)
 if os.path.exists(SETTINGS):
-    # Tento harness testuje bezne stranky, nie prvy start. Ak by v
-    # nastaveniach chybala tema (= first_run) alebo tour_seen, appka by
-    # otvorila onboarding/tour a harness by v modalnom wait_window() visel
-    # navzdy. Na cas behu ich doplnime; original sa na konci vrati.
-    # (Onboarding a tour testuje gui_harness_onboarding.py.)
+    # This harness tests the ordinary pages, not the first start. If the
+    # settings lacked the theme (= first_run) or tour_seen, the app would
+    # open the onboarding/tour and the harness would hang in a modal
+    # wait_window() forever. For the duration of the run we fill them in;
+    # the original is restored at the end.
+    # (Onboarding and the tour are tested by gui_harness_onboarding.py.)
     try:
         with open(SETTINGS, encoding="utf-8") as _fh:
             _d = json.load(_fh)
@@ -230,11 +249,12 @@ def rec(name, ok, detail=""):
     print(("PASS " if ok else "FAIL ") + name + (f"  -- {detail}" if detail else ""), flush=True)
 
 
-# Hlavne okno sa pri starte ukaze az cele nakreslene; dovtedy je zahalene
-# (DWM cloak, viz app._odhal_hotove_okno). Zahalene okno ma winfo_viewable()
-# stale True, screenshot by odfotil PLOCHU ZA NIM (sukromie!) a realny klik
-# by trafil cudzie okno. Preto kazdy krok najprv pocka, kym sa okno ukaze,
-# a `grab` odmietne fotit, kym je zahalene.
+# At start the main window only shows once it is fully drawn; until then
+# it is cloaked (DWM cloak, see app._odhal_hotove_okno). A cloaked window
+# still has winfo_viewable() True, a screenshot would capture the DESKTOP
+# BEHIND IT (privacy!) and a real click would hit someone else's window.
+# That is why every step first waits until the window shows, and `grab`
+# refuses to take a picture while it is cloaked.
 ODHALENIE_TIMEOUT_MS = 5000
 
 
@@ -370,7 +390,7 @@ def kamae_geom():
                 root_h=root.winfo_height(), root_x=root.winfo_x(), root_y=root.winfo_y())
 
 
-# ---------------- 1. štart ----------------
+# ---------------- 1. start ----------------
 @step(1800, )
 def s_start():
     rec("app window opened",
@@ -381,7 +401,7 @@ def s_start():
         len(app.sidebar.buttons) == 4, list(app.sidebar.buttons))
     rec("settings group has 4 tabs", list(app.settings_nav.buttons) == list(app.SETTINGS_TABS), list(app.settings_nav.buttons))
     hwnd = top_hwnd(root)
-    root.attributes("-topmost", True)     # harness bezi z Claude okna, ktore appku prekryva
+    root.attributes("-topmost", True)     # harness runs from a Claude window that covers the app
     user32.SetForegroundWindow(ctypes.c_void_p(hwnd))
     root.lift()
     state["g0"] = kamae_geom()
@@ -389,10 +409,10 @@ def s_start():
     shot("01_dnes")
 
 
-# ---------------- 1b. bočné menu: pevné stĺpce ----------------
+# ---------------- 1b. side menu: fixed columns ----------------
 def page_on_top():
-    """Ktora stranka (hlavna alebo karta Nastaveni) je prave navrchu - podla
-    widgetu pod bodom v oblasti stranok, cez app.page_frames."""
+    """Which page (main one or a Settings tab) is on top right now - by the
+    widget under a point in the page area, via app.page_frames."""
     pages = app.pages
     root.update_idletasks()
     w = root.winfo_containing(pages.winfo_rootx() + 60, pages.winfo_rooty() + 120)
@@ -416,8 +436,9 @@ def check_sidebar_alignment(tag):
     rec(f"sidebar: rows same height ({tag})", len(set(hs.values())) == 1, str(hs))
     rec(f"sidebar: narrow icon menu (<= 110 px logical) ({tag})",
         app.sidebar.winfo_width() <= 110 * 1.6, str(app.sidebar.winfo_width()))
-    # "V hre" je teraz polozka sidebaru (nie karta v Nastaveniach) - odznak
-    # (bodka ked senzor tepu bezi) ide priamo na jej _NavRow.badge.
+    # "In-game" is now a sidebar item (not a tab in Settings) - the badge
+    # (a dot when the heart-rate sensor runs) goes directly on its
+    # _NavRow.badge.
     app.sidebar.set_badge("vhre", "●")
     root.update_idletasks()
     rec(f"sidebar: badge appended to 'V hre' row ({tag})",
@@ -438,7 +459,7 @@ def s_sidebar_alignment():
 def s_sidebar_click_icon():
     app.sidebar._select("dnes")
     root.update_idletasks()
-    # CTkLabel.bind() viaze na vnutorny tk.Label - event treba poslat tam
+    # CTkLabel.bind() binds to the inner tk.Label - send the event there
     ic = app.sidebar.rows["historia"].icon
     getattr(ic, "_label", ic).event_generate("<Button-1>", x=3, y=3)
 
@@ -446,10 +467,11 @@ def s_sidebar_click_icon():
 @step(300, )
 def s_sidebar_click_icon_check():
     rec("sidebar: click on ICON switches page", page_on_top() == "historia" and app.sidebar.rows["historia"].active, str(page_on_top()))
-    # Kompaktne riadky uz nemaju viditelny text pod ikonou (redizajn "Sumi
-    # noc" - "ziadny text pod ikonami"), takze self.label uz nie je
-    # .pack()-ovany a klik nan by nic neurobil. Druhy klik na navigacnom
-    # riadku teraz cieli na ikonu znova (idempotentne s prvym klikom vyssie).
+    # Compact rows no longer have visible text under the icon (redesign
+    # "Sumi noc" - "no text under the icons"), so self.label is no longer
+    # .pack()-ed and a click on it would do nothing. The second click on the
+    # navigation row now targets the icon again (idempotent with the first
+    # click above).
     ic = app.sidebar.rows["nastavenia"].icon
     getattr(ic, "_label", ic).event_generate("<Button-1>", x=3, y=3)
 
@@ -459,9 +481,9 @@ def s_sidebar_click_label_check():
     rec("sidebar: click on ICON opens Settings group (first tab = triggers)",
         page_on_top() == "spustace" and app.sidebar.rows["nastavenia"].active
         and app.settings_nav.active == "spustace", f"{page_on_top()} tab={app.settings_nav.active}")
-    # navigacia na kartu cez sidebar._select (paleta, onboarding, tour) -
-    # "vhre" uz NIE JE karta (redizajn "Sumi noc"), je to vlastna top-level
-    # stranka, tak sa overuje samostatne nizsie.
+    # navigation to a tab via sidebar._select (palette, onboarding, tour) -
+    # "vhre" is NO LONGER a tab (redesign "Sumi noc"), it is its own
+    # top-level page, so it is checked separately below.
     for key in ("zvuk", "guide", "vseobecne"):
         app.sidebar._select(key)
         root.update_idletasks()
@@ -475,7 +497,7 @@ def s_sidebar_click_label_check():
         and not app.sidebar.rows["nastavenia"].active, f"top={page_on_top()}")
     app.sidebar._select("dnes")
     root.update_idletasks()
-    # realny klik mysou na ikonu Nastavenia
+    # real mouse click on the Settings icon
     ic = app.sidebar.rows["nastavenia"].icon
     mouse_to(ic.winfo_rootx() + ic.winfo_width() // 2, ic.winfo_rooty() + ic.winfo_height() // 2)
 
@@ -492,7 +514,7 @@ def s_sidebar_real_click_check():
         page_on_top() == "vseobecne", str(page_on_top()))
     box = app.sidebar.rows["nastavenia"].box
     rec("sidebar: active row has highlighted background", box.cget("fg_color") != "transparent", str(box.cget("fg_color")))
-    # realny klik na kartu "Zvuk" v SubNav
+    # real click on the "Sound" tab in SubNav
     b = app.settings_nav.buttons["zvuk"]
     mouse_to(b.winfo_rootx() + b.winfo_width() // 2, b.winfo_rooty() + b.winfo_height() // 2)
 
@@ -510,16 +532,18 @@ def s_tab_real_click_check():
     app.sidebar._select("dnes")
 
 
-# ---------------- 1c. pevne okno (uz sa neda tahat za hrany), zarovnanie, dock, hooky bez admin ----------------
-# Appka od dolaenia "fixne okno" (viz app.py DandurfApp.WINDOW_W/H) uz nema
-# rucne resize gripy - okno drzi jeden pevny rozmer, aby sa nerozpadali
-# dashboard layouty (najma CommandPalette). Tento blok preto len overuje,
-# ze rozmer je presne fixny a ze pokus o "tahanie" rohu (na mieste, kde
-# predtym byval grip) okno nezmeni.
+# ---------------- 1c. fixed window (no dragging by edges), alignment, dock, hooks without admin ----------------
+# Since the "fixed window" tweak (see app.py DandurfApp.WINDOW_W/H) the app
+# no longer has manual resize grips - the window keeps one fixed size so
+# the dashboard layouts do not fall apart (especially CommandPalette). This
+# block therefore only checks that the size is exactly fixed and that an
+# attempt to "drag" the corner (where the grip used to be) does not change
+# the window.
 def _window_scaling():
-    """winfo_width()/height() vratia FYZICKE pixely (napr. 1770x1140 na
-    150% DPI), zatial co WINDOW_W/H su logicke 1080p hodnoty - bez
-    preskalovania by porovnanie padalo na kazdom stroji so scale != 100%."""
+    """winfo_width()/height() return PHYSICAL pixels (e.g. 1770x1140 at
+    150% DPI), while WINDOW_W/H are logical 1080p values - without
+    rescaling the comparison would fail on every machine with
+    scale != 100%."""
     try:
         from customtkinter.windows.widgets.scaling.scaling_tracker import ScalingTracker
         return float(ScalingTracker.get_window_scaling(root) or 1.0)
@@ -533,9 +557,10 @@ def s_resize_begin():
     state["size0"] = (root.winfo_width(), root.winfo_height())
     scaling = _window_scaling()
     expected = (round(app.WINDOW_W * scaling), round(app.WINDOW_H * scaling))
-    # +-1 px: CTk geometry() zaokruhluje, ale minsize/maxsize orezava. Na
-    # malej ploche (appka zmensena, `ui_kit.umiestni_pevne_okno`) je preto
-    # okno o pixel mensie nez round(...), napr. 1539x991 voci 1540x992.
+    # +-1 px: CTk geometry() rounds, but minsize/maxsize truncates. On a
+    # small screen (app scaled down, `ui_kit.umiestni_pevne_okno`) the window
+    # is therefore a pixel smaller than round(...), e.g. 1539x991 vs
+    # 1540x992.
     sedi = all(abs(a - b) <= 1 for a, b in zip(state["size0"], expected))
     rec("window opens at the fixed size (WINDOW_W x WINDOW_H, scaled)",
         sedi, f"{state['size0']} expected {expected} (scaling={scaling})")
@@ -579,12 +604,12 @@ def s_resize_check():
 @step(400, )
 def s_alignment_forms():
     root.update_idletasks()
-    # IP / port / tep: policka aj popisky v jednej osi
+    # IP / port / heart rate: fields and labels on one axis
     app.sidebar._select("vhre")
     root.update_idletasks()
     xs = [e.winfo_rootx() for e in (app.hr_ip_entry, app.hr_port_entry, app.hr_critical_bpm_entry)]
     rec("V hre: IP / port / BPM entries share one x axis", len(set(xs)) == 1, str(xs))
-    # vizualy: 4 nazvy (s emoji v pevnom stlpci) zacinaju na tej istej x
+    # visuals: 4 names (with emoji in a fixed column) start at the same x
     rows = app.vhre_slot_rows
     tx = [r.title_label.winfo_rootx() for r in rows]
     cx = [r.control.winfo_rootx() + r.control.winfo_width() for r in rows]
@@ -600,18 +625,20 @@ def s_alignment_shot():
 
 @step(300, )
 def s_dock_and_hook():
-    # Spustit/Zastavit uz nie je tlacidlo v QuickDocku (redizajn "Sumi noc")
-    # - jediny ovladac je enso v strede sidebaru, stav nesie farba (_live).
+    # Start/Stop is no longer a button in QuickDock (redesign "Sumi noc")
+    # - the only control is the enso in the middle of the sidebar, the
+    # state is carried by the colour (_live).
     rec("enso: idle color before listening starts", app.sidebar.enso._live is False)
     rec("Dnes: empty state (preview + pair button) visible without a watch", app.dnes_empty.winfo_ismapped())
     rec("Dnes: live chart/load hidden while no watch (replaced by empty state)", not app.dnes_live.winfo_ismapped())
     root.update()
     root.update_idletasks()
-    # QuickDock (🔊 / 😴 / ⌘) uz v rade NIE JE - odstraneny vedome, viz
-    # `app.py` pri `_build_ui`. Kontrolovalo sa tu, ci sa jeho tri ikony
-    # zmestia do uzkeho panela. Teraz sa kontroluje to, co po nom zostalo:
-    # ze z uzkeho radu netrci nic ine, a ze odlozenie ma stale kde byt
-    # vidiet (inak by sa dalo zapnut skratkou a nikde by to nebolo znat).
+    # QuickDock (🔊 / 😴 / ⌘) is NO LONGER in the row - removed deliberately,
+    # see `app.py` at `_build_ui`. This used to check whether its three icons
+    # fit into the narrow panel. Now it checks what was left after it: that
+    # nothing else sticks out of the narrow row, and that the snooze still
+    # has somewhere to be visible (otherwise it could be switched on with a
+    # shortcut and would show nowhere).
     sb_right = app.sidebar.winfo_rootx() + app.sidebar.winfo_width()
     prvky = [w for w in app.sidebar.winfo_children() if w.winfo_ismapped()]
     rights = [w.winfo_rootx() + w.winfo_width() for w in prvky]
@@ -622,30 +649,33 @@ def s_dock_and_hook():
         hasattr(app.sidebar.state_dot, "set_snoozed"))
     rec("quick dock is gone", getattr(app, "quick_dock", None) is None)
     shot("01f_dnes_compact")
-    # spustit pocuvanie. POZN: bolo tu aj `state["counts0"] = dict(...)` -
-    # odpocet pre kontrolu klavesoveho hooku, ktora uz neexistuje (viz
-    # `s_stop_listening` nizsie).
+    # start listening. NOTE: here was also `state["counts0"] = dict(...)` -
+    # the baseline for the keyboard hook check, which no longer exists (see
+    # `s_stop_listening` below).
     app.toggle_listening()
 
 
 @step(900, )
 def s_enso_while_listening():
     rec("enso: live color while listening", app.sidebar.enso._live is True)
-    # Natiahnutie ("telo drzi hore, cakam na pauzu") je VNUTORNY prstenec, nie
-    # tretia farba - `_live` preto ostava holy bool a priznak je vedla neho.
+    # Arming ("body holding high, waiting for a pause") is an INNER ring, not
+    # a third colour - that is why `_live` stays a bare bool and the flag is
+    # next to it.
     #
-    # ZMENA OPROTI PREDOSLEJ VERZII: sada sa uz nerenderuje lenivo az pri
-    # prvom natiahnuti, ale DOKRESLUJE SA NA POZADI hned od startu. Lenive
-    # renderovanie znamenalo pri 150 px cez 280 ms zamrznuteho okna presne
-    # vo chvili, ked sa appka natiahla. Teraz start stoji ~20 ms a obe sady
-    # su hotove do ~1,2 s, kym sa hrac este len rozkukava.
+    # CHANGE FROM THE PREVIOUS VERSION: the set is no longer rendered lazily
+    # at the first arming, but is FILLED IN IN THE BACKGROUND right from
+    # start. Lazy rendering meant over 280 ms of frozen window at 150 px
+    # exactly at the moment the app armed. Now start costs ~20 ms and both
+    # sets are done within ~1.2 s, while the player is still getting their
+    # bearings.
     enso = app.sidebar.enso
     rec("enso: armed ring not armed yet", enso._armed is False)
-    # ZMENA (2.1): enso uz nie je widget s predratanymi 80 Tk snimkami, ale
-    # kresba na Canvase stredu Dnes (`_EnsoHero`) - box nad dojom tym zmizol.
-    # Snimky sa renderuju NA POZIADANIE a cachuju podla fazy, ziadny
-    # `_build_queue`. Overujeme, ze render vrati obrazok pre zivy aj natiahnuty
-    # stav (a ze prah prevzorkovania podla velkosti drzi cez BIG_PX).
+    # CHANGE (2.1): the enso is no longer a widget with 80 precomputed Tk
+    # frames, but a drawing on the Canvas of the Today centre (`_EnsoHero`) -
+    # the box over the dojo disappeared with that. Frames are rendered ON
+    # REQUEST and cached by phase, no `_build_queue`. We check that render
+    # returns an image for both the live and the armed state (and that the
+    # resampling threshold by size holds via BIG_PX).
     px = int(app.ENSO_SIZE)
     rec("enso: renders a live frame on demand", enso.render(px) is not None)
     enso.set_armed(True)
@@ -656,15 +686,15 @@ def s_enso_while_listening():
     root.update()
     rec("enso: armed ring clears again", enso._armed is False)
     rec("listening starts in a NON-elevated process", app.listening and not is_elevated())
-    # POZN: tu sa posielal SKUTOCNY kláves slotu 0 (`VkKeyScanW` + dva
-    # `keybd_event`) a dalsi krok overoval, ze na nom hlaska vyskocila.
-    # Odstranene v 2.1b/A2, lebo tá kontrola NEMALA AKO PREJST:
-    #   - `fired` ratal prirastok v `app.session_counts`
-    #   - `session_counts` sa zvysi len pri `source=="trigger"` (app.py)
-    #   - a s takym zdrojom uz `fire_slot` nikto nevola - faza 3 zrusila
-    #     klavesovy hook a hlasku spusta telo
-    # Kontrola teda vzdy videla 0 a svietila nazeleno. Zelena farba, ktora
-    # nic neznamena, je horsia nez chybajuci test.
+    # NOTE: here a REAL key of slot 0 was sent (`VkKeyScanW` + two
+    # `keybd_event`) and the next step checked that a cue popped up on it.
+    # Removed in 2.1b/A2, because that check HAD NO WAY TO PASS:
+    #   - `fired` counted the increment in `app.session_counts`
+    #   - `session_counts` only increases at `source=="trigger"` (app.py)
+    #   - and nobody calls `fire_slot` with such a source any more - phase 3
+    #     removed the keyboard hook and the body triggers the cue
+    # So the check always saw 0 and lit up green. A green colour that means
+    # nothing is worse than a missing test.
 
 
 @step(1200, )
@@ -678,7 +708,7 @@ def s_stop_listening():
         pass
 
 
-# ---------------- 2. stránky + skok Dnes ----------------
+# ---------------- 2. pages + Today jump ----------------
 def make_page_step(key, name):
     def fn():
         app.sidebar._select(key)
@@ -702,7 +732,7 @@ for _k, _n in (("historia", "02a_historia_empty"), ("spustace", "02_spustace"),
 
 @step(50, )
 def s_bounce():
-    # rýchle prepnutie tam a späť + merania v niekoľkých okamihoch
+    # quick switch there and back + measurements at several moments
     app.sidebar._select("spustace")
 
 
@@ -732,7 +762,7 @@ def s_eval_jump():
     print("ticks:", state["g_ticks"])
 
 
-# ---------------- 3. KamaeBar dýchanie ----------------
+# ---------------- 3. KamaeBar breathing ----------------
 @step(50, )
 def s_live_on():
     app.kamae.set_live(True)
@@ -760,7 +790,7 @@ def s_live_off():
     shot("09_kamae_idle", widget=app.kamae)
 
 
-# ---------------- 4. slidery a koliesko ----------------
+# ---------------- 4. sliders and the mouse wheel ----------------
 def find_sliders(w, acc):
     for c in w.winfo_children():
         if isinstance(c, ctk.CTkSlider):
@@ -792,11 +822,12 @@ def scroll_frame_of(widget):
 def s_collect_sliders():
     sliders = find_sliders(root, [])
     state["sliders"] = sliders
-    # 6 posuvnikov na strankach: Zvuk ma 4 (cooldown, hlasitost, balans,
-    # rychlost reci) a V hre 2 (velkost + priehladnost HUD panela).
-    # POZN: cakalo sa tu 7 - siedmy bol "Pozadie dojo" v Nastaveniach,
-    # ktory zmizol spolu s fotopasom nad titulkovou listou. Bez tejto
-    # opravy harness hlasi falosny FAIL a zatieni realne regresie.
+    # 6 sliders on the pages: Sound has 4 (cooldown, volume, balance,
+    # speech rate) and In-game 2 (size + opacity of the HUD panel).
+    # NOTE: 7 were expected here - the seventh was "Dojo background" in
+    # Settings, which disappeared along with the photo strip above the title
+    # bar. Without this fix the harness reports a false FAIL and hides real
+    # regressions.
     rec("sliders found on pages (4 more live in dialogs)", len(sliders) == 6, f"{len(sliders)} sliders: " + ", ".join(sorted(set(page_of(s) or '?' for s in sliders))))
 
 
@@ -815,7 +846,7 @@ def make_slider_steps(idx):
         state["cur_sf"] = sf
         if sf is not None:
             root.update_idletasks()
-            # posuň scroll tak, aby bol slider viditeľný (approx)
+            # move the scroll so that the slider is visible (approx)
             try:
                 canvas = sf._parent_canvas
                 inner_h = sf.winfo_height()
@@ -856,7 +887,7 @@ def make_slider_steps(idx):
         detail = f"page={state['cur_key']} value {state['v0']} -> {v1}; scroll {state['y0']} -> {y1}; cursor over app={hit}"
         rec(f"slider {idx} ({state['cur_key']}): REAL wheel does not change value", abs(v1 - state["v0"]) < 1e-9, detail)
         state.setdefault("scroll_moved", []).append((state["cur_key"], state["y0"], y1))
-        # event_generate variant (nezávislé od fokusu/foreground)
+        # event_generate variant (independent of focus/foreground)
         s.set(state["v0"])
         v_before = s.get()
         s._canvas.event_generate("<MouseWheel>", delta=-120, x=5, y=5)
@@ -872,7 +903,7 @@ for _i in range(6):
     make_slider_steps(_i)
 
 
-# ---------------- 5. drag & drop testu vizuálu ----------------
+# ---------------- 5. drag & drop of the visual test ----------------
 @step(100, )
 def s_overlay_begin():
     app.sidebar._select("vhre")
@@ -909,7 +940,8 @@ def s_overlay_inspect():
     center_hit = hit_root(cx, cy) == hwnd
     rec("test mode: overlay window is hit-testable on (almost) whole area", hits >= pts * 0.95, f"{hits}/{pts} grid points hit; center hit={center_hit}")
     state["drag_from"] = (cx, cy) if center_hit else first
-    # smer tahu: k stredu monitora, aby kurzor nenarazil na hranu obrazovky
+    # drag direction: towards the monitor centre, so the cursor does not
+    # hit the edge of the screen
     mon = app.overlay_manager.target_monitor()
     mcx, mcy = mon.x + mon.width / 2, mon.y + mon.height / 2
     global DX, DY
@@ -1000,7 +1032,7 @@ def s_stop_check():
     from i18n import tr
     btn = app.vhre_test_buttons[0]
     rec("test button back to 'Test'", btn.cget("text") == tr("overlay.test"), btn.cget("text"))
-    # re-test: má sa objaviť na novej pozícii
+    # re-test: it should appear at the new position
     app.toggle_overlay_test(0)
 
 
@@ -1013,7 +1045,7 @@ def s_retest_pos():
     x, y = slot.surface.top.winfo_x(), slot.surface.top.winfo_y()
     x1, y1 = state["ov_xy1"]
     rec("re-test opens at saved (dragged) position", abs(x - x1) <= 3 and abs(y - y1) <= 3, f"{(x, y)} vs {(x1, y1)}")
-    # test iného slotu vypne prvý
+    # testing another slot switches off the first
     app.toggle_overlay_test(1)
 
 
@@ -1038,7 +1070,7 @@ def s_other_slot():
 
 @step(400, )
 def s_normal_play():
-    # bežné spustenie (nie test) musí mať klik-through späť
+    # an ordinary run (not a test) must have click-through back
     slot = app.overlay_manager._slots[0]
     rec("slot 1 stopped", app.overlay_manager._slots[1].surface is None)
     slot.play()
@@ -1054,34 +1086,35 @@ def s_normal_check():
     ex = exstyle(hwnd)
     rec("normal play: WS_EX_TRANSPARENT set (click-through)", bool(ex & 0x20), f"exstyle=0x{ex:08x}")
     slot.stop()
-    # vráť pôvodnú polohu slotu 0 do configu
+    # put the original position of slot 0 back into the config
     app.on_overlay_config_change(0, pos=state["pos0"])
     cfg = app.overlay_configs[0]
     rec("restored original slot 0 position", (cfg["pos_x"], cfg["pos_y"]) == state["pos0"], str(state["pos0"]))
 
 
-# ---------------- 6. dialóg s vlastnou lištou ----------------
+# ---------------- 6. dialog with its own title bar ----------------
 @step(200, )
 def s_dialog_open():
-    # transientny dialog nie je topmost - keby root ostal topmost, prekryl by
-    # ho a realny klik na listu by siel do rootu (artefakt harnessu, nie appky)
+    # a transient dialog is not topmost - if root stayed topmost, it would
+    # cover it and a real click on the bar would go to root (a harness
+    # artefact, not the app's)
     root.attributes("-topmost", False)
     import ui_dialogs
-    state["pair_dlg"] = ui_dialogs.WatchPairingDialog(app)   # ako open_watch_pairing, ale s referenciou
+    state["pair_dlg"] = ui_dialogs.WatchPairingDialog(app)   # like open_watch_pairing, plus a reference
     d = state["pair_dlg"]
     ip = d._local_ip()
     ips = d._local_ips()
     rec("pairing: _local_ip() returns a real LAN IP (not 127.x, not empty)",
         bool(ip) and not str(ip).startswith("127.") and not str(ip).startswith("169.254."), str(ip))
     rec("pairing: candidates list has the preferred IP first", ips and ips[0] == ip, str(ips))
-    # Skryta IP (0.2): adresa je skryta, kym hrac neklikne "Ukazat IP".
+    # Hidden IP (0.2): the address is hidden until the player clicks "Show IP".
     rec("pairing: IP hidden until 'Show IP', port visible",
         ip and str(ip) not in d.ip_label.cget("text")
         and str(app.hr_port) in d.ip_label.cget("text"), d.ip_label.cget("text"))
     d._toggle_ip()
     rec("pairing: 'Show IP' reveals the IP and port", ip and str(ip) in d.ip_label.cget("text")
         and str(app.hr_port) in d.ip_label.cget("text"), d.ip_label.cget("text"))
-    d._toggle_ip()          # spat na skrytu, nech harness nenecha IP odkrytu
+    d._toggle_ip()          # back to hidden, so the harness does not leave the IP exposed
 
 
 @step(800, )
@@ -1106,7 +1139,7 @@ def s_dialog_inspect():
     rec("dialog has grab", root.grab_current() is not None and root.grab_current().winfo_toplevel() is dlg, f"grab={root.grab_current()}")
     shot("13_dialog", widget=dlg)
     state["dlg_xy0"] = (dlg.winfo_x(), dlg.winfo_y())
-    # reálny drag za lištu (17 px od vrchu, vľavo od krížika)
+    # real drag by the bar (17 px from the top, left of the cross)
     state["dlg_bar"] = (dlg.winfo_rootx() + 200, dlg.winfo_rooty() + 17)
     rec("dialog bar is under the cursor point (not covered)", hit_root(*state["dlg_bar"]) == top_hwnd(dlg),
         f"hit={hit_root(*state['dlg_bar'])} dlg={top_hwnd(dlg)}")
@@ -1142,7 +1175,7 @@ def s_dialog_drag_check():
     x1, y1 = dlg.winfo_x(), dlg.winfo_y()
     x0, y0 = state["dlg_xy0"]
     rec("dialog dragged by its own bar", abs((x1 - x0) - 80) <= 6 and abs((y1 - y0) - 60) <= 6, f"{(x0, y0)} -> {(x1, y1)}")
-    # reálny Escape
+    # real Escape
     user32.keybd_event(0x1B, 0, 0, 0)
     user32.keybd_event(0x1B, 0, 2, 0)
 
@@ -1161,15 +1194,17 @@ def s_dialog_escape_check():
     root.attributes("-topmost", True)
 
 
-# ---------------- 6a. Historia relacii, info panely, zdroje, analyza ----------------
-# HR_SESSIONS / HR_INSIGHTS su hore pri zalohe dat - kopia spred behu je na
-# disku od zaciatku (`zaloz_zalohy`), tu sa uz nic do pamate neodklada.
+# ---------------- 6a. Session history, info panels, sources, analysis ---------------
+# HR_SESSIONS / HR_INSIGHTS are at the top with the data backup - the copy
+# from before the run is on disk from the start (`zaloz_zalohy`), nothing
+# is put aside in memory here any more.
 
 
 def _odloz_historiu_tepu():
-    """Test prazdnej historie: subory na chvilu zmiznu. Maze sa len subor,
-    ktoreho kopia spred behu je na disku (alebo ktory pred behom nebol) -
-    bez nej by prerusenie behu historiu zmazalo navzdy."""
+    """Empty history test: the files disappear for a moment. Only a file
+    whose copy from before the run is on disk (or that did not exist
+    before the run) is deleted - without it, interrupting the run would
+    delete the history forever."""
     for p in (HR_SESSIONS, HR_INSIGHTS):
         if not os.path.exists(p):
             continue
@@ -1181,7 +1216,7 @@ def _odloz_historiu_tepu():
 
 
 def _vrat_historiu_tepu():
-    """Historia spred behu spat na miesto; zaloha ostava do konca behu."""
+    """Puts the pre-run history back; the backup stays until the run ends."""
     vrat_zalohy((HR_SESSIONS, HR_INSIGHTS), nechat_zalohy=True)
 
 
@@ -1202,13 +1237,13 @@ def s_history_empty_check():
             "history.empty", page=app._nazov_vhre()))
     rec("history: trend chart drawn empty without error", app.history_trend.winfo_ismapped())
     shot("21_history_empty")
-    # syntetické relácie cez reálne HeartStats (rovnaké pole ako appka)
+    # synthetic sessions via real HeartStats (the same fields as the app)
     import hr_stats, json, time as _t
     sessions = []
     now = _t.time()
     for i in range(8):
         st = hr_stats.HeartStats(110)
-        base = 60 + i          # stúpajúca základňa
+        base = 60 + i          # rising baseline
         t0 = now - (10 - i) * 86400
         vals = [base] * 300 + [base + 70] + [base + 70 - (25 * k / 60.0) for k in range(1, 61)] + [base + 5] * 600
         for k, v in enumerate(vals):
@@ -1230,11 +1265,11 @@ def s_history_filled_check():
     box = app.history_sessions_box
     rows = [w for w in box.winfo_children() if isinstance(w, ctk.CTkFrame) and w.cget("height") != 1]
     rec("history: table shows 8 sessions (+ header)", len(rows) == 9, f"rows={len(rows)}")
-    # Obdobia (redizajn "Sumi noc"): trend graf teraz filtruje na zvolene
-    # obdobie a bucketuje (den/mesiac/rok - viz hr_stats.aggregate_by_period).
-    # Testovacie relacie su 3-10 dni stare, vsetky v tom istom kalendarnom
-    # mesiaci - "Mesiac" (bucket=den) da presne 8 samostatnych bodov,
-    # "Tyzden" by ich nutne vsetky nezachytil.
+    # Periods (redesign "Sumi noc"): the trend chart now filters to the
+    # chosen period and buckets (day/month/year - see
+    # hr_stats.aggregate_by_period). The test sessions are 3-10 days old, all
+    # in the same calendar month - "Month" (bucket=day) gives exactly 8
+    # separate points, "Week" would not necessarily catch them all.
     import hr_stats as _hrs
     app._set_history_period(_hrs.PERIOD_MONTH)
     root.update_idletasks()
@@ -1247,11 +1282,12 @@ def s_history_filled_check():
         synth.get("hrr_bpm") is not None and synth.get("hrpi", 0) > 0 and synth.get("baseline_bpm")
         and sum(synth.get("zone_seconds", {}).values()) > 0,
         f"hrr={synth.get('hrr_bpm')} hrpi={synth.get('hrpi')} base={synth.get('baseline_bpm')}")
-    # info riadky: rozbalenie
+    # info rows: expanding
     info = app.history_info_hrr
     rec("history: HRR info row closed by default", not info.is_open)
-    # CTkButton (ctk 6) vola command na <ButtonRelease-1> a len ked bol
-    # predtym <Enter> (_mouse_inside) - simulujeme cely prechod mysi
+    # CTkButton (ctk 6) calls command on <ButtonRelease-1> and only when
+    # there was an <Enter> before (_mouse_inside) - we simulate the whole
+    # mouse pass
     cv = getattr(info.toggle, "_canvas", info.toggle)
     cv.event_generate("<Enter>", x=5, y=5)
     cv.event_generate("<Button-1>", x=5, y=5)
@@ -1262,12 +1298,13 @@ def s_history_filled_check():
     from i18n import tr
     rec("history: HRR explanation text is the exact wording",
         info.more.cget("text") == tr("metric.hrr.more"))
-    # info k zatazi zije v dnes_live, ktory je bez hodiniek schovany (namiesto
-    # neho je prazdny stav) - existuje, ukaze sa po pripojeni
+    # the load info lives in dnes_live, which is hidden without the watch
+    # (an empty state is there instead) - it exists, it shows after
+    # connecting
     rec("history: Dnes page has info rows for BPM (visible) and load (in live frame)",
         app.dnes_info_bpm.winfo_ismapped() and app.dnes_info_load.winfo_exists()
         and app.dnes_info_load.master is app.dnes_live)
-    # panel Ako to vzniklo (text autora + tri priklady)
+    # the "How it came about" panel (the author's text + three examples)
     rec("history: science panel collapsed by default", not app.history_science_body.winfo_ismapped())
     app._toggle_history_science()
     root.update()
@@ -1279,8 +1316,9 @@ def s_history_filled_check():
 
 @step(300, )
 def s_history_link():
-    # Stranka Historia byva v mixine app_history - `webbrowser` sa podstrci
-    # priamo na zdielanom module (ten isty objekt, co predtym `app.webbrowser`).
+    # The History page lives in the app_history mixin - `webbrowser` is
+    # slipped in directly on the shared module (the same object as
+    # `app.webbrowser` before).
     import webbrowser
     state["opened"] = []
     state["_wb"] = webbrowser.open
@@ -1305,7 +1343,7 @@ def s_history_link_check():
     rec("history: REAL click on '↗ source' opens the study URL in the browser",
         state["opened"] == [state["link_url"]], str(state["opened"]))
     webbrowser.open = state["_wb"]
-    # analyza na pozadi: spomalena analyza nesmie zablokovat UI
+    # background analysis: a slowed-down analysis must not block the UI
     import hr_insights as hi
     state["_analyze"] = hi.analyze
 
@@ -1349,7 +1387,7 @@ def s_history_analysis_check():
     app.sidebar._select("dnes")
 
 
-# ---------------- 6b. farba piktogramu (config + render) ----------------
+# ---------------- 6b. pictogram colour (config + render) ----------------
 @step(200, )
 def s_color_set():
     app.sidebar._select("vhre")
@@ -1382,10 +1420,11 @@ def s_color_check():
     rec("color reset to theme", app.overlay_configs[0].get("color") == (state["color0"] or None))
 
 
-# ---------------- 6c. hromadny vyber slotov ----------------
-# 0.2: styri kategorie (sloty 0-3) su pevne - nemaju zaskrtavatko ani ✕,
-# vypinaju sa prepinacom. Hromadne odstranit sa daju len sloty navyse z 0.1
-# (index 4+), preto si ich tu dva docasne pridame. Nastavenia obnovi finish().
+# ---------------- 6c. bulk slot selection ----------------
+# 0.2: the four categories (slots 0-3) are fixed - they have no checkbox
+# or ✕, they are switched off with a toggle. Only extra slots from 0.1
+# (index 4+) can be bulk-removed, so we temporarily add two of them here.
+# finish() restores the settings.
 @step(300, )
 def s_bulk_select_all():
     import app as app_mod
@@ -1432,12 +1471,14 @@ def s_bulk_two_check():
     shot("18_after_bulk_remove")
 
 
-# ---------------- 6c2. Dnes: karty statistik (vyber, strop, tahanie) ----------------
-# Najviac 4 karty (mriezka 2x2), posledna ostava, poradie sa meni potiahnutim
-# karty na inu (vymena miest). Tahanie ide REALNOU mysou: Tk po stlaceni
-# posiela pohyb aj pustenie widgetu, ktory stlacenie dostal (implicitny
-# grab) - to event_generate neoveri, lebo posiela rovno do widgetu.
-# Vyber sa na konci bloku vrati; cele nastavenia obnovi aj finish().
+# ---------------- 6c2. Today: stats cards (picker, cap, dragging) ----------------
+# At most 4 cards (2x2 grid), the last one stays, the order changes by
+# dragging a card onto another (swapping places). Dragging is done with the
+# REAL mouse: after a press Tk sends motion and release to the widget that
+# got the press (implicit grab) - event_generate cannot verify that,
+# because it sends straight to the widget.
+# The selection is restored at the end of the block; finish() also
+# restores all the settings.
 DASH_PLNE = ["baseline", "hrr", "over", "breath"]
 DASH_SWAP = ["breath", "hrr", "over", "baseline"]       # baseline <-> breath
 DASH_N = 8
@@ -1459,7 +1500,7 @@ def _dash_set(stats):
 
 
 def _dash_lit():
-    """Karty, ktorych okraj nie je bezny (zvysok zvyraznenia po tahu)."""
+    """Cards with a non-default border (leftover highlight after a drag)."""
     soft = app.pal["line_soft"]
     return {k: c.cget("border_color") for k, c in app.dashboard_cards.items()
             if c.cget("border_color") != soft}
@@ -1487,7 +1528,7 @@ def _hits(widget, x, y):
 
 
 def _picker_rows():
-    """[(stat_id, title_label, check_label)] v poradi katalogu."""
+    """[(stat_id, title_label, check_label)] in catalogue order."""
     out = []
     rows = app._dashboard_picker_rows.winfo_children()
     for (sid, _t, _c), row in zip(app._dashboard_stat_catalog(), rows):
@@ -1518,7 +1559,7 @@ def _dash_picker_check(tag):
     hint = [w for w in frame.winfo_children()
             if isinstance(w, ctk.CTkLabel) and w.cget("text") == tr("dashboard.picker_hint")]
     rec(f"stats picker: one quiet hint line ({tag})", len(hint) == 1)
-    # plna mriezka: nezvolene riadky blede, klik na ne nic neurobi
+    # full grid: unselected rows faded, clicking them does nothing
     faint = app.pal["text_faint"]
     off = [(sid, t) for sid, t, _c in _picker_rows() if sid not in app.dashboard_stats]
     rec(f"stats picker: with 4 cards the other rows are faint ({tag})",
@@ -1567,7 +1608,7 @@ def s_dash_picker_de_check():
 def s_dash_drag_prep():
     app.sidebar._select("dnes")
     _dash_set(DASH_PLNE)
-    root.update()                   # winfo_containing potrebuje zobrazene okna
+    root.update()                   # winfo_containing needs the windows shown
     cards = app.dashboard_cards
     a = _center(cards["baseline"].value_label)
     b = _center(cards["breath"])
@@ -1622,7 +1663,7 @@ def s_dash_drag_check():
     rec("stats drag: the new order is saved", _saved_dashboard() == DASH_SWAP, str(_saved_dashboard()))
     rec("stats drag: cards rebuilt in the new order", _dash_order() == DASH_SWAP, str(_dash_order()))
     rec("stats drag: all borders back to normal", not _dash_lit(), str(_dash_lit()))
-    # obycajny klik (bez pohybu) na cislo karty
+    # an ordinary click (no movement) on the card's number
     mouse_to(*_center(app.dashboard_cards["hrr"].value_label))
 
 
@@ -1633,7 +1674,7 @@ def s_dash_click():
 
 
 def _dash_real_drag(key, name):
-    """Stlac na bode state[key][0], potiahni na state[key][1], pusti."""
+    """Press at point state[key][0], drag to state[key][1], release."""
     def down():
         if state.get(key):
             mouse_to(*state[key][0])
@@ -1659,7 +1700,7 @@ def _dash_real_drag(key, name):
 def s_dash_click_check():
     rec("stats drag: a plain click changes nothing", app.dashboard_stats == DASH_SWAP,
         str(app.dashboard_stats))
-    # pustenie do medzery medzi stlpcami
+    # release into the gap between the columns
     cards = app.dashboard_cards
     left, right = cards[DASH_SWAP[0]], cards[DASH_SWAP[1]]
     gx = (left.winfo_rootx() + left.winfo_width() + right.winfo_rootx()) // 2
@@ -1677,7 +1718,7 @@ def s_dash_gap_check():
     rec("stats drag: dropping into the gap changes nothing", app.dashboard_stats == DASH_SWAP,
         str(app.dashboard_stats))
     rec("stats drag: borders back to normal after the gap drop", not _dash_lit(), str(_dash_lit()))
-    # stlacenie na ⓘ a tah na inu kartu: ⓘ je tlacidlo, tah z neho nezacina
+    # press on ⓘ, drag onto another card: ⓘ is a button, no drag starts there
     cards = app.dashboard_cards
     state["dash_info"] = (_center(cards[DASH_SWAP[0]]._info_btn), _center(cards[DASH_SWAP[3]]))
 
@@ -1692,7 +1733,7 @@ def s_dash_info_check():
     rec("stats drag: borders normal after the ⓘ press", not _dash_lit(), str(_dash_lit()))
     for card in app.dashboard_cards.values():
         card._close_info()
-    # jedna varianta cez event_generate: tah za okraj karty (jej canvas)
+    # one variant via event_generate: drag by the card's border (its canvas)
     cards = app.dashboard_cards
     a, b = cards[DASH_SWAP[1]], cards[DASH_SWAP[2]]         # hrr -> over
     ax, ay = a.winfo_rootx() + 4, a.winfo_rooty() + a.winfo_height() // 2
@@ -1711,7 +1752,7 @@ def s_dash_info_check():
 
 @step(300, )
 def s_dash_remove_check():
-    # ✕ na karte <-> ✓ vo vybere
+    # ✕ on the card <-> ✓ in the picker
     card = app.dashboard_cards["over"]
     card._on_enter()
     card._remove_btn.invoke()
@@ -1729,14 +1770,14 @@ def s_dash_last_card_check():
     rec("stats picker: ✓ marks match the cards after ✕",
         all(on == (sid in app.dashboard_stats) for sid, on in marks), str(marks))
     app._close_dashboard_picker()
-    # posledna karta ostava
+    # the last card stays
     last = app.dashboard_stats[0]
     _dash_set([last])
     rec("stats: the last card has no ✕", app.dashboard_cards[last]._remove_btn is None)
     app._toggle_dashboard_stat(last)
     rec("stats: the last card cannot be removed", app.dashboard_stats == [last],
         str(app.dashboard_stats))
-    # strop 4 kariet
+    # cap of 4 cards
     _dash_set(DASH_PLNE)
     app._toggle_dashboard_stat("avg")
     rec("stats: a 5th card is refused", app.dashboard_stats == DASH_PLNE
@@ -1744,7 +1785,7 @@ def s_dash_last_card_check():
     _dash_set(state["dash0"])
 
 
-# ---------------- 6d. jazyk ----------------
+# ---------------- 6d. language ----------------
 @step(200, )
 def s_lang_en():
     from app import LANG_NATIVE_LABELS
@@ -1771,12 +1812,13 @@ def s_lang_back():
     rec("language switched back", app.lang == state["lang0"])
 
 
-# ---------------- 7. téma ----------------
+# ---------------- 7. theme ----------------
 @step(300, )
 def s_theme():
     state["theme0"] = app.theme_key
     state["world0"] = app.world
-    # Od 0.2 tema patri svetu (B3-worlds) - prepina sa svet, nie tema.
+    # Since 0.2 the theme belongs to the world (B3-worlds) - the world is
+    # switched, not the theme.
     app.set_world("work" if app.world == "play" else "play")
 
 
@@ -1817,13 +1859,14 @@ def finish():
         pass
 
     def koniec():
-        # Vracia sa az tesne pred koncom procesu: co by appka zapisala v
-        # tych 200 ms, prepise zaloha - nie naopak. `os._exit` preskoci
-        # `finally` aj `atexit`, takze vratit treba tu.
+        # Restored only just before the process ends: whatever the app wrote
+        # in those 200 ms is overwritten by the backup - not the other way
+        # round. `os._exit` skips `finally` and `atexit`, so it has to be
+        # restored here.
         vrat_zalohy(ODLOZENE)
         print("nastavenia a historia tepu vratene zo zaloh", flush=True)
         os._exit(1 if failed else 0)
-    sys.stdout.flush()      # os._exit() buffer nevyprazdni
+    sys.stdout.flush()      # os._exit() does not flush the buffer
     root.after(200, koniec)
 
 
@@ -1831,7 +1874,8 @@ try:
     root.after(300, run_steps)
     root.mainloop()
 finally:
-    # Ctrl+C, zavrete okno, vynimka z mainloop: vsetko sa vrati aj tu.
-    # Pad este pred mainloop pokryva `atexit`, tvrde zabitie dalsi beh.
+    # Ctrl+C, closed window, exception from mainloop: everything is restored
+    # here too. A crash even before mainloop is covered by `atexit`, a hard
+    # kill by the next run.
     vrat_zalohy(ODLOZENE)
 os._exit(0)

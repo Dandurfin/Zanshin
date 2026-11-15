@@ -1,13 +1,14 @@
 # -*- coding: utf-8 -*-
-"""Skrytá IP (0.2) - adresa PC sa na obrazovke neukáže sama.
+"""Hidden IP (0.2) - the PC's address is not shown on screen by itself.
 
-Okno appky býva na streame a tester posiela screenshoty. Lokálna IP tam
-nemá čo robiť: okno párovania, pole IP v Nastaveniach aj riadky v denníku
-ju ukazujú zamaskovanú, kým si ju hráč neodkryje tlačidlom „Ukázať IP“.
-Odkrytie platí len do reštartu - `app.show_ip` sa do nastavení nezapisuje.
+The app window often ends up on a stream, and the tester sends screenshots.
+The local IP has no business being there: the pairing window, the IP field in
+Settings and the journal lines show it masked until the player reveals it
+with the "Show IP" button. Revealing lasts only until a restart -
+`app.show_ip` is not written to settings.
 
-Testy bežia bez Tk: čisté funkcie z `netinfo` a skutočné metódy
-`DandurfApp` na malej atrape.
+The tests run without Tk: pure functions from `netinfo` and the real
+`DandurfApp` methods on a small dummy.
 """
 import os
 import sys
@@ -50,12 +51,12 @@ def sk():
 
 
 # --------------------------------------------------------------------------
-# netinfo.mask_ip a spol.
+# netinfo.mask_ip and co.
 # --------------------------------------------------------------------------
 
 def test_prazdno_none_a_nuly_ostanu_bez_zmeny():
-    """0.0.0.0 nie je adresa PC, len „počúvaj všade“ - a rada „nechaj
-    0.0.0.0“ ju potrebuje ukázať."""
+    """0.0.0.0 is not the PC's address, just "listen everywhere" - and the
+    "leave 0.0.0.0" advice needs to show it."""
     assert netinfo.mask_ip("") == ""
     assert netinfo.mask_ip(None) is None
     assert netinfo.mask_ip("0.0.0.0") == "0.0.0.0"
@@ -78,7 +79,7 @@ def test_adresa_na_obrazovku_je_cela_len_na_vyziadanie():
 
 
 def test_parovanie_skryje_adresu_ale_port_necha():
-    """Port (4455) má každý rovnaký - v telefóne ho treba vidieť."""
+    """The port (4455) is the same for all - the phone needs it visible."""
     text = netinfo.pairing_address(IP, 4455)
     assert IP not in text and "4455" in text
     assert IP in netinfo.pairing_address(IP, 4455, show=True)
@@ -101,7 +102,7 @@ def test_pole_ip_sa_maskuje_len_pri_skutocnej_adrese():
 
 
 # --------------------------------------------------------------------------
-# Denník appky (log.hr_enabled, log.hr_bind_fallback)
+# The app's journal (log.hr_enabled, log.hr_bind_fallback)
 # --------------------------------------------------------------------------
 
 def test_riadok_v_denniku_ukazuje_skrytu_ip(sk):
@@ -129,8 +130,9 @@ def test_fallback_riadok_ide_cez_masku():
 
 
 def test_do_suboru_logu_ip_pc_nejde():
-    """Riadky `log.hr_*` idú len do panela v okne (`DandurfApp.log`), nie do
-    logs/app.log - a do súboru sa adresa nezapisuje ani inde."""
+    """The `log.hr_*` lines go only to the panel in the window
+    (`DandurfApp.log`), not to logs/app.log - and the address is not
+    written to the file anywhere else either."""
     telo = zdroj_metody("log")
     assert "app_log" not in telo and "get_logger" not in telo
     for subor in (*subory_appky(), "heart_rate.py", "obs_websocket.py", "netinfo.py"):
@@ -141,7 +143,7 @@ def test_do_suboru_logu_ip_pc_nejde():
 
 
 # --------------------------------------------------------------------------
-# Okno párovania
+# Pairing window
 # --------------------------------------------------------------------------
 
 def test_parovanie_sklada_adresy_cez_netinfo():
@@ -150,7 +152,7 @@ def test_parovanie_sklada_adresy_cez_netinfo():
     assert "netinfo.pairing_other_ips(" in trieda
     assert 'f"{ip}   :   {app.hr_port}"' not in trieda, "holá IP v texte"
     assert '",  ".join(candidates[1:])' not in trieda, "holé ďalšie adresy"
-    # tlačidlo prepína stav celej appky, nie len dialógu
+    # the button toggles the state of the whole app, not just the dialog
     assert "set_show_ip" in trieda
     assert 'tr("hr.ip_show")' in trieda and 'tr("hr.ip_hide")' in trieda
 
@@ -163,7 +165,7 @@ def test_texty_tlacidiel_su_vo_vsetkych_jazykoch():
 
 
 # --------------------------------------------------------------------------
-# Pole IP v Nastaveniach
+# The IP field in Settings
 # --------------------------------------------------------------------------
 
 class _Pole:
@@ -224,13 +226,13 @@ def test_karta_senzora_ma_prepinac_a_ukladanie_sa_nemeni():
     karta = zdroj_metody("_build_heart_rate_card")
     assert 'tr("hr.ip_show")' in karta
     assert "self._apply_hr_ip_mask()" in karta
-    # hodnota sa ukladá rovnako ako predtým - maska je len kreslenie
+    # the value is saved the same way as before - the mask is only drawing
     zmena = zdroj_metody("on_hr_config_change")
     assert "ip = self.hr_ip_var.get().strip() or ANY_INTERFACE" in zmena
 
 
 # --------------------------------------------------------------------------
-# show_ip sa neukladá - po reštarte je IP znova skrytá
+# show_ip is not saved - after a restart the IP is hidden again
 # --------------------------------------------------------------------------
 
 def test_show_ip_sa_neuklada_do_nastaveni():

@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
-"""Cesta cez iPhone je v kode, ale nevyskusana (0.2).
+"""The iPhone path is in the code, but untested (0.2).
 
-Autor nema zariadenie od Apple a PulseOSC je platena appka. Hrac si ju
-nesmie kupit na zaklade vety, ktoru nikto neoveril - preto to musi byt
-povedane vsade, kde appka alebo README PulseOSC ponuka.
+The author has no Apple device and PulseOSC is a paid app. The player must
+not buy it on the strength of a sentence nobody has verified - so it must
+be said everywhere the app or the README offers PulseOSC.
 """
 import os
 import sys
@@ -27,10 +27,10 @@ def test_krok_2_parovania_priznava_nevyskusany_iphone():
     en = i18n.tr_lang("en", "hr.step2_body")
     assert "nevyskúšaná" in sk and "platená" in sk and "Apple" in sk
     assert "untested" in en and "paid" in en and "Apple" in en
-    # heslo a scena su len pre appku na Androide
+    # the password and scene are only for the Android app
     assert "len pre appku na Androide" in sk
     assert "Android app only" in en
-    # stara veta "ktoré appka tiež rozumie" tvrdila overenú vec
+    # the old line "which the app also understands" claimed a verified thing
     assert "also understands" not in en
 
 

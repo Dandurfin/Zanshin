@@ -1,18 +1,19 @@
 # -*- coding: utf-8 -*-
-"""Jeden zly bajt v nastaveniach uz nezmaze vsetko (0.2.2).
+"""One bad byte in the settings no longer wipes everything (0.3).
 
-Doteraz: nečitatelny dandurf_settings.json -> predvolene profily, texty aj
-polohy vizualov, a `__init__` o sekundu neskor (`save_settings`) pokazeny
-subor prepisal, takze sa uz nedal ani zachranit. Strazi sa:
+Until now: an unreadable dandurf_settings.json -> default profiles, texts and
+visual positions, and a second later `__init__` (`save_settings`) overwrote
+the broken file, so it could no longer even be rescued. Guarded:
 
-  * pred kazdym zapisom ide doterajsi PLATNY subor do `.bak` (atomicky),
-    pokazeny tam nejde - neprepise jedinu dobru kopiu,
-  * pokazeny subor sa pri nacitani odlozi ako `.corrupt-RRRRmmdd-HHMMSS`
-    a nacita sa `.bak`; bez zalohy predvolene,
-  * hrac sa to dozvie raz - riadok v denniku a sprava az po starte okna,
-  * .gitignore kryje `.bak` aj `.corrupt-*`.
+  * before every write the current VALID file goes to `.bak` (atomically),
+    a broken one does not go there - it does not overwrite the only good copy,
+  * a broken file is set aside on load as `.corrupt-RRRRmmdd-HHMMSS`
+    and `.bak` is loaded; without a backup, defaults,
+  * the player learns about it once - a journal line and a message only after
+    the window starts,
+  * .gitignore covers both `.bak` and `.corrupt-*`.
 
-Vsetko v tmp priecinku (SETTINGS_PATH presmerovany na module app_prefs).
+Everything in a tmp folder (SETTINGS_PATH redirected on the app_prefs module).
 """
 import fnmatch
 import json
@@ -29,7 +30,7 @@ from _zdroj_appky import zdroj_metody, zdroj_suboru
 def prostredie(tmp_path, monkeypatch):
     import app_prefs
     cesta = str(tmp_path / "dandurf_settings.json")
-    # `load_settings` / `save_settings` citaju SETTINGS_PATH z modulu app_prefs
+    # `load_settings` / `save_settings` read SETTINGS_PATH from app_prefs
     monkeypatch.setattr(app_prefs, "SETTINGS_PATH", cesta)
     povodny = i18n._lang["code"]
     yield cesta
@@ -49,7 +50,7 @@ def _zapis(cesta, obsah):
 
 
 def _uloz(data, **zmeny):
-    """Skutocne `save_settings` nad stavom z `load_settings`."""
+    """The real `save_settings` over the state from `load_settings`."""
     import app as app_mod
     a = types.SimpleNamespace(
         _ready=True, slots=[object()], _sync_active_profile_slots=lambda: None,
@@ -84,7 +85,7 @@ def _platne(meno="Moj profil", hlasitost=37):
 
 
 # --------------------------------------------------------------------------
-# zaloha pred zapisom
+# backup before writing
 # --------------------------------------------------------------------------
 
 def test_ulozenie_zalohuje_predosly_platny_subor(prostredie):
@@ -104,11 +105,11 @@ def test_pokazeny_subor_neprepise_dobru_zalohu(prostredie):
     import app_prefs
     _zapis(prostredie + ".bak", _platne(hlasitost=11))
     with open(prostredie, "w", encoding="utf-8") as fh:
-        fh.write('{"lang": "sk", "volume": 9')           # orezany JSON
+        fh.write('{"lang": "sk", "volume": 9')           # truncated JSON
     assert app_prefs.zaloha_nastaveni(prostredie) is False
     with open(prostredie + ".bak", encoding="utf-8") as fh:
         assert json.load(fh)["volume"] == 11
-    # platny JSON, ale nie objekt nastaveni - tiez nie
+    # valid JSON, but not a settings object - not that either
     _zapis(prostredie, [1, 2, 3])
     assert app_prefs.zaloha_nastaveni(prostredie) is False
 
@@ -134,7 +135,7 @@ def test_zlyhana_zaloha_nezastavi_ulozenie(prostredie, monkeypatch):
 
 
 # --------------------------------------------------------------------------
-# pokazeny subor pri nacitani
+# broken file on load
 # --------------------------------------------------------------------------
 
 def _odlozene(cesta):
@@ -146,9 +147,9 @@ def _odlozene(cesta):
 def test_pokazeny_subor_sa_odlozi_a_nacita_sa_zaloha(prostredie):
     _zapis(prostredie, _platne(meno="Valorant", hlasitost=42))
     data, _ = _nacitaj()
-    _uloz(data)                              # vznikne .bak s profilom Valorant
+    _uloz(data)                              # creates a .bak with the Valorant profile
     with open(prostredie, "w", encoding="utf-8") as fh:
-        fh.write('{"lang": "sk", "profiles": [{"name": "Valo')   # jeden zly bajt
+        fh.write('{"lang": "sk", "profiles": [{"name": "Valo')   # one bad byte
     data, obnova = _nacitaj()
     assert [p["name"] for p in data["profiles"]] == ["Valorant"]
     assert data["volume"] == 42 and data["first_run"] is False
@@ -160,7 +161,8 @@ def test_pokazeny_subor_sa_odlozi_a_nacita_sa_zaloha(prostredie):
     with open(os.path.join(os.path.dirname(prostredie), odlozene[0]), encoding="utf-8") as fh:
         assert "Valo" in fh.read(), "pokazeny obsah sa da zachranit"
     assert obnova == {"odlozene": odlozene[0], "zo_zalohy": True}
-    # zaloha je hned spat na mieste - pad pred prvym ulozenim nevyvola prvy start
+    # the backup is back in place at once - a crash before the first save
+    # does not trigger a first start
     with open(prostredie, encoding="utf-8") as fh:
         assert json.load(fh)["profiles"][0]["name"] == "Valorant"
 
@@ -186,8 +188,8 @@ def test_oznam_raz_do_dennika_a_sprava_az_po_starte(monkeypatch):
     import app as app_mod
     import ui_kit
     zobrazene, planovane = [], []
-    # 0.2.2 davka 4: oznam v okne appky (`ui_kit.notify`), nie systemovy
-    # messagebox - app_prefs ho uz neimportuje
+    # 0.3 batch 4: a notice in the app window (`ui_kit.notify`), not a system
+    # messagebox - app_prefs no longer imports it
     monkeypatch.setattr(ui_kit, "notify",
                         lambda okno, pal, titul, text, **kw: zobrazene.append(text))
     denn = []
@@ -204,7 +206,7 @@ def test_oznam_raz_do_dennika_a_sprava_az_po_starte(monkeypatch):
     assert ms > 0
     fn()
     assert zobrazene == denn
-    # druhe volanie uz nic nepovie
+    # the second call no longer says anything
     app_mod.DandurfApp._oznam_obnovu_nastaveni(a)
     assert len(denn) == 1 and len(planovane) == 1
 

@@ -1,21 +1,23 @@
 # -*- coding: utf-8 -*-
-"""Vlastny vyber farby v style Zanshinu - namiesto systemoveho (Windows)
-dialogu, ktory tmavym-zlatym rozhranim vobec nesadol.
+"""Custom colour picker in Zanshin's style - instead of the system
+(Windows) dialog, which did not fit the dark-gold interface at all.
 
-Obsahuje:
-  * SV plochu (sytost x jas) + zvislu listu odtienov,
-  * hex / RGB pole,
-  * vzorky z palety temy (rychla volba),
-  * tlacidlo "Predvolena" - vrati farbu spat na akcent temy (color=None).
+Contains:
+  * an SV area (saturation x brightness) + a vertical hue strip,
+  * a hex / RGB field,
+  * swatches from the theme palette (quick choice),
+  * a "Default" button - returns the colour back to the theme accent
+    (color=None).
 
-Pipetka (vyber farby z obrazovky) tu ZAMERNE nie je. Musela by odfotit celu
-plochu - aj s hrou - a SAFETY.md slubuje, ze appka obsah obrazovky necita.
-Plocha, hex a vzorky na vyber farby stacia.
+The eyedropper (picking a colour from the screen) is DELIBERATELY not
+here. It would have to capture the whole screen - game included - and
+SAFETY.md promises that the app does not read screen content. The area,
+hex and swatches are enough for picking a colour.
 
-`ask_color(app, current, title=None, allow_default=True)` vrati:
-  * "#rrggbb"        - zvolena farba,
-  * DEFAULT          - "vrat predvolenu" (volajuci nastavi color=None),
-  * None             - zrusene, nemenit.
+`ask_color(app, current, title=None, allow_default=True)` returns:
+  * "#rrggbb"        - the chosen colour,
+  * DEFAULT          - "return to default" (the caller sets color=None),
+  * None             - cancelled, do not change.
 """
 import colorsys
 import tkinter as tk
@@ -32,18 +34,18 @@ try:
 except Exception:                       # pragma: no cover
     _PIL = False
 
-DEFAULT = "__default__"                  # sentinel: vrat farbu temy
+DEFAULT = "__default__"                  # sentinel: return the theme colour
 
 
 # --------------------------------------------------------------------------
-# farebna matematika
+# colour maths
 # --------------------------------------------------------------------------
 def hex_to_rgb(h):
     h = (h or "").strip().lstrip("#")
     if len(h) == 3:
         h = "".join(c * 2 for c in h)
     if len(h) != 6:
-        return (217, 184, 104)           # bezpecny zlaty fallback
+        return (217, 184, 104)           # safe gold fallback
     try:
         return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
     except ValueError:
@@ -55,9 +57,9 @@ def rgb_to_hex(rgb):
 
 
 def _sv_image(hue, w, h):
-    """Plocha sytost(x) x jas(y) pre dany odtien - PIL RGB."""
-    xs = np.linspace(0.0, 1.0, w, dtype=np.float32)          # sytost
-    ys = np.linspace(1.0, 0.0, h, dtype=np.float32)          # jas (hore=1)
+    """Saturation(x) x brightness(y) area for the given hue - PIL RGB."""
+    xs = np.linspace(0.0, 1.0, w, dtype=np.float32)          # saturation
+    ys = np.linspace(1.0, 0.0, h, dtype=np.float32)          # brightness (top=1)
     S, V = np.meshgrid(xs, ys)
     H = np.full_like(S, hue, dtype=np.float32)
     i = np.floor(H * 6).astype(int) % 6
@@ -71,7 +73,7 @@ def _sv_image(hue, w, h):
 
 
 def _hue_image(w, h):
-    """Zvisla lista odtienov 0..1 (hore->dole), plna sytost aj jas."""
+    """Vertical hue strip 0..1 (top->bottom), full saturation, brightness."""
     ys = np.linspace(0.0, 1.0, h, dtype=np.float32)
     rgb = np.array([colorsys.hsv_to_rgb(y, 1.0, 1.0) for y in ys], dtype=np.float32)
     arr = (rgb[:, None, :] * 255).astype(np.uint8).repeat(w, axis=1)
@@ -122,7 +124,7 @@ class ColorPickerDialog:
             self.top.protocol("WM_DELETE_WINDOW", self.close)
             return
 
-        # --- horny rad: SV plocha + lista odtienov ---------------------------
+        # --- top row: SV area + hue strip ------------------------------------
         top_row = ctk.CTkFrame(body, fg_color="transparent")
         top_row.pack(fill="x")
         self.sv_canvas = tk.Canvas(top_row, width=self.SVW, height=self.SVH,
@@ -144,7 +146,7 @@ class ColorPickerDialog:
         self._hue_marker = self.hue_canvas.create_rectangle(
             0, 0, self.HUEW, 3, outline="#ffffff", width=2)
 
-        # --- nahlad + hex + RGB ---------------------------------------------
+        # --- preview + hex + RGB --------------------------------------------
         mid = ctk.CTkFrame(body, fg_color="transparent")
         mid.pack(fill="x", pady=(12, 0))
         self.preview = tk.Canvas(mid, width=int(56 * s), height=int(40 * s),
@@ -168,7 +170,7 @@ class ColorPickerDialog:
                                       font=ui_kit.ui(10), anchor="w")
         self.rgb_label.pack(fill="x", pady=(6, 0))
 
-        # --- vzorky z palety -------------------------------------------------
+        # --- palette swatches -----------------------------------------------
         ctk.CTkLabel(body, text=tr("colorpick.presets"), text_color=pal["text_dim"],
                      font=ui_kit.ui(11), anchor="w").pack(fill="x", pady=(12, 4))
         sw = ctk.CTkFrame(body, fg_color="transparent")
@@ -180,16 +182,16 @@ class ColorPickerDialog:
             b.pack_propagate(False)
             b.bind("<Button-1>", lambda _e, c=hexc: self._set_hex(c))
 
-        # --- akcia: predvolena -----------------------------------------------
+        # --- action: default ------------------------------------------------
         if allow_default:
             act = ctk.CTkFrame(body, fg_color="transparent")
             act.pack(fill="x", pady=(14, 0))
             ui_kit.button(act, pal, tr("colorpick.reset_default"),
                           command=self._use_default).pack(side="left")
 
-        # --- OK / Zrusit -----------------------------------------------------
-        # `ui_kit.button` (0.2.2 davka 4b) - ten isty vzhlad ako v ostatnych
-        # oknach appky (Ulozit hlavne, Zrusit vedlajsie).
+        # --- OK / Cancel ----------------------------------------------------
+        # `ui_kit.button` (0.3 batch 4b) - the same look as in the other
+        # windows of the app (Save primary, Cancel secondary).
         btns = ctk.CTkFrame(body, fg_color="transparent")
         btns.pack(fill="x", pady=(16, 0))
         ui_kit.button(btns, pal, tr("common.cancel"),
@@ -201,7 +203,7 @@ class ColorPickerDialog:
         self._render_sv()
         self._sync_from_hsv()
 
-    # ---- paleta vzoriek ----
+    # ---- swatch palette ----
     def _preset_colors(self):
         pal = self.pal
         out, seen = [], set()
@@ -214,7 +216,7 @@ class ColorPickerDialog:
                 out.append(c); seen.add(c.lower())
         return out[:10]
 
-    # ---- prekreslenie SV plochy + markerov ----
+    # ---- redraw of the SV area + markers ----
     def _render_sv(self):
         img = _sv_image(self._h, self.SVW, self.SVH)
         self._sv_photo = ImageTk.PhotoImage(img)
@@ -236,7 +238,7 @@ class ColorPickerDialog:
         y = self._h * self.SVH
         self.hue_canvas.coords(self._hue_marker, 0, y - 1, self.HUEW, y + 2)
 
-    # ---- interakcie ----
+    # ---- interactions ----
     def _sv_drag(self, e):
         self._s = min(1.0, max(0.0, e.x / self.SVW))
         self._v = min(1.0, max(0.0, 1 - e.y / self.SVH))
@@ -255,9 +257,9 @@ class ColorPickerDialog:
         s = (hexc or "").strip().lstrip("#")
         ok = len(s) in (3, 6) and all(ch in "0123456789abcdefABCDEF" for ch in s)
         if not ok:
-            # Neplatny/rozpisany vstup (napr. "#ab" pri FocusOut) NEnahradzame
-            # zlatym fallbackom - to by ticho zahodilo zvolenu farbu. Len
-            # vratime pole spat na aktualnu farbu.
+            # Invalid/half-typed input (e.g. "#ab" on FocusOut) is NOT replaced
+            # with the gold fallback - that would silently throw away the
+            # chosen colour. We just put the field back to the current colour.
             self._sync_from_hsv(render_sv=False)
             return
         r, g, b = hex_to_rgb(hexc)
@@ -279,7 +281,7 @@ class ColorPickerDialog:
         self.preview.configure(bg=hexc)
         self._cur_hex = hexc
 
-    # ---- vysledky ----
+    # ---- results ----
     def _use_default(self):
         self.result = DEFAULT
         self._teardown()
@@ -305,7 +307,7 @@ class ColorPickerDialog:
 
 
 def ask_color(app, current, title=None, allow_default=True):
-    """Otvori modalny vyber farby a vrati vysledok (hex / DEFAULT / None)."""
+    """Opens a modal colour picker and returns hex / DEFAULT / None."""
     dlg = ColorPickerDialog(app, current, title=title, allow_default=allow_default)
     app.root.wait_window(dlg.top)
     return dlg.result

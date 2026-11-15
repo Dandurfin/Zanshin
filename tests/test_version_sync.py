@@ -1,28 +1,31 @@
 # -*- coding: utf-8 -*-
-"""Jedna verzia zije na STYROCH miestach - musia sedet.
+"""One version lives in FOUR places - they have to match.
 
-POZOR: tento subor sa NEPODARILO obnovit zo zaloh - je napisany nanovo.
-Povodny test mohol kontrolovat viac veci; toto je minimum, ktore pokryva
-chybu, kvoli ktorej vznikol.
+WARNING: this file could NOT be restored from the backups - it is written
+anew. The original test may have checked more things; this is the minimum
+that covers the bug it was created for.
 
-Kazde z tych styroch miest vidi iny clovek:
+Each of those four places is seen by a different person:
 
-  app.version_short v i18n.py     hrac, v titulnej liste
-  MyAppVersion v Dandurf.iss      samostatny instalator
-  version_info.txt                Windows -> Vlastnosti -> Podrobnosti
-  "*Alpha X.Y.Z" v README.md      kazdy na GitHube, este pred appkou
+  app.version_short in i18n.py     the player, in the title bar
+  MyAppVersion in Dandurf.iss      the standalone installer
+  version_info.txt                 Windows -> Properties -> Details
+  "*Alpha X.Y.Z" in README.md      everyone on GitHub, even before the app
 
-Raz sa uz rozisli: popis buildu hlasil "0.5 - alpha", kym titulna lista aj
-instalator hovorili 1.0. Nikto si toho nevsimol, lebo kazde z tych miest
-vidi niekto iny a nikdy nie naraz. (Piate miesto, popis Steam buildu,
-zaniklo s celym Steam buildom - Zanshin nema ziadnu integraciu so Steamom.)
+They have drifted apart once already: the build description said
+"0.5 - alpha", while the title bar and the installer said 1.0. Nobody
+noticed, because each of those places is seen by someone else and never at
+the same time. (A fifth place, the Steam build description, went away with
+the whole Steam build - Zanshin has no Steam integration at all.)
 
-TRI CISLA (0.2.1). Verzia uz nemusi byt len "X.Y". Test predtym bral z
-retazca prve "X.Y" - z "alpha 0.2.1" by vytiahol "0.2" a jazyk, ktory by
-ostal na "alpha 0.2", by presiel (podretazec), kym instalator a exe by
-hlasili 0.2.1. Verzia sa preto berie cela a porovnava sa presne.
+THREE NUMBERS (0.2.1). The version no longer has to be just "X.Y". The test
+used to take the first "X.Y" from the string - from "alpha 0.2.1" it would
+pull "0.2", and a language left at "alpha 0.2" would pass (substring),
+while the installer and the exe said 0.2.1. So the version is taken whole
+and compared exactly.
 
-Test je staticky (cita zdrojak), aby bezal bez Tk aj bez buildu.
+The test is static (it reads the source), so that it runs without Tk and
+without a build.
 """
 import os
 import re
@@ -34,7 +37,7 @@ import i18n  # noqa: E402
 
 ROOT = os.path.join(os.path.dirname(__file__), "..")
 
-# Cela verzia: 2 az 4 cisla oddelene bodkou ("0.2", "0.2.1").
+# The whole version: 2 to 4 numbers separated by dots ("0.2", "0.2.1").
 _VERZIA = r"\d+(?:\.\d+){1,3}"
 
 
@@ -44,7 +47,7 @@ def _read(*parts):
 
 
 def _cela_verzia(text):
-    """Napr. 'alpha 0.2.1' -> '0.2.1' (nie '0.2')."""
+    """E.g. 'alpha 0.2.1' -> '0.2.1' (not '0.2')."""
     m = re.search(_VERZIA, text)
     return m.group(0) if m else None
 
@@ -69,13 +72,13 @@ def _vydana_verzia():
 
 
 def _styri_cisla(verzia):
-    """Windows chce v VERSIONINFO 4 cisla - chybajuce su nuly."""
+    """Windows wants 4 numbers in VERSIONINFO - the missing ones are zeros."""
     cisla = [int(x) for x in verzia.split(".")]
     return cisla + [0] * (4 - len(cisla))
 
 
 def test_cela_verzia_sa_neoreze():
-    """Regresia 0.2.1: z trojciselnej verzie sa nesmie vziat len "X.Y"."""
+    """Regression of 0.2.1: a three-number version must not be cut to "X.Y"."""
     assert _cela_verzia("alpha 0.2.1") == "0.2.1"
     assert _cela_verzia("アルファ 0.2.1") == "0.2.1"
     assert _cela_verzia("alfa 0.2") == "0.2"
@@ -84,8 +87,8 @@ def test_cela_verzia_sa_neoreze():
 
 
 def test_i18n_ma_verziu_vo_vsetkych_jazykoch():
-    """Titulna lista nesmie v jednom jazyku hlasit inu verziu nez v inom -
-    ani kratsiu ("alpha 0.2" popri "alpha 0.2.1")."""
+    """The title bar must not report a different version in one language than
+    in another - not even a shorter one ("alpha 0.2" next to "alpha 0.2.1")."""
     verzia = _verzia_z_i18n()
     for kod in i18n.LANGUAGES:
         hodnota = i18n.STRINGS["app.version_short"][kod]
@@ -101,8 +104,8 @@ def test_installer_sedi_s_titulnou_listou():
 
 
 def test_metadata_exe_sedia_s_titulnou_listou():
-    """filevers/prodvers su 4 cisla, FileVersion/ProductVersion retazce -
-    vsetky styri musia vychadzat z tej istej verzie."""
+    """filevers/prodvers are 4 numbers, FileVersion/ProductVersion strings -
+    all four must come from the same version."""
     src = _read("version_info.txt")
     cisla = _styri_cisla(_verzia_z_i18n())
     ntica = "(" + ", ".join(str(c) for c in cisla) + ")"
@@ -122,9 +125,10 @@ def test_metadata_exe_sedia_s_titulnou_listou():
 
 
 def test_readme_sedi_s_titulnou_listou():
-    """README vidi kazdy na GitHube este skor nez appku. Test ho doteraz
-    nestrazil, a tak po zdvihnuti na 0.2 ostalo v hlavicke "Alpha 0.1", kym
-    lista, instalator aj exe hlasili 0.2."""
+    """Everyone on GitHub sees the README even before the app. The test did
+    not guard it until now, so after the bump to 0.2 the header still said
+    "Alpha 0.1", while the title bar, the installer and the exe all said
+    0.2."""
     m = re.search(rf"^\*Alpha ({_VERZIA}) ·", _read("README.md"), re.M)
     assert m, "README.md nema v hlavicke riadok '*Alpha X.Y.Z · ...'"
     assert m.group(1) == _verzia_z_i18n(), (
@@ -132,8 +136,9 @@ def test_readme_sedi_s_titulnou_listou():
 
 
 def test_known_issues_nesie_aktualnu_verziu():
-    """KNOWN_ISSUES.md je zoznam k TEJTO verzii - nadpis ju musi menovat,
-    inak by citatel nevedel, ci zoznam plati pre to, co ma v ruke."""
+    """KNOWN_ISSUES.md is the list for THIS version - the heading has to name
+    it, otherwise the reader would not know whether the list applies to
+    what they have in hand."""
     prvy = _read("KNOWN_ISSUES.md").splitlines()[0]
     m = re.search(rf"alpha ({_VERZIA})\s*$", prvy)
     assert m, f"KNOWN_ISSUES.md: nadpis nekonci 'alpha X.Y.Z': {prvy!r}"

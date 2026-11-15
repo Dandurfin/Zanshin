@@ -1,17 +1,18 @@
 # -*- coding: utf-8 -*-
-"""Jedna kopia appky (0.2.2, audit UX: "druha kopia natrvalo vypne senzor").
+"""One app copy (0.3, UX audit: "a second copy disables the sensor for good").
 
-× appku len schova do listy a na Windowse 11 je ikona pod sipkou ^. Kto ju
-nenasiel, spustil Zanshin.exe znova: druhe okno, Ctrl+Alt+Z "drzi ina
-appka", port tepu obsadeny - a druha kopia po ~24 s ULOZILA vypnuty senzor do
-spolocnych nastaveni. Teraz main.py pred importom app vytvori pomenovany
-mutex; druha kopia da prvej znamenie "ukaz okno" (pomenovana udalost) a
-skonci s kodom 0. Ked znamenie nejde, ukaze nativne okienko, kde appku
-hladat.
+× only hides the app to the tray, and on Windows 11 the icon is under the
+^ arrow. Whoever did not find it started Zanshin.exe again: a second
+window, Ctrl+Alt+Z "held by another app", the heart rate port taken - and
+after ~24 s the second copy SAVED a switched-off sensor into the shared
+settings. Now main.py creates a named mutex before importing app; the
+second copy gives the first one the signal "show the window" (a named
+event) and exits with code 0. When the signal does not work, it shows a
+native little window saying where to look for the app.
 
-Testy bezia s falosnym kernel32/user32 (ziadne okno, ziadny skutocny
-mutex), okrem jedneho, ktory na Windowse overi skutocne volania pod vlastnym
-menom - nikdy nie pod menom beziaceho Zanshinu.
+The tests run with a fake kernel32/user32 (no window, no real mutex),
+except one that checks the real calls on Windows under its own name -
+never under the name of a running Zanshin.
 """
 import ast
 import importlib.util
@@ -31,8 +32,9 @@ import i18n  # noqa: E402
 
 @pytest.fixture
 def mm(monkeypatch):
-    """main.py nacitany bez GUI: display a customtkinter su prazdne moduly,
-    aby test nemenil DPI rezim procesu (main.py ho nastavuje pri importe)."""
+    """main.py loaded without a GUI: display and customtkinter are empty
+    modules, so that the test does not change the process DPI mode
+    (main.py sets it on import)."""
     displej = types.ModuleType("display")
     displej.enable_dpi_awareness = lambda: None
     monkeypatch.setitem(sys.modules, "display", displej)
@@ -47,7 +49,7 @@ def mm(monkeypatch):
 
 
 class _Kernel:
-    """Falosny kernel32: pomenovane objekty su len mena v mnozine."""
+    """Fake kernel32: named objects are just names in a set."""
 
     def __init__(self, existuje=(), set_ok=True, cakania=()):
         self.objekty = set(existuje)
@@ -107,7 +109,7 @@ def _api(k32):
 
 
 # --------------------------------------------------------------------------
-# prva kopia
+# first copy
 # --------------------------------------------------------------------------
 
 def test_prva_kopia_drzi_mutex_a_vytvori_udalost(mm):
@@ -116,15 +118,15 @@ def test_prva_kopia_drzi_mutex_a_vytvori_udalost(mm):
     kopia = mm._straz_jednej_kopie(api=api, environ={}, platforma="win32")
     assert kopia is not None and kopia.mutex == 101 and kopia.udalost == 202
     assert ("CreateMutexW", False, "Local\\Zanshin-single") in k32.volania
-    # auto-reset (manual=False), na zaciatku nenastavena
+    # auto-reset (manual=False), not set at the start
     assert ("CreateEventW", False, False, "Local\\Zanshin-show") in k32.volania
     assert api.u32.spravy == [] and k32.nastavene == []
-    # mutex sa nezatvara - drzi sa do konca procesu
+    # the mutex is not closed - it is held until the process ends
     assert 101 not in k32.zatvorene
 
 
 # --------------------------------------------------------------------------
-# druha kopia
+# second copy
 # --------------------------------------------------------------------------
 
 def test_druha_kopia_da_znamenie_a_ticho_skonci(mm):
@@ -137,9 +139,9 @@ def test_druha_kopia_da_znamenie_a_ticho_skonci(mm):
     assert k32.nastavene == [303]
     assert 303 in k32.zatvorene, "handle udalosti sa ma zatvorit"
     assert api.u32.spravy == [], "okno sa ukaze samo - okienko netreba"
-    # prva kopia smie dat svoje okno do popredia
+    # the first copy may bring its window to the foreground
     assert api.u32.popredie == [0xFFFFFFFF]
-    # druha kopia si nevytvara vlastnu udalost
+    # the second copy does not create its own event
     assert not any(v[0] == "CreateEventW" for v in k32.volania)
 
 
@@ -161,8 +163,8 @@ def test_ked_znamenie_zlyha_ukaze_okienko(mm, udalost_je, set_ok):
 
 
 def test_mutex_vyssich_prav_sa_rata_ako_beziaca_kopia(mm):
-    """Zanshin spusteny ako spravca: CreateMutexW vrati NULL s ACCESS_DENIED -
-    mutex existuje, druha kopia sa nema spustit."""
+    """Zanshin started as administrator: CreateMutexW returns NULL with
+    ACCESS_DENIED - the mutex exists, the second copy must not start."""
     k32 = _Kernel(existuje={"Local\\Zanshin-show"})
     k32.CreateMutexW = lambda *a: setattr(k32, "posledna", 5) or 0
     api = _api(k32)
@@ -202,7 +204,7 @@ def test_ulozeny_jazyk_sa_cita_bezpecne(mm, tmp_path, monkeypatch):
 
 
 # --------------------------------------------------------------------------
-# kedy sa straz preskakuje
+# when the guard is skipped
 # --------------------------------------------------------------------------
 
 @pytest.mark.parametrize("environ, platforma", [
@@ -219,7 +221,7 @@ def test_obchadzka_a_iny_os_mutex_nevytvaraju(mm, environ, platforma):
 
 
 def test_obchadzka_ma_verejne_meno_a_readme_ju_menuje(mm):
-    # Od 0.2.2d je spustenie zo zdrojakov v DEVELOPMENT.md, nie v README.
+    # Since 0.3d running from source is in DEVELOPMENT.md, not in the README.
     assert mm.POVOL_VIAC_KOPII == "ZANSHIN_ALLOW_MULTI"
     with open(os.path.join(ROOT, "DEVELOPMENT.md"), encoding="utf-8-sig") as fh:
         readme = " ".join(fh.read().split())
@@ -233,14 +235,14 @@ def test_zlyhanie_windows_api_nezabrani_startu(mm):
     k32 = _Kernel()
     k32.CreateMutexW = _pad
     assert mm._straz_jednej_kopie(api=_api(k32), environ={}, platforma="win32") is None
-    # NULL s inou chybou (nie "uz existuje") - appka sa spusti
+    # NULL with a different error (not "already exists") - the app starts
     k32 = _Kernel()
     k32.CreateMutexW = lambda *a: setattr(k32, "posledna", 87) or 0
     assert mm._straz_jednej_kopie(api=_api(k32), environ={}, platforma="win32") is None
 
 
 # --------------------------------------------------------------------------
-# prva kopia caka na znamenie a ukaze okno
+# the first copy waits for the signal and shows the window
 # --------------------------------------------------------------------------
 
 def test_znamenie_ukaze_okno_kazdy_raz(mm):
@@ -291,14 +293,14 @@ def test_vlakno_sa_pri_ukonceni_zastavi(mm):
     stop.set()
     vlakno.join(timeout=5)
     assert not vlakno.is_alive()
-    # bez strazi (obchadzka, iny OS) ani bez udalosti sa nic nespusta
+    # no guard (bypass, other OS) or no event: nothing is started
     assert mm._spusti_cakanie_na_dalsi_start(None, lambda: None, stop) is None
     bez = types.SimpleNamespace(api=None, udalost=None)
     assert mm._spusti_cakanie_na_dalsi_start(bez, lambda: None, stop) is None
 
 
 # --------------------------------------------------------------------------
-# poradie v main()
+# the order in main()
 # --------------------------------------------------------------------------
 
 def _main_telo():
@@ -321,8 +323,9 @@ def test_straz_je_za_hookmi_a_pred_importom_app():
 
 
 def test_druhy_start_ukaze_okno_cez_existujucu_cestu_listy():
-    """Okno ukazuje `show_window` - ta ista metoda ako "Zobrazit" v liste
-    (sama ide cez ui_call, takze je bezpecna z cudzieho vlakna)."""
+    """The window is shown by `show_window` - the same method as "Show" in
+    the tray (it goes through ui_call itself, so it is safe from another
+    thread)."""
     telo = _main_telo()
     kod = "\n".join(ast.unparse(u) for u in telo)
     assert "_spusti_cakanie_na_dalsi_start(_JEDNA_KOPIA, app.show_window, stop)" in kod
@@ -334,7 +337,7 @@ def test_druhy_start_ukaze_okno_cez_existujucu_cestu_listy():
 
 
 # --------------------------------------------------------------------------
-# skutocne Windows API (vlastne mena - beziaci Zanshin sa netkne)
+# the real Windows API (own names - a running Zanshin is not touched)
 # --------------------------------------------------------------------------
 
 @pytest.mark.skipif(not sys.platform.startswith("win"), reason="len Windows")
@@ -354,7 +357,7 @@ def test_skutocny_mutex_a_udalost(mm, monkeypatch):
         assert koniec.value.code == 0
         assert okienka == [], "znamenie malo prejst"
         assert k32.WaitForSingleObject(prva.udalost, 0) == 0x0, "znamenie prislo"
-        # auto-reset: jedno znamenie = jedno ukazanie okna
+        # auto-reset: one signal = one showing of the window
         assert k32.WaitForSingleObject(prva.udalost, 0) == 0x102
     finally:
         k32.CloseHandle(prva.udalost)

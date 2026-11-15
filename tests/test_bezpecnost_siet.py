@@ -1,18 +1,19 @@
 # -*- coding: utf-8 -*-
-"""Bezpečnosť voči hre a sieť (0.2, záverečná kontrola).
+"""Safety towards the game and the network (0.2, final check).
 
-Čo tieto testy strážia - každé z toho bol sľub v SAFETY.md / PRIVACY.md,
-ktorý kód nedodržal:
-  * vypnutý auto-profil nečíta zoznam procesov vôbec (predtým sken bežal
-    stále a vypínač len zahodil výsledok),
-  * veta o štarte pri hre menuje presne hry z mapy; „bootstrapper.exe“
-    (všeobecné meno spúšťača) v mape nie je,
-  * zoznam Edge hlasov sa nesťahuje z Microsoftu (Edge je predvolený, takže
-    predtým pri každom štarte),
-  * texty hlášok sa na syntézu neposielajú, keď hláška nehovorí (štýl
-    „zvuk“/„obrázok“, svet Práca), a počas počúvania vôbec - chýbajúca
-    hláška sa dopripraví po hre,
-  * nainštalovaná appka zvuky neťahá z GitHubu - skopíruje pribalené.
+What these tests guard - each of these was a promise in SAFETY.md / PRIVACY.md
+that the code did not keep:
+  * a switched-off auto-profile does not read the process list at all (before,
+    the scan ran all the time and the switch only threw away the result),
+  * the sentence about starting with a game names exactly the games from the
+    map; "bootstrapper.exe" (a generic launcher name) is not in the map,
+  * the list of Edge voices is not downloaded from Microsoft (Edge is the
+    default, so before, on every start),
+  * cue texts are not sent for synthesis when the cue does not speak (style
+    "zvuk"/"obrázok", the Work world), and not at all while listening - a
+    missing cue is prepared after the game,
+  * the installed app does not pull sounds from GitHub - it copies the bundled
+    ones.
 """
 import ast
 import os
@@ -35,8 +36,8 @@ def _read(meno):
 
 
 def _telo(subor, meno):
-    """Zdrojak funkcie/metody `meno` zo suboru (cez ast, bez importu)."""
-    # "app.py" = cela appka: app.py aj mixiny DandurfApp v app_*.py
+    """Source of function/method `meno` from the file (via ast, no import)."""
+    # "app.py" = the whole app: app.py and the DandurfApp mixins in app_*.py
     src = zdroj_appky() if subor == "app.py" else _read(subor)
     for uzol in ast.walk(ast.parse(src)):
         if isinstance(uzol, ast.FunctionDef) and uzol.name == meno:
@@ -50,9 +51,10 @@ def _app():
 
 
 def _profily():
-    """Modul, z ktoreho `_start_game_watcher` cita `GameProcessWatcher` a
-    `PSUTIL_AVAILABLE`. Metoda byva v mixine app_profiles (ProfilesMixin),
-    nie v app.py - falosny watcher treba podstrcit tam."""
+    """The module from which `_start_game_watcher` reads `GameProcessWatcher`
+    and `PSUTIL_AVAILABLE`. The method lives in the app_profiles mixin
+    (ProfilesMixin), not in app.py - the fake watcher must be slipped in
+    there."""
     _app()
     import app_profiles
     return app_profiles
@@ -66,7 +68,7 @@ def jazyk():
 
 
 # --------------------------------------------------------------------------
-# Auto-profil: vypnutý = procesy sa nečítajú
+# Auto-profile: off = processes are not read
 # --------------------------------------------------------------------------
 
 class _FalosnyWatcher:
@@ -177,7 +179,7 @@ def test_popis_auto_profilu_je_pod_prepinacom():
 
 
 # --------------------------------------------------------------------------
-# Edge: zoznam hlasov bez siete
+# Edge: voice list without network
 # --------------------------------------------------------------------------
 
 class _ZiadnaSiet:
@@ -207,16 +209,16 @@ def test_zoznam_edge_hlasov_je_lokalny_a_v_jazyku_rozhrania(monkeypatch, jazyk):
 
 
 # --------------------------------------------------------------------------
-# Edge: čo sa posiela na syntézu a kedy
+# Edge: what is sent for synthesis and when
 # --------------------------------------------------------------------------
 
 def _atrapa_hlasu(app_mod, styl="voice", svet="play"):
     from settings_model import MODE_COMBO, MODE_SFX, MODE_TTS
     D = app_mod.DandurfApp
 
-    # Sloty nesu vsetko, na co sa `_slot_na_pripravu` pyta (pozicia,
-    # vypinac, vlastna nahravka) - od 0.2.1 sa pripravuju len zapnute
-    # kategorie bez nahravky (test_021b_pregen_len_co_zaznie.py).
+    # The slots carry everything `_slot_na_pripravu` asks about (position,
+    # switch, own recording) - since 0.2.1 only switched-on categories
+    # without a recording are prepared (test_021b_pregen_len_co_zaznie.py).
     def slot(index, mode, text, voice_edge=""):
         return types.SimpleNamespace(index=index, mode=mode, text_value=text,
                                      voice_edge=voice_edge, enabled_value=True,
@@ -273,8 +275,9 @@ def test_chybajuca_hlaska_pocas_hry_nejde_na_siet(monkeypatch):
             logy=[], ui=[], hovorene=[], pripravy=[])
         a._hlasky_hovoria = lambda: hovoria
         a._slot_voice_clip = lambda slot: None
-        # zapnuta kategoria s hlasom - taku Edge v hre povie, takze sa
-        # pripravuje (vypnutu a slot z 0.1 strazi test_021b_pregen_*)
+        # a switched-on category with a voice - Edge says it in game, so it is
+        # prepared (the switched-off one and the 0.1 slot are guarded by
+        # test_021b_pregen_*)
         a._slot_na_pripravu = lambda slot: True
         a.log_threadsafe = a.logy.append
         a.ui_call = a.ui.append
@@ -301,8 +304,9 @@ def test_chybajuca_hlaska_pocas_hry_nejde_na_siet(monkeypatch):
     assert a.ui == [a.pregenerate], "mimo hry sa chýbajúca hláška pripraví hneď"
     assert a._pregen_po_hre is False
 
-    # Hlášky v hre nehovoria (len obrázok / zvuk / Práca): ukážka zaznie cez
-    # SAPI, nič sa nepripravuje a denník nesľubuje prípravu, ktorá nepríde.
+    # Cues do not speak in game (picture only / sound / Work): the preview
+    # plays through SAPI, nothing is prepared and the journal does not
+    # promise a preparation that will not come.
     for pocuva in (True, False):
         a = atrapa(pocuva=pocuva, hovoria=False)
         D._speak_text(a, "Breathe", slot)
@@ -315,12 +319,12 @@ def test_stop_pocuvania_dopripravi_hlasky():
 
 
 # --------------------------------------------------------------------------
-# Celá príprava hlasu (`pregenerate`) počas počúvania nejde na sieť
+# The whole voice preparation (`pregenerate`) stays offline while listening
 # --------------------------------------------------------------------------
 
 def _atrapa_pripravy(app_mod, monkeypatch, pocuva):
-    """Atrapa s ozajstným `pregenerate` / `schedule_pregenerate` /
-    `_dopriprav_hlasky_po_hre`; vlákno sa nespúšťa, len zapíše."""
+    """A stub with the real `pregenerate` / `schedule_pregenerate` /
+    `_dopriprav_hlasky_po_hre`; the thread is not started, only recorded."""
     import audio_engine
     monkeypatch.setattr(audio_engine, "EDGE_AVAILABLE", True)
     D = app_mod.DandurfApp
@@ -351,7 +355,7 @@ def test_priprava_pocas_pocuvania_sa_odlozi_na_po_hre(monkeypatch):
         assert a._pregen_po_hre is True
         assert a.stavy[-1] == i18n.tr("edge.after_game")
 
-    # Stop počúvania: príprava sa naplánuje a až potom beží naozaj.
+    # Stop listening: the preparation is scheduled and only then really runs.
     a.listening = False
     a._dopriprav_hlasky_po_hre()
     assert a._pregen_po_hre is False and len(a.root.ulohy) == 1
@@ -361,7 +365,7 @@ def test_priprava_pocas_pocuvania_sa_odlozi_na_po_hre(monkeypatch):
 
 
 def test_hotove_hlasky_pocas_pocuvania_su_len_hotove(monkeypatch):
-    """Keď je všetko v cache, niet čo posielať - netreba nič odkladať."""
+    """When all is in the cache, nothing to send - no need to postpone."""
     app_mod = _app()
     a = _atrapa_pripravy(app_mod, monkeypatch, pocuva=True)
     a.edge_cache.has = lambda *_: True
@@ -371,9 +375,10 @@ def test_hotove_hlasky_pocas_pocuvania_su_len_hotove(monkeypatch):
 
 
 def test_auto_profil_pri_starte_hry_nic_neposiela(monkeypatch):
-    """Presne scenár zo zadania: známa hra sa spustí, auto-profil prepne
-    profil (`switch_profile` -> `schedule_pregenerate`) a hneď zapne
-    počúvanie. Keď príde na rad príprava, appka už počúva - odloží ju."""
+    """Exactly the scenario from the spec: a known game starts, auto-profile
+    switches the profile (`switch_profile` -> `schedule_pregenerate`) and
+    right away turns listening on. When the preparation's turn comes, the
+    app is already listening - it postpones it."""
     app_mod = _app()
     D = app_mod.DandurfApp
     a = _atrapa_pripravy(app_mod, monkeypatch, pocuva=False)
@@ -397,7 +402,7 @@ def test_auto_profil_pri_starte_hry_nic_neposiela(monkeypatch):
     assert a.vlakna == [] and a.posielane == []
     assert a._pregen_po_hre is True
 
-    # Rovnako ručné prepnutie profilu uprostred hry.
+    # Likewise a manual profile switch in the middle of a game.
     a._pregen_po_hre = False
     a.switch_profile("Default")
     a.root.ulohy[-1]()
@@ -405,14 +410,15 @@ def test_auto_profil_pri_starte_hry_nic_neposiela(monkeypatch):
 
 
 def test_rozbehnuta_priprava_prestane_ked_sa_zapne_pocuvanie(monkeypatch):
-    """Príprava spustená pred hrou pošle najviac tú hlášku, ktorá už letí;
-    ďalšiu už nie - zvyšok odovzdá `pregenerate`, ktorý ju odloží."""
+    """A preparation started before the game sends at most the cue already in
+    flight; not the next one - it hands the rest to `pregenerate`, which
+    postpones it."""
     app_mod = _app()
     a = _atrapa_pripravy(app_mod, monkeypatch, pocuva=False)
 
     def posli(*x, **_k):
         a.posielane.append(x)
-        a.listening = True          # hra sa rozbehla počas prvej hlášky
+        a.listening = True          # the game got going during the first cue
         return True
 
     a.edge_cache.ensure = posli
@@ -427,8 +433,8 @@ def test_rozbehnuta_priprava_prestane_ked_sa_zapne_pocuvanie(monkeypatch):
 
 
 def _falosny_edge(monkeypatch, tmp_path, pri_odoslani=None):
-    """Ozajstný `EdgeTTSCache` s ozajstným zámkom; namiesto Microsoftu
-    atrapa `edge_tts.Communicate`, ktorá si zapíše každú požiadavku."""
+    """The real `EdgeTTSCache` with a real lock; instead of Microsoft a stub
+    `edge_tts.Communicate` that records every request."""
     import asyncio
     import audio_engine
     odoslane = []
@@ -452,7 +458,7 @@ def _falosny_edge(monkeypatch, tmp_path, pri_odoslani=None):
 
 
 class _ZamokSHlasenim:
-    """Zámok, ktorý dá vedieť, keď naň niekto začne čakať."""
+    """A lock that lets you know when someone starts waiting on it."""
 
     def __init__(self):
         import threading
@@ -468,26 +474,28 @@ class _ZamokSHlasenim:
 
 
 def test_ensure_sa_po_cakani_na_zamku_vzda(monkeypatch, tmp_path):
-    """`abort` sa pýta až po získaní zámku: kto čakal, kým iné vlákno
-    dopošle svoju hlášku, a medzitým sa zaplo počúvanie, nepošle nič."""
+    """`abort` is checked only after getting the lock: whoever waited for
+    another thread to finish sending its cue, while listening was switched
+    on meanwhile, sends nothing."""
     import threading
     cache, odoslane = _falosny_edge(monkeypatch, tmp_path)
     cache._lock = _ZamokSHlasenim()
     stav = {"pocuva": False}
     vysledok = []
 
-    cache._lock._zamok.acquire()     # iné vlákno práve posiela svoju hlášku
+    cache._lock._zamok.acquire()     # another thread is sending its cue right now
     b = threading.Thread(target=lambda: vysledok.append(
         cache.ensure("Jaw", "v", 0, abort=lambda: stav["pocuva"])))
     b.start()
     assert cache._lock.caka.wait(5)
-    stav["pocuva"] = True            # hra sa rozbehla, kým B čakal
+    stav["pocuva"] = True            # the game got going while B waited
     cache._lock._zamok.release()
     b.join(5)
     assert not b.is_alive()
     assert vysledok == [None] and odoslane == [], "nová požiadavka nezačala"
 
-    # Bez počúvania sa pošle normálne; hotová hláška sa vráti aj počas neho.
+    # Without listening it is sent normally; a finished cue is returned
+    # even while listening.
     stav["pocuva"] = False
     cesta = cache.ensure("Jaw", "v", 0, abort=lambda: stav["pocuva"])
     assert cesta and odoslane == [("Jaw", "v")]
@@ -498,9 +506,10 @@ def test_ensure_sa_po_cakani_na_zamku_vzda(monkeypatch, tmp_path):
 
 def test_druha_priprava_cakajuca_na_zamku_pocas_hry_nic_neposle(
         monkeypatch, tmp_path):
-    """Scenár overovateľa: hráč zmení hlas (vlákno A posiela 1. hlášku),
-    hneď znova (vlákno B čaká na zámku cache), potom sa spustí hra.
-    Keď A dopošle, B nové požiadavky na Microsoft nezačne."""
+    """The reviewer's scenario: the player changes the voice (thread A sends
+    cue 1), right away again (thread B waits on the cache lock), then a game
+    starts. When A finishes sending, B does not start new requests to
+    Microsoft."""
     import threading
     realne_vlakno = threading.Thread
     app_mod = _app()
@@ -509,27 +518,27 @@ def test_druha_priprava_cakajuca_na_zamku_pocas_hry_nic_neposle(
     a_posiela, pusti_a = threading.Event(), threading.Event()
 
     def pri_odoslani(poradie):
-        if poradie == 1:             # prvá hláška vlákna A "letí"
+        if poradie == 1:             # thread A's first cue is "in flight"
             a_posiela.set()
             assert pusti_a.wait(5)
 
     a.edge_cache, odoslane = _falosny_edge(monkeypatch, tmp_path, pri_odoslani)
     a.edge_cache._lock = _ZamokSHlasenim()
 
-    a.pregenerate()                              # prvá zmena hlasu -> A
+    a.pregenerate()                              # first voice change -> A
     vlakno_a = realne_vlakno(target=a.vlakna[0]["target"])
     vlakno_a.start()
     assert a_posiela.wait(5)
 
     a.edge_cache._lock.caka.clear()
-    a.edge_voice_id = "en-US-AvaNeural"          # druhá zmena hlasu -> B
+    a.edge_voice_id = "en-US-AvaNeural"          # second voice change -> B
     a.pregenerate()
     assert len(a.vlakna) == 2
     vlakno_b = realne_vlakno(target=a.vlakna[1]["target"])
     vlakno_b.start()
     assert a.edge_cache._lock.caka.wait(5), "B čaká na zámku"
 
-    a.listening = True                           # hra sa spustila
+    a.listening = True                           # the game started
     pusti_a.set()
     vlakno_a.join(5)
     vlakno_b.join(5)
@@ -543,8 +552,8 @@ def test_druha_priprava_cakajuca_na_zamku_pocas_hry_nic_neposle(
 
 
 def test_posledna_hlaska_vzdana_na_zamku_nie_je_chyba(monkeypatch):
-    """Keď sa na zámku vzdá až posledná hláška, zvyšok tiež odloží
-    `pregenerate` - stav nehlási „pripravené len čiastočne“."""
+    """When only the last cue gives up on the lock, the rest is also postponed
+    by `pregenerate` - the status does not report "only partly prepared"."""
     app_mod = _app()
     a = _atrapa_pripravy(app_mod, monkeypatch, pocuva=False)
     a.log_threadsafe = lambda *x: None
@@ -554,7 +563,7 @@ def test_posledna_hlaska_vzdana_na_zamku_nie_je_chyba(monkeypatch):
         volania.append(text)
         if len(volania) == 1:
             return "hotova.mp3"
-        a.listening = True           # kým čakala na zámku, hra sa spustila
+        a.listening = True           # while it waited on the lock, the game started
         assert abort is not None and abort()
         return None
 
@@ -574,7 +583,7 @@ def test_rucna_zmena_mimo_pocuvania_je_hned(monkeypatch):
 
 
 # --------------------------------------------------------------------------
-# Zvuky: nainštalovaná appka ich kopíruje z balíka, nesťahuje
+# Sounds: the installed app copies them from the package, no download
 # --------------------------------------------------------------------------
 
 def _vsetky_zvuky(sfx_assets):
@@ -638,6 +647,7 @@ def test_zo_zdrojakov_sa_nic_nekopiruje(monkeypatch):
 
 
 def test_build_bali_zvuky():
-    """Bez zvukov v balíku by nainštalovaná appka opäť sťahovala z GitHubu."""
+    """Without sounds in the package the installed app would download
+    from GitHub again."""
     spec = _read("Dandurf.spec")
     assert "('assets', 'assets')" in spec or "sounds" in spec

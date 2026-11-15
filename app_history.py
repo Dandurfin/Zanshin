@@ -1,36 +1,38 @@
-"""Stranka Historia - cast hlavnej appky (DandurfApp z app.py).
+"""History page - part of the main app (DandurfApp from app.py).
 
-HistoryMixin je mixin DandurfApp: app.py ho dedi a cely stav (widgety
-stranky Historia, zvolena metrika a obdobie trendu, vybrana relacia v
-detaile, postrehy z analyzy a jej vlakno) zije na DandurfApp. Tu su len
-metody, ktore s nim pracuju cez `self` - mixin nema __init__ ani vlastne
-atributy.
+HistoryMixin is a mixin of DandurfApp: app.py inherits it and all the state
+(the widgets of the History page, the chosen trend metric and period, the
+session selected in the detail, the insights from the analysis and its
+thread) lives on DandurfApp. Here are only the methods that work with it
+through `self` - the mixin has no __init__ and no attributes of its own.
 
-Presunute z app.py bez zmeny:
-  * info k metrikam - veta pri cisle s rozbalitelnym vysvetlenim
-    (`_metric_info`); pouziva ju aj stranka Dnes v app.py,
-  * stranka Historia - stavba stranky, nacitanie historie relacii
-    (`_history_sessions`, `_world_sessions` - volaju ich aj ostatne casti
-    appky) a format minut,
-  * trend: metrika + casove obdobie (chips) - graf trendu, tabulka
-    relacii, veta rebrika, graf "ktora hlaska zabera" a export do CSV,
-  * pravidelnost a detail jednej relacie - mriezka dni, detail vybranej
-    relacie, formaty hodnot (`_fmt_*` pouzivaju aj karty na Dnes v
-    app_today.py) a postrehy z analyzy,
-  * analyza historie na pozadi - len jej prva cast: spustenie analyzy vo
-    vlakne, prevzatie vysledku a jej zopakovanie. Zvysok tej sekcie
-    (stavba stranok Nastaveni a V hre, karta senzora tepu) s historiou
-    nesuvisi - ostal v app.py pod novou znackou "stranky Nastaveni a V hre".
+Moved from app.py unchanged:
+  * metric info - a sentence next to a number with an expandable
+    explanation (`_metric_info`); the Today page in app.py uses it too,
+  * History page - building the page, loading the session history
+    (`_history_sessions`, `_world_sessions` - other parts of the app call
+    them too) and the minute format,
+  * trend: metric + time period (chips) - the trend chart, the sessions
+    table, the ladder sentence, the "which cue works" chart and CSV export,
+  * consistency and the detail of one session - the day grid, the detail
+    of the selected session, value formats (`_fmt_*` are also used by the
+    cards on Today in app_today.py) and the insights from the analysis,
+  * background history analysis - only its first part: starting the
+    analysis in a thread, taking over the result and re-running it. The
+    rest of that section (building the Settings and In game pages, the
+    heart rate sensor card) has nothing to do with history - it stayed in
+    app.py under the new marker for "the Settings and In game pages".
 
-Konstanty stranky (`HISTORY_ROWS`, `HISTORY_METRICS`, `_METRIC_*`,
-`HISTORY_DETAIL_COLS`, `HISTORY_DETAIL_CELLS`) ostali v triede DandurfApp medzi ostatnymi
-konstantami triedy - metody ich citaju cez `self`.
+Page constants (`HISTORY_ROWS`, `HISTORY_METRICS`, `_METRIC_*`,
+`HISTORY_DETAIL_COLS`, `HISTORY_DETAIL_CELLS`) stayed in the DandurfApp
+class among the other class constants - the methods read them through
+`self`.
 
-Pozor v testoch: `_refresh_history_page`, `export_sessions_csv`,
-`_refresh_history_detail`, `_render_hr_insights` a `_apply_hr_insights`
-citaju `time` z tohto modulu a `run_hr_analysis` `threading` - falosne
-hodiny aj synchronne vlakno treba podstrcit aj tu (`app_history.time`,
-`app_history.threading`), nie len na module app.
+Careful in tests: `_refresh_history_page`, `export_sessions_csv`,
+`_refresh_history_detail`, `_render_hr_insights` and `_apply_hr_insights`
+read `time` from this module and `run_hr_analysis` reads `threading` - a
+fake clock and a synchronous thread have to be slipped in here too
+(`app_history.time`, `app_history.threading`), not only on the app module.
 """
 
 import os
@@ -55,22 +57,23 @@ from app_spolocne import app_log, stranka_vhre, zapamataj_text_stranky
 
 
 class HistoryMixin:
-    """Stranka Historia a analyza historie na pozadi (mixin DandurfApp)."""
+    """History page and background history analysis (DandurfApp mixin)."""
 
-    # ---------- info k metrikam ("aby pouzivatel vedel") ----------
+    # ---------- metric info ("so the user knows") ----------
 
     def _metric_info(self, parent, pal, metric, wrap=420, titled=False):
-        """Veta pri cisle + rozbalitelne 'co to znamena' (ui_kit.InfoRow).
-        Texty su v i18n pod metric.<id>.short / .more - presne znenie zo
-        zadania, pre hraca, nie pre lekara.
+        """Sentence by a number + expandable 'what it means' (ui_kit.InfoRow).
+        The texts are in i18n under metric.<id>.short / .more - the exact
+        wording from the spec, for the player, not for a doctor.
 
-        `titled=True` da nad vetu meno metriky (metric.<id>.title) - pre
-        vysvetlivky pod tabulkou, kde hlavicky stlpcov uz odrolovali a tri
-        "ⓘ co to znamena" pod sebou nehovorili, ku ktoremu cislu patria."""
+        `titled=True` puts the metric name (metric.<id>.title) above the
+        sentence - for the explanations under the table, where the column
+        headers have already scrolled away and three "ⓘ what it means" one
+        under another did not say which number they belong to."""
         nazov = tr(f"metric.{metric}.title") if titled else None
-        # `page`: `metric.over.more` posiela na stranku "V hre" jej menom
-        # v aktualnom svete (0.2.2 davka 4b); ostatne texty ho nepouziju.
-        # Po prepnuti sveta ho prepise `obnov_texty_stranky`.
+        # `page`: `metric.over.more` points to the "In game" page by its name
+        # in the current world (0.3 batch 4b); the other texts do not use it.
+        # After a world switch `obnov_texty_stranky` rewrites it.
         riadok = ui_kit.InfoRow(parent, pal, tr(f"metric.{metric}.short"),
                                 tr(f"metric.{metric}.more", page=stranka_vhre(self)),
                                 tr("history.info_more"),
@@ -78,16 +81,18 @@ class HistoryMixin:
         zapamataj_text_stranky(self, getattr(riadok, "more", None), f"metric.{metric}.more")
         return riadok
 
-    # ---------- stranka Historia ----------
+    # ---------- History page ----------
 
     def _build_historia_page(self, page, pal):
-        """Historia relacii tepu: postrehy z analyzy na pozadi, trend
-        pokojovej zakladne napriec relaciami, tabulka relacii s metrikami
-        z cisteho BPM a panel 'Preco to funguje' so studiami.
+        """History of heart rate sessions: insights from the background
+        analysis, the trend of the resting baseline across sessions, a
+        table of sessions with metrics from clean BPM and a 'Why it works'
+        panel with studies.
 
         Data: hr_sessions.json (hr_stats.save_session) + hr_insights.json
-        (hr_insights.analyze v pozadi). Stranka sa prekresli pri postaveni,
-        po ulozeni relacie a po dobehnuti analyzy (_refresh_history_page).
+        (hr_insights.analyze in the background). The page is redrawn when
+        it is built, after a session is saved and after the analysis
+        finishes (_refresh_history_page).
         """
         scroll = ui_kit.stranka_scroll(page, pal)
         scroll.pack(fill="both", expand=True, padx=ui_kit.PAGE_GUTTER, pady=(20, 20))
@@ -98,15 +103,16 @@ class HistoryMixin:
         ctk.CTkLabel(scroll, text=tr("history.subtitle"), font=ui_kit.ui(11),
                      text_color=pal["text_dim"], wraplength=680, anchor="w",
                      justify="left").pack(fill="x", pady=(4, 2))
-        # Ktory svet stranka ukazuje (B3-worlds). Bez tejto vety by prazdna
-        # Praca vyzerala ako stratena historia. Text doplna
-        # `_refresh_history_page`, lebo svet sa meni bez prestavby stranky.
+        # Which world the page shows (B3-worlds). Without this sentence an
+        # empty Work world would look like lost history. The text is filled in
+        # by `_refresh_history_page`, because the world changes without the
+        # page being rebuilt.
         self.history_world_note = ctk.CTkLabel(
             scroll, text="", font=ui_kit.ui(10), text_color=pal["text_faint"],
             wraplength=680, anchor="w", justify="left")
         self.history_world_note.pack(fill="x", pady=(0, 10))
 
-        # --- postrehy (analyza na pozadi) ---
+        # --- insights (background analysis) ---
         ins = ui_kit.Panel(scroll, pal, title=tr("history.insights_title"), right="")
         ins.pack(fill="x")
         self.history_insights_panel = ins
@@ -117,29 +123,32 @@ class HistoryMixin:
         ctk.CTkLabel(foot, text=tr("history.insights_note"), font=ui_kit.ui(10),
                      text_color=pal["text_faint"], anchor="w", justify="left",
                      wraplength=520).pack(side="left", fill="x", expand=True)
-        # Vedlajsie tlacidlo, nie chip (chip je len externy odkaz). Kym je
-        # jedinym "postrehom" pocitadlo "0 z 3 relacii", nie je co prepocitat
-        # a tlacidlo sa skryje (`_render_hr_insights`).
+        # A secondary button, not a chip (a chip is only an external link).
+        # While the only "insight" is the counter "0 of 3 sessions", there is
+        # nothing to recompute and the button is hidden
+        # (`_render_hr_insights`).
         self.history_recompute_btn = ui_kit.button(foot, pal, tr("history.recompute"),
                                                    command=self.run_hr_analysis,
                                                    height=28)
         self.history_recompute_btn.pack(side="right")
 
-        # --- trend napriec relaciami: metrika + casove obdobie sa daju
-        # prepnut, graf aj text sa prekreslia (_refresh_history_trend) ---
+        # --- trend across sessions: the metric + time period can be
+        # switched, chart and text are redrawn (_refresh_history_trend) ---
         tp = ui_kit.Panel(scroll, pal, title=tr("history.trend_title"))
         tp.pack(fill="x", pady=(14, 0))
 
-        # Dva rady chipov pod sebou vyzerali ako jedna mriezka osmich
-        # tlacidiel - z obrazovky sa nedalo precitat, ze horny rad meni CO
-        # a dolny ZA AKE OBDOBIE. Popisok vlavo to povie jednym slovom.
+        # Two rows of chips one under the other looked like a single grid of
+        # eight buttons - from the screen you could not read that the top row
+        # changes WHAT and the bottom one OVER WHAT PERIOD. A label on the
+        # left says it in one word.
         #
-        # DVA OVLADACE, NIE DVANAST RAMOV (0.2.2, audit UX). Osem chipov
-        # metriky a styri obdobia boli dvanast oramovanych tlacidiel, ktore
-        # vizualne prebili graf, ktory ovladaju - a ten isty chip znamenal v
-        # appke aj kartu, akciu a odkaz. Metrika je jedna rozbalovacka (vyber
-        # jednej z osmich), obdobie jeden segmentovy prepinac (styri vedla
-        # seba, jedno zvolene - zvolene nesie text v akcente).
+        # TWO CONTROLS, NOT TWELVE FRAMES (0.3, UX audit). Eight metric chips
+        # and four periods were twelve framed buttons that visually
+        # overpowered the chart they control - and in the app the same chip
+        # also meant a tab, an action and a link. The metric is one dropdown
+        # (pick one of eight), the period one segmented switch (four side by
+        # side, one selected - the selected one carries its text in the
+        # accent colour).
         self.history_metric = getattr(self, "history_metric", "baseline")
         self._history_metric_by_label = {tr(t): k for k, t, _c in self.HISTORY_METRICS}
         metric_row = ctk.CTkFrame(tp.body, fg_color="transparent")
@@ -179,7 +188,8 @@ class HistoryMixin:
         self.history_trend_caption.pack(fill="x")
         self.history_trend = ui_kit.TrendChart(tp.body, pal, height=158)
         self.history_trend.pack(fill="x", pady=(6, 0))
-        # Veta, nie vypis z konzoly: monospace je len v tabulke a na osiach.
+        # A sentence, not a console printout: monospace is only in the table
+        # and on the axes.
         self.history_trend_delta = ctk.CTkLabel(tp.body, text="", font=ui_kit.ui(12),
                                                 text_color=pal["text"], anchor="w")
         self.history_trend_delta.pack(fill="x", pady=(4, 0))
@@ -187,9 +197,10 @@ class HistoryMixin:
         self.history_info_wrap.pack(fill="x", pady=(6, 0))
         self._render_history_metric_info()
 
-        # --- ktora hlaska zabera ---
-        # Da sa pytat az odkedy sa kategorie striedaju (`measure.next_slot`).
-        # Do 18. 9. hrala appka vzdy jednu, takze porovnavat nebolo co.
+        # --- which cue works ---
+        # This can only be asked since the categories alternate
+        # (`measure.next_slot`). Until 18. 9. the app always played one, so
+        # there was nothing to compare.
         ep = ui_kit.Panel(scroll, pal, title=tr("history.effect_title"), right="")
         ep.pack(fill="x", pady=(14, 0))
         self.history_effect_panel = ep
@@ -200,17 +211,18 @@ class HistoryMixin:
             text_color=pal["text_faint"], anchor="w", justify="left",
             wraplength=560)
         self.history_effect_hint.pack(fill="x", pady=(8, 0))
-        # REBRIK HLASKY (0.2): jedna ticha veta, len ked sa appka sama
-        # stisila pod vrchol - s dovodom. Na vrchole sa nezobrazi vobec
-        # (`_refresh_rebrik_note`).
+        # CUE LADDER (0.2): one quiet sentence, only when the app has turned
+        # itself down below the top - with the reason. At the top it is not
+        # shown at all (`_refresh_rebrik_note`).
         self.history_rebrik_note = ctk.CTkLabel(
             ep.body, text="", font=ui_kit.ui(10),
             text_color=pal["text_faint"], anchor="w", justify="left",
             wraplength=560)
 
-        # --- pravidelnost: mriezka dni + serie ---
-        # Jedina vec na tejto stranke, ktora nehovori o jednej relacii, ale
-        # o vzore: vikendy, serie vecerov, tyzden, ked appka lezala vypnuta.
+        # --- consistency: day grid + streaks ---
+        # The only thing on this page that does not talk about one session
+        # but about a pattern: weekends, streaks of evenings, a week when the
+        # app lay switched off.
         gp = ui_kit.Panel(scroll, pal, title=tr("history.rhythm_title"), right="")
         gp.pack(fill="x", pady=(14, 0))
         self.history_rhythm_panel = gp
@@ -218,56 +230,63 @@ class HistoryMixin:
         grid_row.pack(fill="x")
         self.history_daygrid = ui_kit.DayGrid(grid_row, pal)
         self.history_daygrid.pack(side="left", fill="x", expand=True)
-        # height treba zadat: CTkFrame ma predvolenu ziadanu vysku 200 px a
-        # s pack_propagate(False) by si ju panel nechal aj s tromi riadkami
-        # textu - pod mriezkou by ostala prazdna tretina panela.
+        # height has to be given: CTkFrame has a default requested height of
+        # 200 px and with pack_propagate(False) the panel would keep it even
+        # with three lines of text - an empty third of the panel would be
+        # left under the grid.
         days_box = ctk.CTkFrame(grid_row, fg_color="transparent", width=150, height=118)
-        # hore, nie v strede: mriezka rastie so sirkou (0.2.2 davka 4b) a
-        # cislo ma ostat na vyske prvych riadkov, nie plavat pod nimi
+        # top, not centre: the grid grows with the width (0.3 batch 4b) and
+        # the number should stay at the height of the first rows, not float
+        # below them
         days_box.pack(side="right", padx=(18, 0), anchor="n")
         days_box.pack_propagate(False)
-        # Popisok nesie pocet tyzdnov mriezky - ten sa meni s historiou,
-        # preto si ho stranka drzi (`_refresh_history_rhythm`).
+        # The label carries the number of weeks in the grid - that changes
+        # with the history, so the page keeps a reference to it
+        # (`_refresh_history_rhythm`).
         self.history_days_label = ctk.CTkLabel(
             days_box, text=tr("history.days_played",
                               weeks=self.RYTMUS_MAX_TYZDNOV).upper(),
             font=ui_kit.ui(10, "bold"), text_color=pal["text_faint"],
             anchor="w", justify="left", wraplength=150)
         self.history_days_label.pack(fill="x")
-        # Farba je `text`, nie `success`: zelena bola z cias, ked to bola
-        # seria a dala sa "drzat". Pocet dni nie je uspech ani neuspech.
+        # The colour is `text`, not `success`: green was from the days when
+        # it was a streak and could be "kept". A number of days is neither a
+        # success nor a failure.
         self.history_days_value = ctk.CTkLabel(days_box, text="—",
                                                font=ui_kit.display(22),
                                                text_color=pal["text"], anchor="w")
         self.history_days_value.pack(fill="x")
 
-        # --- detail jednej relacie ---
-        # Tabulka nizsie je hustá a presna, ale relacia sa z nej da uz len
-        # PRECITAT. Tu sa da POZRIET - z krivky ulozenej v suhrne.
+        # --- detail of one session ---
+        # The table below is dense and precise, but a session can only be
+        # READ from it. Here it can be SEEN - from the curve saved in the
+        # summary.
         dp = ui_kit.Panel(scroll, pal, title=tr("history.detail_title"), right="")
         dp.pack(fill="x", pady=(14, 0))
         self.history_detail_panel = dp
-        self.history_detail_index = None      # None = najnovsia relacia
-        # PRAZDNY STAV (0.2.2 davka 4, `ui_kit.EmptyState`): bez relacie bola
-        # v paneli prazdna stopa, jedenast pomlciek a veta az pod nimi. Teraz
-        # len veta - co sa tu objavi (`_history_detail_prazdny`). Nepakuje
-        # sa tu: ukaze ju az `_refresh_history_detail`.
+        self.history_detail_index = None      # None = the newest session
+        # EMPTY STATE (0.3 batch 4, `ui_kit.EmptyState`): without a session
+        # the panel had an empty trace, eleven dashes and the sentence only
+        # below them. Now just the sentence - what will appear here
+        # (`_history_detail_prazdny`). It is not packed here: only
+        # `_refresh_history_detail` shows it.
         self.history_detail_empty = ui_kit.EmptyState(
             dp.body, pal, tr("history.detail_empty"), pady=(18, 18))
         self._history_detail_packy = None
         self.history_detail_trace = ui_kit.SessionTrace(dp.body, pal, height=96)
         self.history_detail_trace.pack(fill="x")
-        # Ten isty popis ako pod grafom v dotazniku po relacii - nie novy
-        # text. Pruh "kde sa hralo" treba vysvetlit raz a rovnako; dva
-        # vlastne popisy toho isteho obrazka by sa casom rozisli.
+        # The same description as under the chart in the post-session
+        # questionnaire - not a new text. The "where you played" strip has to
+        # be explained once and the same way; two separate descriptions of
+        # the same picture would drift apart over time.
         self.history_detail_legend = ctk.CTkLabel(
             dp.body, text=tr("session.end.trace_hint"), font=ui_kit.ui(10),
             text_color=pal["text_faint"], anchor="w", justify="left",
             wraplength=640)
         self.history_detail_legend.pack(fill="x", pady=(6, 0))
-        # VSETKY hodnoty vybranej relacie (0.2: "Historia = cely obraz"),
-        # v mriezke po styroch - v jednom rade by sa jedenast buniek
-        # nezmestilo. Poradie a popisky v `HISTORY_DETAIL_CELLS`.
+        # ALL values of the selected session (0.2: "History = the whole
+        # picture"), in a grid of four per row - eleven cells would not fit
+        # in one row. Order and labels in `HISTORY_DETAIL_CELLS`.
         detail_grid = ctk.CTkFrame(dp.body, fg_color="transparent")
         detail_grid.pack(fill="x", pady=(10, 0))
         for col in range(self.HISTORY_DETAIL_COLS):
@@ -289,12 +308,13 @@ class HistoryMixin:
             dp.body, text=tr("history.detail_hint"), font=ui_kit.ui(10),
             text_color=pal["text_faint"], anchor="w", justify="left", wraplength=640)
         self.history_detail_hint.pack(fill="x", pady=(10, 0))
-        # "ZMAZAT TUTO RELACIU" (0.2.2, audit 4): napr. 14-hodinova "relacia"
-        # cez uspany PC by inak tlacila spankovy tep do pokojovej zakladne a
-        # jedinou napravou bolo zmazat celu historiu. Nenapadne - vpravo pod
-        # detailom, mensie; potvrdenie s datumom a dlzkou (fokus na Zrusit) je
-        # v `delete_history_session` (app_data.py). Prave nahravanu relaciu
-        # neponuka (`_refresh_history_detail`).
+        # "DELETE THIS SESSION" (0.3, audit 4): e.g. a 14-hour "session"
+        # through a sleeping PC would otherwise push sleeping heart rate into
+        # the resting baseline, and the only fix was to delete the whole
+        # history. Unobtrusive - on the right under the detail, smaller; the
+        # confirmation with date and length (focus on Cancel) is in
+        # `delete_history_session` (app_data.py). It does not offer the
+        # session that is being recorded right now (`_refresh_history_detail`).
         zmaz_rad = ctk.CTkFrame(dp.body, fg_color="transparent")
         zmaz_rad.pack(fill="x", pady=(10, 0))
         self._history_detail_session = None
@@ -304,16 +324,17 @@ class HistoryMixin:
                 getattr(self, "_history_detail_session", None)))
         self.history_detail_delete_btn.pack(side="right")
 
-        # --- tabulka relacii ---
+        # --- sessions table ---
         sp = ui_kit.Panel(scroll, pal, title=tr("history.sessions_title"), right="")
         sp.pack(fill="x", pady=(14, 0))
         self.history_sessions_panel = sp
         self.history_sessions_box = ctk.CTkFrame(sp.body, fg_color="transparent")
         self.history_sessions_box.pack(fill="x")
-        # --- export do tabulky ---
-        # Data su hracove, takze si ich musi vediet zobrat. A hned pri
-        # tlacidle aj veta o tom, ze appka ich nikam neposiela - to je
-        # otazka, ktoru si pri appke merajucej tep polozi kazdy.
+        # --- export to a spreadsheet ---
+        # The data is the player's, so they have to be able to take it. And
+        # right by the button a sentence saying the app does not send it
+        # anywhere - that is the question everyone asks about an app that
+        # measures heart rate.
         export_row = ctk.CTkFrame(sp.body, fg_color="transparent")
         export_row.pack(fill="x", pady=(12, 0))
         self.history_export_btn = ui_kit.button(
@@ -337,15 +358,18 @@ class HistoryMixin:
         self.history_info_hrpi = self._metric_info(infos, pal, "hrpi", wrap=640,
                                                    titled=True)
         self.history_info_hrpi.pack(fill="x", pady=(10, 0))
-        # "Cítené · merané" v detaile su dve cisla bez sipky a bez verdiktu -
-        # bez vety o tom, co je co, by sa "6 · 8" citalo ako "appka tvrdi,
-        # ze sa mylis". Graf tuto metriku nema, tak vysvetlenie stoji tu.
+        # "Felt · measured" in the detail is two numbers without an arrow
+        # and without a verdict - without a sentence about which is which,
+        # "6 · 8" would read as "the app claims you are wrong". The chart
+        # does not have this metric, so the explanation stands here.
         self.history_info_felt = self._metric_info(infos, pal, "felt_vs_measured", wrap=640,
                                                    titled=True)
         self.history_info_felt.pack(fill="x", pady=(10, 0))
 
-        # --- Ako to vzniklo: rozbalitelny panel, text autora + tri priklady ---
-        # (0.2) Namiesto dlheho zoznamu studii - cely je v ZDROJE.md.
+        # --- How it came about: an expandable panel, the author's text +
+        # three examples ---
+        # (0.2) Instead of a long list of studies - the whole list is in
+        # ZDROJE.md.
         sc = ui_kit.Panel(scroll, pal)
         sc.pack(fill="x", pady=(14, 0))
         self.history_science_btn = ctk.CTkButton(
@@ -360,8 +384,8 @@ class HistoryMixin:
         ctk.CTkLabel(self.history_science_body, text=tr("origin.examples"),
                      font=ui_kit.ui(11), text_color=pal["text_dim"], wraplength=640,
                      anchor="w", justify="left").pack(fill="x", pady=(4, 0))
-        # rovnaky mechanizmus ako Sprievodca: "↗ zdroj" -> webbrowser.open,
-        # zoznam je ten isty (guide_content.PHILOSOPHY_SOURCES)
+        # the same mechanism as the Guide: "↗ zdroj" -> webbrowser.open,
+        # the list is the same one (guide_content.PHILOSOPHY_SOURCES)
         self.history_source_links = []
         for label, url in origin_sources():
             link = ctk.CTkLabel(self.history_science_body, text=f"↗ {label}",
@@ -386,27 +410,29 @@ class HistoryMixin:
             self.history_science_btn.configure(text=f"▾   {tr('origin.title')}")
 
     def _history_sessions(self):
-        # `log` odovzdaný zámerne: nečitateľná história sa nesmie tváriť ako
-        # "žiadne relácie" bez stopy (bug B15).
+        # `log` passed on purpose: an unreadable history must not pretend to
+        # be "no sessions" without a trace (bug B15).
         return [s for s in hr_stats.load_sessions(self.hr_sessions_path,
                                                   log=self.log_threadsafe)
                 if isinstance(s, dict)]
 
     def _world_sessions(self):
-        """Relacie AKTUALNEHO sveta - len pre POHLADY (B3-worlds).
+        """Sessions of the CURRENT world - only for VIEWS (B3-worlds).
 
-        Historia, trend a jeho pasmo, tabulka, rytmus, detail, karty na Dnes
-        a postrehy ukazuju len svoj svet. Algoritmus sa na toto NEPYTA:
-        pokojova zakladna ide zo vsetkych relacii (telo je jedno), kriticky
-        tep a prah zataze len z hernych (viz `_open_hr_session`). Export
-        berie vzdy vsetko."""
+        History, the trend and its band, the table, the rhythm, the detail,
+        the cards on Today and the insights show only their own world. The
+        algorithm does NOT ask this: the resting baseline comes from all
+        sessions (there is one body), the critical heart rate and the load
+        threshold only from the play ones (see `_open_hr_session`). Export
+        always takes everything."""
         return hr_stats.sessions_in_world(self._history_sessions(), self.world)
 
     @staticmethod
     def _fmt_minutes(seconds):
-        """Cas "m:ss", od hodiny "1 h 15 min" (`ui_kit.cas_text`, 0.2.2
-        davka 4b) - "Nad hranicou" za dlhy vecer ukazovalo "75:12", co
-        vyzeralo ako cas na hodinkach. Ta ista hranica ako os stopy."""
+        """Time "m:ss", from an hour on "1 h 15 min" (`ui_kit.cas_text`, 0.3
+        batch 4b) - "Over the limit" for a long evening showed "75:12",
+        which looked like a clock time. The same threshold as the trace
+        axis."""
         try:
             total = int(float(seconds or 0))
         except (TypeError, ValueError):
@@ -415,11 +441,12 @@ class HistoryMixin:
 
     @staticmethod
     def _popisok_bucketu(bucket, period):
-        """Popisok stlpca grafu trendu v jazyku appky (0.2.2 davka 4b).
+        """Label of a trend chart column in the app's language (0.3 batch 4b).
 
-        `hr_stats` dava popisok cez `strftime` ("12.11", "11.2026") - to je
-        tvar datumu jedneho jazyka. Den a tyzden su kratky datum bez roku,
-        mesiac je "nov 2026" / "2026年11月", hodina a rok ostavaju."""
+        `hr_stats` gives the label via `strftime` ("12.11", "11.2026") -
+        that is the date format of one language. Day and week are a short
+        date without the year, month is "nov 2026" / "2026年11月", hour and
+        year stay as they are."""
         started = bucket.get("started")
         if started is None:
             return bucket.get("label", "")
@@ -429,11 +456,12 @@ class HistoryMixin:
             return ui_kit.mesiac_text(started)
         return bucket.get("label", "")
 
-    # ---------- trend: metrika + casove obdobie (chips) ----------
+    # ---------- trend: metric + time period (chips) ----------
 
     def _render_history_metric_info(self):
-        """ⓘ vysvetlenie pod grafom - preto samostatny wrap, ktory sa pri
-        prepnuti metriky zbura a postavi znova (InfoRow nema setter)."""
+        """ⓘ explanation under the chart - hence a separate wrap that is torn
+        down and built again when the metric switches (InfoRow has no
+        setter)."""
         wrap = getattr(self, "history_info_wrap", None)
         if wrap is None or not wrap.winfo_exists():
             return
@@ -444,7 +472,7 @@ class HistoryMixin:
         info.pack(fill="x")
 
     def _history_metric_label(self, metric):
-        """Zobrazovane meno metriky trendu (popisok v rozbalovacke)."""
+        """Display name of a trend metric (the label in the dropdown)."""
         for key, title_key, _c in self.HISTORY_METRICS:
             if key == metric:
                 return tr(title_key)
@@ -473,12 +501,12 @@ class HistoryMixin:
         self._refresh_history_trend()
 
     def _refresh_history_trend(self):
-        """Prekresli graf + text trendu podla zvolenej metriky a obdobia.
+        """Redraws the trend chart + text for the chosen metric and period.
 
-        Obdobie urcuje, ktore relacie sa poctaju (napr. "Tyzden" = od
-        pondelka) a do akych bucketov sa zoskupia pre graf (mesiac -> denne
-        priemery, rok -> mesacne - presne ako v zadani); metrika urcuje,
-        ktora hodnota bucketu sa vykresli.
+        The period decides which sessions count (e.g. "Week" = from
+        Monday) and into which buckets they are grouped for the chart
+        (month -> daily averages, year -> monthly - exactly as in the
+        spec); the metric decides which value of a bucket is drawn.
         """
         caption = getattr(self, "history_trend_caption", None)
         if caption is None or not caption.winfo_exists():
@@ -486,49 +514,53 @@ class HistoryMixin:
         pal = self.pal
         metric = self.history_metric
         period = self.history_period
-        # Len aktualny svet - aj pasmo "bezne rozpatie" nizsie (B3-worlds).
+        # Only the current world - the "usual range" band below too
+        # (B3-worlds).
         sessions = self._world_sessions()
-        # Posuvne okno, nie kalendarne obdobie - viz hr_stats.rolling_start_ts
+        # Rolling window, not a calendar period - see hr_stats.rolling_start_ts
         since = hr_stats.rolling_start_ts(period)
         period_sessions = [s for s in sessions if isinstance(s, dict)
                           and isinstance(s.get("started"), (int, float))
                           and s["started"] >= since]
         bucket_period = hr_stats.CHART_BUCKET_FOR_PERIOD.get(period, period)
-        # `bucket_axis` doplni dni bez relacie - bez neho by sa os zmrstila
-        # a pauza by z grafu zmizla (viz hr_stats.bucket_axis)
+        # `bucket_axis` fills in days without a session - without it the axis
+        # would shrink and the break would vanish from the chart (see
+        # hr_stats.bucket_axis)
         buckets = hr_stats.bucket_axis(
             hr_stats.aggregate_by_period(period_sessions, bucket_period),
             bucket_period, since)
         bucket_key = self._METRIC_BUCKET_KEY[metric]
-        # casy su v sekundach - na grafe citatelnejsie v minutach; pokrytie
-        # signalu je 0..1 - na grafe percenta (viz _METRIC_SCALE)
+        # times are in seconds - more readable in minutes on the chart;
+        # signal coverage is 0..1 - percent on the chart (see _METRIC_SCALE)
         scale = self._METRIC_SCALE.get(metric, 1.0)
         decimals = self._METRIC_DECIMALS.get(metric, 0)
-        # Bucket BEZ dat sa posiela ako None, nie ako vynechany bod: inak
-        # by sa stredajsia pauza na grafe nezobrazila a utorok by sa
-        # posunul na jej miesto. Popisky osi x su uz spocitane v buckete.
+        # A bucket WITHOUT data is sent as None, not as a skipped point:
+        # otherwise Wednesday's break would not show on the chart and Tuesday
+        # would shift into its place. The x-axis labels are already computed
+        # in the bucket.
         chart_values = [None if b[bucket_key] is None else b[bucket_key] * scale
                         for b in buckets]
-        # Popisky osi v tvare datumu JAZYKA APPKY (0.2.2 davka 4b, `ui_kit.
-        # datum_text`): "12. 11." / "12 Nov" / "11月12日", nie vsade "12.11".
-        # Cez triedu: testy volaju tuto metodu na atrape appky.
+        # Axis labels in the date format of the APP'S LANGUAGE (0.3 batch 4b,
+        # `ui_kit.datum_text`): "12. 11." / "12 Nov" / "11月12日", not "12.11"
+        # everywhere. Via the class: tests call this method on an app dummy.
         labels = [HistoryMixin._popisok_bucketu(b, bucket_period) for b in buckets]
         raw_values = [b[bucket_key] for b in buckets if b[bucket_key] is not None]
         title_key = {k: t for k, t, _c in self.HISTORY_METRICS}[metric]
         color_token = {k: c for k, _t, c in self.HISTORY_METRICS}[metric]
         bars = metric in self._METRIC_BARS
 
-        # "Tvoje bezne rozpatie" (p25-p75) sa rata z CELEJ historie SVETA v
-        # tom istom rozliseni bucketov - aby sa porovnavali rovnake veliciny.
-        # Bez neho je kazdy bod len cislo; s nim je jasne, ktory z nich je
-        # naozaj mimo.
+        # "Your usual range" (p25-p75) is computed from the WHOLE history of
+        # the WORLD at the same bucket resolution - so that like is compared
+        # with like. Without it every point is just a number; with it, it is
+        # clear which of them is really off.
         vsetky = hr_stats.aggregate_by_period(sessions, bucket_period)
         band = hr_stats.usual_range([b[bucket_key] * scale for b in vsetky
                                      if b[bucket_key] is not None])
 
         caption.configure(text=f"{tr(title_key)}  ·  {tr(f'history.unit.{metric}')}")
-        # Prazdne obdobie: jedna veta v strede nizsieho grafu namiesto
-        # prazdnej plochy ~230 px a vety o nicom pod nou (audit UX).
+        # Empty period: one sentence in the middle of the lower chart instead
+        # of an empty ~230 px area and a sentence about nothing below it (UX
+        # audit).
         prazdne = tr("history.empty_period") if not raw_values else ""
         self.history_trend.set_series(chart_values, labels=labels,
                                       color=pal[color_token], band=band,
@@ -540,8 +572,8 @@ class HistoryMixin:
             if metric == "baseline":
                 trend = hr_stats.baseline_trend(period_sessions)
                 if not trend["insufficient_span"]:
-                    # Cisla vo vete podla jazyka (`i18n.cislo`): "−2,0", nie
-                    # "-2.0" v slovenskej vete (0.2.2, davka 4).
+                    # Numbers in the sentence by language (`i18n.cislo`):
+                    # "−2,0", not "-2.0" in a Slovak sentence (0.3, batch 4).
                     delta_text = tr("history.trend_delta", first=int(round(first_v)),
                                     last=int(round(last_v)),
                                     slope=cislo(trend["slope_per_week"], 1, sign=True))
@@ -551,7 +583,7 @@ class HistoryMixin:
                 delta_text = tr("history.trend_simple_delta",
                                 first=cislo(first_v / 60.0, 1), last=cislo(last_v / 60.0, 1))
             elif scale != 1.0 or decimals:
-                # nove metriky 0.2: v tych istych jednotkach ako graf
+                # new metrics in 0.2: in the same units as the chart
                 delta_text = tr("history.trend_simple_delta",
                                 first=cislo(first_v * scale, decimals),
                                 last=cislo(last_v * scale, decimals))
@@ -561,11 +593,12 @@ class HistoryMixin:
         elif raw_values:
             delta_text = tr("history.sessions_count", n=len(period_sessions))
         else:
-            delta_text = ""          # veta je uz v grafe (`empty_text`)
+            delta_text = ""          # the sentence is already in the chart (`empty_text`)
         self.history_trend_delta.configure(text=delta_text)
-        # PRAZDNY RIADOK NEZABERA MIESTO (0.2.2 davka 4): graf bez dat ma 80 px
-        # a vetu nesie sam (`empty_text`). CTkLabel s prazdnym textom si drzi
-        # vysku riadku, takze pod grafom ostavala dalsia diera.
+        # AN EMPTY LINE TAKES NO SPACE (0.3 batch 4): a chart without data is
+        # 80 px and carries the sentence itself (`empty_text`). A CTkLabel
+        # with empty text keeps its line height, so another gap was left
+        # under the chart.
         riadok = self.history_trend_delta
         try:
             zabaleny = riadok.winfo_manager() == "pack"
@@ -578,30 +611,30 @@ class HistoryMixin:
             elif not delta_text and zabaleny:
                 riadok.pack_forget()
         except Exception:
-            pass        # atrapy v testoch nevedia pack; stranka sa zatvara
+            pass        # test dummies cannot pack; the page is closing
 
     def _refresh_history_page(self):
-        """Prekresli trend, tabulku a postrehy z aktualnych suborov. Ked
-        stranka este nie je postavena (prepnutie temy), nerobi nic."""
+        """Redraws the trend, table and insights from the current files. When
+        the page is not built yet (theme switch), does nothing."""
         box = getattr(self, "history_sessions_box", None)
         if box is None or not box.winfo_exists():
             return
         pal = self.pal
-        # Len relacie aktualneho sveta (B3-worlds); detail je index do
-        # PRAVE tohto zoznamu, preto ho `set_world` nuluje.
+        # Only sessions of the current world (B3-worlds); the detail is an
+        # index into EXACTLY this list, which is why `set_world` resets it.
         sessions = self._world_sessions()
         note = getattr(self, "history_world_note", None)
         if note is not None:
-            # Graf "ktora hlaska zabera" rata len herne hlasky, ktore
-            # zazneli (viz `_refresh_cue_effect`) - veta to musi povedat,
-            # inak by stranka s napisom "Svet: Praca" ukazovala herne hlasky
-            # bez slova.
+            # The "which cue works" chart counts only play cues that
+            # actually sounded (see `_refresh_cue_effect`) - the sentence
+            # must say so, otherwise a page labelled "World: Work" would
+            # show play cues without a word.
             note.configure(text=tr("history.world_note",
                                    world=self._world_label(self.world),
                                    chart=tr("history.effect_title")))
         self._refresh_history_trend()
 
-        # tabulka
+        # table
         for child in box.winfo_children():
             child.destroy()
         self.history_sessions_panel.set_right(tr("history.sessions_count", n=len(sessions)))
@@ -615,13 +648,14 @@ class HistoryMixin:
                     ("col_minmax", 84), ("col_over", 86), ("col_triggers", 70),
                     ("col_peak", 92), ("col_hrr", 52), ("col_hrpi", 52))
 
-            # TABULKA NA CELU SIRKU (0.2.2, audit UX). Stlpce mali pevne
-            # sirky a tabulka koncila v dvoch tretinach panela; cisla boli
-            # zarovnane vlavo, takze jednotky a desiatky nesli pod sebou.
-            # Teraz je to mriezka: sirka zo zoznamu je minimum a zaroven vaha,
-            # takze sa stlpce natiahnu na celu sirku v tom istom pomere -
-            # hlavicka aj kazdy riadok maju rovnaku konfiguraciu, preto sedia
-            # pod sebou. Datum vlavo, cisla vpravo.
+            # FULL-WIDTH TABLE (0.3, UX audit). The columns had fixed
+            # widths and the table ended at two thirds of the panel; the
+            # numbers were left-aligned, so units and tens did not line
+            # up. Now it is a grid: the width from the list is both the
+            # minimum and the weight, so the columns stretch to the full
+            # width in the same ratio - the header and every row have
+            # the same configuration, which is why they line up. Date on
+            # the left, numbers on the right.
             def _stlpce(ramec):
                 for i, (_k, sirka) in enumerate(cols):
                     ramec.grid_columnconfigure(i, minsize=sirka, weight=sirka)
@@ -641,30 +675,30 @@ class HistoryMixin:
             for poradie, s in enumerate(reversed(sessions)):
                 if poradie >= self.HISTORY_ROWS:
                     break
-                index = len(sessions) - 1 - poradie      # index do `sessions`
+                index = len(sessions) - 1 - poradie      # index into `sessions`
                 vybrana = index == self._history_detail_index(sessions)
                 row = ctk.CTkFrame(box, fg_color=pal["surface_alt"] if vybrana
                                    else "transparent", corner_radius=0)
                 row.pack(fill="x")
                 _stlpce(row)
                 started = float(s.get("started") or 0)
-                # datum v jazyku appky (0.2.2 davka 4b), cas HH:MM
+                # date in the app's language (0.3 batch 4b), time HH:MM
                 date = ui_kit.datum_text(started, cas=True) if started else "-"
                 hrr = s.get("hrr_bpm")
-                # Hlasky = to iste cislo ako detail, graf aj CSV: len tie,
-                # ktore appka poslala sama (`hlasky_relacie`). Stare
-                # `triggers` ratalo aj klavesu a tlacidlo "Test".
+                # Cues = the same number as the detail, chart and CSV: only
+                # the ones the app sent by itself (`hlasky_relacie`). The old
+                # `triggers` also counted the key and the "Test" button.
                 hlasky = hr_stats.hlasky_relacie(s)
-                # Dlzka ako v detaile nad tabulkou ("1 h 24 min"), nie
-                # "84:54" - to vyzeralo ako cas a ta ista relacia mala na
-                # jednej stranke dva zapisy (audit UX, davka 4).
+                # Length as in the detail above the table ("1 h 24 min"), not
+                # "84:54" - that looked like a clock time and the same session
+                # had two notations on one page (UX audit, batch 4).
                 dlzka = s.get("duration_s")
                 cells = (date, self._fmt_dlzka(dlzka) if dlzka else "-",
                          str(s.get("avg_bpm") or "-"),
                          f"{s.get('min_bpm') or '-'} / {s.get('max_bpm') or '-'}",
                          self._fmt_minutes(s.get("time_over_s")),
                          str(hlasky) if hlasky is not None else "-",
-                         # zataz je vsade "x/100", nie percenta (audit UX)
+                         # load is "x/100" everywhere, not percent (UX audit)
                          self._fmt_zataz(s.get("peak_stress"), "-"),
                          f"{int(hrr):+d}" if hrr is not None else "-",
                          str(s.get("hrpi") if s.get("hrpi") is not None else "-"))
@@ -677,32 +711,34 @@ class HistoryMixin:
                                padx=(0, 0 if i == 0 else 6))
                     bunky.append(label)
 
-                # Hover = `surface_alt`, ako vybrany riadok: riadok je
-                # klikatelny a bez odozvy pod mysou to nebolo poznat.
+                # Hover = `surface_alt`, like the selected row: the row is
+                # clickable and without feedback under the mouse you could
+                # not tell.
                 def _hover(_e=None, r=row, zap=True, vyb=vybrana):
                     try:
                         r.configure(fg_color=self.pal["surface_alt"] if (zap or vyb)
                                     else "transparent")
                     except Exception:
                         pass
-                # Riadok je klikatelny: otvori tu istu relaciu v detaile
-                # nad tabulkou. Bindovat treba aj kazdu bunku - klik na
-                # popisok sa na ramec nepropaguje.
+                # The row is clickable: it opens the same session in the
+                # detail above the table. Every cell has to be bound too - a
+                # click on a label does not propagate to the frame.
                 for w in bunky:
                     try:
                         w.configure(cursor="hand2")
                     except Exception:
                         pass
-                    # `_e=None`, nie `_e`: zhruba v kazdom druhom behu
-                    # `gui_screenshots.py` sa tento handler zavolal BEZ
-                    # udalosti a Tk to zapisalo ako chybu
+                    # `_e=None`, not `_e`: in roughly every second run of
+                    # `gui_screenshots.py` this handler was called WITHOUT an
+                    # event and Tk logged it as an error
                     # ("missing 1 required positional argument: '_e'").
-                    # Kto ho takto vola, som NEODHALIL - viem len, ze sa to
-                    # deje po scrollovani Historie, teda okolo prestavby
-                    # riadkov v CTkScrollableFrame. Handler tu udalost
-                    # nepouziva (potrebuje len `index`), takze nema dovod ju
-                    # vyzadovat; tym chyba zmizne, ale PRICINA je stale
-                    # neznama a nerobim, ze nie je.
+                    # Who calls it like this I have NOT found out - I only know
+                    # it happens after scrolling History, i.e. around the
+                    # rebuild of rows in CTkScrollableFrame. The handler does
+                    # not use the event (it only needs `index`), so it has no
+                    # reason to require it; that makes the error go away, but
+                    # the CAUSE is still unknown and I am not pretending it is
+                    # not.
                     w.bind("<Button-1>",
                            lambda _e=None, i=index: self._pick_history_session(i))
                     w.bind("<Enter>", lambda _e=None, h=_hover: h(zap=True), add="+")
@@ -716,10 +752,11 @@ class HistoryMixin:
         self._render_hr_insights()
 
     def _refresh_rebrik_note(self, sessions):
-        """Jedna ticha veta pod grafom ucinnosti, ked je rebrik hlasky
-        (`rebrik.py`) v zobrazenom svete POD vrcholom: co appka teraz robi,
-        preco a kolko relacii chyba do dalsieho pokusu. Na vrchole nic -
-        appka nema co vysvetlovat. `sessions` su relacie zobrazeneho sveta.
+        """One quiet sentence under the effect chart, when the cue ladder
+        (`rebrik.py`) in the displayed world is BELOW the top: what the app
+        is doing now, why, and how many sessions are left until the next
+        try. At the top nothing - the app has nothing to explain.
+        `sessions` are the sessions of the displayed world.
         """
         label = getattr(self, "history_rebrik_note", None)
         if label is None or not label.winfo_exists():
@@ -742,7 +779,7 @@ class HistoryMixin:
 
     @staticmethod
     def _rebrik_veta(stav):
-        """Veta pre stav rebrika, alebo "" na vrchole."""
+        """Sentence for the ladder state, or "" at the top."""
         if not stav or stav.get("stupen") == stav.get("vrchol"):
             return ""
         dovod = stav.get("dovod")
@@ -750,20 +787,22 @@ class HistoryMixin:
                  if dovod in rebrik.DOVODY_POD_VRCHOLOM else "")
         kluc = ("history.rebrik.pause" if stav["stupen"] == rebrik.PAUZA
                 else "history.rebrik.visual")
-        # Bez dovodu (peciatka po orezani historie) by ostali dve medzery.
+        # Without a reason (a stamp after the history was trimmed) two spaces
+        # would be left.
         return " ".join(tr(kluc, dovod=preco, n=stav.get("zostava", 0)).split())
 
     def _refresh_cue_effect(self):
-        """Naplni graf "ktora hlaska zabera".
+        """Fills the "which cue works" chart.
 
-        Pocita sa LEN z hlasneho ramena (viz `measure.by_category`) - tiche
-        okna su referencia pre to, ci hlaska funguje vobec, nie pre
-        porovnanie kategorii medzi sebou.
+        Computed ONLY from the loud arm (see `measure.by_category`) - the
+        silent windows are the reference for whether a cue works at all,
+        not for comparing the categories with each other.
 
-        Od 0.2 (rebrik + brana) len hlasky, ktore naozaj zazneli, dorucene
-        na pauze a z HRY - v praci je hlaska len obrazom. Ked uz su okna s
-        branou, len tie (`measure.by_category`); veta pod grafom hovori, ze
-        pokles po hlaske nie je dokaz.
+        Since 0.2 (ladder + gate) only cues that really sounded, delivered
+        during a pause and from PLAY - at work a cue is only a picture.
+        Once there are windows with the gate, only those
+        (`measure.by_category`); the sentence under the chart says that a
+        drop after a cue is not proof.
         """
         graf = getattr(self, "history_effect", None)
         if graf is None or not graf.winfo_exists():
@@ -775,8 +814,8 @@ class HistoryMixin:
             okna = []
         podla = measure.by_category(okna)
         riadky = []
-        # Poradie podla `measure.CATEGORIES`, nie podla toho, ktora ma
-        # najviac okien - inak by sa riadky pri kazdom otvoreni presuvali.
+        # Order by `measure.CATEGORIES`, not by which one has the most
+        # windows - otherwise the rows would move around on every opening.
         for kat in measure.CATEGORIES:
             udaj = podla.get(kat)
             if udaj is None:
@@ -792,16 +831,18 @@ class HistoryMixin:
             pass
 
     def export_sessions_csv(self):
-        """Ulozi historiu relacii ako tabulku pre Excel.
+        """Saves the session history as a table for Excel.
 
-        Data su hracove - appka mu ich nesmie drzat v JSON-e, ktory bezny
-        clovek neotvori. CSV Excel otvori dvojklikom a appka na to
-        nepotrebuje ziadnu kniznicu navyse (viz hr_stats.export_sessions_csv).
+        The data is the player's - the app must not keep it from them in a
+        JSON that an ordinary person will not open. Excel opens a CSV with
+        a double-click and the app needs no extra library for it (see
+        hr_stats.export_sessions_csv).
 
-        Vzdy VSETKY relacie, z oboch svetov (B3-worlds) - su to jeho data.
+        Always ALL sessions, from both worlds (B3-worlds) - it is their
+        data.
         """
         sessions = self._history_sessions()
-        # Oznamy v okne appky (`ui_kit.notify`), nie systemove (0.2.2).
+        # Notices in the app window (`ui_kit.notify`), not system ones (0.3).
         okno, pal = getattr(self, "root", None), getattr(self, "pal", None)
         if not sessions:
             ui_kit.notify(okno, pal, APP_NAME, tr("history.export_empty"))
@@ -832,17 +873,18 @@ class HistoryMixin:
         ui_kit.notify(okno, pal, APP_NAME, sprava)
 
     def _export_podrobnosti(self, path):
-        """Vedla relacii ulozi aj meracie okna a udalosti. Vrati nazvy.
+        """Saves measurement windows and events beside sessions. Returns names.
 
-        PRECO TRI SUBORY A NIE JEDEN ZOSIT
-        ----------------------------------
-        Tri roviny dat maju rozne stlpce aj rozny pocet riadkov - do jednej
-        tabulky sa nedaju. Excel s viacerymi harkami by znamenal `openpyxl`,
-        teda dalsiu zavislost v builde; CSV appka zapise sama a Excel ho
-        otvori dvojklikom. To bol dovod uz pri povodnom exporte relacii.
+        WHY THREE FILES AND NOT ONE WORKBOOK
+        ------------------------------------
+        The three levels of data have different columns and a different
+        number of rows - they do not fit into one table. Excel with several
+        sheets would mean `openpyxl`, i.e. another dependency in the build;
+        the app writes CSV itself and Excel opens it with a double-click.
+        That was already the reason for the original session export.
 
-        Nazvy sa odvodia od suboru, ktory si hrac vybral, takze vsetky tri
-        skoncia vedla seba a s rovnakym datumom.
+        The names are derived from the file the player chose, so all three
+        end up next to each other and with the same date.
         """
         zaklad, _pripona = os.path.splitext(path)
         # "zanshin-relacie-2026-09-18" -> "zanshin-okna-2026-09-18"
@@ -866,10 +908,10 @@ class HistoryMixin:
             von.append(os.path.basename(udal_cesta))
         return von
 
-    # ---------- pravidelnost a detail jednej relacie ----------
+    # ---------- consistency and the detail of one session ----------
 
     def _history_detail_index(self, sessions):
-        """Index relacie v detaile: vybrana, inak najnovsia, inak None."""
+        """Detail session index: selected, else the newest, else None."""
         if not sessions:
             return None
         index = self.history_detail_index
@@ -882,38 +924,40 @@ class HistoryMixin:
         self._refresh_history_page()
 
     def _refresh_history_rhythm(self, sessions):
-        """Mriezka dni + pocet dni, v ktorych nejaka relacia bola."""
+        """Day grid + the number of days on which there was some session."""
         grid = getattr(self, "history_daygrid", None)
         if grid is None or not grid.winfo_exists():
             return
-        # NAJVIAC 26 TYZDNOV, OD PRVEJ RELACIE (0.2.2, audit UX, davka 4).
-        # Cely rok (371 dni) bol z 85 % prazdny - data v siedmich stlpcoch z
-        # 53. Prvy stlpec je vzdy pondelok, posledny tento tyzden.
+        # AT MOST 26 WEEKS, FROM THE FIRST SESSION (0.3, UX audit, batch 4).
+        # A whole year (371 days) was 85 % empty - data in seven columns out
+        # of 53. The first column is always a Monday, the last one this week.
         tyzdne = self._rytmus_tyzdne(sessions)
         dni = hr_stats.day_activity(
             sessions, days=(tyzdne - 1) * 7 + time.localtime().tm_wday + 1)
-        # Mesiace a dni v jazyku APPKY (nie Windowsu) - `strftime` by na
-        # slovenskom Windowse pisal po slovensky aj japonskemu hracovi.
+        # Months and days in the APP'S language (not Windows') - `strftime`
+        # would write in Slovak even to a Japanese player on a Slovak Windows.
         grid.set_days(dni, legend=(tr("history.grid_less"), tr("history.grid_more")),
                       months=tr("history.grid_months").split(),
                       weekdays=tr("history.grid_weekdays").split())
         stitok = getattr(self, "history_days_label", None)
         if stitok is not None:
             stitok.configure(text=tr("history.days_played", weeks=tyzdne).upper())
-        # Cislo samo, jednotka je v popisku nad nim ("Dní s reláciou · 26 týž.").
-        # Slovencina sklonuje "deň/dni/dní" podla poctu a appka ma vela
-        # jazykov - cislo bez podstatneho mena je spravne v kazdom z nich.
+        # Just the number; the unit is in the label above it
+        # ("Dní s reláciou · 26 týž.", "Days with a session · 26 wk").
+        # Slovak declines "deň/dni/dní" by count and the app has many
+        # languages - a number without a noun is correct in every one of them.
         aktivne = sum(1 for den in dni if den.get("count"))
         self.history_days_value.configure(text=str(aktivne) if aktivne else "—")
 
-    # Kolko tyzdnov ukazuje mriezka Pravidelnost: od tyzdna prvej relacie,
-    # ale aspon RYTMUS_MIN (inak by mesiace nad stlpcami nemali kam ist) a
-    # najviac RYTMUS_MAX (pol roka; starsie vzory su v grafe trendu).
+    # How many weeks the Consistency grid shows: from the week of the first
+    # session, but at least RYTMUS_MIN (otherwise the months above the
+    # columns would have nowhere to go) and at most RYTMUS_MAX (half a
+    # year; older patterns are in the trend chart).
     RYTMUS_MIN_TYZDNOV = 8
     RYTMUS_MAX_TYZDNOV = 26
 
     def _rytmus_tyzdne(self, sessions, now=None):
-        """Pocet tyzdnov (stlpcov) mriezky Pravidelnost pre `sessions`."""
+        """Week count (columns) of the Consistency grid for `sessions`."""
         now = time.time() if now is None else now
         zaciatky = [s.get("started") for s in sessions or ()
                     if isinstance(s, dict)
@@ -922,9 +966,9 @@ class HistoryMixin:
             return self.RYTMUS_MIN_TYZDNOV
         dnes = time.localtime(now)
         prvy = time.localtime(min(zaciatky))
-        # pondelok tohto tyzdna a tyzdna prvej relacie, v dnoch od epochy
-        # (cez kalendarny den, nie sekundy - prechod na letny cas by inak
-        # posunul hranicu tyzdna o hodinu)
+        # Monday of this week and of the week of the first session, in days
+        # since the epoch (via the calendar day, not seconds - the switch to
+        # summer time would otherwise shift the week boundary by an hour)
         dnes_den = int(time.mktime((dnes.tm_year, dnes.tm_mon, dnes.tm_mday,
                                     12, 0, 0, 0, 0, -1)) // 86400) - dnes.tm_wday
         prvy_den = int(time.mktime((prvy.tm_year, prvy.tm_mon, prvy.tm_mday,
@@ -933,19 +977,21 @@ class HistoryMixin:
         return max(self.RYTMUS_MIN_TYZDNOV, min(self.RYTMUS_MAX_TYZDNOV, tyzdne))
 
     def _refresh_history_detail(self, sessions):
-        """Krivka a cisla jednej relacie - z `curve` ulozenej v suhrne.
+        """One session's curve and numbers - from `curve` saved in the summary.
 
-        Relacie z predoslych verzii krivku nemaju (pole pribudlo neskor);
-        vtedy sa panel neschova, len ukaze, ze tvar tejto relacie sa uz
-        dopocitat neda - zahodene surove vzorky sa spatne nevytvoria.
+        Sessions from earlier versions have no curve (the field was added
+        later); then the panel does not hide, it just shows that the shape
+        of this session can no longer be computed - discarded raw samples
+        cannot be recreated afterwards.
         """
         trace = getattr(self, "history_detail_trace", None)
         if trace is None or not trace.winfo_exists():
             return
         index = self._history_detail_index(sessions)
         session = sessions[index] if index is not None else None
-        # Ktoru relaciu zmaze "Zmazat tuto relaciu" - a ci ju vobec ponuknut:
-        # prave nahravana sa zmazat neda (`_je_nahravana_relacia`).
+        # Which session "Delete this session" deletes - and whether to offer it
+        # at all: the one being recorded right now cannot be deleted
+        # (`_je_nahravana_relacia`).
         self._history_detail_session = session or None
         tlacidlo = getattr(self, "history_detail_delete_btn", None)
         if tlacidlo is not None:
@@ -968,8 +1014,9 @@ class HistoryMixin:
         self.history_detail_panel.set_right(
             ui_kit.datum_text(started, cas=True) if started else "")
         curve = session.get("curve") or []
-        # `activity_curve` pribudla neskor - starsie relacie ju nemaju a
-        # vtedy sa pruh proste nekresli (viz `SessionTrace._draw_activity`).
+        # `activity_curve` was added later - older sessions do not have it
+        # and then the strip is simply not drawn (see
+        # `SessionTrace._draw_activity`).
         trace.set_trace(curve, baseline=session.get("baseline_bpm"),
                         threshold=session.get("critical_bpm"),
                         duration_s=session.get("duration_s") or 0,
@@ -982,20 +1029,21 @@ class HistoryMixin:
             text=tr("history.detail_hint") if curve else tr("history.detail_no_curve"))
 
     def _history_detail_prazdny(self, prazdny):
-        """Panel "Relacia zblizka" bez relacie = len jedna veta (0.2.2
-        davka 4). Prazdna stopa a jedenast pomlciek pod nou vyzerali ako
-        meranie, nie ako "zatial nic".
+        """The "One session up close" panel without a session = just one
+        sentence (0.3 batch 4). An empty trace and eleven dashes under it
+        looked like a measurement, not like "nothing yet".
 
-        Schova VSETKO, co je v paneli zabalene (stopa, legenda, mriezka,
-        veta pod nou), a zapamata si poradie - pri prvej relacii ich vrati
-        presne tak, ako boli postavene, nech sa uz poradie v
-        `_build_historia_page` zmeni akokolvek.
+        Hides EVERYTHING packed in the panel (trace, legend, grid, the
+        sentence under it) and remembers the order - with the first
+        session it puts them back exactly as they were built, however the
+        order in `_build_historia_page` may change.
 
-        POZOR NA MIERKU: `pack_info()` vracia okraje uz NASOBENE mierkou DPI
-        a CTk widget ich pri `pack()` nasobi znova - pri 150 % by sa okraj
-        po kazdom prazdnom stave zvacsil. Preto sa berie to, s cim widget
-        naozaj zabalili (`_last_geometry_manager_call`, nenasobene); holy
-        tk widget mierku nema, tomu staci `pack_info()`."""
+        WARNING ON SCALING: `pack_info()` returns paddings already
+        MULTIPLIED by the DPI scale and a CTk widget multiplies them again
+        on `pack()` - at 150 % the padding would grow after every empty
+        state. That is why what the widget was really packed with is taken
+        (`_last_geometry_manager_call`, unmultiplied); a plain tk widget
+        has no scaling, for it `pack_info()` is enough."""
         veta = getattr(self, "history_detail_empty", None)
         panel = getattr(self, "history_detail_panel", None)
         if veta is None or panel is None:
@@ -1012,8 +1060,9 @@ class HistoryMixin:
                             info = dict(posledne["kwargs"])
                         else:
                             info = dict(widget.pack_info())
-                        # poradie drzi samo poradie zoznamu - odkazy na
-                        # susedov by pri navrate mierili na nezabaleny widget
+                        # the order is kept by the list order itself - links
+                        # to neighbours would point at an unpacked widget on
+                        # the way back
                         for kluc in ("in", "in_", "before", "after"):
                             info.pop(kluc, None)
                         packy.append((widget, info))
@@ -1030,10 +1079,11 @@ class HistoryMixin:
             app_log.exception("historia: prazdny stav detailu zlyhal")
 
     def _history_detail_values(self, session):
-        """{kluc bunky: text} pre VSETKY bunky detailu jednej relacie.
+        """{cell key: text} for ALL cells of the detail of one session.
 
-        Co relacia nema (stara verzia, import, preskoceny dotaznik), je "—",
-        nie nula - "nevieme" a "nic" su dve rozne vypovede.
+        Whatever the session lacks (old version, import, skipped
+        questionnaire) is "—", not zero - "we don't know" and "nothing" are
+        two different statements.
         """
         def cislo(key):
             v = session.get(key)
@@ -1058,7 +1108,8 @@ class HistoryMixin:
                      else tr("dashboard.fmt.min", n=int(calm // 60))),
             "over": self._fmt_minutes(over) if over is not None else "—",
             "breath": str(hlasky) if hlasky is not None else "—",
-            # zataz ako "x/100" - ta ista miera ako prah na strane Hlasky
+            # load as "x/100" - the same measure as the threshold on the
+            # Cues page
             "peak": self._fmt_zataz(session.get("peak_stress"), "—"),
             "hrr": hrr_text,
             "hrpi": cislo("hrpi"),
@@ -1068,16 +1119,16 @@ class HistoryMixin:
 
     @staticmethod
     def _fmt_dlzka(seconds):
-        """Dlzka "45 min" alebo "1 h 05 min" - karta "Dĺžka relácie" aj
-        detail relacie v Historii. Pokazena hodnota -> "—". Ten isty text
-        pise aj os stopy relacie (`ui_kit.dlzka_text`), preto jeden zdroj."""
+        """Length "45 min" or "1 h 05 min" - the "Session length" card and the
+        session detail in History. A broken value -> "—". The session trace
+        axis writes the same text (`ui_kit.dlzka_text`), hence one source."""
         return ui_kit.dlzka_text(seconds)
 
     @staticmethod
     def _fmt_zataz(value, prazdne="—"):
-        """Zataz 0..100 ako "83/100" - v tabulke aj v detaile relacie
-        (0.2.2, audit UX: raz "90 %", raz holé "90", inde "nad 55").
-        Chybajuca alebo pokazena hodnota -> `prazdne`."""
+        """Load 0..100 as "83/100" - in the table and in the session detail
+        (0.3, UX audit: once "90 %", once a bare "90", elsewhere "over 55").
+        A missing or broken value -> `prazdne`."""
         if value in (None, ""):
             return prazdne
         try:
@@ -1087,15 +1138,16 @@ class HistoryMixin:
 
     @staticmethod
     def _fmt_pokrytie(pokrytie):
-        """Pokrytie signalu 0..1 -> "97 %", None -> "—"."""
+        """Signal coverage 0..1 -> "97 %", None -> "—"."""
         if pokrytie is None:
             return "—"
         return tr("dashboard.fmt.pct", n=int(round(float(pokrytie) * 100)))
 
     @staticmethod
     def _fmt_citene_merane(par):
-        """(citene, merane) -> "6 · 8"; bez dotaznika "—". Dve cisla vedla
-        seba, ziadny rozdiel ani sipka - ktore je "spravne", appka nevie."""
+        """(felt, measured) -> "6 · 8"; no questionnaire -> "—". Two numbers
+        side by side, no difference and no arrow - the app does not know
+        which one is "right"."""
         if par is None:
             return "—"
         citene, merane = par
@@ -1123,15 +1175,16 @@ class HistoryMixin:
             farba = tone_color.get(item.get("tone"), pal["accent"])
             row = ctk.CTkFrame(box, fg_color="transparent")
             row.pack(fill="x", pady=2)
-            # height=8: CTkFrame ma predvolenu ziadanu vysku 200 px a riadok
-            # by sa natiahol na nu; takto prúžok len vyplni vysku textu
+            # height=8: CTkFrame has a default requested height of 200 px and
+            # the row would stretch to it; this way the strip only fills the
+            # height of the text
             ctk.CTkFrame(row, fg_color=farba, width=3, height=8,
                          corner_radius=0).pack(side="left", fill="y", padx=(0, 10))
             ctk.CTkLabel(row, text=text, font=ui_kit.ui(11), text_color=pal["text"],
                          wraplength=600, anchor="w", justify="left").pack(side="left", fill="x",
                                                                           expand=True)
-            # "0 z 3 relácií" je stav postupu, nie postreh - bodky ho
-            # povedia skor, nez sa veta docita.
+            # "0 of 3 sessions" is a progress state, not an insight - the dots
+            # say it sooner than the sentence can be read to the end.
             if item.get("key") == "need_more":
                 dots = ctk.CTkFrame(row, fg_color="transparent")
                 dots.pack(side="right", padx=(10, 0))
@@ -1142,14 +1195,15 @@ class HistoryMixin:
                                  fg_color=farba if i < hotovo else pal["switch_off"]
                                  ).pack(side="left", padx=2)
             elif params.get("delta") is not None:
-                # Rozdiel, o ktorom postreh hovori, ako cislo - veta
-                # povie preco, cislo povie kolko.
+                # The difference the insight talks about, as a number - the
+                # sentence says why, the number says how much.
                 ctk.CTkLabel(row, text=f"{int(params['delta']):+d}",
                              font=ui_kit.mono(12), text_color=farba,
                              anchor="e").pack(side="right", padx=(10, 0))
-        # PRAZDNY STAV (0.2.2, audit UX): kym je jedinym postrehom pocitadlo
-        # "0 z 3 relacii", "Prepocitat" aj "Analyza z ..." slubovali vysledok,
-        # ktory este nemoze existovat. Skryju sa, vratia sa s prvym postrehom.
+        # EMPTY STATE (0.3, UX audit): while the only insight is the counter
+        # "0 of 3 sessions", "Recompute" and "Analysis from ..." promised a
+        # result that cannot exist yet. They are hidden and come back with the
+        # first insight.
         len_postup = bool(self._hr_insights) and all(
             i.get("key") == "need_more" for i in self._hr_insights)
         tlacidlo = getattr(self, "history_recompute_btn", None)
@@ -1167,24 +1221,26 @@ class HistoryMixin:
                 "history.analysis_stamp",
                 when=ui_kit.datum_text(stamp, rok=False, cas=True)))
         else:
-            # Po prepnuti sveta sa postrehy zahodia - cas analyzy druheho
-            # sveta by pri nich klamal.
+            # After a world switch the insights are thrown away - the analysis
+            # time of the other world would be misleading next to them.
             self.history_insights_panel.set_right("")
 
-    # ---------- analyza historie na pozadi ----------
+    # ---------- background history analysis ----------
 
     def run_hr_analysis(self, *_):
-        """Spusti hr_insights.analyze() v samostatnom vlakne - nie na GUI
-        vlakne (historia moze mat desiatky relacii a analyza nesmie
-        zaseknut okno). Vysledok sa zapise do hr_insights.json a do UI sa
-        dostane cez ui_call. Bezi po starte, po kazdej ulozenej relacii,
-        po prepnuti sveta a na tlacidlo 'Prepocitat'.
+        """Runs hr_insights.analyze() in a separate thread - not on the GUI
+        thread (the history can have dozens of sessions and the analysis
+        must not freeze the window). The result is written to
+        hr_insights.json and reaches the UI via ui_call. Runs after start,
+        after every saved session, after a world switch and on the
+        'Recompute' button.
 
-        Postrehy su za JEDEN svet - ten, ktory platil pri spusteni
-        (B3-worlds). Ked uz analyza bezi, nova sa neodmietne potichu:
-        zapise sa `_hr_analysis_rerun` a po dobehnuti bezucej sa spusti
-        znova (viz `_po_analyze`). Inak by po rychlom prepnuti sveta
-        ostali na obrazovke postrehy druheho sveta."""
+        Insights are for ONE world - the one that applied at launch
+        (B3-worlds). When an analysis is already running, a new one is not
+        refused silently: `_hr_analysis_rerun` is recorded and after the
+        running one finishes it runs again (see `_po_analyze`). Otherwise,
+        after a quick world switch, the other world's insights would stay
+        on the screen."""
         existing = getattr(self, "_hr_analysis_thread", None)
         if existing is not None and existing.is_alive():
             self._hr_analysis_rerun = True
@@ -1213,10 +1269,11 @@ class HistoryMixin:
         self._render_hr_insights()
 
     def _apply_hr_insights(self, insights, world=None):
-        """Vysledok analyzy do UI - len ked je za AKTUALNY svet.
+        """Analysis result into the UI - only when it is for the CURRENT world.
 
-        Vysledok za iny svet (prepnuty pocas analyzy) sa zahodi a analyza
-        sa spusti znova. `world=None` = volajuci svet nepozna, berie sa."""
+        A result for another world (switched during the analysis) is thrown
+        away and the analysis runs again. `world=None` = the caller does
+        not know the world, the result is taken."""
         if world is None or world == self.world:
             self._hr_insights = list(insights or [])
             self._hr_insights_at = time.time()
@@ -1224,21 +1281,23 @@ class HistoryMixin:
         self._render_hr_insights()
 
     def _po_analyze(self, world):
-        """Dobehla analyza (aj neuspesna). Treba ju zopakovat?
+        """Analysis finished (even unsuccessfully). Does it need repeating?
 
-        Ano, ked medzitym niekto poziadal o novu (`_hr_analysis_rerun`) alebo
-        ked bola za iny svet, nez aky plati teraz."""
+        Yes, when someone has asked for a new one in the meantime
+        (`_hr_analysis_rerun`) or when it was for a different world than
+        the one that applies now."""
         if self._hr_analysis_rerun or (world is not None and world != self.world):
             self._hr_analysis_rerun = False
             self._naplanuj_analyzu()
 
     def _naplanuj_analyzu(self):
-        """Spusti analyzu, AZ KED dobehne bezuce vlakno.
+        """Starts the analysis only ONCE the running thread has finished.
 
-        `_apply_hr_insights` prichadza cez `ui_call` zvnutra vlakna, takze
-        vlakno moze byt v tej chvili este nazive - priame `run_hr_analysis`
-        by sa odmietlo a poziadavka by sa stratila. Caka sa preto po 100 ms;
-        naplanovane je najviac jedno cakanie naraz."""
+        `_apply_hr_insights` arrives via `ui_call` from inside the thread,
+        so the thread may still be alive at that moment - a direct
+        `run_hr_analysis` would be refused and the request would be lost.
+        So it waits in steps of 100 ms; at most one wait is scheduled at a
+        time."""
         if getattr(self, "_hr_rerun_job", None) is not None:
             return
         vlakno = getattr(self, "_hr_analysis_thread", None)

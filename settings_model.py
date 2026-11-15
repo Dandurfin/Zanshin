@@ -1,9 +1,9 @@
-"""Datovy model slotov a globalnych nastaveni - predvolene hodnoty,
-normalizacia nacitanych/importovanych dat, popisky pre UI dropdowny.
+"""Data model of the slots and global settings - default values,
+normalisation of loaded/imported data, labels for the UI dropdowns.
 
-Ciste funkcie/konstanty bez UI a bez I/O (okrem tr() prekladov) - pouziva
-ich app.py aj ui_dialogs.py, aby obe strany pracovali s rovnakym tvarom
-dat a rovnakymi rozsahmi hodnot.
+Pure functions/constants without UI and without I/O (apart from tr()
+translations) - used by both app.py and ui_dialogs.py, so that both sides
+work with the same shape of data and the same value ranges.
 """
 
 import os
@@ -14,7 +14,7 @@ import sfx_assets
 from i18n import LANGUAGES, tr, tr_lang
 
 # --------------------------------------------------------------------------
-# Rezimy slotu (hlas / SFX / kombinacia) a TTS motory
+# Slot modes (voice / SFX / combination) and TTS engines
 # --------------------------------------------------------------------------
 
 MODE_TTS = "tts"
@@ -42,42 +42,42 @@ def engine_labels():
 def label_to_engine():
     return {v: k for k, v in engine_labels().items()}
 
-# Sablona jedneho slotu - zaroven zoznam povolenych klucov v nastaveniach.
+# Template of one slot - also the list of allowed keys in the settings.
 DEFAULT_SLOT = {
     "key_type": "keyboard",   # keyboard | mouse
     "key_repr": "",
     "text": "",
     "mode": MODE_TTS,         # tts | sfx | combo
-    "audio_path": "",         # vlastny/nahraty subor pre SFX vrstvu
-    "sfx_key": "",            # "" auto | "pack:kluc" preset | "__custom__"
+    "audio_path": "",         # own/recorded file for the SFX layer
+    "sfx_key": "",            # "" auto | "pack:key" preset | "__custom__"
     "enabled": True,
-    "voice_edge": "",         # "" = pouzi globalny hlas
+    "voice_edge": "",         # "" = use the global voice
     "voice_sapi": "",
-    "voice_path": "",         # vlastna nahravka HLASU - ak je, hraje sa
-                              # namiesto TTS (viz app._speak_text). Oddelene
-                              # od audio_path (to je SFX vrstva).
-    "uid": "",                # stabilny identifikator slotu - pouziva sa na
-                              # mena nahravok, aby sa nekrizili medzi profilmi
-                              # (doplni ho normalize_slot, ak chyba).
-    "cooldown": None,         # None = pouzi globalny cooldown
-    "delay": 0.0,             # oneskorenie pred prehratim (s)
-    "every_n": 1,             # spusti sa kazde N-te stlacenie
-    "repeat": 1,              # kolkokrat zopakovat
-    "repeat_gap": 0.5,        # pauza medzi opakovaniami (s)
-    "jitter": 0.0,            # nahodne rozptylenie cooldownu (0.0 - 0.9)
+    "voice_path": "",         # own recording of the VOICE - if set, it plays
+                              # instead of TTS (see app._speak_text). Separate
+                              # from audio_path (that is the SFX layer).
+    "uid": "",                # stable slot identifier - it is used for
+                              # recording names, so they do not clash across
+                              # profiles (normalize_slot adds it if missing).
+    "cooldown": None,         # None = use the global cooldown
+    "delay": 0.0,             # delay before playback (s)
+    "every_n": 1,             # fires on every N-th press
+    "repeat": 1,              # how many times to repeat
+    "repeat_gap": 0.5,        # pause between repeats (s)
+    "jitter": 0.0,            # random spread of the cooldown (0.0 - 0.9)
 }
 
 
 def default_slots():
-    """4 zakladne predvolene sloty pre nove instalacie - vzdy Kombinacia
-    (Hlas+SFX), Zen SFX sada, cisté zakladne casovanie (ziadny delay,
-    ziadny jitter, kazde 1. stlacenie - DEFAULT_SLOT default). Text hlasky
-    sleduje aktualny jazyk UI (viz i18n slot.default.*).
+    """4 basic default slots for new installations - always Combination
+    (Voice+SFX), the Zen SFX pack, clean basic timing (no delay, no
+    jitter, every 1st press - DEFAULT_SLOT default). The cue text follows
+    the current UI language (see i18n slot.default.*).
 
-    Ci je slot po onboardingu zapnuty (enabled) rozhoduje az
-    DandurfApp._apply_diagnostics() podla checklistu v kroku 2 - tu su
-    vsetky 4 pripravene s enabled=True (DEFAULT_SLOT default) a onboarding
-    prípadne niektore vypne."""
+    Whether a slot is enabled after onboarding is decided only by
+    DandurfApp._apply_diagnostics() according to the checklist in step
+    2 - here all 4 are prepared with enabled=True (DEFAULT_SLOT default)
+    and onboarding may turn some of them off."""
     return [
         dict(DEFAULT_SLOT, key_type="keyboard", key_repr="c",
              text=tr("slot.default.grounding"),
@@ -94,16 +94,18 @@ def default_slots():
     ]
 
 
-# Styri pevne kategorie hlasky (Tazisko, Celust, Uvolnenie, Dych). Kategoriu
-# urcuje POZICIA slotu v profile (`measure.category_for_slot`, obrazok v hre,
-# karta v Sprievodcovi), preto sa sloty 0-3 nedaju odstranit - vypina sa ich
-# prepinacom. Sloty od indexu 4 su pozostatky "+ Pridat spustac" z 0.1:
-# nemaju kategoriu ani obrazok a appka ich sama nespusta.
+# Four fixed cue categories (Grounding, Jaw, Release, Breath). The
+# category is set by the slot's POSITION in the profile
+# (`measure.category_for_slot`, the in-game picture, the card in the
+# Guide), which is why slots 0-3 cannot be removed - they are turned off
+# with the toggle. Slots from index 4 on are leftovers of "+ Add trigger"
+# from 0.1: they have no category or picture, and the app does not fire
+# them by itself.
 CUE_CATEGORY_COUNT = 4
 
 
 def je_kategoria(index):
-    """True pre slot, ktory nesie jednu zo styroch pevnych kategorii."""
+    """True for a slot that carries one of the four fixed categories."""
     try:
         return 0 <= int(index) < CUE_CATEGORY_COUNT
     except (TypeError, ValueError):
@@ -111,13 +113,15 @@ def je_kategoria(index):
 
 
 def doplnit_kategorie(slots):
-    """Profil kratsi nez styri kategorie doplni o chybajuce na koniec.
+    """Appends the missing categories to a profile with fewer than four.
 
-    Nic sa nemaze ani neprepisuje - co v profile je, ostava na svojom mieste.
-    Prazdny profil dostane styri zapnute kategorie (ako novy profil). Profilu,
-    ktory uz nieco ma (napr. rucne zalozeny v 0.1 s jednym slotom), sa
-    chybajuce kategorie pridaju VYPNUTE: appka sa v nom nezacne ozyvat inak,
-    nez bol hrac zvyknuty, a kategoriu si zapne prepinacom, ked ju chce.
+    Nothing is deleted or overwritten - whatever is in the profile stays
+    in its place. An empty profile gets four enabled categories (like a
+    new profile). A profile that already has something (e.g. created by
+    hand in 0.1 with one slot) gets the missing categories added
+    DISABLED: the app will not start speaking up in it differently from
+    what the player was used to, and they turn a category on with the
+    toggle when they want it.
     """
     slots = [normalize_slot(s) for s in (slots or []) if isinstance(s, dict)]
     if not slots:
@@ -128,59 +132,63 @@ def doplnit_kategorie(slots):
     return slots
 
 
-# Predvolene pozicie (stred vizualu, % sirky/vysky obrazovky) pre 4 in-game
-# overlay vizualy - jediny zdroj pravdy pre SomaticOverlayManager aj pre
-# default_overlay_configs() nizsie.
+# Default positions (centre of the visual, % of screen width/height) for
+# the 4 in-game overlay visuals - the single source of truth for both
+# SomaticOverlayManager and default_overlay_configs() below.
 OVERLAY_DEFAULT_POS = {
-    0: (50.0, 88.0),   # Tazisko - dole v strede
-    1: (50.0, 12.0),   # Celust - hore v strede
-    2: (86.0, 50.0),   # Uvolnenie - vpravo v strede
-    3: (50.0, 74.0),   # Dych - dole v strede, jemne nad topankami (slot 0)
+    0: (50.0, 88.0),   # Grounding - bottom centre
+    1: (50.0, 12.0),   # Jaw - top centre
+    2: (86.0, 50.0),   # Release - right, middle
+    3: (50.0, 74.0),   # Breath - bottom centre, slightly above the shoes (slot 0)
 }
 
 
 def default_overlay_configs():
-    """4 ZAPNUTE overlay konfiguracie (jedna na kazdy slot).
+    """4 ENABLED overlay configurations (one for each slot).
 
-    Do 19. 9. boli predvolene VYPNUTE - "hrac si ich zapne a doladi". Lenze
-    `app._cue_can_fire` bez zapnuteho vizualu hlasku vobec nepusti, takze
-    cerstva instalacia nemala ako povedat ani slovo: hrac sparoval hodinky,
-    odohral vecer, automat sa natiahol a zakazdym po 90 sekundach ticho
-    vypadol. Jediny signal bol jeden riadok v zabalenom denniku.
+    Until 19. 9. they were DISABLED by default - "the player will turn
+    them on and fine-tune them". But `app._cue_can_fire` does not let a
+    cue through at all without an enabled visual, so a fresh installation
+    had no way to say a single word: the player paired the watch, played
+    an evening, the state machine armed and every time, after 90 seconds,
+    silently dropped out. The only signal was one line in the collapsed
+    journal.
 
-    Vizual JE ten produkt - nie doplnok, ktory sa dokupuje. Kto ho nechce,
-    vypne si ho; predvolba nesmie appku umlcat.
+    The visual IS the product - not an add-on you buy extra. Whoever does
+    not want it turns it off; the default must not silence the app.
     """
     return [dict(enabled=True, scale=1.0, pos_x=OVERLAY_DEFAULT_POS[i][0],
                  pos_y=OVERLAY_DEFAULT_POS[i][1], color=None) for i in range(4)]
 
 
 # --------------------------------------------------------------------------
-# HUD (zivy panel so statistikou tepu) a vyber monitora
+# HUD (live panel with heart-rate statistics) and monitor selection
 # --------------------------------------------------------------------------
 
-# Na ktorom monitore sa maju kreslit vizualy aj HUD:
-#   "auto"    - monitor, na ktorom je aktivne okno (= hra). Predvolba.
-#   "cursor"  - monitor pod kurzorom
-#   "primary" - hlavny monitor
-#   "0".."3"  - konkretny index zo zoznamu display.monitors()
+# Which monitor the visuals and the HUD should be drawn on:
+#   "auto"    - the monitor with the active window (= the game). Default.
+#   "cursor"  - the monitor under the cursor
+#   "primary" - the main monitor
+#   "0".."3"  - a specific index from the display.monitors() list
 DEFAULT_MONITOR_TARGET = "auto"
 MONITOR_TARGET_CHOICES = ("auto", "cursor", "primary")
 
-# Predvolena poloha HUD-u: lavy dolny roh. Je to najmenej kolizne miesto
-# naprie strielackami - killfeed byva vpravo hore, minimapa vlavo hore,
-# stredy su rezervovane pre zameriavac a hlasky hry.
+# Default HUD position: the bottom left corner. It is the least clashing
+# spot across shooters - the killfeed is usually top right, the minimap
+# top left, the centres are reserved for the crosshair and the game's
+# messages.
 HUD_DEFAULT_POS = (13.0, 90.0)
 
 
 def default_hud_config():
-    """HUD je pri prvom spusteni VYPNUTY - je to nova vec a hrac si sam
-    rozhodne, ci chce mat pocas hrania na obrazovke cislo svojho tepu.
+    """The HUD is OFF on the first start - it is a new thing and the player
+    decides for themselves whether they want the number of their heart
+    rate on screen while playing.
 
-    `show_triggers`/`trigger_color`: riadok 4 zakladnych funkcii pod HUD
-    panelom ("Ukazat panel v hre" vo Vizualoch) - nahradza povodny
-    celoappkovy "Minimalisticky rezim". Vypnute predvolene, aby sa panel
-    nezmenil pre nikoho, kto uz HUD pouziva bez neho."""
+    `show_triggers`/`trigger_color`: a row of the 4 basic features under
+    the HUD panel ("Show the panel in game" in Visuals) - replaces the
+    original app-wide "Minimalist mode". Off by default, so the panel
+    does not change for anyone who already uses the HUD without it."""
     return {"enabled": False, "scale": 1.0, "opacity": 0.92,
             "pos_x": HUD_DEFAULT_POS[0], "pos_y": HUD_DEFAULT_POS[1],
             "show_triggers": False, "trigger_color": None}
@@ -208,16 +216,17 @@ def normalize_monitor_target(raw):
     return DEFAULT_MONITOR_TARGET
 
 
-# POZN: `DEFAULT_DOJO_INTENSITY` a `normalize_dojo_intensity()` tu boli -
-# hodnota 0-100 pre posuvnik "Pozadie dojo". Ovladali priehladnost
-# fotopasu nad titulkovou listou (ui_shell.DojoBand), ktory bol
-# odstraneny, takze uz nemaju co normalizovat. Stary kluc
-# "dojo_intensity" moze v dandurf_settings.json zostat - appka ho
-# jednoducho ignoruje a pri dalsom ulozeni vypadne.
+# NOTE: `DEFAULT_DOJO_INTENSITY` and `normalize_dojo_intensity()` were
+# here - a 0-100 value for the "Dojo background" slider. They controlled
+# the transparency of the photo band above the title bar
+# (ui_shell.DojoBand), which was removed, so they have nothing left to
+# normalise. The old key "dojo_intensity" may stay in
+# dandurf_settings.json - the app simply ignores it, and it drops out on
+# the next save.
 
 
 # --------------------------------------------------------------------------
-# Dychovy cyklus (dlzka nadychu/vydychu v sekundach)
+# Breathing cycle (inhale/exhale length in seconds)
 # --------------------------------------------------------------------------
 
 DEFAULT_BREATH_INHALE_S = 4.0
@@ -238,13 +247,14 @@ def normalize_breath_seconds(inhale_raw, exhale_raw):
 
 
 # --------------------------------------------------------------------------
-# Vybratelne statistiky na stranke Dnes (2x2 mriezka nad spustacmi)
+# Selectable statistics on the Today page (2x2 grid above the triggers)
 # --------------------------------------------------------------------------
 
-# Poradie = poradie vo vybere "✎ upravit". Poslednych pat pribudlo v 0.2
-# (widgets-history): dlzka relacie, minuty od poslednej hlasky, cas v pokoji,
-# kvalita signalu a citene vs. merane z poslednej ukoncenej relacie. Predvolene
-# karty ostavaju tie iste styri - nove si hrac zapne sam.
+# Order = the order in the "✎ edit" picker. The last five were added in
+# 0.2 (widgets-history): session length, minutes since the last cue, time
+# at rest, signal quality and felt vs. measured from the last finished
+# session. The default cards stay the same four - the player turns the
+# new ones on themselves.
 DASHBOARD_STAT_IDS = ("baseline", "hrr", "over", "breath", "avg", "max", "peak", "week",
                       "session_len", "last_cue", "calm_time", "signal",
                       "felt_vs_measured")
@@ -252,9 +262,10 @@ DEFAULT_DASHBOARD_STATS = ["baseline", "hrr", "over", "breath"]
 
 
 def normalize_dashboard_stats(raw):
-    """Zoznam zvolenych metrik na Dnes, v poradi ako ich hrac vybral.
-    Neznamy id (napr. po buducom zmazani metriky) sa ticho zahodi;
-    prazdny/rozbity vstup padne na predvoleny vyber (rovnaky ako v makete)."""
+    """List of the chosen metrics on Today, in the order the player chose
+    them. An unknown id (e.g. after a metric is deleted in the future) is
+    silently dropped; empty/broken input falls back to the default
+    selection (the same as in the mock-up)."""
     if not isinstance(raw, list):
         return list(DEFAULT_DASHBOARD_STATS)
     out = []
@@ -264,26 +275,28 @@ def normalize_dashboard_stats(raw):
     return out or list(DEFAULT_DASHBOARD_STATS)
 
 
-# Na Dnes sa zmestia najviac 4 karty - mriezka 2x2. Nie je to kozmetika:
-# stlpec kariet urcuje vysku celeho riadku Dnes, takze 5. a 6. karta
-# natiahli stred (dojo) zhruba o sestinu a panel "Tep a zataz" spadol pod
-# okraj okna. Odmerane pri 150 % (revizia B2): 3-4 karty 782 px, 5-6 kariet
-# 911 px, 7-8 kariet 1040 px.
+# At most 4 cards fit on Today - a 2x2 grid. This is not cosmetics: the
+# card column sets the height of the whole Today row, so a 5th and 6th
+# card stretched the centre (dojo) by roughly a sixth and the "Heart
+# rate and load" panel fell below the edge of the window. Measured at
+# 150 % (review B2): 3-4 cards 782 px, 5-6 cards 911 px, 7-8 cards
+# 1040 px.
 #
-# Strop je JEDNO cislo a nic nizsie nepredpoklada, kolko metrik je v
-# katalogu (DASHBOARD_STAT_IDS moze rast).
+# The cap is ONE number and nothing below assumes how many metrics are
+# in the catalogue (DASHBOARD_STAT_IDS may grow).
 DASHBOARD_MAX_CARDS = 4
 
 
 def toggle_dashboard_stat(stats, stat_id, max_cards=DASHBOARD_MAX_CARDS):
-    """Novy vyber po kliknuti na metriku (riadok vo vybere alebo ✕ na karte).
+    """New selection after clicking a metric (picker row or ✕ on a card).
 
-    - Zvolena metrika odide - okrem POSLEDNEJ. Jedna karta ostava vzdy:
-      mriezka (Tk grid) sa po poslednej karte nezmrsti a pod nadpisom by
-      ostala prazdna diera.
-    - Nezvolena pribudne na koniec - ale len kym je kariet menej nez
-      `max_cards`.
-    Ked sa nic nezmeni, vrati nezmenenu kopiu (vstup nikdy nemeni)."""
+    - A chosen metric goes away - except the LAST one. One card always
+      stays: the grid (Tk grid) does not shrink after the last card and
+      an empty hole would be left under the heading.
+    - An unchosen one is added at the end - but only while there are
+      fewer cards than `max_cards`.
+    When nothing changes, it returns an unchanged copy (it never changes
+    the input)."""
     out = list(stats)
     if stat_id in out:
         if len(out) <= 1:
@@ -295,14 +308,14 @@ def toggle_dashboard_stat(stats, stat_id, max_cards=DASHBOARD_MAX_CARDS):
 
 
 def dashboard_stat_clickable(stats, stat_id, max_cards=DASHBOARD_MAX_CARDS):
-    """Zmeni klik na tuto metriku nieco? Vyber podla toho kresli riadok:
-    co nic neurobi, je bledsie a bez ruky na kurzore."""
+    """Would a click on this metric change anything? The picker draws the
+    row accordingly: what does nothing is paler and has no hand cursor."""
     return toggle_dashboard_stat(stats, stat_id, max_cards) != list(stats)
 
 
 def swap_dashboard_stats(stats, a, b):
-    """Karta `a` potiahnuta na kartu `b`: vymenia si miesto, ostatne stoja.
-    Ked jedna chyba alebo su to tie iste, vrati nezmenenu kopiu."""
+    """Card `a` dragged onto card `b`: they swap places, the others stay put.
+    When one is missing or they are the same, returns an unchanged copy."""
     out = list(stats)
     if a == b or a not in out or b not in out:
         return out
@@ -313,10 +326,11 @@ def swap_dashboard_stats(stats, a, b):
 
 DEFAULT_COOLDOWN = 5.0
 
-# Odporucane hodnoty zvuku - JEDNO miesto pre predvolby noveho profilu aj
-# pre tlacidlo "Vratit odporucane" na stranke Zvuk. Hlas a motor tu
-# zamerne nie su: to je volba (kto ako chce pocuvat), nie hodnota, ktoru
-# sa da "pokazit" a treba ju vediet vratit.
+# Recommended sound values - ONE place for both the defaults of a new
+# profile and the "Restore recommended" button on the Sound page. The
+# voice and the engine are deliberately not here: that is a choice (who
+# wants to listen how), not a value that can be "broken" and needs to
+# be restorable.
 DEFAULT_AUDIO = {
     "cooldown": DEFAULT_COOLDOWN,
     "rate": 0,
@@ -325,26 +339,26 @@ DEFAULT_AUDIO = {
     "overlap": False,
 }
 
-# Kuratovany zoznam hlasov - jazyky rozhrania appky (en/sk/cs/ja) PLUS
-# najpopularnejsie jazyky hracov na Steame (Steam Hardware & Software
-# Survey, marec 2026 + Valve GDC'25 data): zjednodusena cinstina,
-# ruština, spanielcina, portugalcina (Brazilia), nemcina, francuzstina,
-# korejcina, poľstina. Kazdy jazyk ma presne 1 zensky + 1 muzsky hlas -
-# rovnaka disciplina ako predtym, len sirsie pokrytie jazykov, nie viac
-# hlasov na jazyk.
+# Curated list of voices - the app's UI languages (en/sk/cs/ja) PLUS the
+# most popular languages of players on Steam (Steam Hardware & Software
+# Survey, March 2026 + Valve GDC'25 data): Simplified Chinese, Russian,
+# Spanish, Portuguese (Brazil), German, French, Korean, Polish. Each
+# language has exactly 1 female + 1 male voice - the same discipline as
+# before, just wider language coverage, not more voices per language.
 #
-# Toto je JEDINY zdroj pravdy pre hlasy - a od 0.2 aj jediny zoznam: appka
-# ho uz nestahuje z Microsoftu (predtym pri kazdom starte s Edge, len aby
-# zivy katalog orezala presne na tento vyber). Meno "FALLBACK" ostalo z tych
-# cias. Kazda polozka je (ShortName, meno na zobrazenie, rod "f"/"m");
-# popis v comboboxe sklada `audio_engine.EdgeTTSCache.list_voices` cez tr(),
-# takze slovo zena/muz je v jazyku rozhrania. Poradie = poradie zobrazenia
-# (Sonia prva, je to predvoleny/"hlavny" hlas).
+# This is the ONLY source of truth for voices - and since 0.2 also the
+# only list: the app no longer downloads it from Microsoft (before, on
+# every start with Edge, only to trim the live catalogue down to exactly
+# this selection). The name "FALLBACK" is left over from those days. Each
+# entry is (ShortName, display name, gender "f"/"m"); the combobox
+# description is assembled by `audio_engine.EdgeTTSCache.list_voices`
+# via tr(), so the word woman/man is in the UI language. Order = display
+# order (Sonia first, she is the default/"main" voice).
 #
-# en-GB-SoniaNeural je PREDVOLENY/HLAVNY hlas appky (DEFAULT_EDGE_VOICE
-# nizsie) - vsetky ostatne su alternativy.
+# en-GB-SoniaNeural is the app's DEFAULT/MAIN voice (DEFAULT_EDGE_VOICE
+# below) - all the others are alternatives.
 EDGE_FALLBACK_VOICES = [
-    # --- jazyky rozhrania appky ---
+    # --- the app's UI languages ---
     ("en-GB-SoniaNeural", "Sonia", "f"),
     ("en-GB-RyanNeural", "Ryan", "m"),
     ("en-US-AvaMultilingualNeural", "Ava", "f"),
@@ -357,7 +371,7 @@ EDGE_FALLBACK_VOICES = [
     ("bg-BG-BorislavNeural", "Borislav", "m"),
     ("ja-JP-NanamiNeural", "Nanami", "f"),
     ("ja-JP-KeitaNeural", "Keita", "m"),
-    # --- najpopulárnejšie jazyky hráčov na Steame (2026) ---
+    # --- most popular languages of players on Steam (2026) ---
     ("zh-CN-XiaoxiaoNeural", "Xiaoxiao", "f"),
     ("zh-CN-YunxiNeural", "Yunxi", "m"),
     ("ru-RU-SvetlanaNeural", "Svetlana", "f"),
@@ -377,23 +391,27 @@ EDGE_FALLBACK_VOICES = [
 ]
 DEFAULT_EDGE_VOICE = "en-GB-SoniaNeural"
 
-# Hlas, ktory appka navrhne k jazyku HLASOK - len kym ma hrac predvoleny
-# hlas: pri prvom starte (jazyk Windowsu, hlasky su v nom), pri novom
-# profile (jeho slova su v jazyku appky) a pri prepnuti jazyka len vtedy,
-# ked su hlasky aktivneho profilu naozaj v novom jazyku (`jazyky_hlasok`,
-# `app_prefs._hlas_k_hlaskam`). Samotne prepnutie jazyka texty profilov
-# neprelozi - japonsky hlas by inak cital anglicke "Grounded".
+# The voice the app suggests for the language of the CUES - only while
+# the player has the default voice: on the first start (Windows
+# language, the cues are in it), on a new profile (its words are in the
+# app language) and on a language switch only when the active profile's
+# cues really are in the new language (`jazyky_hlasok`,
+# `app_prefs._hlas_k_hlaskam`). Switching the language by itself does not
+# translate profile texts - a Japanese voice would otherwise read the
+# English "Grounded".
 #
-# Presne jazyky, ktorych vstavane slova (`slot.default.*`) NIE SU anglicke.
-# Najprv len tie s inym pismom nez latinka (ja/zh/ru/bg) - Sonia by ich
-# nevyslovila vobec. Od 0.2.2 aj es/de/fr/pt: ich slova su po spanielsky,
-# nemecky, francuzsky a portugalsky ("Geerdet", "Kiefer"...) a britska
-# Sonia ich cita anglickou vyslovnostou - prvy vecer tak znel cudzo. Plati
-# to iste pravidlo z 0.2.1d (hlas ide za slovami, nie za menu): hlas sa
-# zmeni len ked su hovoriace hlasky naozaj vstavanymi slovami toho jazyka,
-# takze prepnutie jazyka s anglickymi slovami hlas necha tak. Sk/cs/en
-# navrh nemaju - ich vstavane slova su anglicke. Vsetky hlasy su z
-# `EDGE_FALLBACK_VOICES` a zenske - appka o sebe hovori v zenskom rode.
+# Exactly the languages whose built-in words (`slot.default.*`) are NOT
+# English. At first only those with a script other than Latin
+# (ja/zh/ru/bg) - Sonia would not pronounce them at all. Since 0.3 also
+# es/de/fr/pt: their words are in Spanish, German, French and Portuguese
+# ("Geerdet", "Kiefer"...) and British Sonia reads them with an English
+# pronunciation - so the first evening sounded foreign. The same rule
+# from 0.2.1d applies (the voice follows the words, not the menu): the
+# voice changes only when the speaking cues really are the built-in words
+# of that language, so a language switch with English words leaves the
+# voice alone. Sk/cs/en have no suggestion - their built-in words are
+# English. All voices are from `EDGE_FALLBACK_VOICES` and female - the
+# app refers to itself in the feminine gender.
 VOICE_HINTS = {
     "ja": "ja-JP-NanamiNeural",
     "zh": "zh-CN-XiaoxiaoNeural",
@@ -407,39 +425,43 @@ VOICE_HINTS = {
 
 
 def suggested_voice(lang, current=DEFAULT_EDGE_VOICE):
-    """Navrhovany Edge hlas pre jazyk `lang`.
+    """Suggested Edge voice for the language `lang`.
 
-    Meni len predvoleny hlas (`DEFAULT_EDGE_VOICE`) - hlas, ktory si hrac
-    vybral sam, ostava, ako je. Jazyk bez navrhu necha hlas tak.
+    It only changes the default voice (`DEFAULT_EDGE_VOICE`) - a voice
+    the player chose themselves stays as it is. A language without a
+    suggestion leaves the voice alone.
     """
     if current == DEFAULT_EDGE_VOICE and lang in VOICE_HINTS:
         return VOICE_HINTS[lang]
     return current
 
 
-# Kluce vstavanych slov styroch kategorii v poradi slotov (0 tazisko,
-# 1 celust, 2 uvolnenie, 3 dych) - to iste poradie ako `default_slots`.
+# Keys of the built-in words of the four categories in slot order (0
+# grounding, 1 jaw, 2 release, 3 breath) - the same order as
+# `default_slots`.
 _KLUCE_PREDVOLENYCH_SLOV = ("slot.default.grounding", "slot.default.jaw",
                             "slot.default.release", "slot.default.breath")
 
 
 def jazyky_hlasok(slots):
-    """Jazyky, v ktorych su napisane hlasky, ktore cita spolocny Edge hlas.
+    """Languages in which the cues read by the shared Edge voice are written.
 
-    Treba to vediet kvoli VOICE_HINTS: jazyk rozhrania o jazyku hlasok nic
-    nehovori - prepnutie jazyka texty profilov neprelozi (pre sk/cs su
-    anglicke). `slots` su dicty slotov profilu (pozicia = kategoria).
+    This is needed for VOICE_HINTS: the UI language says nothing about
+    the language of the cues - a language switch does not translate
+    profile texts (for sk/cs they are English). `slots` are the profile's
+    slot dicts (position = category).
 
-    Rataju sa len hlasky, ktore ten hlas naozaj cita: jedna zo styroch
-    kategorii, zapnuta, v rezime hlas/kombinacia, s textom a bez vlastneho
-    hlasu slotu (`voice_edge` - ten spolocny hlas nepouziva).
+    Only cues that this voice really reads count: one of the four
+    categories, enabled, in voice/combination mode, with a text and
+    without the slot's own voice (`voice_edge` - that one does not use
+    the shared voice).
 
-    Jazyk sa z textu NEUHADUJE: vrati sa mnozina jazykov, ktorych vstavane
-    slova (`slot.default.*`) na tych istych poziciach sa zhoduju so VSETKYMI
-    takymi textami. Mnozina preto, lebo anglicke slova maju sk/en/cs
-    spolocne a 呼吸 ja aj zh. Vlastne slovo hraca (hoc len jedno), zmiesane
-    jazyky alebo ziadna hovoriaca hlaska -> prazdna mnozina a appka hlas
-    necha tak - radsej nic nez hadat.
+    The language is NOT GUESSED from the text: it returns the set of
+    languages whose built-in words (`slot.default.*`) at the same
+    positions match ALL such texts. A set, because sk/en/cs share the
+    English words, and ja and zh share 呼吸. The player's own word (even
+    just one), mixed languages or no speaking cue -> an empty set and the
+    app leaves the voice alone - better nothing than guessing.
     """
     texty = []
     for index, slot in enumerate(slots or []):
@@ -456,13 +478,13 @@ def jazyky_hlasok(slots):
             if all(tr_lang(jazyk, _KLUCE_PREDVOLENYCH_SLOV[index]).strip().casefold() == text
                    for index, text in texty)}
 
-# Hlasy, ktore znejú vyrazne prirodzenejsie - v popisku dostanu
-# "najprirodzenejsi" (voice.most_natural).
+# Voices that sound markedly more natural - in the label they get
+# "most natural" (voice.most_natural).
 EDGE_PREMIUM_HINT = ("Multilingual",)
 
 
 # --------------------------------------------------------------------------
-# Male pomocky na cistenie hodnot z JSON
+# Small helpers for cleaning values from JSON
 # --------------------------------------------------------------------------
 
 def clamp_float(value, low, high, default):
@@ -489,21 +511,24 @@ def optional_cooldown(value):
     return clamp_float(value, 0.0, 600.0, None)
 
 
-# Stare PREDVOLENE hlasove slova, ktore sa v 0.2 zmenili (kluc = text
-# porovnany bez ohladu na velkost pismen a okrajove medzery). Meni sa len
-# PRESNA zhoda - vlastne slovo hraca (aj "my teeth") ostava, ako ho napisal.
-#   "Teeth" -> "Jaw": mimo hry znelo cudne (rozhodnutie zadavatela).
-#   ja 脱力 a zh 放松 znamenaju "uvolni sa" - hlaska nikdy nehovori
-#   "uvolni sa / upokoj sa" (tests/test_cue_words.py), ani zo stareho profilu.
-#   Tieto dve sa menia LEN v slote, kde boli predvolene (1 = celust,
-#   2 = uvolnenie ruky): 脱力 je v ja aj nazov kategorie "Release" v
-#   Historii, takze ho hrac mohol do slotu 2 napisat sam - tam by 顎
-#   ("celust") bolo zle slovo.
-# Vola sa pri NACITANI nastaveni (`app.load_settings`), nie v `normalize_slot`:
-# ta bezi aj pri kazdej prestavbe karty slotu a slovo by sa hracovi menilo
-# pod rukami uprostred upravy.
+# Old DEFAULT voice words that changed in 0.2 (key = text compared
+# ignoring letter case and surrounding spaces). Only an EXACT match is
+# changed - the player's own word (even "my teeth") stays as they wrote
+# it.
+#   "Teeth" -> "Jaw": outside the game it sounded odd (the requester's
+#   decision).
+#   ja 脱力 and zh 放松 mean "relax" - a cue never says "relax / calm
+#   down" (tests/test_cue_words.py), not even from an old profile.
+#   These two change ONLY in the slot where they were the default (1 =
+#   jaw, 2 = hand release): in ja, 脱力 is also the name of the
+#   "Release" category in History, so the player could have typed it
+#   into slot 2 themselves - there 顎 ("jaw") would be the wrong word.
+# It is called when the settings are LOADED (`app.load_settings`), not
+# in `normalize_slot`: that one also runs on every rebuild of the slot
+# card, and the word would change under the player's hands in the middle
+# of editing.
 _STARE_PREDVOLENE_SLOVA = {
-    # text: (slot, v ktorom bol predvoleny - None = hociktory; nove slovo)
+    # text: (slot in which it was the default - None = any; new word)
     "teeth": (None, "Jaw"),
     "脱力": (1, "顎"),
     "放松": (2, "松开"),
@@ -511,9 +536,9 @@ _STARE_PREDVOLENE_SLOVA = {
 
 
 def migrate_slot_text(text, index=None):
-    """Stare predvolene slovo -> nove; cokolvek ine vrati nezmenene.
-    `index` = poradie slotu v profile (0 grounding, 1 jaw, 2 release,
-    3 breath)."""
+    """Old default word -> new one; anything else is returned unchanged.
+    `index` = the slot's position in the profile (0 grounding, 1 jaw,
+    2 release, 3 breath)."""
     if not isinstance(text, str):
         return text
     zaznam = _STARE_PREDVOLENE_SLOVA.get(text.strip().casefold())
@@ -526,14 +551,14 @@ def migrate_slot_text(text, index=None):
 
 
 def normalize_slot(raw):
-    """Doplni chybajuce kluce a osetri rozsahy - aj pre stare nastavenia."""
+    """Fills in missing keys and sanitises ranges - for old settings too."""
     slot = dict(DEFAULT_SLOT)
     if isinstance(raw, dict):
         slot.update({k: v for k, v in raw.items() if k in DEFAULT_SLOT})
     slot["key_type"] = "mouse" if slot.get("key_type") == "mouse" else "keyboard"
     mode = slot.get("mode")
     if mode == "audio":
-        mode = MODE_SFX  # migracia zo starej schemy (Dandurf 2.0)
+        mode = MODE_SFX  # migration from the old schema (Dandurf 2.0)
     slot["mode"] = mode if mode in MODE_ORDER else MODE_TTS
     slot["enabled"] = bool(slot.get("enabled", True))
     slot["key_repr"] = str(slot.get("key_repr") or "")
@@ -543,9 +568,10 @@ def normalize_slot(raw):
     slot["voice_edge"] = str(slot.get("voice_edge") or "")
     slot["voice_sapi"] = str(slot.get("voice_sapi") or "")
     slot["voice_path"] = str(slot.get("voice_path") or "")
-    # Stabilny uid: doplni sa raz a odvtedy zije v profile. Meno nahravky sa
-    # z neho odvodzuje, takze dva profily s "rovnakym" slotom si neprepisu
-    # subory navzajom (to bola strata dat - B1).
+    # Stable uid: it is filled in once and lives in the profile from then
+    # on. The recording name is derived from it, so two profiles with the
+    # "same" slot do not overwrite each other's files (that was data loss -
+    # B1).
     slot["uid"] = str(slot.get("uid") or "") or uuid.uuid4().hex[:12]
     slot["cooldown"] = optional_cooldown(slot.get("cooldown"))
     slot["delay"] = clamp_float(slot.get("delay"), 0.0, 30.0, 0.0)
@@ -556,24 +582,27 @@ def normalize_slot(raw):
     return slot
 
 
-# Co z hlasky ide do kodu profilu (Spustace -> Exportovat profil). Kod sa
-# zdiela s inymi ludmi, takze v nom je len to, co ma pre druheho zmysel, a
-# nic, co by prezradilo tento pocitac:
-#   * `audio_path` a `voice_path` su ABSOLUTNE cesty k nahravkam
-#     (C:\Users\<meno>\AppData\...) - kod by prezradil meno uctu vo Windows
-#     a nahravka sa kodom aj tak neprenesie,
-#   * `uid` je lokalny identifikator suborov nahravok (import dostane novy),
+# What from a cue goes into the profile code (Cues -> Export
+# profile). The code is shared with other people, so it contains only
+# what makes sense to someone else, and nothing that would give away
+# this computer:
+#   * `audio_path` and `voice_path` are ABSOLUTE paths to recordings
+#     (C:\Users\<meno>\AppData\...) - the code would give away the
+#     Windows account name, and a recording does not travel with the
+#     code anyway,
+#   * `uid` is a local identifier of the recording files (an import gets
+#     a new one),
 #   * `key_type`, `key_repr`, `cooldown`, `delay`, `every_n`, `repeat`,
-#     `repeat_gap`, `jitter` su mrtve polia z cias klavesovych spustacov -
-#     nic ich necita.
+#     `repeat_gap`, `jitter` are dead fields from the days of key
+#     triggers - nothing reads them.
 ZDIELANE_POLIA_SLOTU = ("text", "mode", "sfx_key", "enabled", "voice_edge",
                         "voice_sapi")
 
 
 def slot_na_zdielanie(slot):
-    """Hlaska pre kod profilu - len `ZDIELANE_POLIA_SLOTU`. Vlastny zvuk
-    (`sfx_key` "__custom__") je subor na tomto PC, takze v kode padne na
-    automaticky vyber."""
+    """A cue for the profile code - only `ZDIELANE_POLIA_SLOTU`. A custom
+    sound (`sfx_key` "__custom__") is a file on this PC, so in the code
+    it falls back to automatic selection."""
     if not isinstance(slot, dict):
         return {}
     out = {k: slot[k] for k in ZDIELANE_POLIA_SLOTU if k in slot}
@@ -583,13 +612,14 @@ def slot_na_zdielanie(slot):
 
 
 def slot_zo_zdielania(raw):
-    """Hlaska z cudzieho kodu profilu, alebo None.
+    """A cue from someone else's profile code, or None.
 
-    Berie sa len `ZDIELANE_POLIA_SLOTU` - aj zo starsich kodov, ktore este
-    niesli cesty a uid. Cesty k suborom su preto VZDY prazdne (cudzia cesta
-    by sa prehrala, keby na tomto PC nahodou existovala) a `normalize_slot`
-    doplni cerstve uid, aby importovany profil nezdielal subory nahravok s
-    inym (rec_<uid>.wav - strata dat B1)."""
+    Only `ZDIELANE_POLIA_SLOTU` is taken - also from older codes that
+    still carried paths and uid. File paths are therefore ALWAYS empty (a
+    foreign path would play if it happened to exist on this PC) and
+    `normalize_slot` fills in a fresh uid, so the imported profile does
+    not share recording files with another one (rec_<uid>.wav - data
+    loss B1)."""
     if not isinstance(raw, dict):
         return None
     slot = slot_na_zdielanie(raw)
@@ -600,10 +630,11 @@ def slot_zo_zdielania(raw):
 
 
 def normalize_overlay_config(raw, index):
-    """Doplni chybajuce kluce a osetri rozsahy pre 1 polozku overlay_configs."""
+    """Fills in missing keys, sanitises ranges for 1 overlay_configs entry."""
     default_pos = OVERLAY_DEFAULT_POS.get(index, (50.0, 50.0))
-    # `enabled` chyba -> ZAPNUTE. Chybajuci kluc znamena "stary alebo
-    # neuplny zapis", nie "hrac si to vypol"; vypnute vizualy appku umlcia.
+    # `enabled` missing -> ENABLED. A missing key means "an old or
+    # incomplete record", not "the player turned it off"; disabled visuals
+    # silence the app.
     cfg = {"enabled": True, "scale": 1.0,
            "pos_x": default_pos[0], "pos_y": default_pos[1], "color": None}
     if isinstance(raw, dict):
@@ -611,13 +642,13 @@ def normalize_overlay_config(raw, index):
         cfg["scale"] = clamp_float(raw.get("scale"), 0.5, 2.0, 1.0)
         cfg["pos_x"] = clamp_float(raw.get("pos_x"), 0.0, 100.0, default_pos[0])
         cfg["pos_y"] = clamp_float(raw.get("pos_y"), 0.0, 100.0, default_pos[1])
-        # farba piktogramu: None = pouzi akcent temy; inak overeny #rrggbb
+        # pictogram colour: None = theme accent; otherwise a checked #rrggbb
         cfg["color"] = _valid_hex(raw.get("color"))
     return cfg
 
 
 def _valid_hex(value):
-    """Vrati '#rrggbb' ak je platny, inak None (= pouzi farbu temy)."""
+    """Returns '#rrggbb' if valid, otherwise None (= use the theme colour)."""
     if not isinstance(value, str):
         return None
     v = value.strip()
@@ -635,7 +666,7 @@ def pack_label(pack):
 
 
 def sfx_choice_display(sfx_key, audio_path):
-    """Text zobrazeny v dropdowne SFX presetu pre dany stav slotu."""
+    """Text shown in the SFX preset dropdown for the given slot state."""
     if sfx_key == "__custom__":
         name = os.path.basename(audio_path) if audio_path else "-"
         return tr("sfx.custom_prefix", name=name)
@@ -646,7 +677,7 @@ def sfx_choice_display(sfx_key, audio_path):
 
 
 def sfx_dropdown_options():
-    """[(display, value)] pre vsetky volby SFX presetu naprie oboma sadami."""
+    """[(display, value)] for all SFX preset choices across both packs."""
     options = [(tr("sfx.auto"), "")]
     for pack in (theme_mod.ZEN, theme_mod.MODERN):
         for key, label in sfx_assets.library_items(pack):

@@ -1,29 +1,34 @@
 # -*- coding: utf-8 -*-
-"""Hlavne okno sa zmesti na obrazovku beznych notebookov (0.2.2).
+"""The main window fits on the screen of ordinary laptops (0.3).
 
-Okno ma pevnych 1180x760 LOGICKYCH px (`DandurfApp.WINDOW_W/H`) a CTk ich
-nasobi mierkou displeja. Na hernom notebooku 1920x1080 so 150 % to bolo
-~1140 px proti ~1008 px pracovnej plochy, na 1366x768 pri 100 % 760 proti
-~720 px. Okno sa neda roztiahnut ani maximalizovat, takze Nastavenia na
-spodku bocneho menu skoncili pod listou uloh.
+The window has a fixed 1180x760 LOGICAL px (`DandurfApp.WINDOW_W/H`) and
+CTk multiplies them by the display scale. On a 1920x1080 gaming laptop at
+150 % that was ~1140 px against ~1008 px of work area, on 1366x768 at
+100 % 760 against ~720 px. The window cannot be stretched or maximised,
+so Settings at the bottom of the side menu ended up under the taskbar.
 
-Strazi sa:
-  * cista matematika (`display.window_fit_factor`, `center_in_work_area`)
-    pre 1080p@150 %, 1366x768@100 %, 1440p@100 %, 4K@150 %, 1080p@100 % a
-    viac monitorov s listou uloh na boku; zmensenie nikdy pod 0,7,
-  * predpoklad o CTk: rozmer okna = logicky * DPI okna * window_scaling a
-    `set_window_scaling` hodnotu PREPISE (overene na nainstalovanom CTk),
-  * `ui_kit` s nahradnym trackerom, ktory rata ako CTk: kde sa okno
-    nezmesti, zmensi sa cela appka (prvky aj okno tym istym faktorom), kde
-    sa zmesti, nezmeni sa nic; DPI cieloveho monitora sa nastavi pred
-    stavbou UI; okno je vycentrovane v pracovnej ploche, a ked sa nezmesti
-    ani pri 0,7, je prilepene hore,
-  * app.py to vola skor nez sprievodcu prveho spustenia a `_build_ui` a
-    rozmer okna ostava pevny (minsize == maxsize),
-  * sprievodca prveho spustenia pouziva ten isty vypocet stredu,
-  * KNOWN_ISSUES hovori to iste co kod (monitor pod kurzorom, najviac 70 %).
+Guarded:
+  * pure maths (`display.window_fit_factor`, `center_in_work_area`) for
+    1080p@150 %, 1366x768@100 %, 1440p@100 %, 4K@150 %, 1080p@100 % and
+    multiple monitors with the taskbar on the side; scaling down never
+    below 0.7,
+  * an assumption about CTk: window size = logical * window DPI *
+    window_scaling and `set_window_scaling` OVERWRITES the value
+    (verified on the installed CTk),
+  * `ui_kit` with a substitute tracker that computes like CTk: where the
+    window does not fit, the whole app shrinks (elements and window by
+    the same factor), where it fits, nothing changes; the target
+    monitor's DPI is set before the UI is built; the window is centred in
+    the work area, and when it does not fit even at 0.7, it is stuck to
+    the top,
+  * app.py calls it before the first-start guide and `_build_ui`, and the
+    window size stays fixed (minsize == maxsize),
+  * the first-start guide uses the same centre calculation,
+  * KNOWN_ISSUES says the same as the code (monitor under the cursor, at
+    most 70 %).
 
-Vsetko bez skutocneho okna a monitora - testy nemenia globalnu mierku CTk.
+All without a real window and monitor - the tests do not change CTk's
+global scale.
 """
 import ast
 import os
@@ -47,19 +52,19 @@ def _mon(x, y, w, h, work, dpi, primary=True):
     return display.Monitor(x, y, w, h, primary=primary, work=work, dpi=dpi)
 
 
-# Zostavy z auditu. Pracovna plocha = monitor bez listy uloh (48 px pri
-# 100 %, 72 px pri 150 %), presne ako ju vracia GetMonitorInfo.
+# Setups from the audit. Work area = monitor without the taskbar (48 px
+# at 100 %, 72 px at 150 %), exactly as GetMonitorInfo returns it.
 LAPTOP_1080_150 = _mon(0, 0, 1920, 1080, (0, 0, 1920, 1008), 144)
 LAPTOP_1366_100 = _mon(0, 0, 1366, 768, (0, 0, 1366, 720), 96)
 DESKTOP_1080_100 = _mon(0, 0, 1920, 1080, (0, 0, 1920, 1032), 96)
 DESKTOP_1440_100 = _mon(0, 0, 2560, 1440, (0, 0, 2560, 1392), 96)
 UHD_150 = _mon(0, 0, 3840, 2160, (0, 0, 3840, 2088), 144)
-# Druhy monitor vpravo od hlavneho, lista uloh na LAVOM boku (62 px).
+# Second monitor right of the main one, taskbar on the LEFT side (62 px).
 BOK_VPRAVO = _mon(1920, 0, 1366, 768, (1982, 0, 1304, 768), 96, primary=False)
-# Druhy monitor vlavo (zaporne x), lista uloh na PRAVOM boku, 125 %.
+# Second monitor on the left (negative x), taskbar on the RIGHT side, 125 %.
 BOK_VLAVO_125 = _mon(-1920, 0, 1920, 1080, (-1920, 0, 1844, 1080), 120,
                      primary=False)
-# Tak male, ze nepomoze ani 0,7 (1080p pri 200 %).
+# So small that even 0.7 does not help (1080p at 200 %).
 PRIMALY_200 = _mon(0, 0, 1920, 1080, (0, 0, 1920, 984), 192)
 
 ZOSTAVY = {
@@ -74,20 +79,20 @@ ZOSTAVY = {
 
 
 def _fyz(logicky, mierka):
-    # CTk: geometry() zaokruhluje (round), minsize/maxsize orezava (int).
-    # Pre test, ci sa okno zmesti, je horsi pripad round.
+    # CTk: geometry() rounds (round), minsize/maxsize truncates (int).
+    # For the test whether the window fits, round is the worse case.
     return round(logicky * mierka)
 
 
 # --------------------------------------------------------------------------
-# Cista matematika (display.py)
+# Pure maths (display.py)
 # --------------------------------------------------------------------------
 
 def test_dpi_scale_ako_ctk():
     assert display.dpi_scale(LAPTOP_1080_150) == 1.5
     assert display.dpi_scale(DESKTOP_1080_100) == 1.0
     assert display.dpi_scale(BOK_VLAVO_125) == 1.25
-    # pokazena hodnota nespadne
+    # a broken value does not crash
     assert display.dpi_scale(_mon(0, 0, 10, 10, None, 0)) == 1.0
 
 
@@ -128,28 +133,28 @@ def test_okno_je_cele_v_pracovnej_ploche(meno):
     x, y = display.center_in_work_area(mon, pw, ph)
     assert mon.work_x <= x and x + pw <= mon.work_x + mon.work_width
     assert mon.work_y <= y and y + ph <= mon.work_y + mon.work_height
-    # vycentrovane: okraje vlavo/vpravo a hore/dole sa lisia najviac o 1 px
+    # centred: left/right and top/bottom margins differ by at most 1 px
     vlavo, vpravo = x - mon.work_x, mon.work_x + mon.work_width - (x + pw)
     hore, dole = y - mon.work_y, mon.work_y + mon.work_height - (y + ph)
     assert abs(vlavo - vpravo) <= 1 and abs(hore - dole) <= 1
 
 
 def test_lista_uloh_na_boku_posunie_stred():
-    """Stred je v pracovnej ploche, nie v celom monitore - okno sa
-    nevycentruje pod listu uloh na boku."""
+    """The centre is in the work area, not in the whole monitor - the window
+    is not centred under the taskbar on the side."""
     mon = BOK_VPRAVO
     f = display.window_fit_factor(W, H, 1.0, mon.work_width, mon.work_height)
-    assert f < 1.0                    # 768 px vysky bez listy dole - tesne nie
+    assert f < 1.0                    # 768 px of height minus the bottom bar - just short
     pw = _fyz(W, f)
     x, _y = display.center_in_work_area(mon, pw, _fyz(H, f))
     assert x == 1982 + (1304 - pw) // 2
-    assert x > mon.x + 62             # nie pod listou uloh
-    # zaporne suradnice virtualnej plochy (monitor vlavo od hlavneho)
+    assert x > mon.x + 62             # not under the taskbar
+    # negative coordinates of the virtual desktop (monitor left of the main)
     mon = BOK_VLAVO_125
     pw = _fyz(W, 1.25)
     x, _y = display.center_in_work_area(mon, pw, _fyz(H, 1.25))
     assert x == -1920 + (1844 - pw) // 2
-    assert x + pw <= -1920 + 1844     # lista vpravo ostava volna
+    assert x + pw <= -1920 + 1844     # the bar on the right stays free
 
 
 def test_nikdy_pod_minimum_a_vtedy_hore():
@@ -158,32 +163,33 @@ def test_nikdy_pod_minimum_a_vtedy_hore():
     f = display.window_fit_factor(W, H, s, mon.work_width, mon.work_height)
     assert f == display.WINDOW_MIN_FIT == 0.7
     ph = _fyz(H, s * f)
-    assert ph > mon.work_height        # ani pri 0,7 sa nezmesti...
+    assert ph > mon.work_height        # does not fit even at 0.7...
     x, y = display.center_in_work_area(mon, _fyz(W, s * f), ph)
-    assert y == mon.work_y             # ...tak titulna lista ostane hore
+    assert y == mon.work_y             # ...so the title bar stays at the top
     assert x >= mon.work_x
 
 
 def test_faktor_je_zaokruhleny_nadol():
-    # 992 / 1140 = 0,87017... - nahor by CTk okno o pixel pretiahol
+    # 992 / 1140 = 0.87017... - rounded up, CTk would make the window a
+    # pixel too big
     f = display.window_fit_factor(W, H, 1.5, 1920, 1008)
     assert f == 0.87
     assert f * 1000 == int(f * 1000)
-    # nulova alebo pokazena mierka nespadne a nezmensuje bez dovodu
+    # a zero or broken scale does not crash and does not shrink for no reason
     assert display.window_fit_factor(W, H, 0, 4000, 3000) == 1.0
     assert display.window_fit_factor(W, H, None, 4000, 3000) == 1.0
-    # plocha mensia nez okraj -> minimum, nie delenie nulou
+    # area smaller than the margin -> minimum, not division by zero
     assert display.window_fit_factor(W, H, 1.0, 10, 10) == display.WINDOW_MIN_FIT
 
 
 # --------------------------------------------------------------------------
-# Ako CTk naozaj nasobi (nainstalovany customtkinter)
+# How CTk really multiplies (installed customtkinter)
 # --------------------------------------------------------------------------
 
 class _OknoBezTk(tkinter.Tk):
-    """Prazdny objekt, ktory CTk pozna ako okno (isinstance Tk) - bez Tcl."""
+    """Empty object CTk recognises as a window (isinstance Tk) - no Tcl."""
 
-    def __init__(self):            # noqa: D401 - zamerne bez tkinter.Tk.__init__
+    def __init__(self):            # noqa: D401 - deliberately without tkinter.Tk.__init__
         pass
 
     def __getattr__(self, meno):
@@ -204,8 +210,8 @@ def test_ctk_nasobi_dpi_okna_a_mierku_appky(monkeypatch):
 
 
 def test_ctk_set_scaling_prepise_nenasobi(monkeypatch):
-    """Preto ui_kit nasobi SAM: `set_window_scaling(x)` nastavi x, nie
-    x * doterajsia hodnota (a pod 0,4 nejde)."""
+    """That is why ui_kit multiplies ITSELF: `set_window_scaling(x)` sets x,
+    not x * the current value (and it does not go below 0.4)."""
     from customtkinter.windows.widgets.scaling.scaling_tracker import ScalingTracker as ST
     monkeypatch.setattr(ST, "window_scaling", 1.2)
     monkeypatch.setattr(ST, "widget_scaling", 1.2)
@@ -219,11 +225,11 @@ def test_ctk_set_scaling_prepise_nenasobi(monkeypatch):
 
 
 # --------------------------------------------------------------------------
-# ui_kit s nahradnym trackerom, ktory rata ako CTk
+# ui_kit with a substitute tracker that computes like CTk
 # --------------------------------------------------------------------------
 
 class _Tracker:
-    """Nahrada `ScalingTracker` s rovnakou matematikou, bez globalneho stavu."""
+    """Stand-in for `ScalingTracker`: same maths, no global state."""
 
     deactivate_automatic_dpi_awareness = False
 
@@ -251,8 +257,9 @@ class _Tracker:
 
 
 class _Okno:
-    """Okno, ktore si len pamata `geometry()` - ako CTk prevedie logicke
-    rozmery na fyzicke, rata `fyzicky_rozmer` s trackerom."""
+    """A window that only remembers `geometry()` - how CTk converts logical
+    sizes to physical ones is computed by `fyzicky_rozmer` with the
+    tracker."""
 
     def __init__(self, tracker):
         self.tracker = tracker
@@ -283,7 +290,8 @@ def test_notebook_150_zmensi_celu_appku_jednym_faktorom(monkeypatch):
     tracker, okno = _priprav(monkeypatch, dpi_okna=1.5)
     f = ui_kit.prisposob_mierku_monitoru(W, H, LAPTOP_1080_150)
     assert f == pytest.approx(0.87)
-    # prvky AJ okno tym istym faktorom - inak by obsah z okna vytiekol
+    # elements AND window by the same factor - otherwise the content would
+    # spill out of the window
     assert ("widget", pytest.approx(0.87)) in tracker.volania
     assert ("window", pytest.approx(0.87)) in tracker.volania
     assert tracker.widget_scaling == tracker.window_scaling
@@ -307,7 +315,7 @@ def test_druhe_volanie_nezmensi_znova(monkeypatch):
 
 
 def test_skladanie_s_uz_nastavenou_mierkou(monkeypatch):
-    """Keby appka niekedy mala vlastnu mierku, faktor sa k nej prinasobi."""
+    """If the app ever had its own scale, the factor is multiplied onto it."""
     tracker, _okno = _priprav(monkeypatch, dpi_okna=1.0, mierka=1.1)
     f = ui_kit.prisposob_mierku_monitoru(W, H, LAPTOP_1366_100)
     assert f < 1.0
@@ -319,27 +327,28 @@ def test_bez_dpi_v_ctk_sa_rata_len_mierka_appky(monkeypatch):
     tracker, _okno = _priprav(monkeypatch)
     tracker.deactivate_automatic_dpi_awareness = True
     assert ui_kit.dpi_mierka_monitora(LAPTOP_1080_150) == 1.0
-    # CTk by nasobil len 1.0 -> 760 + 16 sa do 1008 zmesti
+    # CTk would multiply only by 1.0 -> 760 + 16 fits into 1008
     assert ui_kit.prisposob_mierku_monitoru(W, H, LAPTOP_1080_150) == 1.0
     assert ui_kit.zosuladi_dpi_s_monitorom(_okno, LAPTOP_1080_150) is False
 
 
 def test_dpi_okna_sa_nastavi_na_cielovy_monitor(monkeypatch):
-    """Root vznika na hlavnom monitore (150 %); ked ide na druhy (100 %),
-    CTk mierka sa prepne hned - nie az nad hotovymi widgetmi."""
+    """Root is created on the main monitor (150 %); when it goes to the
+    second one (100 %), the CTk scale switches right away - not only over
+    finished widgets."""
     tracker, okno = _priprav(monkeypatch, dpi_okna=1.5)
     assert ui_kit.zosuladi_dpi_s_monitorom(okno, DESKTOP_1080_100) is True
     assert tracker.window_dpi_scaling_dict[okno] == 1.0
     assert tracker.volania == [("dpi", 1.0)]
-    # rovnake DPI -> ziadny prepocet
+    # same DPI -> no recalculation
     assert ui_kit.zosuladi_dpi_s_monitorom(okno, DESKTOP_1080_100) is False
     assert tracker.volania == [("dpi", 1.0)]
-    # okno, ktore CTk nepozna, sa nechava tak
+    # a window CTk does not know is left alone
     assert ui_kit.zosuladi_dpi_s_monitorom(object(), DESKTOP_1080_100) is False
 
 
 def test_stred_sa_rata_z_dpi_cieloveho_monitora(monkeypatch):
-    # root este "sedi" na 150 % monitore, cielovy ma 100 %
+    # root still "sits" on the 150 % monitor, the target has 100 %
     tracker, okno = _priprav(monkeypatch, dpi_okna=1.5)
     geo = ui_kit.vycentrovana_geometria(okno, 720, 600, DESKTOP_1080_100)
     assert geo == "720x600+%d+%d" % ((1920 - 720) // 2, (1032 - 600) // 2)
@@ -361,8 +370,8 @@ def test_stred_pri_chybe_vrati_len_rozmer(monkeypatch):
 
 @pytest.mark.parametrize("meno", sorted(ZOSTAVY) + ["primaly@200"])
 def test_cely_postup_okno_v_ploche(monkeypatch, meno):
-    """umiestni_pevne_okno od zaciatku do konca, root vzdy vznikol na
-    hlavnom monitore so 150 % (ako na pocitaci s 4K + 1080p)."""
+    """umiestni_pevne_okno from start to finish, root was always created on
+    the main monitor at 150 % (as on a computer with 4K + 1080p)."""
     mon = ZOSTAVY.get(meno, PRIMALY_200)
     tracker, okno = _priprav(monkeypatch, dpi_okna=1.5, mon=mon)
     f, pouzity = ui_kit.umiestni_pevne_okno(okno, W, H)
@@ -375,7 +384,7 @@ def test_cely_postup_okno_v_ploche(monkeypatch, meno):
         assert y + ph + OKRAJ // 2 <= mon.work_y + mon.work_height
     else:
         assert y == mon.work_y
-    # poradie: DPI cieloveho monitora -> mierka -> geometria
+    # order: target monitor DPI -> scale -> geometry
     druhy = [v[0] for v in tracker.volania]
     assert druhy[-1] == "geometry"
     if "dpi" in druhy and "window" in druhy:
@@ -386,7 +395,7 @@ def test_cely_postup_notebook_150(monkeypatch):
     tracker, okno = _priprav(monkeypatch, dpi_okna=1.5, mon=LAPTOP_1080_150)
     f, _mon_ = ui_kit.umiestni_pevne_okno(okno, W, H)
     assert f == pytest.approx(0.87)
-    # 1540 x 992 fyzicky, v strede plochy 1920 x 1008
+    # 1540 x 992 physical, in the centre of the 1920 x 1008 area
     assert okno.geometrie[-1] == "1180x760+190+8"
 
 
@@ -401,7 +410,7 @@ def test_cely_postup_bez_monitora(monkeypatch):
 
 
 # --------------------------------------------------------------------------
-# app.py a sprievodca prveho spustenia
+# app.py and the first-start guide
 # --------------------------------------------------------------------------
 
 def test_app_umiestni_okno_skor_nez_vzniknu_widgety():
@@ -410,10 +419,10 @@ def test_app_umiestni_okno_skor_nez_vzniknu_widgety():
     assert volanie < init.index("OnboardingWizard(")
     assert volanie < init.index("self._build_ui()")
     assert volanie < init.index("enable_frameless(self.root)")
-    # pevny dashboard ostava: minsize == maxsize == WINDOW_W/H, za umiestnenim
+    # fixed dashboard stays: minsize == maxsize == WINDOW_W/H, after placing
     assert volanie < init.index("self.root.minsize(self.WINDOW_W, self.WINDOW_H)")
     assert "self.root.maxsize(self.WINDOW_W, self.WINDOW_H)" in init
-    # ziadne druhe geometry() bez polohy, ktore by stred zahodilo
+    # no second geometry() without a position that would drop the centring
     assert 'self.root.geometry(f"{self.WINDOW_W}x{self.WINDOW_H}")' not in init
 
 
@@ -431,7 +440,7 @@ def test_logicky_rozmer_okna_sa_nezmenil():
 
 
 def test_known_issues_hovori_to_iste_co_kod():
-    # Od 0.2.2 (davka 4) je historia verzii v CHANGELOG.md.
+    # Since 0.3 (batch 4) the version history is in CHANGELOG.md.
     with open(os.path.join(ROOT, "CHANGELOG.md"), encoding="utf-8-sig") as fh:
         text = " ".join(fh.read().split())
     sekcia = text[text.index("## What 0.3 changes"):text.index("## What 0.2.1 fixes")]

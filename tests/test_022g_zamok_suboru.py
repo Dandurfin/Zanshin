@@ -1,21 +1,21 @@
 # -*- coding: utf-8 -*-
-"""Atomicky zapis prezije kratky zamok suboru vo Windows (0.2.2).
+"""Atomic write survives a short file lock in Windows (0.3).
 
-V logu skusobnej kopie:
+In the log of a test copy:
 
     save_settings: zalohu nastaveni sa nepodarilo zapisat
     PermissionError: [WinError 5] Access is denied: '...json.bak.tmp' -> '...json.bak'
 
-Cerstvo zapisany subor si na chvilu otvori Defender, indexovanie alebo
-synchronizacia (bez FILE_SHARE_DELETE) a holy `os.replace` vtedy spadne.
-Atomicke zapisy dat appky (.tmp -> ciel) preto idu cez `paths.nahrad_subor`:
-pri docasnom zamku skusi znova po kratkych pauzach (spolu najviac 0.31 s -
-`save_settings` bezi vo vlakne GUI), potom vyhodi POSLEDNU chybu ako predtym.
-Pri `uprac_zdroj=True` po sebe neostavi .tmp; pokazeny subor odkladany bokom
-sa nikdy nemaze.
+A freshly written file is briefly opened by Defender, indexing or
+sync (without FILE_SHARE_DELETE), and a bare `os.replace` then fails.
+Atomic writes of the app's data (.tmp -> target) therefore go through
+`paths.nahrad_subor`: on a temporary lock it retries after short pauses (at
+most 0.31 s in total - `save_settings` runs in the GUI thread), then raises
+the LAST error as before. With `uprac_zdroj=True` it leaves no .tmp behind;
+a broken file being set aside is never deleted.
 
-Vsetko v tmp_path. Skutocny zamok (subor otvoreny cez open(), teda bez
-FILE_SHARE_DELETE) len vo Windows.
+Everything in tmp_path. A real lock (a file opened via open(), i.e. without
+FILE_SHARE_DELETE) only on Windows.
 """
 import ast
 import errno
@@ -40,12 +40,12 @@ VO_WINDOWS = sys.platform == "win32"
 len_windows = pytest.mark.skipif(not VO_WINDOWS,
                                  reason="zamok suboru je spravanie Windows")
 KOREN = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-# Moduly, ktore zapisuju data hraca alebo cache cez .tmp + nahradu.
+# Modules that write player data or cache via .tmp + replace.
 MODULY = ("app_prefs", "data_io", "hr_stats", "hr_insights", "audio_engine")
 
 
 def _zamok(winerror=5):
-    """Ta ista chyba, aku hodi Windows: errno EACCES + kod Windows."""
+    """The same error Windows throws: errno EACCES + a Windows code."""
     return PermissionError(errno.EACCES, "Access is denied", None, winerror)
 
 
@@ -61,8 +61,8 @@ def _obsah(cesta):
 
 @pytest.fixture(autouse=True)
 def _ciste_zlyhane_ciele():
-    """Pamat cielov, ktore nevydrzali ani posledny pokus, je globalna v
-    module paths - kazdy test zacina bez nej."""
+    """The memory of targets that did not survive even the last attempt is
+    global in the paths module - every test starts without it."""
     paths._zlyhane_ciele.clear()
     yield
     paths._zlyhane_ciele.clear()
@@ -70,17 +70,18 @@ def _ciste_zlyhane_ciele():
 
 @pytest.fixture
 def pauzy(monkeypatch):
-    """Pauzy pomocnika sa len zapisu - test necaka. Nahradza sa `time` len
-    v module paths, globalny `time.sleep` ostava (ine vlakna ho potrebuju)."""
+    """The helper's pauses are only recorded - the test does not wait. `time`
+    is replaced only in the paths module, the global `time.sleep` stays
+    (other threads need it)."""
     zoznam = []
     monkeypatch.setattr(paths, "time", types.SimpleNamespace(sleep=zoznam.append))
     return zoznam
 
 
 def _replace_padne(monkeypatch, kolko_krat, chyba=_zamok, kedy=lambda src, dst: True):
-    """os.replace, ktory pri `kedy(src, dst)` `kolko_krat` padne, potom
-    nahradi naozaj. Vracia zoznam volani. `os` je jeden modul - nahradu vidi
-    aj `paths.nahrad_subor`."""
+    """os.replace that fails `kolko_krat` times on `kedy(src, dst)`, then
+    really replaces. Returns the list of calls. `os` is one module - the
+    replacement is seen by `paths.nahrad_subor` too."""
     skutocny = os.replace
     volania = []
     zostava = {"n": kolko_krat}
@@ -97,7 +98,7 @@ def _replace_padne(monkeypatch, kolko_krat, chyba=_zamok, kedy=lambda src, dst: 
 
 
 # --------------------------------------------------------------------------
-# pomocnik paths.nahrad_subor
+# the paths.nahrad_subor helper
 # --------------------------------------------------------------------------
 
 def test_pauzy_rastu_a_spolu_su_kratke():
@@ -117,7 +118,7 @@ def test_skusi_znova_a_podari_sa(tmp_path, monkeypatch, pauzy, caplog):
     assert volania == [(tmp, ciel)] * 3
     assert pauzy == list(paths.NAHRADA_PAUZY_S[:2])
     assert _obsah(ciel) == "novy" and not os.path.exists(tmp)
-    # stopa v app.log - len meno suboru, cesta nesie meno uctu
+    # trace in app.log - only the file name, the path carries the account name
     riadky = [r.getMessage() for r in caplog.records if r.name == "zanshin.paths"]
     assert len(riadky) == 1 and "3. pokus" in riadky[0]
     assert "hr_sessions.json" in riadky[0] and str(tmp_path) not in riadky[0]
@@ -150,7 +151,7 @@ def test_po_limite_vyhodi_poslednu_chybu(tmp_path, monkeypatch, pauzy, caplog):
     assert len(chyby) == len(paths.NAHRADA_PAUZY_S) + 1
     assert pauzy == list(paths.NAHRADA_PAUZY_S)
     assert sum(pauzy) < 0.5
-    # bez uprac_zdroj ostava zdroj aj ciel tak, ako boli
+    # without uprac_zdroj both source and target stay as they were
     assert _obsah(tmp) == "novy" and _obsah(ciel) == "stary"
     riadky = [r.getMessage() for r in caplog.records if r.name == "zanshin.paths"]
     assert len(riadky) == 1 and "nepodarilo" in riadky[0]
@@ -173,7 +174,7 @@ _NEOPAKOVAT = [
     pytest.param(lambda: OSError(errno.ENOSPC, "disk je plny"), id="plny-disk"),
     pytest.param(lambda: OSError("disk je plny"), id="oserror-bez-kodu"),
     pytest.param(lambda: PermissionError(errno.EPERM, "zakazane"), id="eperm"),
-    # WinError 19 = chranene proti zapisu: tiez EACCES, ale nie docasne
+    # WinError 19 = write-protected: also EACCES, but not temporary
     pytest.param(lambda: PermissionError(errno.EACCES, "chranene", None, 19),
                  id="winerror-19", marks=len_windows),
 ]
@@ -202,20 +203,21 @@ def test_docasne_kody_windows_sa_opakuju(tmp_path, monkeypatch, pauzy, winerror)
 
 
 # --------------------------------------------------------------------------
-# ciel, ktory nevydrzal ani posledny pokus: kym pada, uz sa necaka
+# a target that failed even the last attempt: while it fails, no more waiting
 # --------------------------------------------------------------------------
 
 @pytest.fixture
 def hodiny(monkeypatch):
-    """Umely cas pre `NAHRADA_ODDYCH_S` (paths._hodiny)."""
+    """Artificial time for `NAHRADA_ODDYCH_S` (paths._hodiny)."""
     stav = {"t": 1000.0}
     monkeypatch.setattr(paths, "_hodiny", lambda: stav["t"])
     return stav
 
 
 def test_po_vycerpani_dalsi_zapis_necaka(tmp_path, monkeypatch, pauzy, hodiny):
-    """Trvaly zamok (subor len na citanie, otvoreny v inom programe): prvy
-    zapis caka 0.31 s, dalsie hned padnu - tahanie slidera nezasekne okno."""
+    """A permanent lock (file read-only, open in another program): the first
+    write waits 0.31 s, the next ones fail at once - dragging a slider does
+    not freeze the window."""
     ciel, tmp = str(tmp_path / "dandurf_settings.json"), str(tmp_path / "a.tmp")
     _subor(ciel, "stary")
     volania = _replace_padne(monkeypatch, 999)
@@ -239,19 +241,20 @@ def test_po_uspechu_zase_plne_opakovanie(tmp_path, monkeypatch, pauzy, hodiny):
     with pytest.raises(PermissionError):
         paths.nahrad_subor(tmp, ciel)
     del pauzy[:]
-    monkeypatch.setattr(paths.os, "replace", skutocny)   # zamok povolil
-    paths.nahrad_subor(tmp, ciel)            # este v oddychu: jeden pokus, uspech
+    monkeypatch.setattr(paths.os, "replace", skutocny)   # the lock let go
+    paths.nahrad_subor(tmp, ciel)            # still in the cool-down: one attempt, success
     assert pauzy == [] and _obsah(ciel) == "1"
     _subor(tmp, "2")
-    _replace_padne(monkeypatch, 1)           # novy kratky zamok
+    _replace_padne(monkeypatch, 1)           # a new short lock
     paths.nahrad_subor(tmp, ciel)
     assert pauzy == [paths.NAHRADA_PAUZY_S[0]], "po uspechu sa zase caka"
     assert _obsah(ciel) == "2"
 
 
 def test_oddych_vyprsi_ked_sa_nezapisuje(tmp_path, monkeypatch, pauzy, hodiny):
-    """Kazde dalsie zlyhanie oddych predlzi; az ked do ciela chvilu nikto
-    nepise (dalsia relacia o hodinu), zapis zase caka na kratky zamok."""
+    """Every further failure extends the cool-down; only when nobody writes
+    to the target for a while (the next session in an hour) does a write
+    wait for a short lock again."""
     ciel, tmp = str(tmp_path / "hr_sessions.json"), str(tmp_path / "x.tmp")
     _subor(tmp, "novy")
     _replace_padne(monkeypatch, 999)
@@ -268,7 +271,7 @@ def test_oddych_vyprsi_ked_sa_nezapisuje(tmp_path, monkeypatch, pauzy, hodiny):
 
 
 def test_oddych_len_pre_ten_isty_ciel(tmp_path, monkeypatch, pauzy, hodiny):
-    """.bak drzany natrvalo nesmie vziat opakovanie samotnym nastaveniam."""
+    """A permanently held .bak must not cost the settings their retries."""
     bak = str(tmp_path / "dandurf_settings.json.bak")
     nast = str(tmp_path / "dandurf_settings.json")
     tmp = str(tmp_path / "t.tmp")
@@ -299,19 +302,19 @@ def test_pamat_zlyhanych_cielov_ostava_mala(tmp_path, monkeypatch, pauzy, hodiny
     for i in range(30):
         tmp = str(tmp_path / ("%d.tmp" % i))
         _subor(tmp, "x")
-        hodiny["t"] += paths.NAHRADA_ODDYCH_S       # kazdy uz po oddychu
+        hodiny["t"] += paths.NAHRADA_ODDYCH_S       # each one already past the cool-down
         with pytest.raises(PermissionError):
             paths.nahrad_subor(tmp, str(tmp_path / ("%d.json" % i)))
     assert len(paths._zlyhane_ciele) == 1
 
 
 # --------------------------------------------------------------------------
-# skutocny zamok vo Windows
+# a real lock on Windows
 # --------------------------------------------------------------------------
 
 def _drz_a_pusti(cesta, po_s):
-    """Otvori subor (Python open() nezdiela mazanie - presne ako antivirus
-    pocas kontroly) a po `po_s` ho z ineho vlakna zavrie."""
+    """Opens the file (Python open() does not share deletion - exactly like an
+    antivirus during a scan) and closes it from another thread after `po_s`."""
     fh = open(cesta, "rb")
     casovac = threading.Timer(po_s, fh.close)
     return fh, casovac
@@ -326,7 +329,7 @@ def test_skutocny_zamok_povoli_a_nahrada_sa_podari(tmp_path, caplog, drzany, kod
     _subor(tmp, "novy")
     fh, casovac = _drz_a_pusti(ciel if drzany == "ciel" else tmp, 0.05)
     try:
-        # poistka: zamok naozaj zastavi holy os.replace (inak test nic nedokaze)
+        # safety check: the lock really stops a bare os.replace (else no proof)
         with pytest.raises(PermissionError) as holy:
             os.replace(tmp, ciel)
         assert holy.value.winerror == kod
@@ -343,7 +346,7 @@ def test_skutocny_zamok_povoli_a_nahrada_sa_podari(tmp_path, caplog, drzany, kod
 
 @len_windows
 def test_skutocny_zamok_zaloha_nastaveni_prezije(tmp_path):
-    """Presne pripad z logu: .bak drzi iny proces, kym sa zalohuje."""
+    """Exactly the log's case: another process holds .bak during the backup."""
     cesta = str(tmp_path / "dandurf_settings.json")
     _subor(cesta, json.dumps({"volume": 80}))
     _subor(cesta + ".bak", json.dumps({"volume": 37}))
@@ -372,7 +375,7 @@ def test_skutocny_trvaly_zamok_zaloha_vyhodi_a_neostavi_tmp(tmp_path):
 
 
 def _appka_nastaveni(dennik):
-    """Minimum pre skutocne `PrefsMixin.save_settings` (bez okna)."""
+    """The minimum for the real `PrefsMixin.save_settings` (no window)."""
     return types.SimpleNamespace(
         _ready=True, slots=[object()], _sync_active_profile_slots=lambda: None,
         profiles=[{"name": "P", "slots": []}], active_profile_name="P",
@@ -388,10 +391,11 @@ def _appka_nastaveni(dennik):
 
 @len_windows
 def test_skutocny_trvaly_zamok_save_settings_nezasekava_okno(tmp_path, monkeypatch):
-    """`save_settings` bezi vo vlakne GUI pri kazdom posune slidera. Ked
-    nastavenia aj .bak drzi iny program natrvalo, caka len prve ulozenie
-    (0.62 s - dva subory); dalsie hned padnu ako pred 0.2.2. Bez toho bolo
-    10 ulozeni = 6 s zaseknuteho okna (namerane)."""
+    """`save_settings` runs in the GUI thread on every slider move. When
+    another program holds both the settings and the .bak permanently, only
+    the first save waits (0.62 s - two files); the next ones fail at once
+    as before 0.3. Without this, 10 saves = 6 s of a frozen window
+    (measured)."""
     cesta = str(tmp_path / "dandurf_settings.json")
     _subor(cesta, json.dumps({"volume": 37}))
     _subor(cesta + ".bak", json.dumps({"volume": 30}))
@@ -414,7 +418,7 @@ def test_skutocny_trvaly_zamok_save_settings_nezasekava_okno(tmp_path, monkeypat
     assert json.loads(_obsah(cesta)) == {"volume": 37}
     assert json.loads(_obsah(cesta + ".bak")) == {"volume": 30}
     assert not [m for m in os.listdir(str(tmp_path)) if m.endswith(".tmp")]
-    # zamok povolil: hned dalsie ulozenie prejde (oddych neblokuje uspech)
+    # lock let go: next save passes at once (the cool-down does not block it)
     a.volume_value = 99
     app_prefs.PrefsMixin.save_settings(a)
     assert json.loads(_obsah(cesta))["volume"] == 99
@@ -424,8 +428,9 @@ def test_skutocny_trvaly_zamok_save_settings_nezasekava_okno(tmp_path, monkeypat
 
 @len_windows
 def test_skutocny_zamok_pokazenej_historie_kopia_bez_prepisu(tmp_path):
-    """Pokazenu historiu drzi iny program cely cas: presun bokom nejde, kopia
-    ano, prepis nie - relacia skonci ako neulozena (ide do pending)."""
+    """Another program holds the broken history the whole time: moving it aside
+    fails, a copy works, overwriting does not - the session ends up unsaved
+    (goes to pending)."""
     cesta = str(tmp_path / "hr_sessions.json")
     _subor(cesta, "[{pokazene vecery")
     with open(cesta, "rb"):
@@ -437,7 +442,7 @@ def test_skutocny_zamok_pokazenej_historie_kopia_bez_prepisu(tmp_path):
 
 
 # --------------------------------------------------------------------------
-# volajuci
+# callers
 # --------------------------------------------------------------------------
 
 def test_zaloha_nastaveni_po_limite_uprace_bak_tmp(tmp_path, monkeypatch, pauzy):
@@ -463,9 +468,9 @@ def test_zaloha_nastaveni_kratky_zamok_prezije(tmp_path, monkeypatch, pauzy):
 def test_pokazene_nastavenia_sa_odlozia_aj_obnovia_cez_kratky_zamok(
         tmp_path, monkeypatch, pauzy):
     cesta = str(tmp_path / "dandurf_settings.json")
-    _subor(cesta, '{"volume": 4')                       # pokazeny
+    _subor(cesta, '{"volume": 4')                       # broken
     _subor(cesta + ".bak", json.dumps({"volume": 37}))
-    # kazda nahrada (odlozenie bokom aj vratenie zalohy) raz narazi na zamok
+    # every replace (setting aside and restoring the backup) hits the lock once
     videne = set()
 
     def _raz(src, dst):
@@ -479,7 +484,7 @@ def test_pokazene_nastavenia_sa_odlozia_aj_obnovia_cez_kratky_zamok(
     assert data == {"volume": 37}
     assert obnova["zo_zalohy"] is True
     odlozene = os.path.join(str(tmp_path), obnova["odlozene"])
-    # odlozeny PRESUNOM (nie len kopiou) a zaloha vratena na miesto
+    # set aside by a MOVE (not just a copy) and the backup put back in place
     assert _obsah(odlozene) == '{"volume": 4'
     assert json.loads(_obsah(cesta)) == {"volume": 37}
     assert not os.path.exists(cesta + ".tmp")
@@ -525,8 +530,9 @@ def _relacia(started):
 
 def test_hr_stats_pokazena_historia_sa_odlozi_aj_cez_kratky_zamok(
         tmp_path, monkeypatch, pauzy):
-    """Odlozenie bokom skusa znova tiez - inak by zamok, ktory povoli medzi
-    odlozenim a zapisom, nechal pokazenu historiu prepisat bez kopie."""
+    """Setting aside retries too - otherwise a lock that lets go between
+    setting aside and the write would let the broken history be
+    overwritten without a copy."""
     cesta = str(tmp_path / "hr_sessions.json")
     _subor(cesta, "[{pokazene")
     _replace_padne(monkeypatch, 1, kedy=lambda src, dst: ".corrupt-" in dst)
@@ -547,10 +553,11 @@ def test_hr_stats_ulozenie_relacie_po_limite(tmp_path, monkeypatch, pauzy):
     assert not os.path.exists(cesta + ".tmp")
 
 
-# Pokazeny subor a zamok, ktory nevydrzi odlozenie bokom (6 pokusov), ale
-# povoli az pocas pokusov zapisu za nim. Holy os.replace vtedy padol pri
-# zapise na ten isty zamok a subor ostal; s opakovanim by ho zapis prepisal
-# bez kopie - preto aspon kopia, a bez nej ziadny prepis.
+# A broken file and a lock that setting aside does not outlast (6
+# attempts), but that lets go only during the write attempts after it. A
+# bare os.replace then failed on the write on the same lock and the file
+# stayed; with retries the write would overwrite it without a copy -
+# hence at least a copy, and without one no overwrite.
 _ODLOZENIE = len(paths.NAHRADA_PAUZY_S) + 1
 
 
@@ -581,14 +588,14 @@ def test_hr_stats_zamok_az_do_zapisu_necha_kopiu_historie(tmp_path, monkeypatch,
 def test_hr_stats_bez_kopie_pokazenu_historiu_neprepise(tmp_path, monkeypatch, pauzy):
     cesta = str(tmp_path / "hr_sessions.json")
     _subor(cesta, "[{pokazene vecery")
-    _zamok_na(monkeypatch, cesta, _ODLOZENIE)    # zapis by uz presiel
+    _zamok_na(monkeypatch, cesta, _ODLOZENIE)    # the write would pass now
     _kopia_padne(monkeypatch)
     spravy = []
     assert hr_stats.save_session(cesta, _relacia(1000), log=spravy.append) is False
     assert _obsah(cesta) == "[{pokazene vecery", "jedina kopia ostala"
     assert _odlozene_kopie(tmp_path) == []
     assert not os.path.exists(cesta + ".tmp")
-    # volajuci (`_close_hr_session`) to berie ako neulozenu relaciu
+    # the caller (`_close_hr_session`) takes it as an unsaved session
     (chyba,) = [s for s in spravy if s.startswith("HR: session log failed:")]
     assert "Access is denied" in chyba
 
@@ -608,11 +615,11 @@ def test_cakajuce_bez_kopie_neprepise_ani_nezmaze(tmp_path, monkeypatch, pauzy):
     sessions = str(tmp_path / "hr_sessions.json")
     cesta = hr_stats.cesta_cakajucej(sessions)
     _subor(cesta, "[{cele vecery")
-    _zamok_na(monkeypatch, cesta, _ODLOZENIE)    # zapis by uz presiel
+    _zamok_na(monkeypatch, cesta, _ODLOZENIE)    # the write would pass now
     _kopia_padne(monkeypatch)
     assert hr_stats.zapis_cakajucu(sessions, _relacia(2000)) is False
     assert _obsah(cesta) == "[{cele vecery"
-    # start (`obnov_cakajuce`): necitatelny subor bez kopie ostava, nic nevyhodi
+    # start (`obnov_cakajuce`): unreadable file without a copy stays, no raise
     paths._zlyhane_ciele.clear()
     _zamok_na(monkeypatch, cesta, _ODLOZENIE)
     assert hr_stats.obnov_cakajuce(sessions) == []
@@ -628,7 +635,7 @@ def test_hr_insights_ulozenie(tmp_path, monkeypatch, pauzy):
 
 
 # --------------------------------------------------------------------------
-# zdrojak: ziadny holy os.replace, upratuje sa len vlastny .tmp
+# source: no bare os.replace, only one's own .tmp is cleaned up
 # --------------------------------------------------------------------------
 
 def _strom(modul):
@@ -656,14 +663,14 @@ def test_moduly_dat_nevolaju_holy_os_replace():
 
 
 def test_moduly_beru_pomocnika_z_paths():
-    """Jeden pomocnik pre vsetkych (monkeypatch podla modulu, kde zije)."""
+    """One helper for all (monkeypatch by the module where it lives)."""
     for modul in (app_prefs, data_io, hr_stats, hr_insights, audio_engine):
         assert modul.nahrad_subor is paths.nahrad_subor, modul.__name__
 
 
 def test_uprac_zdroj_len_pri_vlastnom_tmp():
-    """`uprac_zdroj=True` zmaze zdroj pri neuspechu - smie byt len pri .tmp
-    volajuceho, nikdy pri pokazenom subore, ktory sa odklada bokom."""
+    """`uprac_zdroj=True` deletes the source on failure - allowed only for the
+    caller's .tmp, never for a broken file that is being set aside."""
     pocet = 0
     for modul in MODULY:
         for u in _volania(_strom(modul), "nahrad_subor"):
@@ -675,9 +682,9 @@ def test_uprac_zdroj_len_pri_vlastnom_tmp():
                 assert je_tmp, (modul, u.lineno)
             if not je_tmp:
                 assert not uprac, (modul, u.lineno)
-    # poistka, ze prechod nieco nasiel: 4 app_prefs + 4 data_io + 7 hr_stats
-    # (oba pokazene subory bokom cez jeden `_odloz_pokazeny`) + 1 hr_insights
-    # + 2 audio_engine
+    # safety check that the pass found something: 4 app_prefs + 4 data_io +
+    # 7 hr_stats (both broken files set aside via one `_odloz_pokazeny`) + 1
+    # hr_insights + 2 audio_engine
     assert pocet >= 18
 
 

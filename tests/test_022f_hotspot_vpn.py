@@ -1,19 +1,21 @@
 # -*- coding: utf-8 -*-
-"""Rozpoznanie VPN a virtualnych adapterov bez falosnych poplachov (0.2.2
-davka 4b).
+"""Recognising VPN and virtual adapters without false alarms (0.3 batch
+4b).
 
-Davka 4 oznacila "(VPN/virtualna)" aj dve adresy, na ktore sa telefon
-dostane:
-  * Mobilny hotspot Windowsu - "Microsoft Wi-Fi Direct Virtual Adapter",
-    meno "Local Area Connection* N" (slovo "Virtual" v popise),
-  * externy prepinac Hyper-V - fyzicka sietovka je premostena na
-    "vEthernet (...)" a domacu adresu aj predvolenu cestu von drzi on.
-Hotspot dostane vlastny stitok "(hotspot)" bez varovania, externy prepinac
-s domacou sietou sa berie ako fyzicky. Skutocna VPN, WSL, "Default Switch"
-a slucka ostavaju oznacene.
+Batch 4 also tagged as "(VPN/virtual)" two addresses the phone can
+reach:
+  * the Windows Mobile hotspot - "Microsoft Wi-Fi Direct Virtual Adapter",
+    name "Local Area Connection* N" (the word "Virtual" in the description),
+  * an external Hyper-V switch - the physical network card is bridged to
+    "vEthernet (...)", and that holds the home address and the default
+    route out.
+The hotspot gets its own "(hotspot)" tag without a warning, an external
+switch with the home network is treated as physical. A real VPN, WSL,
+"Default Switch" and loopback stay tagged.
 
-Vsetky adaptery su vymyslene: mena a popisy su vseobecne, adresy z
-dokumentacnych rozsahov alebo zjavne vymyslene sukromne (192.168.250.x).
+All adapters are made up: the names and descriptions are generic, the
+addresses come from documentation ranges or are obviously made-up private
+ones (192.168.250.x).
 """
 import pytest
 
@@ -40,20 +42,21 @@ def _zdroj(*adaptery):
 
 
 # --------------------------------------------------------------------------
-# druh_adaptera - jeden adapter
+# druh_adaptera - one adapter
 # --------------------------------------------------------------------------
 
 @pytest.mark.parametrize("meno, popis, typ, druh", [
     (HOTSPOT[1], HOTSPOT[2], HOTSPOT[3], H),
     ("Local Area Connection* 3", "Microsoft Wi-Fi Direct Virtual Adapter", None, H),
-    # zaloha bez popisu (psutil): hviezdicka a cislo v mene, v kazdom jazyku
+    # fallback without a description (psutil): an asterisk and a number in the
+    # name, in every language
     ("Pripojenie k miestnej sieti* 12", "", None, H),
     (WIFI[1], WIFI[2], WIFI[3], F),
     (ETHERNET[1], ETHERNET[2], ETHERNET[3], F),
     (WSL[1], WSL[2], WSL[3], V),
     (DEFAULT_SWITCH[1], DEFAULT_SWITCH[2], DEFAULT_SWITCH[3], V),
-    # externy prepinac je SAM O SEBE virtualny - domacu siet posudi az
-    # `druhy_adries` (potrebuje predvolenu cestu a ostatne adaptery)
+    # an external switch is virtual BY ITSELF - only `druhy_adries` judges the
+    # home network (it needs the default route and the other adapters)
     (EXTERNY[1], EXTERNY[2], EXTERNY[3], V),
     (VPN[1], VPN[2], VPN[3], V),
     ("Ethernet 3", "TAP-Windows Adapter V9", None, V),
@@ -65,13 +68,14 @@ def test_druh_adaptera(meno, popis, typ, druh):
 
 
 def test_hviezdicka_bez_cisla_ani_s_popisom_nie_je_hotspot():
-    # meno s hviezdickou plati len bez popisu - s popisom rozhoduje popis
+    # a name with an asterisk counts only without a description - with one,
+    # the description decides
     assert netinfo.druh_adaptera("Ethernet* 2", "Generic Gigabit Ethernet Controller") == F
     assert netinfo.druh_adaptera("Siet*", "") == F
 
 
 # --------------------------------------------------------------------------
-# druhy_adries - cely pocitac
+# druhy_adries - the whole computer
 # --------------------------------------------------------------------------
 
 def test_hotspot_je_dosiahnutelny_a_bez_varovania():
@@ -80,7 +84,7 @@ def test_hotspot_je_dosiahnutelny_a_bez_varovania():
     assert druhy == {WIFI[0]: F, HOTSPOT[0]: H, VPN[0]: V}
     assert netinfo.virtualne_adresy(zdroj, WIFI[0]) == {VPN[0]}
     assert netinfo.hotspot_adresy(zdroj, WIFI[0]) == {HOTSPOT[0]}
-    # poradie v navode: hotspot nejde na koniec za VPN
+    # order in the guide: the hotspot does not go to the end after the VPN
     poradie = netinfo.local_ip_candidates(
         virtualne=netinfo.virtualne_adresy(zdroj, WIFI[0]), preferovana=WIFI[0],
         vsetky=[VPN[0], HOTSPOT[0], WIFI[0]])
@@ -97,21 +101,23 @@ def test_externy_prepinac_s_domacou_sietou_je_fyzicky():
 
 def test_externy_prepinac_len_ked_drzi_cestu_von():
     zdroj = _zdroj(EXTERNY, WIFI)
-    # cestu von drzi Wi-Fi -> vEthernet je len dalsi virtualny adapter
+    # Wi-Fi holds the route out -> vEthernet is just another virtual adapter
     assert netinfo.druhy_adries(zdroj, preferovana=WIFI[0])[EXTERNY[0]] == V
-    # s vlozenym zdrojom a bez predvolenej cesty sa OS nepyta - plati virtualny
+    # with an injected source and no default route the OS is not asked -
+    # virtual applies
     assert netinfo.druhy_adries(_zdroj(EXTERNY))[EXTERNY[0]] == V
 
 
 def test_externy_prepinac_nie_ked_ma_siet_aj_fyzicky_adapter():
-    zdroj = _zdroj(EXTERNY, ETHERNET)           # obe v 192.168.250.0/24
+    zdroj = _zdroj(EXTERNY, ETHERNET)           # both in 192.168.250.0/24
     assert netinfo.druhy_adries(zdroj, preferovana=EXTERNY[0])[EXTERNY[0]] == V
 
 
 @pytest.mark.parametrize("adapter", [WSL, DEFAULT_SWITCH, VPN])
 def test_vnutorne_siete_a_vpn_ostavaju_oznacene_aj_s_cestou_von(adapter):
-    """WSL a "Default Switch" su vnutorne siete s NAT, VPN nie je prepinac
-    Hyper-V - aj ked drzia predvolenu cestu na sukromnej sieti."""
+    """WSL and "Default Switch" are internal networks with NAT, a VPN is not a
+    Hyper-V switch - even when they hold the default route on a private
+    network."""
     druhy = netinfo.druhy_adries(_zdroj(adapter), preferovana=adapter[0])
     assert druhy[adapter[0]] == V
 
@@ -134,7 +140,7 @@ def test_pokazeny_zdroj_nic_nevyhodi():
 
 
 # --------------------------------------------------------------------------
-# Stitky v okne parovania
+# Tags in the pairing window
 # --------------------------------------------------------------------------
 
 def test_dalsie_adresy_nesu_svoj_stitok():

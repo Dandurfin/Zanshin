@@ -1,20 +1,24 @@
 # -*- coding: utf-8 -*-
-"""Kopia existujucich textov (0.2.2 davka 4b).
+"""Wording of existing texts (0.3 batch 4b).
 
-  * "hodinky pripojene" tam, kde je pripojeny TELEFON (appka, ktora posiela
-    tep z hodiniek): `dnes.hr_connected`, `settings.hr_status_waiting`,
-  * nemecka klavesnica ma "Strg", nie "Ctrl" - zapis skratky podla jazyka,
-    nastavenia ostavaju v anglickom zapise,
-  * stopa relacie v dotazniku nehovori v Praci "hralo sa", bulharsky titulok
-    nema sloveso v mnoznom cisle pri kratkom case,
-  * neulozena relacia povie skutocne pravidlo (`hr_stats.je_ulozitelna`),
-  * zlyhana priprava hlasu menuje Nastavenia → Zvuk a tlacidlo neopakuje,
-  * veta pri prvom × hovori, co plati, KED appka ostane v liste,
-  * cinstina ma jednu pomlcku "——",
-  * uvod sluby len hodinky s appkou v telefone (ako README),
-  * stitok "(VPN/virtualna)" sa zhoduje s adresou (zensky rod).
+  * "hodinky pripojene" (watch connected) where the PHONE is connected (the
+    app that sends the heart rate from the watch): `dnes.hr_connected`,
+    `settings.hr_status_waiting`,
+  * a German keyboard has "Strg", not "Ctrl" - shortcut notation by
+    language, the settings stay in the English notation,
+  * the session trace in the questionnaire does not say "hralo sa" (played)
+    in Work, the Bulgarian title has no plural verb for a short time,
+  * an unsaved session states the real rule (`hr_stats.je_ulozitelna`),
+  * a failed voice preparation names Settings → Sound and does not repeat
+    the button,
+  * the sentence at the first × says what applies WHEN the app stays in the
+    tray,
+  * Chinese has one dash "——",
+  * the introduction promises only a watch with an app on the phone (like
+    the README),
+  * the label "(VPN/virtualna)" agrees with the address (feminine gender).
 
-Vsetko bez okna, data vymyslene.
+Everything without a window, made-up data.
 """
 import ast
 import os
@@ -49,7 +53,7 @@ def jazyk():
 
 
 # --------------------------------------------------------------------------
-# Telefon, nie hodinky
+# Phone, not watch
 # --------------------------------------------------------------------------
 
 @pytest.mark.parametrize("kluc", ["dnes.hr_connected", "settings.hr_status_waiting"])
@@ -73,7 +77,7 @@ def test_signal_v_historii_caka_na_tep_nie_na_hodinky():
 
 
 # --------------------------------------------------------------------------
-# Skratka: "Strg" po nemecky
+# Shortcut: "Strg" in German
 # --------------------------------------------------------------------------
 
 def test_nemecky_zapis_skratky():
@@ -122,7 +126,7 @@ def test_app_log_ostava_anglicky():
 
 
 # --------------------------------------------------------------------------
-# Dotaznik po relacii
+# Questionnaire after the session
 # --------------------------------------------------------------------------
 
 def _init_dotaznika():
@@ -142,15 +146,15 @@ def test_stopa_relacie_v_praci_nehovori_o_hrani():
     for j in i18n.LANGUAGES:
         text = S["session.end.trace_hint_work"][j]
         assert hranie[j] not in text, j
-        # rovnaka stavba ako verzia pre Hru (trojuholniky, pruh, vstupy)
+        # the same structure as the version for Play (triangles, bar, inputs)
         assert text != S["session.end.trace_hint"][j], j
 
 
 @pytest.mark.parametrize("minuty", [0, 1, 2, 59, 123])
 def test_bulharsky_titulok_bez_mnozneho_cisla(jazyk, minuty):
-    """"Зад гърба ти са 1 мин игра" - "са" je mnozne cislo, pri jednej
-    minute (a pri "0 мин" kratkej relacie) nesedelo. Teraz "Играта ти
-    продължи {time}." - sloveso patri k "Играта", nie k casu."""
+    """"Зад гърба ти са 1 мин игра" - "са" is plural, it did not fit one
+    minute (nor "0 мин" of a short session). Now "Играта ти
+    продължи {time}." - the verb belongs to "Играта", not to the time."""
     import ui_dialogs
     jazyk("bg")
     cas = ui_dialogs.SessionEndDialog._cas(minuty)
@@ -161,7 +165,7 @@ def test_bulharsky_titulok_bez_mnozneho_cisla(jazyk, minuty):
 
 
 # --------------------------------------------------------------------------
-# Neulozena relacia: skutocne pravidlo
+# Unsaved session: the real rule
 # --------------------------------------------------------------------------
 
 def test_pravidlo_ulozenia_relacie():
@@ -191,7 +195,7 @@ def test_riadok_ide_len_pri_minute_bez_hodnot():
 
 
 # --------------------------------------------------------------------------
-# Zlyhana priprava hlasu
+# Failed voice preparation
 # --------------------------------------------------------------------------
 
 def test_hlas_posle_do_nastaveni_zvuk(jazyk):
@@ -207,15 +211,15 @@ def test_hlas_posle_do_nastaveni_zvuk(jazyk):
                            cmd=i18n.tr("common.prepare_voices"))
             assert stranka in text, (j, kluc)
             assert i18n.tr("nav.zvuk") not in text, (j, kluc)
-            # "opitaj pak s „Opitaj pak“": meno tlacidla len raz
+            # "opitaj pak s „Opitaj pak“": the button name only once
             assert text.lower().count(retry.lower()) == 1, (j, kluc, text)
     assert "page=stranka_zvuku()" in zdroj_metody("_edge_priprava_zlyhala")
-    # {cmd} je presne polozka palety Ctrl+K
+    # {cmd} is exactly the Ctrl+K command palette item
     assert 'tr("common.prepare_voices")' in zdroj_metody("_command_palette_items")
 
 
 # --------------------------------------------------------------------------
-# Prvy ×: veta pred volbou
+# First ×: the sentence before the choice
 # --------------------------------------------------------------------------
 
 def test_veta_pri_krizi_nehovori_ze_uz_bezim_v_liste():
@@ -224,12 +228,13 @@ def test_veta_pri_krizi_nehovori_ze_uz_bezim_v_liste():
     assert z["en"].startswith("If you keep me running in the tray")
     assert not z["sk"].startswith("Bežím") and not z["en"].startswith("I keep running")
     assert not z["cs"].startswith("Běžím") and not z["bg"].startswith("Продължавам")
-    # tlacidlo "Nechat bezat v liste" je ta ista volba, o ktorej veta hovori
+    # the "Keep running in the tray" button is the same choice the sentence
+    # talks about
     assert i18n.tr_lang("en", "tray.keep_running") == "Keep running in the tray"
 
 
 # --------------------------------------------------------------------------
-# Cinstina: jedna pomlcka
+# Chinese: one dash
 # --------------------------------------------------------------------------
 
 def test_cinstina_ma_jednu_pomlcku():
@@ -237,7 +242,7 @@ def test_cinstina_ma_jednu_pomlcku():
     for kluc, zaznam in S.items():
         text = zaznam["zh"]
         if text == zaznam["en"]:
-            continue            # anglicka nahrada, nie cinsky text
+            continue            # English fallback, not Chinese text
         bez_ziadnej_hodnoty = text.replace("“—”", "")
         if re.search(r" —|— |(?<!—)—(?!—)|———", bez_ziadnej_hodnoty):
             zle.append(kluc)
@@ -245,7 +250,7 @@ def test_cinstina_ma_jednu_pomlcku():
 
 
 # --------------------------------------------------------------------------
-# Uvod a README: hodinky s appkou v telefone
+# Introduction and README: a watch with an app on the phone
 # --------------------------------------------------------------------------
 
 def test_uvod_hovori_o_hodinkach_ako_readme():
@@ -258,13 +263,13 @@ def test_uvod_hovori_o_hodinkach_ako_readme():
 
 
 # --------------------------------------------------------------------------
-# Stitok adresy a mrtve kluce
+# Address label and dead keys
 # --------------------------------------------------------------------------
 
 def test_stitok_vpn_sa_zhoduje_s_adresou():
     assert S["hr.ip_virtual"]["sk"] == "(VPN/virtuálna)"
     assert S["hr.ip_virtual"]["fr"] == "(VPN/virtuelle)"
-    assert S["hr.ip_virtual"]["cs"] == "(VPN/virtuální)"      # rovnake pre vsetky rody
+    assert S["hr.ip_virtual"]["cs"] == "(VPN/virtuální)"      # the same for all genders
     for j in i18n.LANGUAGES:
         assert "VPN" in S["hr.ip_virtual"][j], j
 

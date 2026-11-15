@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-"""Skratka "teraz nie" (0.2.2, davka 4): zrazka s rozlozenim klavesnice
-(AltGr = Ctrl+Alt), vyber v Nastaveniach -> Vseobecne, veta v pase a v
-prehliadke. Vsetko na atrapach - ziadne skutocne rozlozenie ani registracia."""
+"""The "not now" shortcut (0.3, batch 4): clash with the keyboard layout
+(AltGr = Ctrl+Alt), choice in Settings -> General, the sentence in the bar
+and in the tour. All on fakes - no real layout and no registration."""
 import types
 
 import app as app_mod
@@ -19,11 +19,11 @@ AMERICKE = "en-US"
 
 
 def _znak(hkl, vk, shift):
-    """Vymyslene rozlozenia: polske pise AltGr+Z = "ż", AltGr+Shift+Z = "Ż"."""
+    """Made-up layouts: Polish types AltGr+Z = "ż", AltGr+Shift+Z = "Ż"."""
     if hkl == POLSKE and vk == ord("Z"):
         return "Ż" if shift else "ż"
     if vk == ord("Z"):
-        return "\x1a"          # Ctrl+Z bez AltGr = riadiaci znak, nie pismo
+        return "\x1a"          # Ctrl+Z without AltGr = a control character, not a letter
     return ""
 
 
@@ -66,7 +66,7 @@ def test_predvolby_su_platne_a_prva_volna_preskoci_zrazku():
 
 
 # --------------------------------------------------------------------------
-# Start appky: predvolena skratka by brala pismeno
+# App start: the default shortcut would take a letter
 # --------------------------------------------------------------------------
 
 def _appka(combo=DEFAULT_SNOOZE_HOTKEY, vybrana=False):
@@ -87,7 +87,8 @@ def test_predvolena_skratka_sa_pri_zrazke_vymeni_a_povie_to_raz():
     assert a.ulozene == ["ctrl+alt+f9"], "nahrada sa ulozi - dalsi start uz nic nehlasi"
     assert a.denn == [tr("log.hotkey_layout_swapped", combo="Ctrl + Alt + Z",
                          char="ż", new="Ctrl + Alt + F9")]
-    # druhy start: skratka uz nie je predvolena, nic sa nemeni ani nehlasi
+    # second start: the shortcut is no longer the default, nothing changes and
+    # nothing is reported
     assert a._vyber_skratku_pri_starte(kolizia=_kolizia_pl) is None
     assert len(a.denn) == 1
 
@@ -123,7 +124,7 @@ def test_start_vola_vyber_pred_registraciou():
 
 
 # --------------------------------------------------------------------------
-# Nastavenia -> Vseobecne
+# Settings -> General
 # --------------------------------------------------------------------------
 
 def test_volby_oznacia_zrazku_a_koncia_vypnutou():
@@ -133,7 +134,7 @@ def test_volby_oznacia_zrazku_a_koncia_vypnutou():
     assert volby[0] == (tr("settings.snooze_hotkey_types", combo="Ctrl + Alt + Z",
                            char="ż"), "ctrl+alt+z")
     assert ("Ctrl + Alt + F9", "ctrl+alt+f9") in volby
-    # rucne zapisana skratka zo suboru sa v ponuke neztrati
+    # a hand-written shortcut from the file is not lost in the menu
     a.snooze_hotkey = "ctrl+shift+f8"
     assert ("Ctrl + Shift + F8", "ctrl+shift+f8") in a._snooze_hotkey_volby(
         kolizia=lambda c: "")
@@ -147,7 +148,7 @@ class _FalosnaSkratka:
         _FalosnaSkratka.vytvorene.append(self)
 
     def start(self):
-        self.registered = self.combo != "ctrl+alt+f12"     # F12 "drzi iny program"
+        self.registered = self.combo != "ctrl+alt+f12"     # F12 "is held by another program"
         return self.registered
 
     def stop(self):
@@ -209,7 +210,7 @@ def test_riadok_je_v_nastaveniach_vseobecne():
 
 
 # --------------------------------------------------------------------------
-# Pas na Dnes a prehliadka menuju skutocnu skratku
+# The bar on Today and the tour name the real shortcut
 # --------------------------------------------------------------------------
 
 def test_pas_pri_stiseni_menuje_skutocnu_skratku(monkeypatch):
@@ -242,7 +243,7 @@ def test_prehliadka_spomenie_skratku_raz_pri_pripomienkach():
     veta = tr("tour.triggers.snooze", combo="Ctrl + Alt + F9")
     assert kroky["triggers"] == tr("tour.triggers.body") + " " + veta
     assert sum(veta in text for text in kroky.values()) == 1
-    # bez platnej skratky posle do ponuky v liste
+    # without a valid shortcut it points to the menu in the tray
     app._skratka_teraz_nie = lambda: ""
     tour = guided_tour.GuidedTour(app)
     krok = next(k for k in tour.steps if k.key == "triggers")

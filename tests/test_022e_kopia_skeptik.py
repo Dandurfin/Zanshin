@@ -1,22 +1,25 @@
 # -*- coding: utf-8 -*-
-"""0.2.2 (UX audit, davka 4, kontrola textov): opravy, ktore nasla nezavisla
-kontrola novych a zmenenych klucov vo vsetkych 11 jazykoch.
+"""0.3 (UX audit, batch 4, text review): fixes found by an independent
+review of the new and changed keys in all 11 languages.
 
-Co strazi tento test:
-  * poznamka o VPN adrese (parovanie aj pole "Sietova adresa") menuje
-    TELEFON - na adresu PC sa pripaja appka v telefone, nie hodinky (rovnako
-    ako `log.hr_client_gone`, `hr.pair_status_waiting`, `dnes.hr_no_client`),
-  * cestina hovori o sebe jednym tvarom ("sleduju", nie "sleduji"),
-  * strop historie (400 relacii) sa po slovensky nevola "limit" -
-    hranica / limit su len pre tep v BPM,
-  * francuzsky zoznam v "Zmazat historiu" vola pripomienky "rappels", nie
+What this test guards:
+  * the note about the VPN address (pairing and the "Sietova adresa" field)
+    names the PHONE - it is the app on the phone that connects to the PC's
+    address, not the watch (same as `log.hr_client_gone`,
+    `hr.pair_status_waiting`, `dnes.hr_no_client`),
+  * Czech speaks of itself in one form ("sleduju", not "sleduji"),
+  * the history cap (400 sessions) is not called "limit" in Slovak -
+    hranica / limit are only for heart rate in BPM,
+  * the French list in "Delete history" calls cues "rappels", not
     "signaux",
-  * cesta "Nastavenia → Vseobecne" v dennikovom riadku o skratke je
-    sklonovana (sk) a v uvodzovkach (ru) ako v ostatnych vetach,
-  * rusky riadok o uceni ("Я ещё узнаю тебя" sa da citat aj ako "este ta
-    spoznam") a bulharska veta o case s vysokym tepom su gramaticky.
+  * the path "Nastavenia → Vseobecne" in the journal line about the
+    shortcut is declined (sk) and in quotation marks (ru) as in the other
+    sentences,
+  * the Russian line about learning ("Я ещё узнаю тебя" can also be read
+    as "este ta spoznam" - "I will yet get to know you") and the Bulgarian
+    sentence about time at high heart rate are grammatical.
 
-Synteticke data: ziadne - test cita len slovnik.
+Synthetic data: none - the test only reads the dictionary.
 """
 import os
 import re
@@ -42,7 +45,7 @@ def test_vpn_poznamka_menuje_telefon_nie_hodinky():
             text = S[kluc][jazyk]
             assert TELEFON[jazyk] in text, (kluc, jazyk, text)
             assert HODINKY[jazyk] not in text, (kluc, jazyk, text)
-    # pole adresy stale radi nechat 0.0.0.0
+    # the address field still advises leaving 0.0.0.0
     for jazyk in i18n.LANGUAGES:
         assert "0.0.0.0" in S["settings.hr_ip_virtual_note"][jazyk], jazyk
 
@@ -57,8 +60,9 @@ def test_cestina_hovori_o_sebe_jednym_tvarom():
 
 
 def test_strop_historie_nie_je_limit():
-    """`data.import.limit`: po slovensky ani cesky nie "limit"/"hranica" -
-    to su slova pre tep v BPM. Ostatne jazyky uz hovoria "najviac"."""
+    """`data.import.limit`: in Slovak and Czech not "limit"/"hranica" - those
+    are the words for heart rate in BPM. The other languages already say
+    "at most"."""
     for jazyk in ("sk", "cs"):
         text = S["data.import.limit"][jazyk]
         assert not re.search(r"\blimit|hranic", text, re.I), (jazyk, text)
@@ -66,7 +70,7 @@ def test_strop_historie_nie_je_limit():
     for jazyk in i18n.LANGUAGES:
         assert "{max}" in S["data.import.limit"][jazyk], jazyk
         assert "{n}" in S["data.import.limit"][jazyk], jazyk
-    # ziadny slovensky ani cesky text nepouziva anglicke "limit"
+    # no Slovak or Czech text uses the English "limit"
     for kluc, zaznam in S.items():
         for jazyk in ("sk", "cs"):
             assert not re.search(r"\blimit", zaznam.get(jazyk, "")), (kluc, jazyk)
@@ -81,8 +85,8 @@ def test_francuzsky_zoznam_mazania_vola_pripomienky_rappels():
 
 
 def test_cesta_do_nastaveni_je_sklonovana_ako_v_ostatnych_vetach():
-    """sk "v Nastaveniach → ..." (ako `ob.cue.note`), ru v uvodzovkach
-    («Настройки → ...», ako `insight.cue_never_above`)."""
+    """sk "v Nastaveniach → ..." (like `ob.cue.note`), ru in quotation marks
+    («Настройки → ...», like `insight.cue_never_above`)."""
     sk = S["log.hotkey_layout_swapped"]["sk"]
     assert "v Nastaveniach → Všeobecné" in sk
     assert "v Nastavenia →" not in sk

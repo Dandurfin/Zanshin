@@ -1,24 +1,28 @@
 # -*- coding: utf-8 -*-
-"""Dokumenty po davke 4 (0.2.2) hovoria to, co robi kod.
+"""The documents after batch 4 (0.3) say what the code does.
 
-  * CHANGELOG.md: historia verzii vysla z KNOWN_ISSUES.md (audit, cast 1);
-    sekcia 0.2.2 ma bod davky 4 ("Fewer dead ends") s nazvami z UI a
-    cislami z kodu,
-  * KNOWN_ISSUES.md: uz len otvorene veci - a kazda nova veta je naviazana
-    na kod, aby po oprave zmizla (licencia, ikona, GIF, titulky "Watch ..."
-    v navode parovania, pevne pismo v prehliadke, veci overene len na
-    simulovanych datach, tabulka hodiniek a poziadavky, davka 4b),
-  * README: hlavny vypinac v Quick start, dialog pri prvom ×, skratka v
-    Nastaveniach, odkazy na CHANGELOG,
-  * PRIVACY: hr_session_pending.json medzi lokalnymi subormi, "Try again",
-  * SAFETY: rozlozenia klavesnice a sietove adaptery v uplnom zozname,
-  * HOW-IT-WORKS: "Not now", Dnes a bocny panel, relacie, adresa v navode,
-  * gui_screenshots.py: demo data sedia (pocet pripomienok = trojuholniky,
-    vecer 18-23 h), volby --lang a --okno su opisane v DEVELOPMENT.md,
-  * obrazky v README su bez metadat (EXIF/XMP/textove bloky).
+  * CHANGELOG.md: the version history moved out of KNOWN_ISSUES.md (audit,
+    part 1); the 0.3 section has the batch 4 item ("Fewer dead ends") with
+    names from the UI and numbers from the code,
+  * KNOWN_ISSUES.md: only open items now - and every new sentence is tied
+    to the code so that it disappears after the fix (licence, icon, GIF,
+    the "Watch ..." headings in the pairing guide, the fixed font in the
+    tour, things checked only on simulated data, the watch table and
+    requirements, batch 4b),
+  * README: the main switch in Quick start, the dialog on the first ×, the
+    shortcut in Settings, links to CHANGELOG,
+  * PRIVACY: hr_session_pending.json among the local files, "Try again",
+  * SAFETY: keyboard layouts and network adapters in the full list,
+  * HOW-IT-WORKS: "Not now", Today and the side panel, sessions, the
+    address in the guide,
+  * gui_screenshots.py: the demo data add up (number of cues = triangles,
+    evening 18-23 h), the --lang and --okno options are described in
+    DEVELOPMENT.md,
+  * the images in the README have no metadata (EXIF/XMP/text chunks).
 
-Zamerne sa nepinuju cele odstavce - len nazvy z UI, cisla z kodu a vety,
-ktore po zmene kodu prestanu platit.
+Whole paragraphs are deliberately not pinned - only names from the UI,
+numbers from the code and sentences that stop being true once the code
+changes.
 """
 import ast
 import math
@@ -73,20 +77,20 @@ def _sekcia(text, nadpis):
 
 
 def _cislo(subor, meno):
-    """Cislo z priradenia `meno = 123.0` v zdroji (bez importu Tk)."""
+    """Number from an assignment `meno = 123.0` in source (no Tk import)."""
     m = re.search(r"^\s*%s = ([\d.]+)\s*$" % meno, zdroj_suboru(subor), re.M)
     assert m, (subor, meno)
     return float(m.group(1))
 
 
 def _predvolby():
-    """Predvolby skratky tak, ako ich pisu dokumenty: "Ctrl+Alt+Z, ..."."""
+    """Shortcut defaults the way the docs write them: "Ctrl+Alt+Z, ..."."""
     mena = [hotkey.format_combo(p).replace(" ", "") for p in hotkey.PRESETS]
     return ", ".join(mena[:-1]) + ", " + mena[-1]
 
 
 # --------------------------------------------------------------------------
-# CHANGELOG: sekcia davky 4
+# CHANGELOG: the batch 4 section
 # --------------------------------------------------------------------------
 
 def _davka4():
@@ -113,7 +117,7 @@ def test_changelog_davka_4_menuje_ovladace_ako_appka():
         assert "*%s*" % _en(kluc) in d4, kluc
     assert "*%s*" % _en("dnes.learning", n=1, celkom=hr_stats.KRITICKY_MIN_RELACII) in d4
     assert "*%s*" % _en("kamae.port_busy", port=heart_rate.DEFAULT_PORT) in d4
-    # dock.start su tie iste slova ako v liste, len so znackou
+    # dock.start is the same words as in the tray, just with the mark
     assert _en("dock.start") == "▶ " + _en("tray.start")
     assert _en("dock.stop") == "■ " + _en("tray.stop")
 
@@ -128,12 +132,12 @@ def test_changelog_davka_4_cisla_su_z_kodu():
     assert "(8 to 26)" in d4
     assert _predvolby() + " or *%s*" % _en("settings.snooze_hotkey_none") in d4
     assert "`%s`" % hr_stats.CAKAJUCA_MENO in d4
-    # dotaznik pri ukonceni: dotknute odpovede ako Ulozit, inak ako Preskocit
+    # questionnaire on exit: touched answers as Save, otherwise as Skip
     assert "*%s*" % _en("common.save") in d4 and "*%s*" % _en("session.end.skip") in d4
 
 
 # --------------------------------------------------------------------------
-# KNOWN_ISSUES: len otvorene veci, kazda naviazana na kod
+# KNOWN_ISSUES: only open items, each tied to the code
 # --------------------------------------------------------------------------
 
 def _otvorene():
@@ -144,7 +148,7 @@ def test_known_issues_odkazuje_na_changelog():
     k = _read("KNOWN_ISSUES.md")
     uvod = k[:k.index("\n## Still open")]
     assert "](CHANGELOG.md)" in uvod
-    # nic, co davka 4 opravila, sa uz netvrdi ako otvorene
+    # nothing batch 4 fixed is claimed as open any more
     o = _otvorene()
     assert "can't be changed in the app" not in o
     assert "Windows' own boxes" not in _plain_text(k)
@@ -152,9 +156,10 @@ def test_known_issues_odkazuje_na_changelog():
 
 
 def test_known_issues_licencia_ikona_a_gif():
-    """Licencia: autor rozhodol (2026-11-15) "GPLv3" - len verzia 3. Appka
-    aj vsetky dokumenty hovoria to iste; "or later" ostava len v historii
-    0.2 v CHANGELOG a v zazname o zmene. Ikona a GIF cakaju na autora."""
+    """Licence: the author decided (2026-11-15) "GPLv3" - version 3 only. The
+    app and all the documents say the same; "or later" stays only in the
+    0.2 history in CHANGELOG and in the change record. The icon and the GIF
+    are waiting for the author."""
     o = _otvorene()
     licencia = re.search(r'^LICENCIA = "([^"]+)"', zdroj_suboru("app.py"), re.M)
     assert licencia and licencia.group(1) == "GPLv3"
@@ -165,8 +170,9 @@ def test_known_issues_licencia_ikona_a_gif():
     assert "Licence wording" not in o
     zmeny = _plain_text(_sekcia(_read("CHANGELOG.md"), "What 0.3 changes"))
     assert "everything says GPLv3 (version 3 of the GNU GPL)" in zmeny
-    # Otazka ikony je od 2026-11-15 v LICENSE-DESIGN.md, v casti "What stays
-    # mine" (rozhodnutie autora) - README na tu stranku uz len odkazuje.
+    # Since 2026-11-15 the icon question is in LICENSE-DESIGN.md, in the "What
+    # stays mine" part (the author's decision) - the README only links to that
+    # page now.
     ikona = _plain_text(_sekcia(_read("LICENSE-DESIGN.md"), "2. What stays mine"))
     assert "One thing isn't sorted out yet" in ikona
     assert "`Dandurf.ico`" in ikona and "`make_icon.py`" in ikona
@@ -181,12 +187,12 @@ def test_known_issues_licencia_ikona_a_gif():
 
 
 def test_known_issues_otvorene_texty_su_v_appke():
-    """Kazda veta je naviazana na text v appke: ked sa opravi, test povie,
-    ze bod v KNOWN_ISSUES musi ist prec."""
+    """Every sentence is tied to a text in the app: once it is fixed, the
+    test says the KNOWN_ISSUES item has to go."""
     o = _otvorene()
-    # Davka 4b opravila: meno stranky podla sveta ({page}), "phone connected",
-    # jednu vetu pri obsadenom porte, ram dialogov a zalamovanie ja/zh -
-    # KNOWN_ISSUES to uz za otvorene nevydava.
+    # Batch 4b fixed: the page name by world ({page}), "phone connected",
+    # a single sentence on a busy port, the dialog frame and ja/zh wrapping -
+    # KNOWN_ISSUES no longer presents these as open.
     assert "{page}" in _en("history.empty")
     assert "*%s*" % _en("nav.vhre_work_short") not in o
     for kluc in ("dnes.hr_connected", "settings.hr_status_waiting"):
@@ -195,23 +201,24 @@ def test_known_issues_otvorene_texty_su_v_appke():
     assert "dialogs have no border" not in o
     assert "Japanese and Chinese lines wrap" not in o
     assert "pairing sentence under the busy message" not in o
-    # titulky boxov v navode parovania stale menuju hodinky, hoci sa
-    # pripaja telefon (appka v nom)
+    # the box headings in the pairing guide still name the watch, even
+    # though it is the phone (the app on it) that connects
     for kluc in ("hr.noconnect_title", "hr.trouble_title"):
         assert _en(kluc).startswith("Watch"), kluc
         assert "*%s*" % _en(kluc) in o, kluc
-    # prazdna Historia nema variant pre Pracu: aj tam "zahraj si"
+    # the empty History has no variant for Work: even there it says "play"
     assert "play for at least a minute" in _en("history.empty")
     assert not [k for k in i18n.STRINGS if k.startswith("history.empty_w")]
     assert 'tr("history.empty", page=' in zdroj_suboru("app_history.py")
     assert "History without sessions still asks you to play" in o
-    # stopa relacie v Historii: len hracia veta (Pracu ma len dotaznik)
+    # the session trace in History: only the gaming sentence (only the
+    # questionnaire has Work)
     historia = zdroj_suboru("app_history.py")
     assert 'tr("session.end.trace_hint")' in historia
     assert "trace_hint_work" not in historia
     assert "trace_hint_work" in zdroj_suboru("ui_dialogs.py")
     assert "*One session up close* still says when you were probably playing" in o
-    # pevne latinske pismo: bubliny prehliadky a zoznam palety Ctrl+K
+    # fixed Latin font: the tour bubbles and the Ctrl+K command palette list
     assert 'font=("Segoe UI"' in zdroj_suboru("guided_tour.py")
     assert 'tkfont.Font(family="Segoe UI"' in zdroj_suboru("ui_shell.py")
     assert "bubbles and the Ctrl+K list still use a fixed Latin font" in o
@@ -219,26 +226,26 @@ def test_known_issues_otvorene_texty_su_v_appke():
 
 
 def test_known_issues_skratka_sa_riadi_odpovedou_windowsu():
-    """Davka 4b: riadok skratky a dennik cakaju na skutocny vysledok
-    registracie (`on_result`), takze uz netvrdia "drzi ju iny program", ked
-    je Windows len pomaly. Ostava len to, ze kym Windows neodpovie, riadok
-    ukazuje bezny text ("funguje")."""
+    """Batch 4b: the shortcut row and the journal wait for the real result of
+    the registration (`on_result`), so they no longer claim "another program
+    holds it" when Windows is just slow. All that remains is that until
+    Windows answers, the row shows the usual text ("works")."""
     o = _otvorene()
     assert "another app holds the shortcut even though it works" not in o
     assert "line and the log follow Windows' answer" in o
     assert hotkey.GlobalHotkey.CAKAJ_NA_REGISTRACIU_S == 2.0
     assert "more than two seconds" in o
-    # kym sa caka, riadok nema vlastny text "registrujem..."
+    # while waiting, the row has no text of its own like "registering..."
     sub = zdroj_metody("_snooze_hotkey_sub")
     assert "_hotkey_caka" not in sub and "_hotkey_zlyhala" in sub
     assert "self._hotkey_caka = True" in zdroj_suboru("app.py")
 
 
 def test_known_issues_watch_tabulka_a_poziadavky_cakaju_na_autora():
-    """Model hodiniek autor doplnil (2026-11-15: Samsung Galaxy Watch7).
-    Na autora caka uz len nove meranie systemovych poziadaviek na
-    finalnom builde 0.2.2 - ked sa doplni, bod v KNOWN_ISSUES treba
-    zmazat (tento test spadne)."""
+    """The author filled in the watch model (2026-11-15: Samsung Galaxy
+    Watch7). The only thing still waiting for the author is a new
+    measurement of the system requirements on the final 0.3 build - once
+    it is added, the KNOWN_ISSUES item must be deleted (this test fails)."""
     o = _otvorene()
     readme = _read("README.md")
     tabulka = _sekcia(readme, "Getting your heart rate in")
@@ -280,7 +287,7 @@ def test_readme_odkazuje_na_changelog_a_nove_veci():
     assert "**%s**" % _en("history.delete_session.btn") in t
     assert "*%s*" % _en("common.retry") in t
     assert "*%s*" % _en("kamae.port_busy", port=heart_rate.DEFAULT_PORT) in r
-    # Anti-cheat: appka sa pyta na rozlozenia klavesnice a sietove adaptery
+    # Anti-cheat: the app asks for keyboard layouts and network adapters
     uvod = _plain_text(hore)
     assert "keyboard layouts" in uvod and "network adapters" in uvod
     assert "GetKeyboardLayoutList" in _read("hotkey.py")
@@ -288,7 +295,7 @@ def test_readme_odkazuje_na_changelog_a_nove_veci():
 
 
 # --------------------------------------------------------------------------
-# PRIVACY a SAFETY
+# PRIVACY and SAFETY
 # --------------------------------------------------------------------------
 
 def test_privacy_cakajuca_relacia_je_lokalny_subor():
@@ -296,7 +303,7 @@ def test_privacy_cakajuca_relacia_je_lokalny_subor():
     lokalne = _plain_text(p[:p.index("## The few things that can use the network")])
     assert hr_stats.CAKAJUCA_MENO == "hr_session_pending.json"
     assert "`hr_session_pending.json`" in lokalne
-    # "Zmazat historiu" ho maze tiez - PRIVACY to hovori o suboroch hore
+    # "Delete history" deletes it too - PRIVACY says so about the files above
     assert ("data.delete.pending_session", hr_stats.CAKAJUCA_MENO) in data_io.MAZATELNE
     assert "**%s** there deletes the session, insight and measurement files" % (
         _en("data.delete.btn")) in lokalne
@@ -306,8 +313,8 @@ def test_privacy_cakajuca_relacia_je_lokalny_subor():
 def test_privacy_skusit_znova_je_ako_ctrl_k():
     p = _plain("PRIVACY.md")
     assert "*%s* under *%s*" % (_en("common.retry"), _en("settings.engine")) in p
-    # to iste ako Ctrl+K -> Pripravit hlas: `pregenerate`, ktory pocas
-    # sledovania nic neposle
+    # the same as Ctrl+K -> Prepare the cue voice: `pregenerate`, which sends
+    # nothing while watching
     assert "self.pregenerate(force=True)" in zdroj_metody("skus_hlas_znova")
     assert "*%s*" % _en("common.prepare_voices") in p
 
@@ -322,7 +329,7 @@ def test_safety_uplny_zoznam_ma_rozlozenia_a_adaptery():
         assert "`%s`" % api in zoznam, api
     hk = _read("hotkey.py")
     assert "GetKeyboardLayoutList" in hk and "ToUnicodeEx" in hk
-    # ToUnicodeEx dostava vymysleny stav klavesov, skutocny sa necita
+    # ToUnicodeEx gets a made-up key state, the real one is not read
     assert "GetKeyboardState" not in hk and "GetAsyncKeyState" not in hk
     cele = _plain_text(s)
     assert "„%s“" % _sk("settings.snooze_hotkey") in cele
@@ -378,12 +385,12 @@ def test_how_it_works_svet_relacie_plati_aj_pre_pripomienky():
 
 
 # --------------------------------------------------------------------------
-# gui_screenshots.py a obrazky v README
+# gui_screenshots.py and the images in the README
 # --------------------------------------------------------------------------
 
 def _funkcia_zo_skriptu(meno, **globaly):
-    """Jedna funkcia z gui_screenshots.py bez spustenia skriptu (ten pri
-    importe stavia okno appky a zalohuje data)."""
+    """One function from gui_screenshots.py without running the script (on
+    import it builds the app window and backs up the data)."""
     strom = ast.parse(_read("gui_screenshots.py"))
     uzol = next(u for u in strom.body
                 if isinstance(u, ast.FunctionDef) and u.name == meno)
@@ -394,8 +401,9 @@ def _funkcia_zo_skriptu(meno, **globaly):
 
 
 def test_demo_data_pocet_pripomienok_sedi_s_trojuholnikmi(tmp_path):
-    """Audit: pocet pripomienok a ▼ v krivke sa losovali zvlast ("HLÁŠKY 0"
-    pri troch ▼) a relacie zacinali rano, hoci graf hovori o vecere."""
+    """Audit: the number of cues and the ▼ in the curve were drawn separately
+    ("HLÁŠKY 0" with three ▼) and the sessions started in the morning, even
+    though the chart talks about the evening."""
     for semienko in (7, 1, 23):
         app = types.SimpleNamespace()
         historia = _funkcia_zo_skriptu(
@@ -432,7 +440,7 @@ def test_gui_screenshots_volby():
     else:
         raise AssertionError("neznamy jazyk musi skoncit pred zalohou")
     src = _read("gui_screenshots.py")
-    # volby sa citaju PRED zalohou suborov
+    # the options are read BEFORE the files are backed up
     assert src.index("ARGS = _argumenty(") < src.index("ZALOHOVAT = [")
     assert '"hr_session_pending.json"' in src
     d = _plain("DEVELOPMENT.md")
