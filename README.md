@@ -91,7 +91,7 @@ unchanged; it doesn't make the warning go away.
 1. On the GitHub page open
    [**Releases**](https://github.com/Dandurfin/Zanshin/releases/latest) and
    download `Zanshin-<version>-windows.zip` (for this version
-   `Zanshin-0.3-windows.zip`, about 59 MB). The release lists the file's
+   `Zanshin-0.3-windows.zip`, about 60 MB). The release lists the file's
    **SHA-256** fingerprint.
 2. Check it. In File Explorer open the folder with the ZIP, click the address
    bar, type `powershell` and press Enter. In the window that opens, run this
@@ -182,10 +182,10 @@ sometimes flag programs packed with PyInstaller by mistake. The build is a
 folder rather than one self-unpacking `.exe`, and UPX compression is off; both
 are often blamed for these false alarms, but I can't promise it won't happen.
 And with Smart App Control on (Windows Security → App & browser control),
-Windows can block unsigned programs outright, with no "Run anyway". I haven't
-been able to test how it treats the ZIP or a Zanshin you built yourself. If
-either happens, please don't switch your protection off for Zanshin; open an
-issue instead, so I know.
+Windows can block unsigned programs outright, with no "Run anyway". On my PC,
+with it on, Windows ran the 0.3 Zanshin I built but blocked my older 0.2.1
+build; how it treats the downloaded ZIP is untested. If either happens, please
+don't switch your protection off for Zanshin; open an issue instead, so I know.
 
 **Updating a Zanshin you built:** quit Zanshin first (right-click its tray
 icon → **Quit**). If it's still running, `build.bat` closes it without asking,
@@ -297,9 +297,10 @@ public Wi-Fi (details in [PRIVACY.md](PRIVACY.md)).
 
 - **Windows 11, 64-bit.** It's the only version I've tested. Windows 10 64-bit
   may work, but it's untested.
-- **Disk and memory:** the 0.2.1 ZIP is about 59 MB to download and about
-  125 MB unpacked. On my PC Zanshin used about 200 MB of RAM and about 0.6 % of
-  a 20-thread CPU, roughly an eighth of one core.
+- **Disk and memory:** the 0.3 ZIP is about 60 MB to download and about
+  126 MB unpacked. On my PC, while watching with heart rate coming in,
+  Zanshin used about 170 MB of RAM and about 0.7 % of a 20-thread CPU,
+  roughly a seventh of one core.
 - **A smartwatch and a companion app** that sends heart rate to this PC, with
   the phone and the PC on the same home network (see the table above).
 - **Internet:** while you use Zanshin, only for the natural voice (optional)

@@ -243,9 +243,8 @@ def test_known_issues_skratka_sa_riadi_odpovedou_windowsu():
 
 def test_known_issues_watch_tabulka_a_poziadavky_cakaju_na_autora():
     """The author filled in the watch model (2026-11-15: Samsung Galaxy
-    Watch7). The only thing still waiting for the author is a new
-    measurement of the system requirements on the final 0.3 build - once
-    it is added, the KNOWN_ISSUES item must be deleted (this test fails)."""
+    Watch7) and measured the system requirements again on the 0.3 build
+    (2026-11-15), so the KNOWN_ISSUES item about old numbers is gone."""
     o = _otvorene()
     readme = _read("README.md")
     tabulka = _sekcia(readme, "Getting your heart rate in")
@@ -254,8 +253,9 @@ def test_known_issues_watch_tabulka_a_poziadavky_cakaju_na_autora():
     assert "tested: a Samsung Galaxy Watch7 with an Android phone" in _plain_text(readme)
     assert "doesn't name my watch" not in o
     poziadavky = _plain_text(_sekcia(readme, "System requirements"))
-    assert "the 0.2.1 ZIP is about 59 MB" in poziadavky
-    assert "The system requirements are from 0.2.1." in o
+    assert "the 0.3 ZIP is about 60 MB" in poziadavky
+    assert "while watching with heart rate coming in" in poziadavky
+    assert "The system requirements are from 0.2.1." not in o
 
 
 # --------------------------------------------------------------------------

@@ -44,8 +44,9 @@ about, and a few will stay.
 - **Zanshin isn't code-signed.** The ready-made ZIP gets Windows' "unknown
   publisher" warning (*More info → Run anyway*); building it yourself avoids
   it. With Smart App Control on, Windows can block unsigned programs
-  outright, with no "Run anyway" button. The README says so, but how it
-  treats the ZIP or a Zanshin you built yourself is untested.
+  outright, with no "Run anyway" button. On my PC, with it on, Windows ran
+  the 0.3 Zanshin I built but blocked my older 0.2.1 build. How it treats
+  the downloaded ZIP is untested.
 - **Not a medical device.** Load, heart rate recovery and HR persistence (one
   number for how high your pulse ran and for how long) are rough trends from a
   consumer watch, not diagnoses, and nothing is clinically validated. This
@@ -90,9 +91,6 @@ about, and a few will stay.
   and the icon that stays mine begins (see [LICENSE-DESIGN.md](LICENSE-DESIGN.md)).
 - **No clip of a cue over a game yet.** The README shows Zanshin's own window
   only; a short GIF of a cue over a game in Borderless is still missing.
-- **The system requirements are from 0.2.1.** The download and disk size,
-  memory and CPU use in the README were measured on the 0.2.1 build; I'll
-  measure them again on the final 0.3 build.
 
 ## How to help
 
