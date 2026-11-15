@@ -73,11 +73,13 @@ foreach ($module in @('edge_tts', 'comtypes', 'pystray', 'PIL',
 }
 
 # edge-tts (prirodzeny hlas) build stiahne pri KAZDOM behu v najnovsej
-# povolenej verzii: Microsoft od novembra 2026 odmieta starsie verzie
-# (HTTP 403) a ked nieco zmeni znova, oprava zvycajne pride v novom edge-tts -
-# aj do buildu po mesiaci bez vydania. Cyklus vyssie instaluje len CHYBAJUCI
-# modul.
-# Poziadavka (minimum aj strop) je len v requirements.txt. Upgrade dostane
+# verzii: Microsoft od novembra 2026 odmieta starsie verzie (HTTP 403) a ked
+# nieco zmeni znova, oprava zvycajne pride v novom edge-tts - aj do buildu po
+# mesiaci bez vydania. Cyklus vyssie instaluje len CHYBAJUCI modul.
+# Strop verzie zamerne nie je (moze zablokovat presne tu opravu) - novu
+# verziu preto build za upgradom vyskusa: API bez siete a jedno skusobne
+# slovo (nizsie).
+# Poziadavka (minimum) je len v requirements.txt. Upgrade dostane
 # LEN edge-tts: pip predvolene (--upgrade-strategy only-if-needed) zdvihne
 # jeho zavislost, len ked jej verzia edge-tts nestaci; ostatne balicky necha.
 # Medzera za menom je zamerna: argument s medzerou da PowerShell 5.1 do
@@ -115,7 +117,62 @@ if ($LASTEXITCODE -ne 0) {
 if ($edgePip -ne 0) {
     Write-Host "Najnovsi edge-tts som nevedel overit (bez internetu?) - build pokracuje s nainstalovanym $edgeVerzia." -ForegroundColor Yellow
 }
+
+# Retazce pre 'py -c' nizsie: bez uvodzoviek (PowerShell 5.1 ich nativnemu
+# programu pokazi, viz $edgeKontrola) a bez znaku percenta - Python cez .bat
+# ide cez cmd.exe a ten by %...% bral ako premennu; preto rate='+0' + chr(37)
+# (= '+0%', ako edge_rate_str v audio_engine). sys.excepthook vypise namiesto
+# tracebacku jeden riadok "Trieda: sprava" - ten ide do hlasky buildu.
+# (a) API bez siete: presne volanie z audio_engine (EdgeTTSCache.ensure) -
+# Communicate(text, hlas, rate=...) a async save. Ked neprejde, novy edge-tts
+# zmenil API: exe by mal prirodzeny hlas mrtvy, build preto zastavi a povie,
+# ako sa vratit na posledny fungujuci.
+$edgeApi = "import inspect, sys; sys.excepthook = lambda t, e, b: print(t.__name__ + ': ' + str(e)[:160]); import edge_tts; k = edge_tts.Communicate('Zanshin', 'en-GB-SoniaNeural', rate='+0' + chr(37)); ok = inspect.iscoroutinefunction(getattr(k, 'save', None)); ok or print('Communicate.save nie je async'); sys.exit(0 if ok else 1)"
+$edgeApiDovod = "$(Invoke-Py '-c' $edgeApi)".Trim()
+if ($LASTEXITCODE -ne 0) {
+    $pyPrikaz = (@($PY.Exe) + $PY.Pre) -join ' '
+    if ($edgeVerzia -eq $edgeMin) {
+        # zlyhalo aj samotne minimum - edge-tts sa nezmenil, chyba je okolo neho
+        Fail ("edge-tts $edgeVerzia sa neda pouzit ($edgeApiDovod) - chyba je asi v jeho zavislosti. " +
+              "Preinstaluj ho: $pyPrikaz -m pip install --force-reinstall `"edge-tts==$edgeVerzia`" a spusti build znova.")
+    }
+    # Posledny fungujuci: o hlavnu verziu nizsie (8.0 -> <8, najnovsia 7.x);
+    # v ramci tej istej hlavnej verzie najnovsia pred tou pokazenou.
+    $edgeHlavna = 0
+    if ($edgeVerzia -match '^(\d+)') { $edgeHlavna = [int]$Matches[1] }
+    $edgeMinHlavna = 0
+    if ($edgeMin -match '^(\d+)') { $edgeMinHlavna = [int]$Matches[1] }
+    if ($edgeHlavna -gt $edgeMinHlavna) { $edgeSpat = "edge-tts>=$edgeMin,<$edgeHlavna" }
+    else { $edgeSpat = "edge-tts>=$edgeMin,<$edgeVerzia" }
+    Fail ("edge-tts $edgeVerzia sa zmenil tak, ze ho Zanshin nevie pouzit ($edgeApiDovod). " +
+          "Vrat sa na posledny fungujuci: v requirements.txt zmen riadok edge-tts na $edgeSpat a spusti build znova " +
+          "(zo zdrojakov rucne: $pyPrikaz -m pip install `"$edgeSpat`"). Natrvalo to opravi az novsi Zanshin.")
+}
 Write-Host "edge-tts $edgeVerzia ide do buildu (treba aspon $edgeMin)" -ForegroundColor Green
+
+# (b) Skusobne slovo, len s internetom (sonda indexu vyssie): "Zanshin" cez
+# Microsoft do docasneho suboru v %TEMP%, ktory sa hned zmaze. Ked neprejde,
+# build NEzastavi - exe funguje aj s hlasom z Windows a prirodzeny hlas neskor
+# opravi tlacidlo Aktualizovat hlas v appke (alebo dalsi build s novsim
+# edge-tts). Hlaska je ale hlasna, nech ju vidno.
+if ($edgePip -ne 0) {
+    Write-Host "Skusobne slovo vynechavam (bez internetu) - prirodzeny hlas s edge-tts $edgeVerzia som neoveril." -ForegroundColor Yellow
+} else {
+    $edgeSlovo = "import asyncio, os, sys; sys.excepthook = lambda t, e, b: print(t.__name__ + ': ' + str(e)[:160]); import edge_tts; p = sys.argv[1]; asyncio.run(asyncio.wait_for(edge_tts.Communicate('Zanshin', 'en-GB-SoniaNeural', rate='+0' + chr(37)).save(p), 30)); n = os.path.getsize(p); n or print('prazdny zvuk'); sys.exit(0 if n else 1)"
+    $edgeSubor = Join-Path $env:TEMP ('zanshin-edge-tts-' + [guid]::NewGuid().ToString('N') + '.mp3')
+    $edgeSlovoDovod = "$(Invoke-Py '-c' $edgeSlovo $edgeSubor)".Trim()
+    $edgeSlovoKod = $LASTEXITCODE
+    Remove-Item -LiteralPath $edgeSubor -Force -ErrorAction SilentlyContinue
+    if ($edgeSlovoKod -eq 0) {
+        Write-Host "prirodzeny hlas overeny (edge-tts $edgeVerzia)" -ForegroundColor Green
+    } else {
+        Write-Host ""
+        Write-Host "!!! POZOR: Microsoft odmieta aj edge-tts $edgeVerzia, alebo jeho hlasova sluzba prave neodpoveda ($edgeSlovoDovod)." -ForegroundColor Yellow
+        Write-Host "!!! Build pokracuje, ale prirodzeny hlas v nom teraz nejde - pripomienky povie hlas z Windows." -ForegroundColor Yellow
+        Write-Host "!!! Opravit ho vie tlacidlo Aktualizovat hlas v appke (ked vyjde novsi edge-tts) alebo dalsi build." -ForegroundColor Yellow
+        Write-Host ""
+    }
+}
 
 Invoke-Py '-m' 'PyInstaller' '--version' 2>&1 | Out-Null
 if ($LASTEXITCODE -ne 0) {

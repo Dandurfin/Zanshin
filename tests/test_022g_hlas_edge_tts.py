@@ -8,25 +8,38 @@ neopravil: requirements.txt mal holy "edge-tts" a build_all.ps1 instaloval
 zavislosti len ked nejaky modul CHYBAL - stara verzia v PC ostala navzdy.
 A zlyhanie islo len do dennika v okne, nie do logs/app.log.
 
-Rozhodnutie autora (2026-11-15): build stiahne najnovsi povoleny edge-tts
-pri KAZDOM behu - ked Microsoft zmeni nieco znova, aj build po mesiaci bez
-vydania dostane opravu. Strop <8 drzi mimo buildu neoverenu hlavnu verziu.
+Rozhodnutie autora (2026-11-15): build stiahne najnovsi edge-tts pri KAZDOM
+behu - ked Microsoft zmeni nieco znova, aj build po mesiaci bez vydania
+dostane opravu. Strop verzie (bol <8) zamerne nie je - oba overovatelia
+predoslej zmeny ukazali, ze moze zablokovat presne tu opravu. Zlucitelnost
+sa preto overuje funkcne: build za upgradom vyskusa API (bez siete) a
+jedno skusobne slovo, appka (tlacidlo Aktualizovat hlas, hlas_kniznica.py)
+kazdu stiahnutu verziu tiez.
 
 Co strazi tento test:
-  * requirements.txt ma edge-tts s minimom a stropom (jediny zdroj) a
+  * requirements.txt ma edge-tts s minimom a BEZ stropu (jediny zdroj) a
     ostatne riadky ostali,
   * build_all.ps1 celu poziadavku aj minimum cita z requirements.txt (tym
     istym vzorom ako check_before_run.py) a pri kazdom builde spusti
     `pip install --upgrade` LEN pre tuto poziadavku (s --retries/--timeout);
     bez internetu pokracuje, len ked nainstalovany edge-tts minimum splna,
     inak zastavi build (Fail),
-  * skutocny blok z build_all.ps1 v powershell.exe s falosnym pip (uspech,
-    bez internetu, zlyhanie) robi presne to - kazdy pripad zvlast,
+  * za upgradom build vyskusa API edge-tts bez siete (`py -c`: import,
+    Communicate('Zanshin', hlas, rate='+0%'), async save) - zlyhanie
+    zastavi build (Fail) s presnym pip prikazom spat na posledny
+    fungujuci; potom (len s internetom) skusobne slovo do %TEMP% - zlyhanie
+    je hlasne ZLTE varovanie, nie Fail (exe ide aj s hlasom z Windows a
+    appka si hlas opravi sama); bez internetu sa slovo vynecha,
+  * skutocny blok z build_all.ps1 v powershell.exe s falosnym pip a
+    falosnym edge_tts (uspech, bez internetu, zlyhanie, zmenene API,
+    odmietnute slovo) robi presne to - kazdy pripad zvlast,
   * ten isty blok so SKUTOCNYM Invoke-Py cez python.bat (cmd.exe, cesta s
-    medzerou) doruci poziadavku do sys.argv celu a v priecinku buildu
-    nevznikne ziadny subor (holy '<' a '>' by cmd zobral ako presmerovanie),
+    medzerou) doruci poziadavku aj oba `py -c` riadky do sys.argv cele a
+    v priecinku buildu nevznikne ziadny subor (holy '<' a '>' by cmd zobral
+    ako presmerovanie, '%' ako premennu),
   * kontrola verzie z build_all.ps1 naozaj funguje (falosne dist-info v
-    tmp_path, bez siete a bez instalacie),
+    tmp_path, bez siete a bez instalacie), API skuska prejde so skutocnym
+    nainstalovanym edge-tts (bez siete - sockety su zakazane),
   * zlyhana priprava hlasu zapise raz za druh chyby jeden riadok do app.log
     - druh, kratku chybu bez ciest a verziu edge-tts,
   * skutocna aiohttp.WSServerHandshakeError (403) cez skutocny edge-tts a
@@ -69,9 +82,9 @@ def _cisla(verzia):
 
 
 def _edge_riadok():
-    """(podmienka, minimum, strop) z riadku edge-tts>=X,<N v requirements.txt.
-    Vlastny prisny vzor - nezavisly od vzoru v builde."""
-    zhody = re.findall(r"^\s*edge-tts\s*(>=\s*([0-9.]+)\s*,\s*<\s*([0-9]+))\s*$",
+    """(podmienka, minimum) z riadku edge-tts>=X v requirements.txt - bez
+    stropu. Vlastny prisny vzor - nezavisly od vzoru v builde."""
+    zhody = re.findall(r"^\s*edge-tts\s*(>=\s*([0-9]+(?:\.[0-9]+)*))\s*$",
                        _read("requirements.txt"), re.M)
     assert len(zhody) == 1, zhody
     return zhody[0]
@@ -93,19 +106,41 @@ def _kontrola_z_buildu():
     return zhoda.group(1)
 
 
+def _py_c_z_buildu(meno):
+    """Python pre `py -c` z riadku `$meno = "..."` v build_all.ps1."""
+    zhody = re.findall(r'^\s*\$%s = "([^"]+)"$' % meno, _read("build_all.ps1"), re.M)
+    assert len(zhody) == 1, "build_all.ps1 nema prave jeden $%s" % meno
+    return zhody[0]
+
+
+def _api_z_buildu():
+    return _py_c_z_buildu("edgeApi")
+
+
+def _slovo_z_buildu():
+    return _py_c_z_buildu("edgeSlovo")
+
+
 # --------------------------------------------------------------------------
 # requirements.txt
 # --------------------------------------------------------------------------
 
-def test_requirements_ma_minimum_a_strop_edge_tts():
-    podmienka, minimum, strop = _edge_riadok()
+def test_requirements_ma_minimum_edge_tts_bez_stropu():
+    podmienka, minimum = _edge_riadok()
     assert _cisla(minimum) >= (7, 3, 1)
-    # strop = dalsia hlavna verzia: neoverena (moze zmenit API) do buildu
-    # nepride, kazda novsia 7.x ano
-    assert int(strop) == _cisla(minimum)[0] + 1, podmienka
-    riadky = [r.strip() for r in _read("requirements.txt").splitlines()
+    req = _read("requirements.txt")
+    riadky = [r.strip() for r in req.splitlines()
               if r.strip() and not r.lstrip().startswith("#")]
+    edge = [r for r in riadky if r.startswith("edge-tts")]
+    # bez stropu: oprava z novej hlavnej verzie musi do buildu prist
+    assert edge == ["edge-tts" + podmienka] and "<" not in edge[0] and "," not in edge[0]
     assert "edge-tts" not in riadky, "holy edge-tts by nechal staru verziu"
+    # komentar hovori preco a kto zlucitelnost overuje namiesto stropu
+    komentar = " ".join(r.lstrip("# ").strip() for r in req.splitlines()
+                        if r.lstrip().startswith("#"))
+    assert "Strop zamerne nie je" in komentar
+    assert "vyskusa jej API" in komentar and "skusobne slovo" in komentar
+    assert "Aktualizovat hlas" in komentar and "necha si ju, len ked funguje" in komentar
     # ostatne zavislosti ostali, ako boli (bez verzii - build ich necha tak)
     assert [r for r in riadky if not r.startswith("edge-tts")] == [
         "pyttsx3", "comtypes", "pystray", "pillow", "customtkinter", "numpy",
@@ -125,14 +160,15 @@ def _blok_z_buildu():
 
 def test_build_cita_poziadavku_z_requirements_tym_istym_vzorom():
     vzor = _vzor_z_buildu()
-    podmienka, minimum, strop = _edge_riadok()
+    podmienka, minimum = _edge_riadok()
     # PowerShell -match je bez ohladu na velkost pismen; skupina 1 = cela
     # podmienka (ide do pip), skupina 2 = minimum (kontrola verzie)
     najdene = [(z.group(1).strip(), z.group(2))
                for r in _read("requirements.txt").splitlines()
                if (z := re.match(vzor, r, re.I))]
     assert najdene == [(podmienka, minimum)]
-    assert podmienka == ">=%s,<%s" % (minimum, strop)
+    assert podmienka == ">=%s" % minimum
+    # docasny strop (rada buildu pri zmenenom API) vzor stale precita cely
     for riadok, cakane in (
             ("edge-tts >= 7.3.1, <8  # komentar", (">= 7.3.1, <8", "7.3.1")),
             ("edge-tts>=7.10.0,<8", (">=7.10.0,<8", "7.10.0")),
@@ -150,8 +186,10 @@ def test_build_cita_poziadavku_z_requirements_tym_istym_vzorom():
     assert "$riadok -match $edgeMinVzor" in skript
     assert "$edgePoziadavka = 'edge-tts ' + $Matches[1].Trim()" in skript
     assert "$edgeMin = $Matches[2]" in skript
-    # jediny zdroj: ziadne cislo verzie ani strop natvrdo v skripte
-    assert minimum not in skript and "<%s" % strop not in skript
+    # jediny zdroj: ziadne cislo verzie ani strop natvrdo v skripte (rada
+    # "spat na posledny fungujuci" sa sklada z premennych)
+    assert minimum not in skript
+    assert not re.search(r"edge-tts\s*(?:[<>=!~]=?|,)\s*\d", skript)
     # ta ista poziadavka v predbeznej kontrole, minimum je tam tiez skupina 2
     kontrola = _read("check_before_run.py")
     assert vzor in kontrola
@@ -188,20 +226,106 @@ def test_build_vzdy_zdvihne_len_edge_tts_a_bez_internetu_rozhodne_minimum():
     assert blok.count("Invoke-Py '-c' $edgeKontrola $edgeMin") == 1
     assert blok.index(sonda) < over
     po = blok[over:]
-    pod_minimom = po[po.index("if ($LASTEXITCODE -ne 0) {"):po.index("if ($edgePip -ne 0) {\n    Write-Host")]
+    bez_netu = po.index("if ($edgePip -ne 0) {\n    Write-Host \"Najnovsi")
+    pod_minimom = po[po.index("if ($LASTEXITCODE -ne 0) {"):bez_netu]
     assert pod_minimom.count("Fail \"") == 2
     assert "skontroluj internet" in pod_minimom and "nefungoval" in pod_minimom
     # bez internetu (pip alebo sonda zlyhali) a minimum splnene: zlte, pokracuje
-    zlte = po[po.index("if ($edgePip -ne 0) {\n    Write-Host"):]
+    api = po.index("$edgeApi = ")
+    zlte = po[bez_netu:api]
     assert "nevedel overit (bez internetu?)" in zlte and "-ForegroundColor Yellow" in zlte
     assert "Fail" not in zlte
-    # verzia, ktora ide do exe, je vzdy v logu buildu
-    assert 'Write-Host "edge-tts $edgeVerzia ide do buildu' in zlte
+    # verzia, ktora ide do exe, je vzdy v logu buildu - az za API skuskou
+    assert po.index('Write-Host "edge-tts $edgeVerzia ide do buildu') > api
     assert "Fail \"requirements.txt nema minimum pre edge-tts" in blok
     # ziadne 'packaging' (nemusi byt nainstalovany)
     assert "packaging" not in _kontrola_z_buildu()
     # PowerShell 5.1 skript bez BOM cita ako ANSI - ostava cisto ASCII
     assert skript.isascii()
+
+
+def test_py_c_riadky_prezyju_powershell_aj_cmd():
+    """Oba nove `py -c` riadky: bez uvodzoviek (PowerShell 5.1 ich nativnemu
+    programu pokazi), bez '%' (cmd.exe pri Pythone cez .bat), bez '$' a
+    spatneho apostrofu (PowerShell by ich v "..." rozvinul), jeden riadok."""
+    for kod in (_api_z_buildu(), _slovo_z_buildu(), _kontrola_z_buildu()):
+        for zly in ('"', "%", "$", "`", "\n", "\t", "!"):
+            assert zly not in kod, (zly, kod)
+        compile(kod, "<py -c>", "exec")
+    # '+0%' sa sklada z chr(37) - presne ako edge_rate_str(0) v audio_engine
+    from audio_engine import edge_rate_str
+    assert "+0" + chr(37) == edge_rate_str(0)
+    for kod in (_api_z_buildu(), _slovo_z_buildu()):
+        assert "Communicate('Zanshin', 'en-GB-SoniaNeural', rate='+0' + chr(37))" in kod
+        # kratky dovod (Trieda: sprava) namiesto tracebacku ide do hlasky
+        assert "sys.excepthook = lambda t, e, b: print(t.__name__ + ': ' + str(e)[:160])" in kod
+    # API skuska nejde na siet: save sa len overi (async), nevola sa
+    assert ".save(" not in _api_z_buildu()
+    assert "inspect.iscoroutinefunction(getattr(k, 'save', None))" in _api_z_buildu()
+    # skusobne slovo: subor z argumentu, casovy limit, prazdny zvuk = zlyhanie
+    slovo = _slovo_z_buildu()
+    assert "p = sys.argv[1]" in slovo and ".save(p), 30)" in slovo
+    assert "asyncio.run(asyncio.wait_for(" in slovo and "print('prazdny zvuk')" in slovo
+
+
+def test_build_vyskusa_api_a_skusobne_slovo():
+    blok = _blok_z_buildu()
+    riadky = [r.strip() for r in blok.splitlines()]
+    # poradie: kontrola verzie -> API (vzdy, aj bez internetu) -> "ide do
+    # buildu" -> skusobne slovo (len s internetom)
+    over = blok.index("$edgeVerzia = \"$(Invoke-Py '-c' $edgeKontrola $edgeMin)\".Trim()")
+    api = blok.index("$edgeApiDovod = \"$(Invoke-Py '-c' $edgeApi)\".Trim()")
+    ide = blok.index('Write-Host "edge-tts $edgeVerzia ide do buildu')
+    offline = blok.index("if ($edgePip -ne 0) {\n    Write-Host \"Skusobne slovo vynechavam")
+    slovo = blok.index("$edgeSlovoDovod = \"$(Invoke-Py '-c' $edgeSlovo $edgeSubor)\".Trim()")
+    assert over < api < ide < offline < slovo
+    assert blok.count("Invoke-Py '-c' $edgeApi") == 1
+    assert blok.count("Invoke-Py '-c' $edgeSlovo") == 1
+    # API neprejde = Fail (oba pripady), s presnym pip prikazom spat
+    zlyhane_api = blok[api:ide]
+    assert zlyhane_api.count("Fail (") == 2
+    assert "sa zmenil tak, ze ho Zanshin nevie pouzit ($edgeApiDovod)" in zlyhane_api
+    assert ("$pyPrikaz -m pip install `\"$edgeSpat`\"" in zlyhane_api
+            and "v requirements.txt zmen riadok edge-tts na $edgeSpat" in zlyhane_api)
+    assert "$pyPrikaz = (@($PY.Exe) + $PY.Pre) -join ' '" in riadky
+    # skusobne slovo: bez internetu sa vynecha (zlte), inak subor v %TEMP%,
+    # ktory sa zmaze vzdy; zlyhanie je zlte varovanie, NIE Fail
+    cast = blok[offline:]
+    assert "Fail" not in cast
+    assert ("$edgeSubor = Join-Path $env:TEMP ('zanshin-edge-tts-' + "
+            "[guid]::NewGuid().ToString('N') + '.mp3')") in riadky
+    zmaz = "Remove-Item -LiteralPath $edgeSubor -Force -ErrorAction SilentlyContinue"
+    assert riadky.count(zmaz) == 1
+    assert cast.index("$edgeSlovoKod = $LASTEXITCODE") < cast.index(zmaz) < cast.index(
+        "if ($edgeSlovoKod -eq 0) {")
+    assert 'Write-Host "prirodzeny hlas overeny (edge-tts $edgeVerzia)" -ForegroundColor Green' in riadky
+    varovanie = cast[cast.index("} else {\n        Write-Host \"\""):]
+    assert varovanie.count("-ForegroundColor Yellow") == 3
+    assert "Microsoft odmieta aj edge-tts $edgeVerzia" in varovanie
+    assert "hlas z Windows" in varovanie and "Aktualizovat hlas" in varovanie
+    # s internetom = rovnaka podmienka ako zlta hlaska "nevedel overit"
+    assert blok.count("if ($edgePip -ne 0) {") == 3
+
+
+def test_predbezna_kontrola_upozorni_na_strop():
+    """Strop v requirements.txt (docasna rada buildu pri zmenenom API) je v
+    check_before_run.py len upozornenie - nech sa na neho nezabudne."""
+    kontrola = _read("check_before_run.py")
+    z = re.search(r'_strop = re\.search\(r"([^"]+)", _minimum\.group\(1\)\)', kontrola)
+    assert z, "check_before_run.py nehlada strop v podmienke edge-tts"
+    vzor_stropu, vzor = z.group(1), _vzor_z_buildu()
+    for riadok, ma_strop in (("edge-tts>=7.3.1", False),
+                             ("edge-tts>=7.3.1,<8", True),
+                             ("edge-tts >= 7.3.1, <= 7.9", True),
+                             ("edge-tts>=7.3.1,<7.4.0", True),
+                             ("edge-tts>=7.3.1  # <8 neskor", False)):
+        podmienka = re.match(vzor, riadok, re.I).group(1)
+        assert bool(re.search(vzor_stropu, podmienka)) == ma_strop, riadok
+    assert not re.search(vzor_stropu, _edge_riadok()[0]), "dnes strop nie je"
+    blok = kontrola[kontrola.index("_strop = re.search"):
+                    kontrola.index("_verzia = _metadata.version")]
+    assert "notes.append(" in blok and "problems.append(" not in blok
+    assert blok.isascii()
 
 
 # --------------------------------------------------------------------------
@@ -210,15 +334,60 @@ def test_build_vzdy_zdvihne_len_edge_tts_a_bez_internetu_rozhodne_minimum():
 #
 # Bezi PRAVY kod bloku (citanie requirements.txt, rozhodovanie, hlasky);
 # Fail a Write-Host su prepisane na zaznam, Invoke-Py na falosny pip.
-# Kontrola verzie ('-c' $edgeKontrola) ide do skutocneho Pythonu s `-S`
-# nad falosnym dist-info - ako test_kontrola_verzie_z_buildu_naozaj_porovna.
+# Vsetky '-c' (kontrola verzie, API skuska, skusobne slovo) idu do
+# skutocneho Pythonu s `-S` nad falosnym dist-info a FALOSNYM edge_tts v
+# tmp_path - ako test_kontrola_verzie_z_buildu_naozaj_porovna. Na siet
+# nejde nic: skutocny edge-tts s -S ani nie je vidno.
 # Falosny pip: install vrati kod zo scenara a pri uspechu "nainstaluje"
 # verziu `po`; sonda (--dry-run) vrati `sonda`. Pip bez internetu realne
 # (overene 2026-11): s vyhovujucim edge-tts skonci 0, so starym 1.
+# Falosny edge_tts sa sprava podla FALOSNY_EDGE = "api,slovo":
+#   api:   ok | konstruktor (TypeError - zmeneny podpis) | sync (save nie
+#          je async) | import (ImportError pri importe)
+#   slovo: ok | 403 (zapise kus suboru a odmietne) | prazdne (prazdny subor)
+# Cestu suboru pre skusobne slovo zapise do FALOSNY_ZAZNAM.
+
+_FALOSNY_EDGE_TTS = r'''
+import os
+
+_API, _SLOVO = (os.environ.get("FALOSNY_EDGE") or "ok,ok").split(",")
+if _API == "import":
+    raise ImportError("falosny edge_tts: chyba zavislost aiohttp")
+
+
+class Communicate:
+    def __init__(self, text, voice, **kw):
+        if _API == "konstruktor":
+            raise TypeError("Communicate.__init__() got an unexpected keyword argument 'rate'")
+        # presne volanie z buildu - aj '%' poskladane z chr(37)
+        if (text, voice, kw) != ("Zanshin", "en-GB-SoniaNeural", {"rate": "+0%"}):
+            raise ValueError("necakane volanie %r" % ((text, voice, kw),))
+
+    if _API == "sync":
+        def save(self, cesta):
+            raise AssertionError("synchronny save sa nesmie volat")
+    else:
+        async def save(self, cesta):
+            with open(os.environ["FALOSNY_ZAZNAM"], "a", encoding="utf-8") as fh:
+                fh.write(cesta + "\n")
+            with open(cesta, "wb") as fh:
+                fh.write(b"" if _SLOVO == "prazdne" else b"ID3")
+            if _SLOVO == "403":
+                raise ConnectionError("403, message='Invalid response status'")
+'''
+
+
+def _falosny_edge_tts(site):
+    balik = site / "edge_tts"
+    balik.mkdir()
+    (balik / "__init__.py").write_text(_FALOSNY_EDGE_TTS, encoding="ascii")
+
 
 _HARNESS = r"""
-param([string]$Blok, [string]$Scenare, [string]$Vystup, [string]$Python, [string]$Site)
+param([string]$Blok, [string]$Scenare, [string]$Vystup, [string]$Python, [string]$Site,
+      [string]$Zaznamy)
 $kod = [IO.File]::ReadAllText($Blok)
+$PY = @{ Exe = 'py'; Pre = @('-3') }
 function Fail($message) { throw "CHYBA: $message" }
 function Write-Host {
     param([Parameter(Position = 0)] $Object = '', $ForegroundColor = '')
@@ -244,6 +413,8 @@ foreach ($s in (Get-Content $Scenare -Raw | ConvertFrom-Json)) {
     $script:s = $s
     Nastav-Verziu $s.pred
     Set-Location $s.priecinok
+    $env:FALOSNY_EDGE = $s.edge
+    $env:FALOSNY_ZAZNAM = Join-Path $Zaznamy "$($s.id).txt"
     $global:LASTEXITCODE = 0
     try { & ([scriptblock]::Create($kod)); $koniec = 'presiel' }
     catch { $koniec = $_.Exception.Message }
@@ -252,15 +423,25 @@ foreach ($s in (Get-Content $Scenare -Raw | ConvertFrom-Json)) {
 [IO.File]::WriteAllLines($Vystup, $script:riadky.ToArray())
 """
 
-# id: (nainstalovany pred, kod pip install, verzia po uspesnom pip, kod sondy)
+# id: (nainstalovany pred, kod pip install, verzia po uspesnom pip, kod sondy,
+#      falosny edge_tts "api,slovo")
 _SCENARE = {
-    "online_stary": ("7.2.8", 0, "7.3.1", 0),
-    "online_najnovsi": ("7.3.1", 0, None, 0),
-    "offline_dost_novy": ("7.3.1", 0, None, 1),     # pip OK, sonda nie
-    "offline_stary": ("7.2.8", 1, None, 1),
-    "offline_ziadny": (None, 1, None, 1),
-    "pip_zlyhal_dost_novy": ("7.10.0", 1, None, 0),  # ciselne: 7.10 > 7.3
-    "pip_ok_stale_stary": ("7.2.8", 0, None, 0),
+    "online_stary": ("7.2.8", 0, "7.3.1", 0, "ok,ok"),
+    "online_najnovsi": ("7.3.1", 0, None, 0, "ok,ok"),
+    # bez internetu: slovo by zlyhalo (403) - nesmie sa ani skusit
+    "offline_dost_novy": ("7.3.1", 0, None, 1, "ok,403"),     # pip OK, sonda nie
+    "offline_stary": ("7.2.8", 1, None, 1, "ok,ok"),
+    "offline_ziadny": (None, 1, None, 1, "ok,ok"),
+    "pip_zlyhal_dost_novy": ("7.10.0", 1, None, 0, "ok,403"),  # ciselne: 7.10 > 7.3
+    "pip_ok_stale_stary": ("7.2.8", 0, None, 0, "ok,ok"),
+    # upgrade priniesol edge-tts so zmenenym API
+    "api_nova_hlavna": ("7.3.1", 0, "8.0.0", 0, "konstruktor,ok"),
+    "api_ta_ista_hlavna": ("7.3.1", 0, "7.4.0", 0, "sync,ok"),
+    "api_import_offline": ("8.1.0", 1, None, 1, "import,ok"),   # API skuska aj bez siete
+    "api_minimum": ("7.3.1", 0, None, 0, "konstruktor,ok"),
+    # API v poriadku, ale skusobne slovo nie
+    "slovo_odmietnute": ("7.3.1", 0, None, 0, "ok,403"),
+    "slovo_prazdne": ("7.3.1", 0, None, 0, "ok,prazdne"),
 }
 
 
@@ -271,29 +452,39 @@ def beh_bloku(tmp_path_factory):
         pytest.skip("powershell.exe tu nie je")
     tmp = tmp_path_factory.mktemp("edge_blok")
     s_req, bez_req, site = tmp / "s_req", tmp / "bez_req", tmp / "site"
-    for p in (s_req, bez_req, site):
+    zaznamy, temp = tmp / "zaznamy", tmp / "temp s medzerou"
+    for p in (s_req, bez_req, site, zaznamy, temp):
         p.mkdir()
+    _falosny_edge_tts(site)
     (s_req / "requirements.txt").write_text(_read("requirements.txt"), encoding="utf-8")
     (bez_req / "requirements.txt").write_text("pyttsx3\nedge-tts\n", encoding="utf-8")
-    scenare = [{"id": i, "pred": pred, "pip": pip, "po": po, "sonda": sonda,
-                "priecinok": str(s_req)} for i, (pred, pip, po, sonda) in _SCENARE.items()]
+    scenare = [{"id": i, "pred": pred, "pip": pip, "po": po, "sonda": sonda, "edge": edge,
+                "priecinok": str(s_req)}
+               for i, (pred, pip, po, sonda, edge) in _SCENARE.items()]
     scenare.append({"id": "bez_minima", "pred": "7.3.1", "pip": 0, "po": None,
-                    "sonda": 0, "priecinok": str(bez_req)})
+                    "sonda": 0, "edge": "ok,ok", "priecinok": str(bez_req)})
     (tmp / "blok.ps1").write_text(_blok_z_buildu(), encoding="ascii")
     (tmp / "scenare.json").write_text(json.dumps(scenare), encoding="ascii")
     (tmp / "harness.ps1").write_text(_HARNESS, encoding="ascii")
-    env = dict(os.environ, PYTHONPATH=str(site), PYTHONDONTWRITEBYTECODE="1")
+    env = dict(os.environ, PYTHONPATH=str(site), PYTHONDONTWRITEBYTECODE="1",
+               TEMP=str(temp), TMP=str(temp))
     beh = subprocess.run(
         [powershell, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
          "-File", str(tmp / "harness.ps1"), "-Blok", str(tmp / "blok.ps1"),
          "-Scenare", str(tmp / "scenare.json"), "-Vystup", str(tmp / "vystup.txt"),
-         "-Python", sys.executable, "-Site", str(site)],
-        cwd=str(tmp), env=env, capture_output=True, text=True, timeout=60)
+         "-Python", sys.executable, "-Site", str(site), "-Zaznamy", str(zaznamy)],
+        cwd=str(tmp), env=env, capture_output=True, text=True, timeout=180)
     assert beh.returncode == 0, beh.stdout + beh.stderr
     vysledok = {}
     for riadok in (tmp / "vystup.txt").read_text(encoding="utf-8-sig").splitlines():
         sid, druh, *zvysok = riadok.split("\t")
         vysledok.setdefault(sid, []).append((druh, zvysok))
+    # skusobne slova: ktory scenar ho povedal a kam (subor po behu zmazany)
+    for sid in vysledok:
+        subor = zaznamy / ("%s.txt" % sid)
+        slova = subor.read_text(encoding="utf-8").splitlines() if subor.exists() else []
+        vysledok[sid].append(("slova", slova))
+    vysledok["_temp"] = temp
     return vysledok
 
 
@@ -303,6 +494,18 @@ def _hlasky(zaznam, farba):
 
 def _pip_volania(zaznam):
     return [z[2:] for d, z in zaznam if d == "py" and z[:2] == ["-m", "pip"]]
+
+
+def _py_c_volania(zaznam):
+    return [z[1:] for d, z in zaznam if d == "py" and z[:1] == ["-c"]]
+
+
+def _koniec(zaznam):
+    return [z for d, z in zaznam if d == "koniec"][0][0]
+
+
+def _slova(zaznam):
+    return [z for d, z in zaznam if d == "slova"][0]
 
 
 def test_blok_v_powershelli_pip_dostane_len_edge_tts_z_requirements(beh_bloku):
@@ -315,9 +518,10 @@ def test_blok_v_powershelli_pip_dostane_len_edge_tts_z_requirements(beh_bloku):
         ["install", "--upgrade", "--retries", "1", "--timeout", "15", poziadavka],
         ["install", "--dry-run", "--ignore-installed", "--no-deps", "--quiet",
          "--retries", "1", "--timeout", "15", poziadavka]]
-    assert zaznam[-1] == ("koniec", ["presiel"])
-    assert _hlasky(zaznam, "Green") == ["edge-tts 7.3.1 ide do buildu (treba aspon %s)"
-                                        % _minimum_z_requirements()]
+    assert _koniec(zaznam) == "presiel"
+    assert _hlasky(zaznam, "Green") == [
+        "edge-tts 7.3.1 ide do buildu (treba aspon %s)" % _minimum_z_requirements(),
+        "prirodzeny hlas overeny (edge-tts 7.3.1)"]
     assert _hlasky(zaznam, "Yellow") == []
 
 
@@ -327,10 +531,21 @@ def test_blok_v_powershelli_pip_dostane_len_edge_tts_z_requirements(beh_bloku):
 ])
 def test_blok_v_powershelli_s_internetom(beh_bloku, sid, verzia):
     zaznam = beh_bloku[sid]
-    assert zaznam[-1] == ("koniec", ["presiel"])
+    assert _koniec(zaznam) == "presiel"
     assert _hlasky(zaznam, "Yellow") == []
-    assert _hlasky(zaznam, "Green") == ["edge-tts %s ide do buildu (treba aspon %s)"
-                                        % (verzia, _minimum_z_requirements())]
+    assert _hlasky(zaznam, "Green") == [
+        "edge-tts %s ide do buildu (treba aspon %s)" % (verzia, _minimum_z_requirements()),
+        "prirodzeny hlas overeny (edge-tts %s)" % verzia]
+    # kontrola verzie, API skuska, skusobne slovo - kazde raz, v tomto poradi
+    volania = _py_c_volania(zaznam)
+    assert [v[0] for v in volania] == [_kontrola_z_buildu(), _api_z_buildu(), _slovo_z_buildu()]
+    # skusobne slovo: jeden subor v %TEMP% s nahodnym menom, po behu zmazany
+    (subor,) = _slova(zaznam)
+    assert volania[2][1:] == [subor]
+    temp = beh_bloku["_temp"]
+    assert os.path.dirname(subor) == str(temp)
+    assert re.fullmatch(r"zanshin-edge-tts-[0-9a-f]{32}\.mp3", os.path.basename(subor))
+    assert not os.path.exists(subor)
 
 
 @pytest.mark.parametrize("sid, verzia, sonda", [
@@ -339,12 +554,18 @@ def test_blok_v_powershelli_s_internetom(beh_bloku, sid, verzia):
 ])
 def test_blok_v_powershelli_bez_internetu_pokracuje_s_dost_novym(beh_bloku, sid, verzia, sonda):
     zaznam = beh_bloku[sid]
-    assert zaznam[-1] == ("koniec", ["presiel"])
+    assert _koniec(zaznam) == "presiel"
     zlte = _hlasky(zaznam, "Yellow")
-    assert len(zlte) == 1 and "nevedel overit" in zlte[0] and verzia in zlte[0]
+    assert len(zlte) == 2 and "nevedel overit" in zlte[0] and verzia in zlte[0]
+    # skusobne slovo sa bez internetu vynecha - povie to, nezastavi
+    assert zlte[1] == ("Skusobne slovo vynechavam (bez internetu) - prirodzeny hlas "
+                       "s edge-tts %s som neoveril." % verzia)
     assert _hlasky(zaznam, "Green") == ["edge-tts %s ide do buildu (treba aspon %s)"
                                         % (verzia, _minimum_z_requirements())]
     assert any("--dry-run" in v for v in _pip_volania(zaznam)) == sonda
+    # API skuska bez siete prebehla, slovo (falosny edge_tts by dal 403) nie
+    assert [v[0] for v in _py_c_volania(zaznam)] == [_kontrola_z_buildu(), _api_z_buildu()]
+    assert _slova(zaznam) == []
 
 
 @pytest.mark.parametrize("sid, verzia, internet", [
@@ -354,22 +575,95 @@ def test_blok_v_powershelli_bez_internetu_pokracuje_s_dost_novym(beh_bloku, sid,
 ])
 def test_blok_v_powershelli_pod_minimom_zastavi_build(beh_bloku, sid, verzia, internet):
     zaznam = beh_bloku[sid]
-    druh, (koniec,) = zaznam[-1]
-    assert druh == "koniec" and koniec.startswith("CHYBA: edge-tts je ")
+    koniec = _koniec(zaznam)
+    assert koniec.startswith("CHYBA: edge-tts je ")
     assert verzia in koniec and "prirodzeny hlas by v builde nefungoval" in koniec
     assert ("skontroluj internet" in koniec) == internet
     assert _hlasky(zaznam, "Green") == [] and _hlasky(zaznam, "Yellow") == []
+    # pod minimom sa API ani slovo neskusa
+    assert [v[0] for v in _py_c_volania(zaznam)] == [_kontrola_z_buildu()]
 
 
 def test_blok_v_powershelli_bez_minima_v_requirements(beh_bloku):
     zaznam = beh_bloku["bez_minima"]
-    assert zaznam[-1] == ("koniec", ["CHYBA: requirements.txt nema minimum pre edge-tts "
-                                     "(riadok edge-tts>=...)."])
-    assert _pip_volania(zaznam) == []
+    assert _koniec(zaznam) == ("CHYBA: requirements.txt nema minimum pre edge-tts "
+                               "(riadok edge-tts>=...).")
+    assert _pip_volania(zaznam) == [] and _py_c_volania(zaznam) == []
+
+
+@pytest.mark.parametrize("sid, verzia, dovod, spat", [
+    # nova hlavna verzia: spat na najnovsiu predoslu (<8)
+    ("api_nova_hlavna", "8.0.0",
+     "TypeError: Communicate.__init__() got an unexpected keyword argument 'rate'",
+     "edge-tts>=7.3.1,<8"),
+    # ta ista hlavna verzia: spat na najnovsiu pred pokazenou
+    ("api_ta_ista_hlavna", "7.4.0", "Communicate.save nie je async", "edge-tts>=7.3.1,<7.4.0"),
+    # aj bez internetu - API skuska siet nepotrebuje
+    ("api_import_offline", "8.1.0",
+     "ImportError: falosny edge_tts: chyba zavislost aiohttp", "edge-tts>=7.3.1,<8"),
+])
+def test_blok_v_powershelli_zmenene_api_zastavi_build(beh_bloku, sid, verzia, dovod, spat):
+    zaznam = beh_bloku[sid]
+    assert _koniec(zaznam) == (
+        "CHYBA: edge-tts %s sa zmenil tak, ze ho Zanshin nevie pouzit (%s). "
+        "Vrat sa na posledny fungujuci: v requirements.txt zmen riadok edge-tts na %s "
+        "a spusti build znova (zo zdrojakov rucne: py -3 -m pip install \"%s\"). "
+        "Natrvalo to opravi az novsi Zanshin." % (verzia, dovod, spat, spat))
+    # rada "spat" ma tvar, ktory build aj predbezna kontrola z requirements.txt precitaju
+    z = re.match(_vzor_z_buildu(), spat, re.I)
+    assert z and z.group(2) == _minimum_z_requirements()
+    assert _hlasky(zaznam, "Green") == []
+    # skusobne slovo sa po zlyhanom API neskusa
+    assert [v[0] for v in _py_c_volania(zaznam)] == [_kontrola_z_buildu(), _api_z_buildu()]
+    assert _slova(zaznam) == []
+
+
+def test_blok_v_powershelli_zlyhane_minimum_radi_preinstalovat(beh_bloku):
+    """API neprejde ani na samotnom minime - edge-tts sa nezmenil, rada
+    "spat" (>=7.3.1,<7.3.1) by nedavala zmysel."""
+    koniec = _koniec(beh_bloku["api_minimum"])
+    minimum = _minimum_z_requirements()
+    assert koniec == (
+        "CHYBA: edge-tts %s sa neda pouzit (TypeError: Communicate.__init__() got an "
+        "unexpected keyword argument 'rate') - chyba je asi v jeho zavislosti. "
+        "Preinstaluj ho: py -3 -m pip install --force-reinstall \"edge-tts==%s\" a spusti "
+        "build znova." % (minimum, minimum))
+
+
+@pytest.mark.parametrize("sid, dovod", [
+    ("slovo_odmietnute", "ConnectionError: 403, message='Invalid response status'"),
+    ("slovo_prazdne", "prazdny zvuk"),
+])
+def test_blok_v_powershelli_odmietnute_slovo_je_hlasne_varovanie(beh_bloku, sid, dovod):
+    zaznam = beh_bloku[sid]
+    # build pokracuje - exe ide aj s hlasom z Windows, appka si hlas opravi
+    assert _koniec(zaznam) == "presiel"
+    assert _hlasky(zaznam, "Green") == ["edge-tts 7.3.1 ide do buildu (treba aspon %s)"
+                                        % _minimum_z_requirements()]
+    zlte = _hlasky(zaznam, "Yellow")
+    assert zlte == [
+        "!!! POZOR: Microsoft odmieta aj edge-tts 7.3.1, alebo jeho hlasova sluzba prave "
+        "neodpoveda (%s)." % dovod,
+        "!!! Build pokracuje, ale prirodzeny hlas v nom teraz nejde - pripomienky povie "
+        "hlas z Windows.",
+        "!!! Opravit ho vie tlacidlo Aktualizovat hlas v appke (ked vyjde novsi edge-tts) "
+        "alebo dalsi build."]
+    # hlasne: prazdny riadok pred aj za
+    farby = [z[0] for d, z in zaznam if d == "host"]
+    i = farby.index("Yellow")
+    assert farby[i - 1:i + 4] == ["", "Yellow", "Yellow", "Yellow", ""]
+    # subor sa zmaze aj po zlyhani (falosny edge_tts ho stihol zacat)
+    (subor,) = _slova(zaznam)
+    assert not os.path.exists(subor)
+
+
+def test_blok_v_powershelli_nenecha_v_temp_nic(beh_bloku):
+    assert list(beh_bloku["_temp"].glob("zanshin-edge-tts-*")) == []
 
 
 # Falosny Python za python.bat: zapise sys.argv, pip nic nerobi (kod 0),
-# kontrolu verzie ('-c') spusti skutocny Python s -S nad falosnym dist-info.
+# kazde '-c' (kontrola verzie, API skuska, skusobne slovo) spusti skutocny
+# Python s -S nad falosnym dist-info a falosnym edge_tts.
 _FALOSNY_PY = r"""
 import json, os, subprocess, sys
 with open(os.environ["ZAZNAM"], "a", encoding="utf-8") as fh:
@@ -384,8 +678,9 @@ sys.exit(0)
 def test_blok_cez_bat_doruci_poziadavku_celu_a_nic_nepresmeruje(tmp_path):
     """Python cez .bat (napr. pyenv-win) ide cez cmd.exe: holy argument
     edge-tts>=7.3.1,<8 by cmd vzal ako presmerovanie - pip by dostal zlomok
-    a v priecinku buildu (koren repa) by vznikol subor '7.3.1'. Bezi
-    skutocny Invoke-Py a Fail zo skriptu, nic sa neinstaluje."""
+    a v priecinku buildu (koren repa) by vznikol subor '7.3.1'; '%' v kode
+    by cmd bral ako premennu. Bezi skutocny Invoke-Py a Fail zo skriptu,
+    nic sa neinstaluje a na siet nejde nic (falosny edge_tts)."""
     powershell = shutil.which("powershell.exe") or shutil.which("powershell")
     if not powershell:
         pytest.skip("powershell.exe tu nie je")
@@ -396,9 +691,11 @@ def test_blok_cez_bat_doruci_poziadavku_celu_a_nic_nepresmeruje(tmp_path):
     invoke = skript[skript.index("function Invoke-Py {"):skript.index("$version = ")]
     site, shim = tmp_path / "site", tmp_path / "python v kosi"
     build, citlivost = tmp_path / "build", tmp_path / "citlivost"
-    for p in (site, shim, build, citlivost):
+    temp = tmp_path / "temp s medzerou"
+    for p in (site, shim, build, citlivost, temp):
         p.mkdir()
     _dist_info(site, "7.3.1")
+    _falosny_edge_tts(site)
     (tmp_path / "falosny.py").write_text(_FALOSNY_PY, encoding="ascii")
     bat = shim / "python.bat"
     bat.write_text('@"%s" "%s" %%*\r\n' % (sys.executable, tmp_path / "falosny.py"),
@@ -409,13 +706,17 @@ def test_blok_cez_bat_doruci_poziadavku_celu_a_nic_nepresmeruje(tmp_path):
               "Set-Location '%s'\n" % str(citlivost).replace("'", "''") +
               "Invoke-Py '-m' 'pip' 'install' 'edge-tts>=7.3.1,<8'\nexit 0\n")
     (tmp_path / "beh.ps1").write_text(beh_ps, encoding="ascii")
-    zaznam = tmp_path / "zaznam.jsonl"
-    env = dict(os.environ, ZAZNAM=str(zaznam), SITE=str(site), PYTHONDONTWRITEBYTECODE="1")
+    zaznam, slova = tmp_path / "zaznam.jsonl", tmp_path / "slova.txt"
+    env = dict(os.environ, ZAZNAM=str(zaznam), SITE=str(site), PYTHONDONTWRITEBYTECODE="1",
+               FALOSNY_EDGE="ok,ok", FALOSNY_ZAZNAM=str(slova), TEMP=str(temp), TMP=str(temp))
     beh = subprocess.run([powershell, "-NoProfile", "-NonInteractive", "-ExecutionPolicy",
                           "Bypass", "-File", str(tmp_path / "beh.ps1")],
-                         cwd=str(build), env=env, capture_output=True, text=True, timeout=60)
+                         cwd=str(build), env=env, capture_output=True, text=True, timeout=90)
     assert beh.returncode == 0, beh.stdout + beh.stderr
     assert "edge-tts 7.3.1 ide do buildu" in beh.stdout, beh.stdout
+    # oba nove '-c' riadky dosli cele (falosny edge_tts by inak hodil
+    # ValueError) - API aj slovo presli
+    assert "prirodzeny hlas overeny (edge-tts 7.3.1)" in beh.stdout, beh.stdout
     volania = [json.loads(r) for r in zaznam.read_text(encoding="utf-8").splitlines()]
     poziadavka = "edge-tts " + _edge_riadok()[0]
     pip = [v for v in volania if v[:2] == ["-m", "pip"]]
@@ -424,6 +725,12 @@ def test_blok_cez_bat_doruci_poziadavku_celu_a_nic_nepresmeruje(tmp_path):
         ["-m", "pip", "install", "--dry-run", "--ignore-installed", "--no-deps", "--quiet",
          "--retries", "1", "--timeout", "15", poziadavka]]
     assert ["-c", _kontrola_z_buildu(), _minimum_z_requirements()] in volania
+    assert ["-c", _api_z_buildu()] in volania
+    (subor,) = slova.read_text(encoding="utf-8").splitlines()
+    assert ["-c", _slovo_z_buildu(), subor] in volania
+    # cesta s medzerou v %TEMP% dosla cela a subor je po behu zmazany
+    assert os.path.dirname(subor) == str(temp) and not os.path.exists(subor)
+    assert list(temp.glob("zanshin-edge-tts-*")) == []
     # blok v priecinku buildu nic nevytvoril
     assert sorted(p.name for p in build.iterdir()) == ["requirements.txt"]
     # kontrola citlivosti: holy tvar ten isty .bat naozaj rozbije (cmd.exe) -
@@ -460,6 +767,69 @@ def test_kontrola_verzie_z_buildu_naozaj_porovna(tmp_path, nainstalovana, minimu
                          timeout=60)
     assert beh.returncode == kod, beh.stderr
     assert beh.stdout.strip() == (nainstalovana or "?")
+
+
+def _spusti_py_c(tmp_path, kod, *argumenty, edge="ok,ok"):
+    """`py -c` z buildu nad falosnym edge_tts (`-S`: skutocny nie je vidno)."""
+    site = tmp_path / "site"
+    if not site.exists():
+        site.mkdir()
+        _falosny_edge_tts(site)
+    env = dict(os.environ, PYTHONPATH=str(site), PYTHONDONTWRITEBYTECODE="1",
+               FALOSNY_EDGE=edge, FALOSNY_ZAZNAM=str(tmp_path / "slova.txt"))
+    return subprocess.run([sys.executable, "-S", "-c", kod] + list(argumenty),
+                          cwd=str(tmp_path), env=env, capture_output=True, text=True,
+                          timeout=60)
+
+
+@pytest.mark.parametrize("edge, kod, vystup", [
+    ("ok,ok", 0, ""),
+    ("konstruktor,ok", 1,
+     "TypeError: Communicate.__init__() got an unexpected keyword argument 'rate'"),
+    ("sync,ok", 1, "Communicate.save nie je async"),
+    ("import,ok", 1, "ImportError: falosny edge_tts: chyba zavislost aiohttp"),
+])
+def test_api_skuska_z_buildu(tmp_path, edge, kod, vystup):
+    beh = _spusti_py_c(tmp_path, _api_z_buildu(), edge=edge)
+    assert beh.returncode == kod, beh.stderr
+    # jeden kratky riadok, ziadny traceback
+    assert beh.stdout.strip() == vystup and "Traceback" not in beh.stderr
+    # API skuska nic nepovie (save sa nevola)
+    assert not (tmp_path / "slova.txt").exists()
+
+
+@pytest.mark.parametrize("edge, kod, vystup, obsah", [
+    ("ok,ok", 0, "", b"ID3"),
+    ("ok,403", 1, "ConnectionError: 403, message='Invalid response status'", b"ID3"),
+    ("ok,prazdne", 1, "prazdny zvuk", b""),
+])
+def test_skusobne_slovo_z_buildu(tmp_path, edge, kod, vystup, obsah):
+    subor = tmp_path / "temp s medzerou" / "zanshin-edge-tts-x.mp3"
+    subor.parent.mkdir()
+    beh = _spusti_py_c(tmp_path, _slovo_z_buildu(), str(subor), edge=edge)
+    assert beh.returncode == kod, beh.stderr
+    assert beh.stdout.strip() == vystup and "Traceback" not in beh.stderr
+    assert (tmp_path / "slova.txt").read_text(encoding="utf-8").splitlines() == [str(subor)]
+    # subor zmaze build (Remove-Item) - Python ho necha, ako ho edge-tts zapisal
+    assert subor.read_bytes() == obsah
+
+
+def test_api_skuska_prejde_so_skutocnym_edge_tts(tmp_path):
+    """Ten isty riadok, ktory spusti build, proti nainstalovanemu edge-tts -
+    potvrdi, ze skuska sedi na skutocne API (Communicate s rate=..., async
+    save). Na siet nejde: konstruktor sietovy nie je a pre istotu su
+    sockety zakazane (kazdy pokus by skoncil chybou a kodom 1)."""
+    pytest.importorskip("edge_tts")
+    bez_siete = ("import socket\n"
+                 "def _zakazane(*_a, **_k):\n"
+                 "    raise OSError('siet je v teste zakazana')\n"
+                 "socket.socket.connect = socket.socket.connect_ex = _zakazane\n"
+                 "socket.create_connection = socket.getaddrinfo = _zakazane\n")
+    beh = subprocess.run([sys.executable, "-I", "-c", bez_siete + _api_z_buildu()],
+                         cwd=str(tmp_path), capture_output=True, text=True, timeout=60,
+                         env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1"))
+    assert beh.returncode == 0, beh.stdout + beh.stderr
+    assert beh.stdout.strip() == ""
 
 
 # --------------------------------------------------------------------------

@@ -5,11 +5,17 @@
     (HTTP 403). CHANGELOG (0.2.2), KNOWN_ISSUES (0.2.1 ZIP), README
     (Install B a Troubleshooting), DEVELOPMENT a HOW-IT-WORKS menuju to
     iste minimum ako requirements.txt a opisuju, co build naozaj robi,
+  * od 15. 11. 2026 (rozhodnutie autora) requirements.txt NEMA strop
+    verzie (",<8" mohol zablokovat presne tu opravu) - dokumenty to hovoria,
+    ziadny "newest 7.x" sa nevracia a build za upgradom edge-tts vyskusa
+    jeho API (bez siete) a jedno skusobne slovo (len s internetom),
   * kratky zamok suboru vo Windows (`paths.nahrad_subor`): CHANGELOG a
     DEVELOPMENT maju pocty pokusov a pauzy z kodu a vymenuvaju len ulozenia,
     ktore ho naozaj pouzivaju.
 
-Otazka ikony (README -> LICENSE-DESIGN.md) je v test_022e_dokumenty.
+Tlacidlo "Aktualizovat hlas" (hlas_kniznica.py) v dokumentoch strazi
+test_022h_dokumenty. Otazka ikony (README -> LICENSE-DESIGN.md) je
+v test_022e_dokumenty.
 
 Zamerne sa nepinuju cele odstavce - len cisla a nazvy z kodu a vety, ktore
 po zmene kodu prestanu platit (test potom povie, ktory dokument prepisat).
@@ -31,6 +37,9 @@ from _zdroj_appky import zdroj_suboru  # noqa: E402
 ZMENY = "CHANGELOG.md"
 AKO = "docs/HOW-IT-WORKS.md"
 VYVOJ = "DEVELOPMENT.md"
+# Dokumenty, ktore menuju minimum edge-tts (vsetky ho musia mat rovnake).
+S_MINIMOM = ("README.md", "CHANGELOG.md", "KNOWN_ISSUES.md", VYVOJ, AKO,
+             "PRIVACY.md", "SAFETY.md")
 
 
 def _read(meno):
@@ -78,21 +87,13 @@ def _otvorene():
     return _sekcia(_read("KNOWN_ISSUES.md"), "Still open")
 
 
-def _edge_tts_rozsah():
-    """(minimum, strop) z riadku edge-tts>=X,<N v requirements.txt."""
-    zhody = re.findall(r"^\s*edge-tts\s*>=\s*([0-9.]+)\s*,\s*<\s*([0-9]+)\s*$",
-                       _read("requirements.txt"), re.M)
-    assert len(zhody) == 1, zhody
-    return zhody[0][0], int(zhody[0][1])
-
-
 def _minimum_edge_tts():
-    return _edge_tts_rozsah()[0]
-
-
-def _hlavna_edge_tts():
-    """Hlavna verzia, ktoru build stahuje ("newest 7.x") - o jednu pod stropom."""
-    return _edge_tts_rozsah()[1] - 1
+    """Minimum z riadku edge-tts>=X v requirements.txt - bez stropu."""
+    poziadavky = [r for r in _poziadavky() if r.startswith("edge-tts")]
+    assert len(poziadavky) == 1, poziadavky
+    m = re.fullmatch(r"edge-tts\s*>=\s*([0-9]+(?:\.[0-9]+)+)", poziadavky[0])
+    assert m, "edge-tts v requirements.txt ma len minimum, bez stropu: %r" % poziadavky[0]
+    return m.group(1)
 
 
 def _edge_blok():
@@ -119,37 +120,72 @@ def _poziadavky():
 # Prirodzeny hlas: edge-tts odmietnuty Microsoftom
 # --------------------------------------------------------------------------
 
+def test_requirements_bez_stropu_a_build_skusa_novy_edge_tts():
+    """Strop zamerne nie je - zlucitelnost overuje build (API + slovo) a
+    appka (Aktualizovat hlas). Dokumenty to opisuju podla tohto bloku."""
+    _minimum_edge_tts()
+    blok = _edge_blok()
+    # (a) API bez siete, zlyhanie = Fail s cestou spat; (b) slovo len online,
+    # zlyhanie = zlte varovanie (ziadny Fail), docasny subor vzdy prec
+    api, slovo = blok.index("$edgeApi = "), blok.index("$edgeSlovo = ")
+    assert api < blok.index("ide do buildu") < slovo
+    assert "edge_tts.Communicate('Zanshin', 'en-GB-SoniaNeural'" in blok[api:]
+    assert "iscoroutinefunction" in blok[api:slovo]
+    assert "Fail (" in blok[api:slovo] and "--force-reinstall" in blok[api:slovo]
+    assert "Fail" not in blok[slovo:]
+    assert "!!! POZOR" in blok[slovo:]
+    assert "Remove-Item -LiteralPath $edgeSubor" in blok[slovo:]
+    vynechavam = blok.index("Skusobne slovo vynechavam")
+    assert blok.rindex("if ($edgePip -ne 0) {", 0, vynechavam) > api
+    assert vynechavam < slovo
+    # check_before_run strop len pripomenie (poznamka, nie chyba)
+    kontrola = _read("check_before_run.py")
+    assert "_strop = re.search(" in kontrola and "notes.append(" in kontrola
+
+
 def test_changelog_hlas_menuje_minimum_a_co_build_robi():
     minimum = _minimum_edge_tts()
     bod = _bod(_podsekcia(_zmeny_022(), "Fewer dead ends"),
                "Microsoft started refusing the natural voice.")
     assert "`edge-tts` %s or newer" % minimum in bod
     assert "7.2.8" in bod and "HTTP 403" in bod
-    # build pri kazdom behu stiahne najnovsi povoleny edge-tts; bez internetu
-    # pokracuje s dost novym (zlta hlaska), so starym zastavi (Fail = CHYBA:)
+    # bez stropu - a preco
+    assert "with no upper limit" in bod
+    assert "the fix may come in a new major version, and a cap would keep it out" in bod
+    # build pri kazdom behu stiahne najnovsi edge-tts; bez internetu pokracuje
+    # s dost novym (zlta hlaska), so starym zastavi (Fail = CHYBA:)
     skript = _read("build_all.ps1")
     blok = _edge_blok()
-    assert "fetches the newest %d.x `edge-tts` on every build" % _hlavna_edge_tts() in bod
-    # oprava v dalsej hlavnej verzii (nad stropom) do buildu nepride - veta
-    # to nesmie slubovat; hotovy ZIP sa sam neaktualizuje
-    assert ("a new %d.x `edge-tts` fixes it, a build made later gets that fix too "
-            "(a ready-made ZIP keeps the one it was built with)"
-            % _hlavna_edge_tts()) in bod
+    assert "`build.bat` fetches the newest `edge-tts` on every build" in bod
+    assert ("a ready-made ZIP keeps the one it was built with until you click "
+            "**Update voice**") in bod
     assert "'pip' 'install' '--upgrade'" in blok and "Fail " in blok
     assert "says it couldn't check" in bod and "nevedel overit" in blok
     assert "**CHYBA:**" in bod and 'Write-Host "CHYBA: $message"' in skript
+    # API bez siete a skusobne slovo (test_requirements_bez_stropu_...)
+    assert "Without the network it checks that Zanshin can still call it" in bod
+    assert ("names the `requirements.txt` line and the command that go back to "
+            "the last version that worked") in bod
+    assert 'one test word, "Zanshin", through Microsoft' in bod
+    assert "a loud yellow warning if Microsoft refuses it, and the build goes on" in bod
+    assert "skips the test word" in bod
     assert "The build log names the `edge-tts` version that went in." in bod
     assert 'Write-Host "edge-tts $edgeVerzia ide do buildu' in blok
-    # veta pri odmietnuti posle po novu verziu; stav je pod Zdrojom hlasu
+    # veta pri odmietnuti posle najprv na Aktualizovat hlas, potom po novu
+    # verziu; stav je pod Zdrojom hlasu
     assert "*%s*" % _en("settings.engine") in bod
     for kluc in ("edge.partial_refused", "log.edge_failed_refused"):
         assert "official GitHub (Releases)" in _en(kluc), kluc
+        assert _en("edge.update.btn") in _en(kluc), kluc
     assert "official GitHub (Releases)" in bod
+    assert "say to click **%s** first" % _en("edge.update.btn") in bod
     # zlyhanie ide aj do app.log, s verziou edge-tts, raz za druh chyby
     audio = zdroj_suboru("app_audio.py")
     assert 'app_log.warning("prirodzeny hlas: priprava zlyhala' in audio
     assert "_verzia_edge_tts()" in audio
+    assert '"%s (stiahnuta)" % verzia' in audio
     assert "`app.log`" in bod and "once per kind of error" in bod
+    assert "(a downloaded one is marked as such)" in bod
     # zo zdrojakov: rovnaky pip prikaz ako v DEVELOPMENT, kontrola pred behom
     assert "`py -m pip install -r requirements.txt` updates an older `edge-tts`" in bod
     # pip (only-if-needed) moze zdvihnut aj zavislost edge-tts - ako v README
@@ -157,6 +193,7 @@ def test_changelog_hlas_menuje_minimum_a_co_build_robi():
             "and leaves the rest as it is") in bod
     assert "8. Verzia edge-tts" in _read("check_before_run.py")
     assert "`check_before_run.py` warns" in bod
+    assert "notes a cap in `requirements.txt`" in bod
 
 
 def test_known_issues_hlas_v_zipe_021():
@@ -173,11 +210,12 @@ def test_known_issues_hlas_v_zipe_021():
     assert "`edge-tts` 7.2.8" in bod and "HTTP 403" in bod
     assert "`edge-tts` %s or newer" % minimum in bod
     assert "0.2.2 (not released yet)" in bod
-    # build 0.2.2 stiahne najnovsi povoleny edge-tts pri kazdom behu (nie len
-    # stary); hotovy ZIP nie - ten si necha svoj
-    assert ("If you build 0.2.2 yourself, its build fetches the newest %d.x "
-            "`edge-tts` every time; a ready-made ZIP keeps the one it came with."
-            % _hlavna_edge_tts()) in bod
+    # build 0.2.2 stiahne najnovsi edge-tts pri kazdom behu a vyskusa ho;
+    # hotovy ZIP 0.2.1 nie a tlacidlo Aktualizovat hlas nema
+    assert ("If you build 0.2.2 yourself, its build fetches the newest "
+            "`edge-tts` every time and tests it.") in bod
+    assert "has no *%s* button" % _en("edge.update.btn") in bod
+    assert "0.2.2's **%s** button" % _en("edge.update.btn") in bod
     assert "its build updates an older one" not in bod
     assert "'--upgrade'" in _edge_blok()
     # 0.2.1 ma stare nazvy: riadok "Voice comes from", volba "Windows voice
@@ -188,11 +226,10 @@ def test_known_issues_hlas_v_zipe_021():
     assert _en("settings.engine") == "Voice source"
     assert _en("engine.sapi") != "Windows voice (works offline)"
     # rucna aktualizacia pre vlastny build 0.2.1 je neoverena - veta to hovori;
-    # prikaz ma ten isty rozsah ako requirements.txt (8.x by mohla zmenit API)
-    strop = _edge_tts_rozsah()[1]
-    assert ('`py -m pip install --upgrade "edge-tts>=%s,<%d"`'
-            % (minimum, strop)) in bod
+    # prikaz ma ten isty riadok ako requirements.txt (bez stropu)
+    assert '`py -m pip install --upgrade "edge-tts>=%s"`' % minimum in bod
     assert "`py -m pip install --upgrade edge-tts`" not in bod
+    assert ",<" not in bod
     assert "I haven't tried that with 0.2.1" in bod
     # "0.2.1 calls the library the same way 0.2.2 does" - volanie v 0.2.2
     audio = _read("audio_engine.py")
@@ -210,15 +247,20 @@ def test_readme_build_a_troubleshooting_hlasu():
     # dostane len edge-tts
     ine = [r for r in _poziadavky() if not r.startswith("edge-tts")]
     assert ine and all(re.fullmatch(r"[A-Za-z0-9_.-]+", r) for r in ine), ine
-    strop = _edge_tts_rozsah()[1]
-    assert "edge-tts>=%s,<%d" % (minimum, strop) in _poziadavky()
-    assert "every build fetches its newest %d.x version" % _hlavna_edge_tts() in instal
+    assert "edge-tts>=%s" % minimum in _poziadavky()
+    assert "every build fetches its newest version" in instal
     blok = _edge_blok()
     assert blok.count("'--upgrade'") == 1 and "$edgePoziadavka" in blok
     # predvolena strategia pip (only-if-needed): zavislost len ked treba novsiu
     assert "updates a library `edge-tts` itself uses only if the new version " \
            "needs a newer one" in instal
     assert "'--upgrade-strategy'" not in _read("build_all.ps1")
+    # API a skusobne slovo (test_requirements_bez_stropu_...)
+    assert ("The build then checks that Zanshin can still call the new `edge-tts` "
+            "(if not, it stops and says how to go back to the last one that "
+            "worked) and, online, has it say one test word through Microsoft.") in instal
+    assert ("If Microsoft refuses it, a yellow warning says so and the build "
+            "goes on") in instal
     # bez internetu: dost novy ostane (zlta hlaska), starsi = build zastavi
     assert ("Offline, the build keeps the `edge-tts` you have if it's new enough "
             "(`edge-tts` %s or newer; Microsoft refuses older ones) and says it "
@@ -229,13 +271,17 @@ def test_readme_build_a_troubleshooting_hlasu():
     assert "The natural voice stays robotic" not in readme
     assert "[KNOWN_ISSUES.md](KNOWN_ISSUES.md)" in bod
     assert "*check your internet connection*" in bod
-    assert ("a build from 0.2.2 on fetches the newest %d.x `edge-tts` every time; "
-            "the 0.2.1 build doesn't" % _hlavna_edge_tts()) in bod
-    # hotovy ZIP sa sam neaktualizuje (appka nema kontrolu aktualizacii ani pip)
-    assert ("A ready-made ZIP never updates itself (0.2.2's won't either): if "
-            "Microsoft refuses its voice library again, new lines use the Windows "
+    assert ("a build from 0.2.2 on fetches the newest `edge-tts` every time; "
+            "the 0.2.1 build doesn't") in bod
+    assert "The 0.2.1 ZIP has no **%s** button." % _en("edge.update.btn") in bod
+    # hotovy ZIP sa sam od seba neaktualizuje; od 0.2.2 len na klik
+    assert ("A ready-made ZIP never updates itself on its own: from 0.2.2, "
+            "**Update voice** fetches a newer voice library when you click it, "
+            "and if Microsoft refuses even that one, new lines use the Windows "
             "voice until a new release.") in bod
-    assert "There is no update checker" in readme
+    assert "0.2.2's won't either" not in readme
+    assert "There is no update checker" not in readme
+    assert "Zanshin never checks for a new version of itself" in _plain_text(readme)
     # Stare nazvy 0.2.1 do README nepatria (test_022d_dokumenty) - README
     # hovori vseobecne a posle do KNOWN_ISSUES, kde su nazvy zo ZIPu 0.2.1.
     assert "with the names the 0.2.1 ZIP uses, in [KNOWN_ISSUES.md]" in bod
@@ -249,36 +295,35 @@ def test_development_a_how_it_works_o_edge_tts():
     minimum = _minimum_edge_tts()
     vyvoj = _read(VYVOJ)
     zdroj = _plain_text(_sekcia(vyvoj, "Run from source"))
-    strop = _edge_tts_rozsah()[1]
-    assert "`edge-tts>=%s,<%d`" % (minimum, strop) in zdroj
-    assert "The cap keeps out %d.0, a major version I haven't tried" % strop in zdroj
+    assert "`edge-tts>=%s`" % minimum in zdroj
+    assert "There is deliberately no upper cap" in zdroj
+    assert "The cap keeps out" not in zdroj and "version range" not in zdroj
     assert ("pip updates it (and a library it uses, only if the new version needs "
             "a newer one) and leaves the other packages as they are") in zdroj
-    assert ('`py -m pip install --upgrade "edge-tts>=%s,<%d"` fetches the newest '
-            "allowed one, which is what every build does" % (minimum, strop)) in zdroj
+    assert ('`py -m pip install --upgrade "edge-tts>=%s"` fetches the newest one, '
+            "which is what every build does" % minimum) in zdroj
     # minimum je aj v dokumentoch - DEVELOPMENT posiela sem, tento test ich
     # drzi rovnake ako requirements.txt
     assert "it's written only there" not in zdroj
     assert "checked against it by `tests/test_022g_dokumenty.py`" in zdroj
     assert os.path.basename(__file__) == "test_022g_dokumenty.py"
-    # kazdy dokument, ktory minimum (strop, hlavnu verziu) menuje, ho ma
-    # rovnake ako requirements.txt
+    build = _plain_text(_sekcia(vyvoj, "What build.bat does"))
+    # kazdy dokument, ktory minimum menuje, ho ma rovnake ako requirements.txt;
+    # strop (",<N") smie byt len v navode, ako sa build vrati na posledny
+    # fungujuci (DEVELOPMENT, "What build.bat does")
     vzor = re.compile(r"`edge-tts` ([0-9]+(?:\.[0-9]+)+) or newer"
-                      r"|edge-tts>=([0-9]+(?:\.[0-9]+)+)(?:,<([0-9]+))?")
+                      r"|edge-tts>=([0-9]+(?:\.[0-9]+)+)(,<[0-9.]+)?")
     najdene = 0
-    for dok in ("README.md", "CHANGELOG.md", "KNOWN_ISSUES.md", VYVOJ, AKO,
-                "PRIVACY.md", "SAFETY.md"):
+    for dok in S_MINIMOM:
         text = _plain(dok)
         for m in vzor.finditer(text):
             najdene += 1
             assert (m.group(1) or m.group(2)) == minimum, (dok, m.group(0))
-            assert m.group(3) in (None, str(strop)), (dok, m.group(0))
-        for m in re.finditer(r"\bnew(?:est)? ([0-9]+)\.x", text):
-            assert int(m.group(1)) == _hlavna_edge_tts(), (dok, m.group(0))
-        # build stahuje najnovsi v rozsahu, nie najnovsi vobec (strop <N)
-        assert "fetches the newest `edge-tts`" not in text, dok
+            if m.group(3):
+                assert dok == VYVOJ and m.group(0) in build, (dok, m.group(0))
+        # "newest 7.x" bol strop <8 - ten uz nie je
+        assert not re.search(r"\bnew(?:est)? [0-9]+\.x\b", text), dok
     assert najdene >= 5, najdene
-    build = _plain_text(_sekcia(vyvoj, "What build.bat does"))
     blok = _edge_blok()
     assert ("runs `pip install --upgrade` on every build for the `edge-tts` line "
             "of `requirements.txt` alone") in build
@@ -289,8 +334,23 @@ def test_development_a_how_it_works_o_edge_tts():
     assert "'--dry-run' '--ignore-installed'" in blok
     assert ("goes on with the installed `edge-tts` only if it's at least the "
             "minimum there, with a yellow warning, and stops otherwise") in build
-    assert "the log names the `edge-tts` version that goes into the build" in build
+    assert "The log names the `edge-tts` version that goes into the build" in build
     assert "the installed `edge-tts` is older than the minimum there" not in build
+    # API bez siete: presne volanie z audio_engine; cesta spat cez
+    # requirements.txt (build pri kazdom behu upgraduje, holy pip by vratil)
+    assert ('builds `Communicate("Zanshin", "en-GB-SoniaNeural", rate="+0%")` '
+            "the way `audio_engine.py` does, and checks that `save` is async") in build
+    assert "edge_tts.Communicate(text, voice, rate=edge_rate_str(rate))" in _read("audio_engine.py")
+    assert "the `requirements.txt` line to set, with a cap below the broken version" in build
+    assert "a pip command alone would be undone by the next build" in build
+    assert "$edgeSpat" in blok and "requirements.txt zmen riadok" in blok
+    assert "it suggests `--force-reinstall` of that version instead" in build
+    # skusobne slovo: len online, docasny subor vzdy prec, zlyhanie nezastavi
+    assert ('one test word, "Zanshin", through Microsoft into a temporary '
+            "`%TEMP%\\zanshin-edge-tts-<random>.mp3` that is always deleted") in build
+    assert "'zanshin-edge-tts-'" in blok and "$env:TEMP" in blok
+    assert "a loud yellow warning, and the build goes on" in build
+    assert "Offline a yellow note says the test word was skipped." in build
     testy = _plain_text(_sekcia(vyvoj, "Tests"))
     assert "the installed `edge-tts` is at least the minimum in `requirements.txt`" in testy
     # build so starym edge-tts najprv aktualizuje, az ked nevie, zastavi -
@@ -298,11 +358,13 @@ def test_development_a_how_it_works_o_edge_tts():
     assert ("a build never gets this far with one: it installs or updates "
             "`edge-tts` first, or stops") in testy
     assert "a build stops before this check with one" not in testy
+    assert "A cap on `edge-tts` there" in testy and "only gets a note" in testy
     skript = _read("build_all.ps1")
     assert skript.index("$edgeMinVzor = ") < skript.index("Invoke-Py 'check_before_run.py'")
     ako = _plain(AKO)
     assert "this Zanshin version is probably outdated" in ako
     assert "probably outdated" in _en("edge.partial_refused")
+    assert "then it says to click **%s** below first" % _en("edge.update.btn") in ako
     # "from 0.2.2 the failure also goes into app.log" - riadok v app_audio
     assert "from 0.2.2 the failure also goes into `app.log`" in ako
     assert 'app_log.warning("prirodzeny hlas: priprava zlyhala' in zdroj_suboru("app_audio.py")
@@ -379,7 +441,7 @@ def test_development_opisuje_nahrad_subor():
     assert round(sum(paths.NAHRADA_PAUZY_S), 1) == 0.3
     vymenovane = riadok[riadok.index("The saves in"):riadok.index("go through it")]
     moduly = re.findall(r"`(\w+\.py)`", vymenovane)
-    assert len(moduly) == 5, moduly
+    assert len(moduly) == 6, moduly
     for modul in moduly:
         assert "nahrad_subor(" in _read(modul), modul
         assert "os.replace(" not in _kod_bez_komentarov(_read(modul)), modul

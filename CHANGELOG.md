@@ -331,21 +331,62 @@ have them.
   before then still played, but every new one fell back to the Windows voice.
   Building Zanshin again didn't help: the build installed only libraries that
   were missing and kept an old one. **0.2.2:** Zanshin needs `edge-tts` 7.3.1
-  or newer (`requirements.txt`). `build.bat` fetches the newest 7.x
-  `edge-tts` on every build: if Microsoft changes something again and a new
-  7.x `edge-tts` fixes it, a build made later gets that fix too (a ready-made
-  ZIP keeps the one it was built with). Offline it keeps an installed one
-  that's new enough and says it couldn't check; with an older one it stops
-  with a red **CHYBA:** line instead of building an app whose natural voice
-  is refused. The build log names the `edge-tts` version that went in. When
+  or newer (`requirements.txt`), with no upper limit: if Microsoft changes
+  something again, the fix may come in a new major version, and a cap would
+  keep it out. `build.bat` fetches the newest `edge-tts` on every build, so a
+  build made later gets such a fix too (a ready-made ZIP keeps the one it was
+  built with until you click **Update voice**, see the next point). Instead
+  of a cap, the build tries the new version. Without the network it checks
+  that Zanshin can still call it the way it does; if not, it stops with a red
+  **CHYBA:** line that names the `requirements.txt` line and the command that
+  go back to the last version that worked. Online it then has it say one test
+  word, "Zanshin", through Microsoft into a temporary file it deletes right
+  away: a green line if that works, a loud yellow warning if Microsoft refuses
+  it, and the build goes on either way, because the Windows voice still
+  covers the cues. Offline it keeps an installed one that's new enough, says
+  it couldn't check and skips the test word; with an older one it stops with
+  a red **CHYBA:** line instead of building an app whose natural voice is
+  refused. The build log names the `edge-tts` version that went in. When
   Microsoft refuses the request, the line under *Voice source* and the log in
-  the window now add that if it keeps happening, this Zanshin version is
-  probably outdated and the new one is on the official GitHub (Releases). A failed preparation also goes into `app.log`, with the
-  installed `edge-tts` version, once per kind of error until preparing works
-  again; before, it was only in the log in the window. Run from source,
+  the window now say to click **Update voice** first and, if that doesn't
+  help, that this Zanshin version is probably outdated and the new one is on
+  the official GitHub (Releases). A failed preparation also goes into
+  `app.log`, with the `edge-tts` version in use (a downloaded one is marked as
+  such), once per kind of error until preparing works again; before, it was
+  only in the log in the window. Run from source,
   `py -m pip install -r requirements.txt` updates an older `edge-tts` (and a
   library it uses, only if the new version needs a newer one) and leaves the
-  rest as it is, and `check_before_run.py` warns about an older one.
+  rest as it is, and `check_before_run.py` warns about an older one (and
+  notes a cap in `requirements.txt`, so a temporary one isn't forgotten).
+- **Only a new Zanshin could repair the natural voice.** When Microsoft
+  changes something that only newer `edge-tts` code handles, a ready-made ZIP
+  kept the version it was built with. **0.2.2:** there's an **Update voice**
+  button under *Voice source* in Settings → Sound (and the same command in
+  the Ctrl+K palette), shown only with the natural voice. Only when you click
+  it, and never while Zanshin is watching (a click then says you can update
+  the voice once you stop watching), it asks PyPI which versions of
+  `edge-tts` exist, downloads just that library's code from
+  `files.pythonhosted.org` if there's a newer one than the version in use,
+  and checks it: HTTPS to those two hosts only, the size and SHA-256 that
+  PyPI lists, only the library's own `.py` files taken from the archive,
+  nothing run while it's installed, and every library it needs already
+  inside Zanshin. Then it loads the code and has it
+  say one test word, "Zanshin", through Microsoft. It keeps the new version
+  only if that works and uses it from then on, after a restart too, unless
+  the Zanshin you start carries the same version or a newer one; a
+  downloaded version that fails to load at start is skipped, with a line in
+  `app.log`. Otherwise the current version stays, and when only a new
+  Zanshin can help (Microsoft refuses even the newest `edge-tts`, or it needs
+  something this Zanshin lacks), a **↗ New Zanshin on GitHub** link opens the
+  official Releases page. With nothing newer, the test word checks the
+  version in use. If watching starts in the middle, it stops before its next
+  step that uses the network. Voice preparation waits while it runs, and
+  cues still missing their natural voice are prepared once it worked. The
+  library lands in `voice_lib` in your data folder (about 100 KB); delete
+  that folder to go back to the built-in version. It's the first time
+  Zanshin downloads and runs code, so [PRIVACY.md](PRIVACY.md) and
+  [SAFETY.md](SAFETY.md) now say exactly what goes out, what's checked and
+  what that can't protect against.
 - **Switching Play / Work while watching** changed how the running session's
   cues spoke, though the session itself stayed in its world. **0.2.2:** the
   session and its cues keep their world, the switch applies from the next

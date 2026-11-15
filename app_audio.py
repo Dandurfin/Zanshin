@@ -16,21 +16,25 @@ Pat sekcii presunutych z app.py bez zmeny:
     odklada na po hre),
   * rozhodovanie o SFX subore - ktory zvuk slot zahra a samotne prehratie
     slotu (`_emit`, `_speak_text`, vlastna nahravka hlasu).
+Od 0.2.2 aj "Aktualizovat hlas" (`aktualizuj_hlas`) - novsi edge-tts z PyPI
+na klik, jadro je v `hlas_kniznica.py`.
 
 Pozor v testoch: `pregenerate`, `_prune_cache`, `_play_concurrent`,
-`_play_voice_file` a `_speak_text` citaju `threading` z tohto modulu -
-nahrada celeho modulu `threading` na module app ich nezasiahne (treba
-`app_audio.threading`). Zmena atributu zdielaneho modulu
+`_play_voice_file`, `_speak_text` a `aktualizuj_hlas` citaju `threading` z
+tohto modulu - nahrada celeho modulu `threading` na module app ich
+nezasiahne (treba `app_audio.threading`). Zmena atributu zdielaneho modulu
 (`app.threading.Thread`, `audio_engine.EDGE_AVAILABLE`) plati aj tu.
 """
 
 import os
 import re
 import threading
+import webbrowser
 
 import customtkinter as ctk
 
 import audio_engine
+import hlas_kniznica
 import rebrik
 import sfx_assets
 import theme as theme_mod
@@ -90,15 +94,62 @@ def _kratka_chyba(exc):
 
 
 def _verzia_edge_tts():
-    """Verzia nainstalovaneho edge-tts do app.log ("?", ked sa neda zistit).
+    """Verzia PRAVE POUZIVANEHO edge-tts do app.log ("?", ked sa neda zistit).
     Stara verzia je najcastejsia pricina trvaleho odmietnutia: Microsoft od
     novembra 2026 starsie edge-tts odmieta (HTTP 403, minimum je v
-    requirements.txt)."""
+    requirements.txt).
+
+    Po "Aktualizovat hlas" bezi stiahnuta kniznica (`audio_engine.EDGE_
+    STIAHNUTY`) a `importlib.metadata` by hovorilo o pribalenej - stiahnuty
+    balik dist-info nema. Inak je pouzivana prave ta pribalena."""
+    verzia = getattr(audio_engine, "EDGE_VERZIA", None)
+    if verzia and getattr(audio_engine, "EDGE_STIAHNUTY", False):
+        return "%s (stiahnuta)" % verzia
     try:
         from importlib import metadata
         return metadata.version("edge-tts")
     except Exception:
         return "?"
+
+
+def _prepni_balenie(widget, ukaz, **pack_kw):
+    """Zabali (`pack(**pack_kw)`) alebo schova widget - len ked sa nieco
+    meni. Nikdy nevyhodi: stranka sa moze prave prestavovat."""
+    if widget is None:
+        return
+    try:
+        zabaleny = bool(widget.winfo_manager())
+        if ukaz and not zabaleny:
+            widget.pack(**pack_kw)
+        elif not ukaz and zabaleny:
+            widget.pack_forget()
+    except Exception:
+        pass
+
+
+# Vysledok "Aktualizovat hlas" (`hlas_kniznica.STAV_*`) -> (kluc stavu pod
+# Zdrojom hlasu, kluc riadku dennika, uspech, odkaz na nove vydanie).
+# Odkaz na oficialne vydania ide len tam, kde hlas opravi az novy Zanshin:
+# Microsoft odmieta aj najnovsi edge-tts, alebo ho tento Zanshin nevie pouzit.
+# "busy" (ina aktualizacia prave bezi) tu nie je - tlacidlo je pocas behu
+# vypnute, takze by prisiel len z cudzieho volania; dostane vseobecnu vetu.
+# "cancelled" ma vlastnu vetvu (`_aktualizacia_hlasu_hotova`).
+_VYSLEDKY_AKTUALIZACIE = {
+    hlas_kniznica.STAV_AKTUALNY: (
+        "edge.update.up_to_date", "log.edge_update.up_to_date", True, False),
+    hlas_kniznica.STAV_AKTUALIZOVANY: (
+        "edge.update.updated", "log.edge_update.updated", True, False),
+    hlas_kniznica.STAV_STALE_ODMIETNUTY: (
+        "edge.update.refused_still", "log.edge_update.refused_still", False, True),
+    hlas_kniznica.STAV_OFFLINE: (
+        "edge.update.offline", "log.edge_update.offline", False, False),
+    hlas_kniznica.STAV_NEKOMPATIBILNY: (
+        "edge.update.incompatible", "log.edge_update.incompatible", False, True),
+    hlas_kniznica.STAV_OVERENIE_ZLYHALO: (
+        "edge.update.verify_failed", "log.edge_update.verify_failed", False, False),
+    hlas_kniznica.STAV_CHYBA: (
+        "edge.update.error", "log.edge_update.error", False, False),
+}
 
 
 def stranka_zvuku():
@@ -273,6 +324,11 @@ class AudioMixin:
                 self.worker.set_voice(self.saved_voice_id)
         elif not names:
             self.voice_var.set(tr("voice.loading"))
+        # "Aktualizovat hlas" patri k prirodzenemu hlasu: tato metoda sa vola
+        # po kazdej zmene motora (prepinac, "Skusit znova" pri chybajucom
+        # edge-tts cez `_apply_edge_voices`, novy uvod), takze riadok
+        # s tlacidlom sa ukaze alebo schova presne vtedy.
+        self._obnov_aktualizaciu_hlasu()
 
     def on_engine_change(self):
         engine = label_to_engine().get(self.engine_var.get(), ENGINE_SAPI)
@@ -338,7 +394,10 @@ class AudioMixin:
     def set_edge_status(self, text, color=None):
         # "Skusit znova" patri len k zlyhanej priprave - kazdy iny stav (aj
         # prazdny) ho schova; `_edge_priprava_zlyhala` ho ukaze az po tomto.
+        # Rovnako odkaz na nove vydanie Zanshinu - patri len k vysledku
+        # "Aktualizovat hlas", ktory ho ukaze az po tomto.
         self._ukaz_skusit_hlas_znova(False)
+        _prepni_balenie(getattr(self, "edge_releases_btn", None), False)
         if self.edge_status_label is not None:
             try:
                 self.edge_status_label.configure(text=text,
@@ -347,7 +406,13 @@ class AudioMixin:
                 # len ked nieco hovori - prazdny by bol riadok medzery.
                 zabaleny = bool(self.edge_status_label.winfo_manager())
                 if text and not zabaleny:
-                    self.edge_status_label.pack(fill="x", pady=(6, 0))
+                    # Stav ide NAD riadok "Aktualizovat hlas", nie pod neho -
+                    # veta hovori o tlacidlach "nizsie".
+                    rad = getattr(self, "edge_update_row", None)
+                    if rad is not None and rad.winfo_manager():
+                        self.edge_status_label.pack(fill="x", pady=(6, 0), before=rad)
+                    else:
+                        self.edge_status_label.pack(fill="x", pady=(6, 0))
                 elif not text and zabaleny:
                     self.edge_status_label.pack_forget()
             except Exception:
@@ -451,6 +516,17 @@ class AudioMixin:
         self._zrus_rozbehnutu_pripravu()
         seq = self._pregen_seq
         if self.engine != ENGINE_EDGE or not audio_engine.EDGE_AVAILABLE:
+            return
+        if getattr(self, "_aktualizacia_hlasu_bezi", False):
+            # Kym bezi "Aktualizovat hlas", priprava caka: hlasky by isli
+            # Microsoftu kniznicou, ktoru aktualizacia prave vymiena, a stav
+            # pripravy by prepisal stav aktualizacie. Spusti ju az jej vysledok
+            # (`_aktualizacia_hlasu_hotova`), ked sa hlas podaril.
+            self._pregen_po_aktualizacii = True
+            # Stav ostava "aktualizujem hlas" - aj ked ho medzitym zmazalo
+            # prepnutie na hlas z Windows a spat (`on_engine_change` vola
+            # potom prave toto); inak by bolo tlacidlo vypnute bez slova.
+            self.set_edge_status(tr("edge.update.running"), self.pal["warn"])
             return
         rate = self.rate_value
         jobs = self.pregen_jobs()
@@ -576,8 +652,12 @@ class AudioMixin:
             return
         try:
             if ukaz and not tlacidlo.winfo_manager():
+                rad = getattr(self, "edge_update_row", None)
                 if stav is not None and stav.winfo_manager():
                     tlacidlo.pack(anchor="w", pady=(6, 0), after=stav)
+                elif rad is not None and rad.winfo_manager():
+                    # bez stavu aspon nad riadok "Aktualizovat hlas"
+                    tlacidlo.pack(anchor="w", pady=(6, 0), before=rad)
                 else:
                     tlacidlo.pack(anchor="w", pady=(6, 0))
             elif not ukaz and tlacidlo.winfo_manager():
@@ -591,6 +671,176 @@ class AudioMixin:
         to odlozi na po hre a povie to v stave."""
         self._ukaz_skusit_hlas_znova(False)
         self.pregenerate(force=True)
+
+    # ---------- "Aktualizovat hlas" na klik (0.2.2) ----------
+    #
+    # Microsoft v novembri 2026 odmietol edge-tts 7.2.8 a opravou bola zmena
+    # KODU kniznice - vydany Zanshin sa datami opravit neda. Rozhodnutie
+    # autora (15. 11. 2026): hrac si novsi edge-tts stiahne sam, kym nevyjde
+    # novy Zanshin. Pravidla (PRIVACY.md, SAFETY.md): len na klik, nikdy samo
+    # (ani pri starte, ani pri prepnuti motora) a nikdy pocas sledovania.
+    # Siet, overenie, skusobne slovo aj vymenu modulu robi `hlas_kniznica.
+    # aktualizuj` v pomocnom vlakne; tu je len tlacidlo, stav a dennik.
+
+    def _obnov_aktualizaciu_hlasu(self):
+        """Riadok "Aktualizovat hlas" pod Zdrojom hlasu: vidno ho len pri
+        prirodzenom hlase (hlas z Windows nic neposiela, ani skusobne slovo)
+        a kym aktualizacia bezi, tlacidlo je vypnute."""
+        rad = getattr(self, "edge_update_row", None)
+        if rad is None:
+            return
+        _prepni_balenie(rad, getattr(self, "engine", None) == ENGINE_EDGE,
+                        anchor="w", pady=(6, 0))
+        tlacidlo = getattr(self, "edge_update_btn", None)
+        if tlacidlo is not None:
+            bezi = getattr(self, "_aktualizacia_hlasu_bezi", False)
+            try:
+                tlacidlo.configure(state="disabled" if bezi else "normal")
+            except Exception:
+                pass
+
+    def _ukaz_vydania_zanshinu(self, ukaz):
+        """Odkaz na oficialne vydania vedla "Aktualizovat hlas" - len pri
+        vysledku, ktory opravi az novy Zanshin (`_VYSLEDKY_AKTUALIZACIE`).
+        Kazdy dalsi stav ho schova (`set_edge_status`)."""
+        _prepni_balenie(getattr(self, "edge_releases_btn", None), ukaz,
+                        side="left", padx=(8, 0))
+
+    def otvor_vydania_zanshinu(self):
+        """Klik na odkaz: oficialna stranka vydani Zanshinu v predvolenom
+        prehliadaci - ten isty mechanizmus ako odkazy v O appke a v
+        Sprievodcovi (`webbrowser.open`). Appka sama nic nestahuje."""
+        try:
+            webbrowser.open(hlas_kniznica.RELEASES_URL)
+        except Exception:
+            app_log.debug("stranku vydani sa nepodarilo otvorit", exc_info=True)
+
+    def aktualizuj_hlas(self):
+        """Klik na "Aktualizovat hlas" (Nastavenia → Zvuk alebo Ctrl+K).
+
+        Pocas sledovania sa na siet NEJDE ani na klik - stav povie, ze to
+        pojde po sledovani (ako `edge.after_game`), a nic sa neodklada:
+        aktualizacia nikdy nebezi sama. Inak vypne tlacidlo, zastavi
+        rozbehnutu pripravu (dalsia hlaska by isla kniznicou, ktora sa prave
+        meni) a spusti `hlas_kniznica.aktualizuj` v pomocnom vlakne. Vysledok
+        ide na GUI vlakno cez `ui_call` - z vlakna sa na Tk nesiaha.
+
+        `abort` sa pyta pred kazdym krokom, ktory ide na siet: zaplo sa
+        sledovanie alebo hrac prepol na hlas z Windows -> "cancelled"."""
+        if getattr(self, "_aktualizacia_hlasu_bezi", False):
+            return              # tlacidlo je vypnute; poistka pre Ctrl+K
+        if getattr(self, "engine", None) != ENGINE_EDGE:
+            return              # hlas z Windows nic neposiela
+        if getattr(self, "listening", False):
+            self.set_edge_status(tr("edge.update.after_watching"), self.pal["text_dim"])
+            return
+        self._aktualizacia_hlasu_bezi = True
+        self._pregen_po_aktualizacii = False
+        self._zrus_rozbehnutu_pripravu()
+        self._obnov_aktualizaciu_hlasu()
+        self.set_edge_status(tr("edge.update.running"), self.pal["warn"])
+        cache = self.edge_cache
+
+        def zrus():
+            return (getattr(self, "listening", False)
+                    or getattr(self, "engine", None) != ENGINE_EDGE)
+
+        def work():
+            try:
+                vysledok = hlas_kniznica.aktualizuj(cache=cache, abort=zrus)
+            except Exception as exc:    # `aktualizuj` nevyhadzuje - poistka,
+                # aby tlacidlo neostalo navzdy vypnute
+                vysledok = hlas_kniznica.Vysledok(
+                    hlas_kniznica.STAV_CHYBA, dovod=type(exc).__name__)
+            self.ui_call(lambda: self._aktualizacia_hlasu_hotova(vysledok))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _aktualizacia_hlasu_hotova(self, vysledok):
+        """Vysledok "Aktualizovat hlas" na GUI vlakne: stav pod Zdrojom hlasu,
+        jeden kratky riadok do dennika a pri uspechu priprava hlasok, ktorym
+        hlas chyba. Technicky dovod (`vysledok.dovod`) uz zapisalo jadro do
+        app.log - hracovi idu len vety z i18n podla stavu."""
+        self._aktualizacia_hlasu_bezi = False
+        po_zmene = getattr(self, "_pregen_po_aktualizacii", False)
+        self._pregen_po_aktualizacii = False
+        self._obnov_aktualizaciu_hlasu()
+        stav = getattr(vysledok, "stav", hlas_kniznica.STAV_CHYBA)
+        # Hlas z Windows stav pod Zdrojom hlasu nema (`on_engine_change` ho
+        # zmaze a `pregenerate` pri nom nic nehovori). Hrac mohol prepnut
+        # uprostred aktualizacie - vysledok, ktory pride potom, ide len do
+        # dennika, inak by pod hlasom z Windows visela veta o prirodzenom.
+        prirodzeny = getattr(self, "engine", None) == ENGINE_EDGE
+        if stav == hlas_kniznica.STAV_ZRUSENY:
+            # Zaplo sa sledovanie (alebo hlas z Windows) - nic sa nezmenilo.
+            # Veta "az po sledovani" len vtedy, ked sa naozaj sleduje (hrac
+            # mohol medzitym prepnut na hlas z Windows a spat).
+            if prirodzeny and getattr(self, "listening", False):
+                self.set_edge_status(tr("edge.update.after_watching"),
+                                     self.pal["text_dim"])
+            else:
+                self.set_edge_status("")
+            self.log(tr("log.edge_update.cancelled"))
+            self._priprava_po_neuspechu(po_zmene, hned=True)
+            return
+        kluc_stavu, kluc_riadku, ok, odkaz = _VYSLEDKY_AKTUALIZACIE.get(
+            stav, _VYSLEDKY_AKTUALIZACIE[hlas_kniznica.STAV_CHYBA])
+        if stav == hlas_kniznica.STAV_AKTUALIZOVANY:
+            verzia = vysledok.nova
+        elif stav == hlas_kniznica.STAV_AKTUALNY:
+            verzia = vysledok.aktivna or vysledok.najnovsia
+        else:
+            verzia = getattr(vysledok, "najnovsia", None) or getattr(vysledok, "aktivna", None)
+        verzia = verzia or "?"
+        # `danger_text`, nie `danger`: drobny text s navodom (pravidlo v theme.py)
+        farba = (self.pal["success"] if ok
+                 else self.pal.get("danger_text", self.pal["danger"]))
+        if prirodzeny:
+            self.set_edge_status(tr(kluc_stavu, version=verzia), farba)
+            if odkaz:
+                self._ukaz_vydania_zanshinu(True)
+        self.log(tr(kluc_riadku, version=verzia))
+        if not ok:
+            self._priprava_po_neuspechu(po_zmene)
+            return
+        # Prirodzeny hlas mohol prave ozit (EDGE_AVAILABLE) - banner o
+        # chybajucom edge-tts sa prepocita. Hlasky bez hlasu (odmietnute
+        # starou kniznicou) sa pripravia hned (`force=True`); ked netreba
+        # nic, ostane na ociach veta o aktualizacii, nie "hlas pripraveny".
+        self.refresh_edge_banner()
+        if po_zmene or self._chyba_hlas_pripomienkam():
+            self.pregenerate(force=True)
+
+    def _priprava_po_neuspechu(self, po_zmene, hned=False):
+        """Priprava, ktoru `pregenerate` odlozil, kym bezala aktualizacia
+        (`_pregen_po_aktualizacii`), sa pri neuspechu nesmie stratit.
+
+        Pocas sledovania ide na po hre (`_pregen_po_hre`, ten isty odklad ako
+        v `pregenerate`) - bez siete a bez zmeny stavu. Typicky pripad:
+        auto-profil pri starte hry prepne profil (`schedule_pregenerate`) a
+        hned sa zapne sledovanie, ktore aktualizaciu zrusi; bez tohto by sa
+        hlasky noveho profilu nepripravili ani po hre.
+
+        Mimo sledovania sa spusti hned len pri zruseni (`hned=True`) - vtedy
+        nie je co ukazat. Pri inom neuspechu ostava na ociach jeho veta
+        (a odkaz na nove vydanie); pripravu spusti dalsia zmena alebo hra."""
+        if not po_zmene:
+            return
+        if getattr(self, "listening", False):
+            self._pregen_po_hre = True
+        elif hned:
+            self.pregenerate()
+
+    def _chyba_hlas_pripomienkam(self):
+        """Chyba v cache prirodzeny hlas niektorej pripomienke, ktoru v hre
+        povie (`pregen_jobs`)? Len subory na disku, bez siete."""
+        if getattr(self, "engine", None) != ENGINE_EDGE:
+            return False
+        rate = self.rate_value
+        try:
+            return any(not self.edge_cache.has(t, v, rate) for t, v in self.pregen_jobs())
+        except Exception:
+            return True
 
     def _prune_cache(self, jobs, rate):
         keep = [self.edge_cache.path_for(t, v, rate) for t, v in jobs]

@@ -28,10 +28,12 @@ No account, no telemetry, no analytics. One exception is on by default: the
 natural voice sends Microsoft the wording of your spoken cues, to turn it into
 speech — never your heart rate — and, like any connection, your IP address.
 Nothing new is prepared while Zanshin is watching. To keep even that local,
-pick *Windows (offline)* under Settings → Sound → *Voice source*. Once you
-start pairing a watch, the heart-rate port (`4455`) is open whenever Zanshin
-runs and accepts connections without a password from every network your PC is
-on, so allow Zanshin on your home network only.
+pick *Windows (offline)* under Settings → Sound → *Voice source*. Only when
+you click **Update voice** (from 0.2.2) does Zanshin download newer code for
+that voice from PyPI, the Python package index, and test it with one word.
+Once you start pairing a watch, the heart-rate port (`4455`) is open whenever
+Zanshin runs and accepts connections without a password from every network
+your PC is on, so allow Zanshin on your home network only.
 Everything that can use the network is in [PRIVACY.md](PRIVACY.md). Zanshin is
 not a medical device.
 
@@ -117,12 +119,17 @@ which packs it into an `.exe`, come from PyPI, the usual Python package index.
 The build installs the ones that are missing, in whatever version is newest
 that day, and keeps using the ones already installed without updating them, in
 later builds too. The one exception, from 0.2.2, is `edge-tts`, the library
-behind the natural voice: every build fetches its newest 7.x version, because
+behind the natural voice: every build fetches its newest version, because
 when Microsoft changes something on its side, the fix usually comes in a new
 `edge-tts`. pip then updates a library `edge-tts` itself uses only if the new
-version needs a newer one. Offline, the build keeps the `edge-tts` you have if
-it's new enough (`edge-tts` 7.3.1 or newer; Microsoft refuses older ones) and
-says it couldn't check; with an older one it stops.
+version needs a newer one. The build then checks that Zanshin can still call
+the new `edge-tts` (if not, it stops and says how to go back to the last one
+that worked) and, online, has it say one test word through Microsoft. If
+Microsoft refuses it, a yellow warning says so and the build goes on: the
+Windows voice covers the cues until **Update voice** in the app or a later
+build fixes it. Offline, the build keeps the `edge-tts` you have if it's new
+enough (`edge-tts` 7.3.1 or newer; Microsoft refuses older ones) and says it
+couldn't check; with an older one it stops.
 
 This is how I install it myself. You need an internet connection. On my PC
 the first build downloaded under 100 MB and took about 550 MB on disk, Python
@@ -294,7 +301,8 @@ public Wi-Fi (details in [PRIVACY.md](PRIVACY.md)).
   a 20-thread CPU, roughly an eighth of one core.
 - **A smartwatch and a companion app** that sends heart rate to this PC, with
   the phone and the PC on the same home network (see the table above).
-- **Internet:** while you use Zanshin, only for the natural voice (optional).
+- **Internet:** while you use Zanshin, only for the natural voice (optional)
+  and, from 0.2.2, its **Update voice** button.
 - **Borderless or windowed games** if you want to see the pictures. Windows
   doesn't draw them over exclusive fullscreen; the voice still plays.
 - **No administrator rights.**
@@ -346,12 +354,16 @@ from and when the natural voice prepares its lines — are in
 The short version is at the top of this page. In detail:
 
 - [PRIVACY.md](PRIVACY.md) lists everything that can use the network: the
-  natural voice, the heart-rate port, a download that happens only if a
-  built-in sound is missing, and links you click. There is no update checker,
-  and logs stay in local files. Your PC's IP address stays hidden on screen
-  until you click *Show IP*.
+  natural voice, **Update voice** (from 0.2.2, only when you click it: newer
+  code for the natural voice from PyPI, plus one test word to Microsoft), the
+  heart-rate port, a download that happens only if a built-in sound is
+  missing, and links you click. Zanshin never checks for a new version of
+  itself, and logs stay in local files. Your PC's IP address stays hidden on
+  screen until you click *Show IP*.
 - [SAFETY.md](SAFETY.md) lists what Zanshin does next to a game and what it
-  deliberately doesn't.
+  deliberately doesn't, and what **Update voice** checks before the code it
+  downloads runs, and what those checks can't protect against: a compromised
+  `edge-tts` project or PyPI.
 - Zanshin has no Steam integration — it doesn't load the Steam SDK or talk to
   Steam in any way.
 
@@ -378,18 +390,30 @@ The short version is at the top of this page. In detail:
   it while Zanshin was watching). Zanshin prepares it once you stop watching.
   From 0.2.2, if preparing failed, the line under Settings → Sound → *Voice
   source* says why, with a *Try again* button.
+- **The line under *Voice source* says Microsoft refused the request** (from
+  0.2.2). Microsoft has probably changed something that only a newer version
+  of the voice's library can handle. Click **Update voice** right below it
+  (once you've stopped watching): Zanshin looks for a newer `edge-tts` on
+  PyPI, checks it, tests it with one word and keeps it only if it works
+  ([what it sends and stores](PRIVACY.md), [what it checks](SAFETY.md)). If it
+  then says Microsoft refuses even the newest version, or that the update
+  needs a newer Zanshin, get the new release from
+  [Releases](https://github.com/Dandurfin/Zanshin/releases/latest); the
+  **↗ New Zanshin on GitHub** link next to the button opens that page. Until
+  then the Windows voice speaks the cues whose natural voice is missing.
 - **In the 0.2.1 ZIP, cues stay in the robotic voice.** Since about November
   2026 Microsoft refuses the version of `edge-tts`, the natural voice's
   library, inside that ZIP. Lines prepared before then still play in the
   natural voice; new ones stay in the Windows voice until 0.2.2 is out, and
   the line under the voice source says *check your internet connection*,
   though your connection is fine. Switching the voice source to Windows makes
-  that warning go away. If you built Zanshin yourself, a build from 0.2.2 on
-  fetches the newest 7.x `edge-tts` every time; the 0.2.1 build doesn't. A
-  ready-made ZIP never updates itself (0.2.2's won't either): if Microsoft
-  refuses its voice library again, new lines use the Windows voice until a
-  new release. More, with the names the 0.2.1 ZIP uses, in
-  [KNOWN_ISSUES.md](KNOWN_ISSUES.md).
+  that warning go away. The 0.2.1 ZIP has no **Update voice** button. If you
+  built Zanshin yourself, a build from 0.2.2 on fetches the newest `edge-tts`
+  every time; the 0.2.1 build doesn't. A ready-made ZIP never updates itself
+  on its own: from 0.2.2, **Update voice** fetches a newer voice library when
+  you click it, and if Microsoft refuses even that one, new lines use the
+  Windows voice until a new release. More, with the names the 0.2.1 ZIP uses,
+  in [KNOWN_ISSUES.md](KNOWN_ISSUES.md).
 - **A game's Ctrl+Alt+Z does nothing.** Zanshin reserves it for "not now".
   From 0.2.2, pick another shortcut or *Off* in Settings → General →
   *Keyboard shortcut*. In the 0.2.1 ZIP, quit Zanshin, then in

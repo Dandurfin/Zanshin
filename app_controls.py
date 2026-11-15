@@ -29,7 +29,7 @@ import rebrik
 import theme as theme_mod
 import trigger
 from i18n import tr
-from settings_model import mode_labels
+from settings_model import ENGINE_EDGE, mode_labels
 from ui_dialogs import OnboardingWizard
 from ui_shell import CommandPalette
 
@@ -85,6 +85,14 @@ class ControlsMixin:
             (sprievodca, pomoc, self.open_guide_panel),
             (tr("common.prepare_voices"), tr("palette.cat.sound"),
              lambda: self.pregenerate(force=True)),
+            # "Aktualizovat hlas" (0.2.2) - len pri prirodzenom hlase, rovnako
+            # ako tlacidlo (hlas z Windows nic neposiela, ani skusobne slovo).
+            # Prejde na Nastavenia → Zvuk, kde je stav aktualizacie a pripadny
+            # odkaz na nove vydanie. Pocas sledovania na siet nejde
+            # (`aktualizuj_hlas`); samo sa nespusti nikdy.
+            *([(tr("edge.update.btn"), tr("palette.cat.sound"),
+                lambda: (self.sidebar._select("zvuk"), self.aktualizuj_hlas()))]
+              if getattr(self, "engine", None) == ENGINE_EDGE else []),
             # Polozka hovori, co sa po vybere STANE - tie iste slova ako
             # tlacidlo v pase a ponuka v liste (0.2.2 davka 4). Paleta sa
             # stavia pri kazdom otvoreni, takze stav sedi.

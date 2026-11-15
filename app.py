@@ -629,6 +629,13 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         self.edge_cache = EdgeTTSCache(self.log_threadsafe)
         self.edge_status_label = None
         self.edge_retry_btn = None
+        # "Aktualizovat hlas" (0.2.2): riadok s tlacidlom a odkazom na nove
+        # vydanie; kym aktualizacia bezi, priprava hlasok caka na jej vysledok.
+        self.edge_update_row = None
+        self.edge_update_btn = None
+        self.edge_releases_btn = None
+        self._aktualizacia_hlasu_bezi = False
+        self._pregen_po_aktualizacii = False
         self._pregen_job = None
         self._pregen_seq = 0
         # Hlaska, ktora pocas pocuvania chybala v cache (`_speak_text`) -
@@ -1573,6 +1580,29 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         self.edge_retry_btn = ui_kit.button(
             row.text_col, pal, tr("common.retry"), command=self.skus_hlas_znova,
             height=28)
+        # "Aktualizovat hlas" (0.2.2, rozhodnutie autora 15. 11. 2026): ked
+        # Microsoft zmeni nieco, co opravi az novsi edge-tts, hrac si ho
+        # stiahne sam - len na klik, nikdy samo a nikdy pocas sledovania
+        # (`aktualizuj_hlas`, app_audio.py; PRIVACY.md). Tiche tlacidlo:
+        # pomocna akcia, nie nastavenie. Riadok je pod stavom a "Skusit
+        # znova" a vidno ho len pri prirodzenom hlase
+        # (`_obnov_aktualizaciu_hlasu`). Odkaz na oficialne vydania vedla
+        # neho sa ukaze, len ked hlas opravi az novy Zanshin; chip, lebo je
+        # to externy odkaz (otvori prehliadac).
+        rad = ctk.CTkFrame(row.text_col, fg_color="transparent")
+        self.edge_update_row = rad
+        self.edge_update_btn = ui_kit.button(
+            rad, pal, tr("edge.update.btn"), kind="quiet",
+            command=self.aktualizuj_hlas, height=28)
+        self.edge_update_btn.pack(side="left")
+        odkaz = ui_kit.chip(rad, pal, "↗ " + tr("edge.update.releases_btn"),
+                            self.otvor_vydania_zanshinu)
+        self.edge_releases_btn = odkaz
+        self._obnov_aktualizaciu_hlasu()
+        if self._aktualizacia_hlasu_bezi:
+            # prestavba okna (jazyk, tema) uprostred aktualizacie: stav
+            # sa vrati, vysledok ho potom prepise
+            self.set_edge_status(tr("edge.update.running"), pal["warn"])
 
         row = ui_kit.SettingRow(voice_panel.body, pal, tr("settings.voice"),
                                 tr("settings.voice_sub"), wrap=WRAP)

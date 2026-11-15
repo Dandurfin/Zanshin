@@ -20,18 +20,30 @@ about, and a few will stay.
   fresh install, or once you change a cue's wording, the voice or the speed)
   is spoken by the Windows voice, and the line under *Voice comes from* in
   Settings → Sound says *check your internet connection*, though your
-  connection is fine. It's fixed in 0.2.2 (not released yet),
-  which needs `edge-tts` 7.3.1 or newer. If you build 0.2.2 yourself, its
-  build fetches the newest 7.x `edge-tts` every time; a ready-made ZIP keeps
-  the one it came with.
+  connection is fine. The 0.2.1 ZIP can't fix this itself: it keeps the
+  library it came with and has no *Update voice* button. It's fixed in 0.2.2
+  (not released yet), which needs `edge-tts` 7.3.1 or newer. If you build
+  0.2.2 yourself, its build fetches the newest `edge-tts` every time and
+  tests it. And if Microsoft changes something again, 0.2.2's **Update
+  voice** button (Settings → Sound, under *Voice source*) fetches a newer
+  `edge-tts`, if there is one, when you click it, ZIP or not, without
+  waiting for a new release.
   Until then, choose *Windows voice (works offline)* under *Voice comes
   from*: every cue then uses the Windows voice, nothing is sent to
   Microsoft, and the warning goes away. If you built 0.2.1 yourself,
   building it again doesn't help, because its build keeps the `edge-tts`
   already on your PC. Updating it by hand first
-  (`py -m pip install --upgrade "edge-tts>=7.3.1,<8"`) should, since 0.2.1
+  (`py -m pip install --upgrade "edge-tts>=7.3.1"`) should, since 0.2.1
   calls the library the same way 0.2.2 does, but I haven't tried that with
   0.2.1.
+- ***Update voice* can't fix everything** (0.2.2). It helps only when a newer
+  `edge-tts` fixes the problem and works with the libraries inside your
+  Zanshin; otherwise it says a newer Zanshin is needed and keeps the current
+  voice. It trusts PyPI and the `edge-tts` project: what its checks don't
+  protect against is in [SAFETY.md](SAFETY.md). So far it has been tested
+  against a simulated PyPI and a simulated test word, and in a real update
+  (the real PyPI, a real test word) only from source and in a test program
+  packaged like Zanshin, not yet in a released Zanshin.
 - **Zanshin can't see the game.** A pause is about 2.5 s without input, so a still
   moment mid-fight counts, and aiming with gyro means no pause at all.
   Controllers were tested on one PC.

@@ -47,8 +47,10 @@ built app (`Zanshin.exe`) they live in `%APPDATA%\Zanshin`. **Open the data
 folder** under *Settings → General → Your data* opens that folder, and
 **Delete history** there deletes the session, insight and measurement files
 above with their backups, the prepared voice clips, the crash log and older
-logs (not your settings or recordings). There is **no telemetry, no
-analytics, and no update-checker** anywhere in the app.
+logs (not your settings or recordings). There is **no telemetry and no
+analytics** anywhere in the app, and Zanshin never checks for a new version
+of itself. The one thing it can update is the natural voice's library, and
+only when you click **Update voice** (from 0.2.2, see below).
 
 ## The few things that can use the network
 
@@ -77,7 +79,8 @@ analytics, and no update-checker** anywhere in the app.
        test a cue whose line isn't ready, or when you ask for the voice to be
        prepared again (*Prepare the cue voice* in the *Ctrl+K* command
        palette, or, from 0.2.2, *Try again* under *Voice source* after
-       preparing failed).
+       preparing failed), and from 0.2.2 right after **Update voice**
+       worked, if a cue's line is still missing.
      - **Only if your cues actually speak.** With *Sound and picture* or
        *Picture only* (*Settings → Sound → How I speak up*), and in the *Work*
        world, nothing is prepared and nothing is sent. The style you picked
@@ -105,7 +108,55 @@ analytics, and no update-checker** anywhere in the app.
      want even the wording of your cues to stay local. The voice preview in
      the introduction always uses it (from 0.2.2).
 
-2. **Built-in sounds — normally nothing.** The eight sound effects ship with
+2. **Update voice — only when you click it (from 0.2.2).** Microsoft
+   sometimes changes its speech service so that only newer code of the
+   natural voice's library (`edge-tts`) works with it; in November 2026 it
+   started refusing the version inside older Zanshin releases. So you don't
+   have to wait for a new Zanshin, there's an **Update voice** button under
+   *Voice source* in Settings → Sound (and the same command in the *Ctrl+K*
+   palette), shown only with the natural voice.
+   - **When:** only when you click it. Never by itself, not at start-up, and
+     **never while Zanshin is watching**: a click then only says you can
+     update the voice once you stop watching. If watching starts (or you
+     switch to the Windows voice) while an update runs, only a request
+     already on its way is finished: it stops before its next step that uses
+     the network, and nothing changes.
+   - **What goes out, in this order:**
+     1. Zanshin asks PyPI, the Python package index (`pypi.org`, run by the
+        Python Software Foundation; the build gets its libraries there too),
+        which versions of `edge-tts` exist.
+     2. If there's a newer one than the version Zanshin is using, it
+        downloads that one file, the library's code (a few dozen KB), from
+        `files.pythonhosted.org`, where PyPI keeps its files.
+     3. It sends Microsoft's speech service one fixed test word, **"Zanshin"**
+        (voice `en-GB-SoniaNeural`), to check the voice really works: with
+        the new version, or with the current one if there was nothing newer.
+        Never the wording of your cues. The sound file is deleted right
+        away.
+
+     The requests to PyPI go over HTTPS. Like any connection, PyPI and
+     Microsoft see your IP address; the requests to PyPI name only the app
+     (`Zanshin`, no version) and nothing about you. If PyPI can't be reached,
+     nothing else is sent.
+   - **What stays on your PC:** the downloaded library, and only if its test
+     word worked: the folder `voice_lib` in `%APPDATA%\Zanshin` (run from
+     source, next to `main.py`), about 100 KB of the library's `.py` files
+     plus `manifest.json` (its version, the name and SHA-256 fingerprint of
+     the downloaded file, a fingerprint of each library file and when it was
+     installed; if that version later fails to load at start, also a mark, a
+     short reason without paths and when). The temporary files of each
+     attempt are deleted,
+     and so is an older downloaded version once the new one works. Each
+     attempt writes one line to `logs/app.log`: the result and the version
+     numbers, no paths. From then on, every start uses that version, as long
+     as it's newer than the one built into Zanshin.
+   - **To remove it:** quit Zanshin and delete the `voice_lib` folder; at the
+     next start Zanshin uses its built-in version again. *Delete history*
+     doesn't touch it.
+   - What is checked before the downloaded code runs, and what that can't
+     protect you from, is in [`SAFETY.md`](SAFETY.md).
+
+3. **Built-in sounds — normally nothing.** The eight sound effects ship with
    the app; on first launch the built app copies them into its data folder.
    Only if one is missing (for example a damaged build) does the app replace
    it: two small CC0 sounds are fetched from GitHub
@@ -114,12 +165,12 @@ analytics, and no update-checker** anywhere in the app.
    the request names the app), the rest are
    synthesised locally. If that download fails, those two are synthesised too.
 
-3. **Opening links.** Clicking a creator link, the link to the source code on
+4. **Opening links.** Clicking a creator link, the link to the source code on
    GitHub or a cited research link opens the page in your default browser —
    only when you click it. No app data is added
    to the request.
 
-4. **The heart-rate port on your network.** To receive your heart rate, Zanshin
+5. **The heart-rate port on your network.** To receive your heart rate, Zanshin
    **listens** on port `4455` — TCP (obs-websocket) and UDP (OSC / plain UDP)
    — on **all of your PC's network interfaces** (unless you enter one of this
    PC's own addresses under **Network address (advanced)** in *In-game →
@@ -150,7 +201,7 @@ analytics, and no update-checker** anywhere in the app.
      address (advanced)* field) reveals it until you hide it again or the app
      restarts.
 
-5. **No Steam.** Zanshin has no Steam integration — it doesn't load the Steam
+6. **No Steam.** Zanshin has no Steam integration — it doesn't load the Steam
    SDK or talk to Steam in any way.
 
 ## A note on your phone/watch sensor app
@@ -184,4 +235,5 @@ official Zanshin (see [`LICENSE-DESIGN.md`](LICENSE-DESIGN.md)).
 
 See also [`SAFETY.md`](SAFETY.md) (in Slovak, with an English summary at the
 top) for the anti-cheat / no-injection details (no memory reads, no keyboard
-hook, no screen capture).
+hook, no screen capture) and for what **Update voice** checks before it uses
+the code it downloads.

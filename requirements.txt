@@ -3,11 +3,15 @@ comtypes
 pystray
 pillow
 # edge-tts: minimum = najstarsia verzia, ktoru Microsoft prijme (starsie od
-# novembra 2026 odmieta, HTTP 403, a prirodzeny hlas mlci). Strop <8 = dalsia
-# hlavna verzia, zatial neoverena (moze zmenit API). build_all.ps1 pri kazdom
-# builde stiahne najnovsiu verziu v tomto rozsahu. build_all.ps1 a
-# check_before_run.py citaju tento riadok - nikde inde ho nepis.
-edge-tts>=7.3.1,<8
+# novembra 2026 odmieta, HTTP 403, a prirodzeny hlas mlci). Strop zamerne
+# nie je: ked Microsoft zmeni nieco znova, oprava moze prist aj v novej
+# hlavnej verzii a strop by ju zablokoval. Zlucitelnost sa overuje funkcne:
+# build_all.ps1 pri kazdom builde stiahne najnovsiu verziu, vyskusa jej API
+# (bez siete) a jedno skusobne slovo; appka (tlacidlo Aktualizovat hlas)
+# kazdu stiahnutu verziu tiez najprv vyskusa a necha si ju, len ked funguje.
+# build_all.ps1 a check_before_run.py citaju tento riadok - nikde inde ho
+# nepis.
+edge-tts>=7.3.1
 customtkinter
 numpy
 pygame-ce

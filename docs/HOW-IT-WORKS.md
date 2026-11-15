@@ -259,15 +259,66 @@ example) are prepared once you stop watching, or at the next start.
 
 If preparing fails, the line under *Voice source* says how many cues have
 their voice and, from 0.2.2, why: Microsoft's service couldn't be reached,
-it refused the request (try later, or switch to the Windows voice; if it
-keeps happening, this Zanshin version is probably outdated, because Microsoft
-refuses older versions of the voice library), or something else went wrong. A
+it refused the request (then it says to click **Update voice** below first;
+if that doesn't help, this Zanshin version is probably outdated, because
+Microsoft refuses older versions of the voice library, and until a new one is
+out you can switch to the Windows voice), or something else went wrong. A
 *Try again* button appears under it, and the log says how to retry; from
 0.2.2 the failure also goes into `app.log`. *Try again* works like *Prepare
 the cue voice*: while Zanshin is watching it sends nothing and waits until
 you stop.
 
 The full list of what can use the network is in [PRIVACY.md](../PRIVACY.md).
+
+## Updating the natural voice
+
+From 0.2.2 the *Voice source* row has an **Update voice** button under its
+status line, shown only with the natural voice; the *Ctrl+K* palette has the
+same command (it switches to the *Sound* tab first). It's there because a
+refusal like the one in November 2026 can only be fixed by newer code of
+`edge-tts`, the library behind the natural voice, and that fix shouldn't have
+to wait for a new Zanshin.
+
+It runs only when you click it, never by itself. While Zanshin is watching,
+a click sends nothing: the line says *You can update the voice once you stop
+watching.*, and nothing is queued, so click again afterwards. Otherwise the
+button is greyed out while the update runs, voice preparation already
+running stops, and Zanshin:
+
+1. asks PyPI which versions of `edge-tts` exist and picks the newest final
+   one (no pre-release, nothing withdrawn) that this Zanshin's Python can use
+   and that is newer than the version in use;
+2. downloads it and checks it (what exactly: [SAFETY.md](../SAFETY.md));
+3. loads it, checks that it can be called the way Zanshin calls it, and has
+   it say one test word, "Zanshin", through Microsoft;
+4. keeps it only if that worked; from then on every cue uses it, after a
+   restart too.
+
+If nothing newer exists, the test word checks the version in use instead, so
+*the voice is up to date* means it really works. If watching starts, or you
+switch to the Windows voice, only a request already on its way is finished:
+the update stops before its next step that uses the network, and nothing
+changes. The line under *Voice source* then says how it went:
+
+- the voice was updated, or is up to date: cues still missing their natural
+  voice are prepared right after;
+- Microsoft refuses even the newest version, or the update needs a newer
+  Zanshin: a **↗ New Zanshin on GitHub** link appears next to the button and
+  opens the official Releases page in your browser;
+- no internet, the download didn't pass the check, or another error: the
+  current voice stays; try later.
+
+Each result also puts one line in the log in the window; the technical reason
+goes only into `app.log`. Preparing asked for in the meantime waits for the
+result.
+
+At every start Zanshin uses the downloaded version only if it's newer than
+the one built in, so a later Zanshin with a newer `edge-tts` wins by itself.
+If the downloaded one won't load (a damaged file, for example), Zanshin uses
+the built-in one, says so in `app.log`, and doesn't try the downloaded one
+again until **Update voice** replaces it. Deleting the `voice_lib` folder in
+the data folder goes back to the built-in version. What goes out and what's
+stored: [PRIVACY.md](../PRIVACY.md).
 
 ## Voices and languages
 

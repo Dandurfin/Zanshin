@@ -132,6 +132,15 @@ SETTINGS_PATH = os.path.join(DATA_DIR, "dandurf_settings.json")
 AUDIO_DIR = os.path.join(DATA_DIR, "audio")
 TTS_CACHE_DIR = os.path.join(AUDIO_DIR, "tts_cache")
 SOUNDS_DIR = os.path.join(DATA_DIR, "assets", "sounds")
+VOICE_LIB_NAME = "voice_lib"
+
+
+def voice_lib_dir():
+    """Priecinok stiahnutej kniznice prirodzeneho hlasu (hlas_kniznica.py,
+    tlacidlo "Aktualizovat hlas"): v builde %APPDATA%\\Zanshin\\voice_lib,
+    zo zdrojakov vedla main.py. DATA_DIR sa cita az pri volani, takze ho
+    testy (conftest) presmeruju rovnako ako ostatne cesty."""
+    return os.path.join(DATA_DIR, VOICE_LIB_NAME)
 
 
 def images_dir():

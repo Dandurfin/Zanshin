@@ -431,11 +431,14 @@ except Exception as exc:
 # Microsoft od novembra 2026 odmieta starsie edge-tts (HTTP 403) - appka
 # potom hovori len hlasom z Windows a v Nastaveniach -> Zvuk pise, ze
 # sluzba poziadavku odmietla. build_all.ps1 edge-tts pri kazdom builde
-# zdvihne na najnovsi povoleny sam, pri behu zo zdrojakov to treba urobit
-# rucne. Poziadavka je len v requirements.txt a cita sa tym istym vzorom ako
-# $edgeMinVzor v build_all.ps1 (skupina 1 = cela podmienka, 2 = minimum).
-# Stara verzia je len upozornenie - appka bezi aj bez prirodzeneho hlasu;
-# chybajuce minimum v requirements.txt je chyba.
+# zdvihne na najnovsi sam (a vyskusa ho), pri behu zo zdrojakov to treba
+# urobit rucne. Poziadavka je len v requirements.txt a cita sa tym istym
+# vzorom ako $edgeMinVzor v build_all.ps1 (skupina 1 = cela podmienka,
+# 2 = minimum). Stara verzia je len upozornenie - appka bezi aj bez
+# prirodzeneho hlasu; chybajuce minimum v requirements.txt je chyba.
+# Strop verzie (napr. ,<8) tam zamerne nie je - zablokoval by opravu v novej
+# hlavnej verzii. build_all.ps1 ho odporuci len docasne, ked novy edge-tts
+# zmeni API; preto tu len upozornenie, nech sa na jeho odstranenie nezabudne.
 
 check("8. Verzia edge-tts (prirodzeny hlas)")
 try:
@@ -451,6 +454,12 @@ try:
         print("  PAD  requirements.txt nema minimum pre edge-tts")
     else:
         _treba = _minimum.group(2)
+        _strop = re.search(r"<\s*=?\s*[0-9]", _minimum.group(1))
+        if _strop:
+            notes.append(f"requirements.txt ma strop pre edge-tts ({_minimum.group(1).strip()}) - "
+                         "build nedostane opravu z novsej verzie; ak je docasny, nezabudni ho "
+                         f"odstranit (edge-tts>={_treba})")
+            print("  POZN requirements.txt ma strop pre edge-tts")
         try:
             _verzia = _metadata.version("edge-tts")
         except _metadata.PackageNotFoundError:

@@ -36,6 +36,28 @@ is (to pick the monitor), the microphone (only while you record your own
 cue), and this PC's network adapters, IP addresses and monitors. None of it
 leaves the PC.
 
+**Downloaded code (from 0.2.2, only when you click).** **Update voice** under
+Settings → Sound is the one place where Zanshin downloads code and runs it: a
+newer version of `edge-tts`, the open-source library behind the natural voice,
+from PyPI: the same library, from the same place, that the build packs into
+Zanshin. Never by itself and never while Zanshin is watching: only your click
+starts a download. Before the code runs, Zanshin checks that it came over
+HTTPS from `pypi.org` and `files.pythonhosted.org` only, that its size and
+SHA-256 fingerprint match what PyPI lists, that only the library's own `.py`
+files are taken from the archive (nothing runs while it's installed), and that
+every library it needs is already inside Zanshin. Then the code runs inside
+Zanshin, with your normal user rights, and stays only if it says one test word
+through Microsoft; otherwise the current version stays. A version that stayed
+is loaded at every start from then on, each file checked against its
+fingerprint first, as long as it's newer than the one built into Zanshin.
+What this can't protect against: if the `edge-tts` project or PyPI itself
+were compromised, a malicious version would pass all of it, because the
+fingerprint comes from PyPI too. The button always takes the newest final
+version, even one released minutes earlier, and checks no signature from the
+library's author. Building Zanshin yourself carries the same risk, since the
+build installs `edge-tts` from PyPI. No administrator rights, nothing
+injected, and none of it touches the game.
+
 The rest of this document is in Slovak.
 
 ---
@@ -51,6 +73,11 @@ spôsobom a neinštaluje žiadne systémové hooky.**
 
 Tento dokument presne opisuje, čo appka robí a čo nie. Záruku, že ťa
 konkrétny anti-cheat nezablokuje, však môže dať len jeho výrobca.
+
+Od 0.2.2 vie appka na tvoj klik stiahnuť a spustiť novší kód jednej
+knižnice, tej, na ktorej stojí prirodzený hlas. Čo sa pri tom kontroluje a
+pred čím to nechráni, je v časti
+[Stiahnutý kód](#stiahnutý-kód-aktualizovať-hlas-od-022) nižšie.
 
 ## Čo appka nerobí — a nebude robiť
 
@@ -213,6 +240,83 @@ prázdnym `"snooze_hotkey"` v súbore `dandurf_settings.json`. „Teraz nie“ j
 Kód je v `hotkey.py` a `tests/test_hotkey.py` stráži aj to, že sa v ňom
 neobjaví `SetWindowsHookEx`, `WH_KEYBOARD`, `GetAsyncKeyState` ani
 `GetKeyboardState`.
+
+## Stiahnutý kód: „Aktualizovať hlas“ (od 0.2.2)
+
+Toto je jediné miesto, kde Zanshin sťahuje kód a spúšťa ho. Prirodzený hlas
+stojí na knižnici `edge-tts` (open source, z PyPI, bežného registra knižníc
+pre Python). Microsoft občas zmení svoju hlasovú službu tak, že ide len
+s novším kódom tejto knižnice: v novembri 2026 začal odmietať verziu, ktorú
+majú staršie vydania Zanshinu. Aby si nemusel čakať na nový Zanshin, je
+v Nastavenia → Zvuk pod „Zdroj hlasu“ tlačidlo **Aktualizovať hlas** (aj
+v palete Ctrl+K). Vidno ho len pri prirodzenom hlase.
+
+**Kedy:** len na klik. Nikdy samo, nikdy pri štarte a nikdy počas
+sledovania. Pred každým krokom, ktorý ide na sieť, sa appka pozrie, či sa
+medzitým nezačalo sledovať; ak áno, skončí a nič nezmení. To isté urobí aj
+pred načítaním stiahnutého kódu a po skúšobnom slove: keď sa medzitým začalo
+sledovať, novú verziu nenačíta, ani si ju nenechá.
+
+**Čo stiahne:** len kód knižnice `edge-tts` z PyPI, teda tej istej knižnice
+z toho istého zdroja, ktorú build balí do Zanshinu (`build_all.ps1` ju pri
+každom builde aktualizuje cez pip). Nič iné: žiadnu ďalšiu knižnicu, žiadny
+program ani inštalátor.
+
+**Čo sa skontroluje, kým sa kód spustí** (kód je v `hlas_kniznica.py`):
+
+1. Len HTTPS (certifikáty z balíka `certifi`) a len servery `pypi.org` a
+   `files.pythonhosted.org`, aj po každom presmerovaní.
+2. Veľkosť a odtlačok SHA-256 stiahnutého súboru sa musia zhodovať s tým, čo
+   o ňom uvádza PyPI. Súbor väčší než 2 MB sa nestiahne.
+3. Archív sa skontroluje položku po položke, ešte v pamäti: žiadna cesta von
+   z priečinka, žiadny odkaz, žiadna duplicita, žiadny skompilovaný ani
+   spustiteľný súbor, stropy veľkosti. Na disk sa zapíšu len súbory
+   `edge_tts/*.py` (a značka `py.typed`) do priečinka `voice_lib`
+   v `%APPDATA%\Zanshin`. Pri inštalácii sa nespustí nič: žiadny `setup.py`,
+   súbor `.pth` ani skript.
+4. Kód sa len prečíta (modul `ast`, bez spustenia): nesmie sám seba
+   importovať absolútne (`import edge_tts`), aby sa pri výmene za behu
+   nezmiešala nová verzia so starou.
+5. Každá knižnica, ktorú nová verzia potrebuje (podľa jej METADATA), už musí
+   byť v Zanshine, a vo verzii, ktorú žiada. Keď sa verzia niektorej z nich
+   zistiť nedá, appka ju pustí ďalej, zapíše to do `app.log` a rozhodne až
+   import a skúšobné slovo. Nič ďalšie sa nesťahuje; keď niečo chýba,
+   aktualizácia skončí s tým, že treba novší Zanshin.
+6. Až potom sa kód načíta, a **vtedy už beží**: vnútri procesu Zanshinu,
+   s tvojimi bežnými právami (nie ako administrátor). Musí mať funkcie, ktoré
+   Zanshin volá, a povedať jedno skúšobné slovo „Zanshin“ cez Microsoft. Len
+   vtedy ostane; inak sa zmaže a ostáva doterajšia verzia. Keď hlas opraví
+   až nový Zanshin, appka ukáže odkaz na jeho oficiálne vydania na GitHube.
+
+Pri každom ďalšom štarte appka pred spustením overí každý stiahnutý súbor
+proti odtlačku SHA-256, ktorý si pri inštalácii zapísala do `manifest.json`,
+a bytecode (`__pycache__`) nečíta ani nezapisuje. Stiahnutá verzia sa
+použije, len keď je novšia než pribalená, takže nový Zanshin s novším
+`edge-tts` vyhrá sám. Keď sa nenačíta, appka ide s pribalenou a stiahnutú už
+neskúša. Zmazaním priečinka `voice_lib` (pri zatvorenom Zanshine) sa appka
+vráti k pribalenej verzii.
+
+**Pred čím to nechráni:**
+
+- Keby bol napadnutý samotný projekt `edge-tts` (napríklad účet jeho autora)
+  alebo PyPI, škodlivá verzia by prešla všetkými kontrolami. Odtlačok SHA-256
+  pochádza tiež z PyPI: overí, že súbor dorazil celý a je presne ten, ktorý
+  PyPI ponúka, nie to, že je neškodný. Podpis autora knižnice Zanshin
+  neoveruje a skúšobné slovo dokazuje len, že kód hovorí.
+- Tlačidlo vezme vždy najnovšiu finálnu verziu, aj keby vyšla pred chvíľou.
+- Odtlačky v `manifest.json` odhalia poškodený alebo zmenený súbor, nie
+  niekoho, kto už môže zapisovať do tvojho priečinka používateľa: ten by
+  zmenil aj manifest (a mohol by aj čokoľvek iné).
+- To isté riziko má aj Zanshin, ktorý si postavíš sám: build inštaluje
+  `edge-tts` z toho istého PyPI.
+
+Kto to riziko nechce, tlačidlo jednoducho nepoužije, alebo zvolí hlas
+z Windows, ktorý nič neposiela ani nesťahuje.
+
+**Čo ostáva rovnaké:** žiadne administrátorské práva, nič sa nevkladá do hry
+ani do iného procesu a stiahnutý kód beží len v Zanshine, hry sa nedotkne.
+Všetko z tabuliek vyššie platí ďalej. Čo pri tom ide na sieť, je
+v [PRIVACY.md](PRIVACY.md).
 
 ## Exkluzívny fullscreen
 

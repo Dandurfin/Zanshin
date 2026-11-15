@@ -26,6 +26,7 @@ import time
 
 import numpy as np
 
+import hlas_kniznica
 from i18n import tr
 from paths import IS_WINDOWS, TTS_CACHE_DIR, nahrad_subor
 from settings_model import EDGE_FALLBACK_VOICES, EDGE_PREMIUM_HINT
@@ -50,22 +51,74 @@ EDGE_AVAILABLE = False
 asyncio = None
 edge_tts = None
 EDGE_IMPORT_ERROR = ""
+# Verzia prave pouzivaneho edge-tts a ci je to kniznica stiahnuta tlacidlom
+# "Aktualizovat hlas" (hlas_kniznica.py). `importlib.metadata` hovori vzdy
+# o PRIBALENEJ verzii - stiahnuty balik dist-info nema.
+EDGE_VERZIA = None
+EDGE_STIAHNUTY = False
 
 
 def load_edge():
-    """Skusi (znovu) naimportovat edge-tts. Vracia True pri uspechu."""
-    global EDGE_AVAILABLE, asyncio, edge_tts, EDGE_IMPORT_ERROR
+    """Skusi (znovu) naimportovat edge-tts. Vracia True pri uspechu.
+
+    Novsia STIAHNUTA kniznica (tlacidlo "Aktualizovat hlas") ma prednost
+    pred pribalenou - `hlas_kniznica.nacitaj_pri_starte` ju natiahne pod
+    skutocnym menom "edge_tts". Ked sa nenacita, ide pribalena a stiahnuta sa
+    oznaci ako pokazena (app.log), aby sa neskusala pri kazdom starte. Dalsie
+    vydanie Zanshinu s novsim pribalenym edge-tts vyhra samo (novsia verzia)."""
+    global EDGE_AVAILABLE, asyncio, edge_tts, EDGE_IMPORT_ERROR, EDGE_VERZIA, EDGE_STIAHNUTY
     try:
         importlib.invalidate_caches()
         import asyncio as _asyncio
-        import edge_tts as _edge_tts
+        try:
+            stiahnuta = hlas_kniznica.nacitaj_pri_starte()
+        except Exception:
+            stiahnuta = None    # poistka: stiahnuta kniznica nesmie zhodit start
+        if stiahnuta is not None:
+            _edge_tts, verzia = stiahnuta
+        else:
+            import edge_tts as _edge_tts
+            verzia = hlas_kniznica.verzia_modulu(_edge_tts)
         asyncio, edge_tts = _asyncio, _edge_tts
+        EDGE_VERZIA, EDGE_STIAHNUTY = verzia, stiahnuta is not None
         EDGE_AVAILABLE = True
         EDGE_IMPORT_ERROR = ""
     except Exception as exc:
         EDGE_AVAILABLE = False
+        EDGE_VERZIA, EDGE_STIAHNUTY = None, False
         EDGE_IMPORT_ERROR = str(exc)
     return EDGE_AVAILABLE
+
+
+def nastav_edge_tts(modul, verzia, stiahnuty=False, cache=None, cakanie_s=30.0):
+    """Vymeni modul edge-tts za behu - `hlas_kniznica.aktualizuj` po
+    uspesnom skusobnom slove. Od navratu ide kazda hlaska novym modulom.
+
+    Volaj z POMOCNEHO vlakna: pocka (najviac `cakanie_s`) na zamok
+    `cache._lock`, ktory `EdgeTTSCache.ensure` drzi pocas celej syntezy
+    a `edge_tts` cita az vo vnutri neho - po navrate teda ziadna hlaska nie
+    je rozpracovana starym modulom. Ked sa zamok ziskat nepodari, vymeni sa
+    aj tak: priradenie modulu je atomicke a hlaska, ktora prave leti, dobehne
+    so starym modulom, ktory uz drzi. Vracia True, ked sa zamok drzal."""
+    global EDGE_AVAILABLE, asyncio, edge_tts, EDGE_IMPORT_ERROR, EDGE_VERZIA, EDGE_STIAHNUTY
+    import asyncio as _asyncio
+    zamok = getattr(cache, "_lock", None)
+    drzim = False
+    if zamok is not None:
+        try:
+            drzim = bool(zamok.acquire(timeout=cakanie_s))
+        except Exception:
+            drzim = False
+    try:
+        # modul skor nez EDGE_AVAILABLE: kto vidi True, ma aj modul
+        asyncio, edge_tts = _asyncio, modul
+        EDGE_VERZIA, EDGE_STIAHNUTY = verzia, bool(stiahnuty)
+        EDGE_IMPORT_ERROR = ""
+        EDGE_AVAILABLE = True
+    finally:
+        if drzim:
+            zamok.release()
+    return drzim
 
 
 load_edge()
