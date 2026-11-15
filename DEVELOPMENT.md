@@ -17,15 +17,21 @@ the code that needs a newer one), but I only test 3.14. Run this way, the app
 keeps its data next to `main.py`, separate from the built app's
 `%APPDATA%\Zanshin`.
 
-`requirements.txt` names one minimum version: `edge-tts>=7.3.1`, the library
-behind the natural voice. Since about November 2026 Microsoft refuses older
-versions (HTTP 403), and the natural voice then can't prepare any new line. If
-you installed the requirements before, run the same `pip install` again: pip
-updates `edge-tts` and leaves the other packages as they are.
-`check_before_run.py` and `build_all.ps1` read the minimum from that line, so
-no script repeats it. The documents that name it, this page included, are
-checked against it by `tests/test_022g_dokumenty.py`, so after raising it,
-that test tells you which sentence to update.
+`requirements.txt` gives one library a version range: `edge-tts>=7.3.1,<8`,
+the library behind the natural voice. Since about November 2026 Microsoft
+refuses versions older than the minimum (HTTP 403), and the natural voice then
+can't prepare any new line. The cap keeps out 8.0, a major version I haven't
+tried, which may change how the library is called. If you installed the
+requirements before, run the same `pip install` again: if your `edge-tts` is
+older than the minimum, pip updates it (and a library it uses, only if the new
+version needs a newer one) and leaves the other packages as they are. Nothing
+updates it later on its own when you run from source;
+`py -m pip install --upgrade "edge-tts>=7.3.1,<8"` fetches the newest allowed
+one, which is what every build does. `check_before_run.py` and
+`build_all.ps1` read the range from that line, so no script repeats it. The
+documents that name it, this page included, are checked against it by
+`tests/test_022g_dokumenty.py`, so after changing it, that test tells you
+which sentence to update.
 
 *Not released yet (0.2.2):* only one copy runs at a time, and a source run
 counts as the same app as the built one: starting it again only shows the
@@ -59,8 +65,10 @@ is part of the built app:
   main window calls no method or colour token that doesn't exist, no
   keyboard hook or Steam code has come back, and the installed `edge-tts` is
   at least the minimum in `requirements.txt`. An older or missing `edge-tts`
-  only gets a note, because the app still runs with the Windows voice; a
-  `requirements.txt` without that minimum is an error. With pyflakes installed
+  only gets a note, because the app still runs with the Windows voice (a build
+  never gets this far with one: it installs or updates `edge-tts` first, or
+  stops, see below); a `requirements.txt` without that minimum is an error.
+  With pyflakes installed
   (the developer tools above) it also looks for undefined names; without it, it
   skips that check and says so. `build_all.ps1` runs it before every build but
   doesn't install pyflakes, so unless you already have it, a build skips the
@@ -158,9 +166,14 @@ powershell -ExecutionPolicy Bypass -File "build_all.ps1"
 ```
 
 The script (1) checks/installs Python deps and PyInstaller, runs
-`pip install -r requirements.txt` if the installed `edge-tts` is older than
-the minimum there (and stops if pip fails or `edge-tts` is still too old
-afterwards; with a new enough one it installs nothing), draws
+`pip install --upgrade` on every build for the `edge-tts` line of
+`requirements.txt` alone, so the build gets the newest `edge-tts` in that
+range (pip touches a library `edge-tts` uses only if the new version needs a
+newer one), then asks the package index once more with `--dry-run`, because
+pip also succeeds offline when the installed version fits. If pip or that
+check fails, the build goes on with the installed `edge-tts` only if it's at
+least the minimum there, with a yellow warning, and stops otherwise; the log
+names the `edge-tts` version that goes into the build. It also draws
 `Dandurf.ico` if it's missing, and runs `check_before_run.py` — if that finds
 a problem, nothing is built; (2) force-closes a running Zanshin without asking
 (Windows locks a running `.exe`), deletes the old `dist\Zanshin\` and packages

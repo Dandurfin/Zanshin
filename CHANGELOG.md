@@ -331,17 +331,21 @@ have them.
   before then still played, but every new one fell back to the Windows voice.
   Building Zanshin again didn't help: the build installed only libraries that
   were missing and kept an old one. **0.2.2:** Zanshin needs `edge-tts` 7.3.1
-  or newer (`requirements.txt`). `build.bat` updates an older one before it
-  builds, and if it can't, it stops with a red **CHYBA:** line instead of
-  building an app whose natural voice is refused. When Microsoft refuses the
-  request, the line under *Voice source* and the log in the window now add
-  that if it keeps happening, this Zanshin version is probably outdated and
-  the new one is on the official GitHub (Releases). A failed preparation also
-  goes into `app.log`, with the installed `edge-tts` version, once per kind of
-  error until preparing works again; before, it was only in the log in the
-  window. Run from source, `py -m pip install -r requirements.txt` updates
-  `edge-tts` and leaves the rest as it is, and `check_before_run.py` warns
-  about an older one.
+  or newer (`requirements.txt`). `build.bat` fetches the newest 7.x
+  `edge-tts` on every build: if Microsoft changes something again and a new
+  7.x `edge-tts` fixes it, a build made later gets that fix too (a ready-made
+  ZIP keeps the one it was built with). Offline it keeps an installed one
+  that's new enough and says it couldn't check; with an older one it stops
+  with a red **CHYBA:** line instead of building an app whose natural voice
+  is refused. The build log names the `edge-tts` version that went in. When
+  Microsoft refuses the request, the line under *Voice source* and the log in
+  the window now add that if it keeps happening, this Zanshin version is
+  probably outdated and the new one is on the official GitHub (Releases). A failed preparation also goes into `app.log`, with the
+  installed `edge-tts` version, once per kind of error until preparing works
+  again; before, it was only in the log in the window. Run from source,
+  `py -m pip install -r requirements.txt` updates an older `edge-tts` (and a
+  library it uses, only if the new version needs a newer one) and leaves the
+  rest as it is, and `check_before_run.py` warns about an older one.
 - **Switching Play / Work while watching** changed how the running session's
   cues spoke, though the session itself stayed in its world. **0.2.2:** the
   session and its cues keep their world, the switch applies from the next

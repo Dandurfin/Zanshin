@@ -2,10 +2,12 @@ pyttsx3
 comtypes
 pystray
 pillow
-# Starsie edge-tts Microsoft od novembra 2026 odmieta (HTTP 403 pri spojeni),
-# prirodzeny hlas potom mlci. build_all.ps1 a check_before_run.py citaju
-# minimum odtialto - nikde inde ho nepis.
-edge-tts>=7.3.1
+# edge-tts: minimum = najstarsia verzia, ktoru Microsoft prijme (starsie od
+# novembra 2026 odmieta, HTTP 403, a prirodzeny hlas mlci). Strop <8 = dalsia
+# hlavna verzia, zatial neoverena (moze zmenit API). build_all.ps1 pri kazdom
+# builde stiahne najnovsiu verziu v tomto rozsahu. build_all.ps1 a
+# check_before_run.py citaju tento riadok - nikde inde ho nepis.
+edge-tts>=7.3.1,<8
 customtkinter
 numpy
 pygame-ce

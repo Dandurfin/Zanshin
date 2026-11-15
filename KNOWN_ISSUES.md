@@ -21,14 +21,17 @@ about, and a few will stay.
   is spoken by the Windows voice, and the line under *Voice comes from* in
   Settings → Sound says *check your internet connection*, though your
   connection is fine. It's fixed in 0.2.2 (not released yet),
-  which needs `edge-tts` 7.3.1 or newer; its build updates an older one.
+  which needs `edge-tts` 7.3.1 or newer. If you build 0.2.2 yourself, its
+  build fetches the newest 7.x `edge-tts` every time; a ready-made ZIP keeps
+  the one it came with.
   Until then, choose *Windows voice (works offline)* under *Voice comes
   from*: every cue then uses the Windows voice, nothing is sent to
   Microsoft, and the warning goes away. If you built 0.2.1 yourself,
   building it again doesn't help, because its build keeps the `edge-tts`
   already on your PC. Updating it by hand first
-  (`py -m pip install --upgrade edge-tts`) should, since 0.2.1 calls the
-  library the same way 0.2.2 does, but I haven't tried that with 0.2.1.
+  (`py -m pip install --upgrade "edge-tts>=7.3.1,<8"`) should, since 0.2.1
+  calls the library the same way 0.2.2 does, but I haven't tried that with
+  0.2.1.
 - **Zanshin can't see the game.** A pause is about 2.5 s without input, so a still
   moment mid-fight counts, and aiming with gyro means no pause at all.
   Controllers were tested on one PC.

@@ -117,8 +117,12 @@ which packs it into an `.exe`, come from PyPI, the usual Python package index.
 The build installs the ones that are missing, in whatever version is newest
 that day, and keeps using the ones already installed without updating them, in
 later builds too. The one exception, from 0.2.2, is `edge-tts`, the library
-behind the natural voice: Microsoft refuses its older versions, so if yours is
-older than the one `requirements.txt` asks for, the build updates it.
+behind the natural voice: every build fetches its newest 7.x version, because
+when Microsoft changes something on its side, the fix usually comes in a new
+`edge-tts`. pip then updates a library `edge-tts` itself uses only if the new
+version needs a newer one. Offline, the build keeps the `edge-tts` you have if
+it's new enough (`edge-tts` 7.3.1 or newer; Microsoft refuses older ones) and
+says it couldn't check; with an older one it stops.
 
 This is how I install it myself. You need an internet connection. On my PC
 the first build downloaded under 100 MB and took about 550 MB on disk, Python
@@ -381,8 +385,11 @@ The short version is at the top of this page. In detail:
   the line under the voice source says *check your internet connection*,
   though your connection is fine. Switching the voice source to Windows makes
   that warning go away. If you built Zanshin yourself, a build from 0.2.2 on
-  updates `edge-tts`; the 0.2.1 build doesn't. More, with the names the 0.2.1
-  ZIP uses, in [KNOWN_ISSUES.md](KNOWN_ISSUES.md).
+  fetches the newest 7.x `edge-tts` every time; the 0.2.1 build doesn't. A
+  ready-made ZIP never updates itself (0.2.2's won't either): if Microsoft
+  refuses its voice library again, new lines use the Windows voice until a
+  new release. More, with the names the 0.2.1 ZIP uses, in
+  [KNOWN_ISSUES.md](KNOWN_ISSUES.md).
 - **A game's Ctrl+Alt+Z does nothing.** Zanshin reserves it for "not now".
   From 0.2.2, pick another shortcut or *Off* in Settings → General →
   *Keyboard shortcut*. In the 0.2.1 ZIP, quit Zanshin, then in

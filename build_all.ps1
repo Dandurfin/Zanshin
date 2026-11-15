@@ -72,31 +72,50 @@ foreach ($module in @('edge_tts', 'comtypes', 'pystray', 'PIL',
     }
 }
 
-# edge-tts musi byt dost novy: starsie verzie Microsoft od novembra 2026
-# odmieta (HTTP 403) a prirodzeny hlas v builde potom mlci. Cyklus vyssie
-# instaluje len CHYBAJUCI modul, takze stara verzia by v PC ostala navzdy.
-# Minimum je v requirements.txt (jediny zdroj). Porovnava sa ciselne cez
-# importlib.metadata - bez 'packaging', ten nemusi byt nainstalovany.
-# Pri starej verzii `pip install -r` zdvihne len poziadavky, ktore nie su
-# splnene - ostatne necha tak. Ked je edge-tts dost novy, na siet sa nechodi.
-$edgeMinVzor = '^\s*edge-tts\s*>=\s*([0-9]+(?:\.[0-9]+)*)'
+# edge-tts (prirodzeny hlas) build stiahne pri KAZDOM behu v najnovsej
+# povolenej verzii: Microsoft od novembra 2026 odmieta starsie verzie
+# (HTTP 403) a ked nieco zmeni znova, oprava zvycajne pride v novom edge-tts -
+# aj do buildu po mesiaci bez vydania. Cyklus vyssie instaluje len CHYBAJUCI
+# modul.
+# Poziadavka (minimum aj strop) je len v requirements.txt. Upgrade dostane
+# LEN edge-tts: pip predvolene (--upgrade-strategy only-if-needed) zdvihne
+# jeho zavislost, len ked jej verzia edge-tts nestaci; ostatne balicky necha.
+# Medzera za menom je zamerna: argument s medzerou da PowerShell 5.1 do
+# uvodzoviek, takze ani Python cez .bat (napr. pyenv-win) neberie '<' a '>'
+# ako presmerovanie. Verzie porovnava importlib.metadata ciselne - bez
+# 'packaging', ten nemusi byt nainstalovany.
+$edgeMinVzor = '^\s*edge-tts\s*(>=\s*([0-9]+(?:\.[0-9]+)*)[^#;\r\n]*)'
 $edgeMin = $null
 foreach ($riadok in Get-Content 'requirements.txt') {
-    if ($riadok -match $edgeMinVzor) { $edgeMin = $Matches[1]; break }
+    if ($riadok -match $edgeMinVzor) {
+        $edgePoziadavka = 'edge-tts ' + $Matches[1].Trim()
+        $edgeMin = $Matches[2]
+        break
+    }
 }
 if (-not $edgeMin) { Fail "requirements.txt nema minimum pre edge-tts (riadok edge-tts>=...)." }
 $edgeKontrola = "import re, sys, importlib.metadata as m; d = next(iter(m.distributions(name='edge-tts')), None); v = d.version if d else '?'; t = lambda s: tuple(int(c) for c in re.findall(r'\d+', s)); print(v); sys.exit(0 if t(v) >= t(sys.argv[1]) else 1)"
+Write-Host "Hladam najnovsi edge-tts ($edgePoziadavka)..." -ForegroundColor DarkGray
+Invoke-Py '-m' 'pip' 'install' '--upgrade' '--retries' '1' '--timeout' '15' $edgePoziadavka
+$edgePip = $LASTEXITCODE
+if ($edgePip -eq 0) {
+    # Bez internetu pip skonci OK, ked nainstalovany edge-tts poziadavke
+    # vyhovuje (vypise len WARNING Retrying). Index sa preto spytame este raz,
+    # bez ohladu na nainstalovany: --dry-run nic neinstaluje, bez siete zlyha.
+    Invoke-Py '-m' 'pip' 'install' '--dry-run' '--ignore-installed' '--no-deps' '--quiet' '--retries' '1' '--timeout' '15' $edgePoziadavka 2>&1 | Out-Null
+    $edgePip = $LASTEXITCODE
+}
 $edgeVerzia = "$(Invoke-Py '-c' $edgeKontrola $edgeMin)".Trim()
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "edge-tts $edgeVerzia je stary (treba aspon $edgeMin, starsi Microsoft odmieta) - aktualizujem..." -ForegroundColor Yellow
-    Invoke-Py '-m' 'pip' 'install' '-r' 'requirements.txt'
-    if ($LASTEXITCODE -ne 0) { Fail "pip install zlyhal - edge-tts sa neaktualizoval (skontroluj internet)." }
-    $edgeVerzia = "$(Invoke-Py '-c' $edgeKontrola $edgeMin)".Trim()
-    if ($LASTEXITCODE -ne 0) {
-        Fail "edge-tts je stale $edgeVerzia, treba aspon $edgeMin - prirodzeny hlas by v builde nefungoval."
+    if ($edgePip -ne 0) {
+        Fail "edge-tts je $edgeVerzia, treba aspon $edgeMin, a novsi som nestiahol (skontroluj internet) - prirodzeny hlas by v builde nefungoval."
     }
+    Fail "edge-tts je stale $edgeVerzia, treba aspon $edgeMin - prirodzeny hlas by v builde nefungoval."
 }
-Write-Host "edge-tts $edgeVerzia (treba aspon $edgeMin)" -ForegroundColor Green
+if ($edgePip -ne 0) {
+    Write-Host "Najnovsi edge-tts som nevedel overit (bez internetu?) - build pokracuje s nainstalovanym $edgeVerzia." -ForegroundColor Yellow
+}
+Write-Host "edge-tts $edgeVerzia ide do buildu (treba aspon $edgeMin)" -ForegroundColor Green
 
 Invoke-Py '-m' 'PyInstaller' '--version' 2>&1 | Out-Null
 if ($LASTEXITCODE -ne 0) {

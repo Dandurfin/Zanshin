@@ -430,10 +430,12 @@ except Exception as exc:
 #
 # Microsoft od novembra 2026 odmieta starsie edge-tts (HTTP 403) - appka
 # potom hovori len hlasom z Windows a v Nastaveniach -> Zvuk pise, ze
-# sluzba poziadavku odmietla. build_all.ps1 stary edge-tts zdvihne sam, pri
-# behu zo zdrojakov to treba urobit rucne. Minimum je len v requirements.txt
-# (to iste cita build_all.ps1). Stara verzia je len upozornenie - appka bezi
-# aj bez prirodzeneho hlasu; chybajuce minimum v requirements.txt je chyba.
+# sluzba poziadavku odmietla. build_all.ps1 edge-tts pri kazdom builde
+# zdvihne na najnovsi povoleny sam, pri behu zo zdrojakov to treba urobit
+# rucne. Poziadavka je len v requirements.txt a cita sa tym istym vzorom ako
+# $edgeMinVzor v build_all.ps1 (skupina 1 = cela podmienka, 2 = minimum).
+# Stara verzia je len upozornenie - appka bezi aj bez prirodzeneho hlasu;
+# chybajuce minimum v requirements.txt je chyba.
 
 check("8. Verzia edge-tts (prirodzeny hlas)")
 try:
@@ -442,13 +444,13 @@ try:
     def _cisla_verzie(verzia):
         return tuple(int(c) for c in re.findall(r"\d+", verzia))
 
-    _minimum = re.search(r"^\s*edge-tts\s*>=\s*([0-9]+(?:\.[0-9]+)*)",
+    _minimum = re.search(r"^\s*edge-tts\s*(>=\s*([0-9]+(?:\.[0-9]+)*)[^#;\r\n]*)",
                          read("requirements.txt"), re.I | re.M)
     if not _minimum:
         problems.append("requirements.txt nema minimum pre edge-tts (edge-tts>=...)")
         print("  PAD  requirements.txt nema minimum pre edge-tts")
     else:
-        _treba = _minimum.group(1)
+        _treba = _minimum.group(2)
         try:
             _verzia = _metadata.version("edge-tts")
         except _metadata.PackageNotFoundError:

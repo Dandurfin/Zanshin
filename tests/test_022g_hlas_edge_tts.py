@@ -8,13 +8,23 @@ neopravil: requirements.txt mal holy "edge-tts" a build_all.ps1 instaloval
 zavislosti len ked nejaky modul CHYBAL - stara verzia v PC ostala navzdy.
 A zlyhanie islo len do dennika v okne, nie do logs/app.log.
 
+Rozhodnutie autora (2026-11-15): build stiahne najnovsi povoleny edge-tts
+pri KAZDOM behu - ked Microsoft zmeni nieco znova, aj build po mesiaci bez
+vydania dostane opravu. Strop <8 drzi mimo buildu neoverenu hlavnu verziu.
+
 Co strazi tento test:
-  * requirements.txt ma minimum edge-tts (jediny zdroj) a ostatne riadky
-    ostali,
-  * build_all.ps1 minimum cita z requirements.txt (tym istym vzorom ako
-    check_before_run.py), porovna ho s nainstalovanou verziou ciselne a pri
-    starej verzii spusti `pip install -r requirements.txt`; zlyhanie
-    zastavi build (Fail),
+  * requirements.txt ma edge-tts s minimom a stropom (jediny zdroj) a
+    ostatne riadky ostali,
+  * build_all.ps1 celu poziadavku aj minimum cita z requirements.txt (tym
+    istym vzorom ako check_before_run.py) a pri kazdom builde spusti
+    `pip install --upgrade` LEN pre tuto poziadavku (s --retries/--timeout);
+    bez internetu pokracuje, len ked nainstalovany edge-tts minimum splna,
+    inak zastavi build (Fail),
+  * skutocny blok z build_all.ps1 v powershell.exe s falosnym pip (uspech,
+    bez internetu, zlyhanie) robi presne to - kazdy pripad zvlast,
+  * ten isty blok so SKUTOCNYM Invoke-Py cez python.bat (cmd.exe, cesta s
+    medzerou) doruci poziadavku do sys.argv celu a v priecinku buildu
+    nevznikne ziadny subor (holy '<' a '>' by cmd zobral ako presmerovanie),
   * kontrola verzie z build_all.ps1 naozaj funguje (falosne dist-info v
     tmp_path, bez siete a bez instalacie),
   * zlyhana priprava hlasu zapise raz za druh chyby jeden riadok do app.log
@@ -28,8 +38,10 @@ Co strazi tento test:
 
 Synteticke data: cesta C:\\Users\\Hrac, verzie 7.2.8 / 7.3.1 - nic z PC.
 """
+import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 
@@ -56,10 +68,17 @@ def _cisla(verzia):
     return tuple(int(c) for c in re.findall(r"\d+", verzia))
 
 
-def _minimum_z_requirements():
-    zhody = re.findall(r"^\s*edge-tts\s*>=\s*([0-9.]+)\s*$", _read("requirements.txt"), re.M)
+def _edge_riadok():
+    """(podmienka, minimum, strop) z riadku edge-tts>=X,<N v requirements.txt.
+    Vlastny prisny vzor - nezavisly od vzoru v builde."""
+    zhody = re.findall(r"^\s*edge-tts\s*(>=\s*([0-9.]+)\s*,\s*<\s*([0-9]+))\s*$",
+                       _read("requirements.txt"), re.M)
     assert len(zhody) == 1, zhody
     return zhody[0]
+
+
+def _minimum_z_requirements():
+    return _edge_riadok()[1]
 
 
 def _vzor_z_buildu():
@@ -78,12 +97,16 @@ def _kontrola_z_buildu():
 # requirements.txt
 # --------------------------------------------------------------------------
 
-def test_requirements_ma_minimum_edge_tts():
-    assert _cisla(_minimum_z_requirements()) >= (7, 3, 1)
+def test_requirements_ma_minimum_a_strop_edge_tts():
+    podmienka, minimum, strop = _edge_riadok()
+    assert _cisla(minimum) >= (7, 3, 1)
+    # strop = dalsia hlavna verzia: neoverena (moze zmenit API) do buildu
+    # nepride, kazda novsia 7.x ano
+    assert int(strop) == _cisla(minimum)[0] + 1, podmienka
     riadky = [r.strip() for r in _read("requirements.txt").splitlines()
               if r.strip() and not r.lstrip().startswith("#")]
     assert "edge-tts" not in riadky, "holy edge-tts by nechal staru verziu"
-    # ostatne zavislosti ostali, ako boli
+    # ostatne zavislosti ostali, ako boli (bez verzii - build ich necha tak)
     assert [r for r in riadky if not r.startswith("edge-tts")] == [
         "pyttsx3", "comtypes", "pystray", "pillow", "customtkinter", "numpy",
         "pygame-ce", "psutil"]
@@ -93,44 +116,320 @@ def test_requirements_ma_minimum_edge_tts():
 # build_all.ps1
 # --------------------------------------------------------------------------
 
-def test_build_cita_minimum_z_requirements_tym_istym_vzorom():
+def _blok_z_buildu():
+    """edge-tts blok z build_all.ps1: od $edgeMinVzor po PyInstaller."""
+    skript = _read("build_all.ps1")
+    return skript[skript.index("$edgeMinVzor = "):
+                  skript.index("Invoke-Py '-m' 'PyInstaller' '--version'")]
+
+
+def test_build_cita_poziadavku_z_requirements_tym_istym_vzorom():
     vzor = _vzor_z_buildu()
-    # PowerShell -match je bez ohladu na velkost pismen
-    najdene = [z.group(1) for r in _read("requirements.txt").splitlines()
+    podmienka, minimum, strop = _edge_riadok()
+    # PowerShell -match je bez ohladu na velkost pismen; skupina 1 = cela
+    # podmienka (ide do pip), skupina 2 = minimum (kontrola verzie)
+    najdene = [(z.group(1).strip(), z.group(2))
+               for r in _read("requirements.txt").splitlines()
                if (z := re.match(vzor, r, re.I))]
-    assert najdene == [_minimum_z_requirements()]
-    assert re.match(vzor, "edge-tts >= 7.3.1  # komentar", re.I).group(1) == "7.3.1"
-    assert not re.match(vzor, "edge-tts", re.I)
+    assert najdene == [(podmienka, minimum)]
+    assert podmienka == ">=%s,<%s" % (minimum, strop)
+    for riadok, cakane in (
+            ("edge-tts >= 7.3.1, <8  # komentar", (">= 7.3.1, <8", "7.3.1")),
+            ("edge-tts>=7.10.0,<8", (">=7.10.0,<8", "7.10.0")),
+            ("edge-tts>=7.3.1,<8; sys_platform == 'win32'", (">=7.3.1,<8", "7.3.1")),
+            ("edge-tts>=7.3.1", (">=7.3.1", "7.3.1"))):
+        z = re.match(vzor, riadok, re.I)
+        assert (z.group(1).strip(), z.group(2)) == cakane, riadok
+    for bez_minima in ("edge-tts", "edge-tts<8", "# edge-tts>=7.3.1"):
+        assert not re.match(vzor, bez_minima, re.I), bez_minima
+    # cely subor naraz (check_before_run.py): podmienka neprejde na dalsi riadok
+    z = re.search(vzor, "edge-tts>=7.3.1,<8\ncustomtkinter\n", re.I | re.M)
+    assert z.group(1) == ">=7.3.1,<8"
     skript = _read("build_all.ps1")
     assert "Get-Content 'requirements.txt'" in skript
     assert "$riadok -match $edgeMinVzor" in skript
-    # jediny zdroj: ziadne cislo verzie natvrdo v skripte
-    assert _minimum_z_requirements() not in skript
-    # ta ista poziadavka v predbeznej kontrole
-    assert vzor in _read("check_before_run.py")
+    assert "$edgePoziadavka = 'edge-tts ' + $Matches[1].Trim()" in skript
+    assert "$edgeMin = $Matches[2]" in skript
+    # jediny zdroj: ziadne cislo verzie ani strop natvrdo v skripte
+    assert minimum not in skript and "<%s" % strop not in skript
+    # ta ista poziadavka v predbeznej kontrole, minimum je tam tiez skupina 2
+    kontrola = _read("check_before_run.py")
+    assert vzor in kontrola
+    assert "_treba = _minimum.group(2)" in kontrola
 
 
-def test_build_pri_starej_verzii_spusti_pip_a_chybu_zastavi():
+def test_build_vzdy_zdvihne_len_edge_tts_a_bez_internetu_rozhodne_minimum():
     skript = _read("build_all.ps1")
     cyklus = skript.index("foreach ($module in @('edge_tts'")
     kontrola = skript.index("$edgeMinVzor = ")
     pyinstaller = skript.index("Invoke-Py '-m' 'PyInstaller' '--version'")
     assert cyklus < kontrola < pyinstaller, "kontrola ide po cykle, pred PyInstallerom"
-    blok = skript[kontrola:pyinstaller]
-    assert "Invoke-Py '-c' $edgeKontrola $edgeMin" in blok
-    stara = blok.index("if ($LASTEXITCODE -ne 0) {")
-    po_starej = blok[stara:]
-    assert po_starej.index("Invoke-Py '-m' 'pip' 'install' '-r' 'requirements.txt'") \
-        < po_starej.index("Fail \"pip install zlyhal")
-    # po instalacii sa verzia overi znova - stale stara = Fail
-    assert po_starej.count("Invoke-Py '-c' $edgeKontrola $edgeMin") == 1
-    assert "Fail \"edge-tts je stale" in po_starej
+    blok = _blok_z_buildu()
+    # pri kazdom builde: upgrade LEN poziadavky edge-tts z requirements.txt
+    upgrade = ("Invoke-Py '-m' 'pip' 'install' '--upgrade' '--retries' '1' "
+               "'--timeout' '15' $edgePoziadavka")
+    riadky = [r.strip() for r in skript.splitlines()]
+    assert [r for r in riadky if "'--upgrade'" in r] == [upgrade]
+    # ani skratka, ani ina strategia (eager by zdvihol aj vsetky zavislosti)
+    assert "'-U'" not in skript and "'--upgrade-strategy'" not in skript
+    # -r requirements.txt len v cykle chybajucich modulov, bez --upgrade
+    s_r = [r for r in riadky if "'-r'" in r]
+    assert s_r == ["Invoke-Py '-m' 'pip' 'install' '-r' 'requirements.txt'"]
+    assert skript.index(s_r[0]) < kontrola
+    # pip OK aj bez internetu, ked nainstalovany vyhovuje - preto sonda indexu
+    # (--dry-run nic neinstaluje), len po uspesnom pip
+    sonda = ("Invoke-Py '-m' 'pip' 'install' '--dry-run' '--ignore-installed' "
+             "'--no-deps' '--quiet' '--retries' '1' '--timeout' '15' "
+             "$edgePoziadavka 2>&1 | Out-Null")
+    assert blok.count(sonda) == 1
+    assert blok.index(upgrade) < blok.index("if ($edgePip -eq 0) {") < blok.index(sonda)
+    # potom kontrola verzie: pod minimum = Fail (s internetom aj bez)
+    over = blok.index("$edgeVerzia = \"$(Invoke-Py '-c' $edgeKontrola $edgeMin)\".Trim()")
+    assert blok.count("Invoke-Py '-c' $edgeKontrola $edgeMin") == 1
+    assert blok.index(sonda) < over
+    po = blok[over:]
+    pod_minimom = po[po.index("if ($LASTEXITCODE -ne 0) {"):po.index("if ($edgePip -ne 0) {\n    Write-Host")]
+    assert pod_minimom.count("Fail \"") == 2
+    assert "skontroluj internet" in pod_minimom and "nefungoval" in pod_minimom
+    # bez internetu (pip alebo sonda zlyhali) a minimum splnene: zlte, pokracuje
+    zlte = po[po.index("if ($edgePip -ne 0) {\n    Write-Host"):]
+    assert "nevedel overit (bez internetu?)" in zlte and "-ForegroundColor Yellow" in zlte
+    assert "Fail" not in zlte
+    # verzia, ktora ide do exe, je vzdy v logu buildu
+    assert 'Write-Host "edge-tts $edgeVerzia ide do buildu' in zlte
     assert "Fail \"requirements.txt nema minimum pre edge-tts" in blok
-    # ziadne 'packaging' (nemusi byt nainstalovany), ziadny upgrade vsetkeho
+    # ziadne 'packaging' (nemusi byt nainstalovany)
     assert "packaging" not in _kontrola_z_buildu()
-    assert "'--upgrade'" not in skript and "'-U'" not in skript
     # PowerShell 5.1 skript bez BOM cita ako ANSI - ostava cisto ASCII
     assert skript.isascii()
+
+
+# --------------------------------------------------------------------------
+# Skutocny blok z build_all.ps1 v powershell.exe, pip je falosny
+# --------------------------------------------------------------------------
+#
+# Bezi PRAVY kod bloku (citanie requirements.txt, rozhodovanie, hlasky);
+# Fail a Write-Host su prepisane na zaznam, Invoke-Py na falosny pip.
+# Kontrola verzie ('-c' $edgeKontrola) ide do skutocneho Pythonu s `-S`
+# nad falosnym dist-info - ako test_kontrola_verzie_z_buildu_naozaj_porovna.
+# Falosny pip: install vrati kod zo scenara a pri uspechu "nainstaluje"
+# verziu `po`; sonda (--dry-run) vrati `sonda`. Pip bez internetu realne
+# (overene 2026-11): s vyhovujucim edge-tts skonci 0, so starym 1.
+
+_HARNESS = r"""
+param([string]$Blok, [string]$Scenare, [string]$Vystup, [string]$Python, [string]$Site)
+$kod = [IO.File]::ReadAllText($Blok)
+function Fail($message) { throw "CHYBA: $message" }
+function Write-Host {
+    param([Parameter(Position = 0)] $Object = '', $ForegroundColor = '')
+    $script:riadky.Add("$($script:s.id)`thost`t$ForegroundColor`t$Object")
+}
+function Nastav-Verziu($verzia) {
+    Get-ChildItem $Site -Filter 'edge_tts-*.dist-info' | Remove-Item -Recurse -Force
+    if ($verzia) {
+        $d = New-Item -ItemType Directory -Path (Join-Path $Site "edge_tts-$verzia.dist-info")
+        [IO.File]::WriteAllText((Join-Path $d.FullName 'METADATA'),
+            "Metadata-Version: 2.1`nName: edge-tts`nVersion: $verzia`n")
+    }
+}
+function Invoke-Py {
+    $script:riadky.Add("$($script:s.id)`tpy`t" + ($args -join "`t"))
+    if ($args[0] -eq '-c') { & $Python -S @args; return }
+    if ($args -contains '--dry-run') { $global:LASTEXITCODE = $script:s.sonda; return }
+    if ($script:s.pip -eq 0 -and $script:s.po) { Nastav-Verziu $script:s.po }
+    $global:LASTEXITCODE = $script:s.pip
+}
+$script:riadky = New-Object System.Collections.Generic.List[string]
+foreach ($s in (Get-Content $Scenare -Raw | ConvertFrom-Json)) {
+    $script:s = $s
+    Nastav-Verziu $s.pred
+    Set-Location $s.priecinok
+    $global:LASTEXITCODE = 0
+    try { & ([scriptblock]::Create($kod)); $koniec = 'presiel' }
+    catch { $koniec = $_.Exception.Message }
+    $script:riadky.Add("$($s.id)`tkoniec`t$koniec")
+}
+[IO.File]::WriteAllLines($Vystup, $script:riadky.ToArray())
+"""
+
+# id: (nainstalovany pred, kod pip install, verzia po uspesnom pip, kod sondy)
+_SCENARE = {
+    "online_stary": ("7.2.8", 0, "7.3.1", 0),
+    "online_najnovsi": ("7.3.1", 0, None, 0),
+    "offline_dost_novy": ("7.3.1", 0, None, 1),     # pip OK, sonda nie
+    "offline_stary": ("7.2.8", 1, None, 1),
+    "offline_ziadny": (None, 1, None, 1),
+    "pip_zlyhal_dost_novy": ("7.10.0", 1, None, 0),  # ciselne: 7.10 > 7.3
+    "pip_ok_stale_stary": ("7.2.8", 0, None, 0),
+}
+
+
+@pytest.fixture(scope="module")
+def beh_bloku(tmp_path_factory):
+    powershell = shutil.which("powershell.exe") or shutil.which("powershell")
+    if not powershell:
+        pytest.skip("powershell.exe tu nie je")
+    tmp = tmp_path_factory.mktemp("edge_blok")
+    s_req, bez_req, site = tmp / "s_req", tmp / "bez_req", tmp / "site"
+    for p in (s_req, bez_req, site):
+        p.mkdir()
+    (s_req / "requirements.txt").write_text(_read("requirements.txt"), encoding="utf-8")
+    (bez_req / "requirements.txt").write_text("pyttsx3\nedge-tts\n", encoding="utf-8")
+    scenare = [{"id": i, "pred": pred, "pip": pip, "po": po, "sonda": sonda,
+                "priecinok": str(s_req)} for i, (pred, pip, po, sonda) in _SCENARE.items()]
+    scenare.append({"id": "bez_minima", "pred": "7.3.1", "pip": 0, "po": None,
+                    "sonda": 0, "priecinok": str(bez_req)})
+    (tmp / "blok.ps1").write_text(_blok_z_buildu(), encoding="ascii")
+    (tmp / "scenare.json").write_text(json.dumps(scenare), encoding="ascii")
+    (tmp / "harness.ps1").write_text(_HARNESS, encoding="ascii")
+    env = dict(os.environ, PYTHONPATH=str(site), PYTHONDONTWRITEBYTECODE="1")
+    beh = subprocess.run(
+        [powershell, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+         "-File", str(tmp / "harness.ps1"), "-Blok", str(tmp / "blok.ps1"),
+         "-Scenare", str(tmp / "scenare.json"), "-Vystup", str(tmp / "vystup.txt"),
+         "-Python", sys.executable, "-Site", str(site)],
+        cwd=str(tmp), env=env, capture_output=True, text=True, timeout=60)
+    assert beh.returncode == 0, beh.stdout + beh.stderr
+    vysledok = {}
+    for riadok in (tmp / "vystup.txt").read_text(encoding="utf-8-sig").splitlines():
+        sid, druh, *zvysok = riadok.split("\t")
+        vysledok.setdefault(sid, []).append((druh, zvysok))
+    return vysledok
+
+
+def _hlasky(zaznam, farba):
+    return [z[1] for d, z in zaznam if d == "host" and z[0] == farba]
+
+
+def _pip_volania(zaznam):
+    return [z[2:] for d, z in zaznam if d == "py" and z[:2] == ["-m", "pip"]]
+
+
+def test_blok_v_powershelli_pip_dostane_len_edge_tts_z_requirements(beh_bloku):
+    podmienka = _edge_riadok()[0]
+    zaznam = beh_bloku["online_stary"]
+    # medzera za menom: argument s medzerou da PowerShell 5.1 do uvodzoviek
+    # a ani Python cez .bat neberie '<' a '>' ako presmerovanie
+    poziadavka = "edge-tts " + podmienka
+    assert _pip_volania(zaznam) == [
+        ["install", "--upgrade", "--retries", "1", "--timeout", "15", poziadavka],
+        ["install", "--dry-run", "--ignore-installed", "--no-deps", "--quiet",
+         "--retries", "1", "--timeout", "15", poziadavka]]
+    assert zaznam[-1] == ("koniec", ["presiel"])
+    assert _hlasky(zaznam, "Green") == ["edge-tts 7.3.1 ide do buildu (treba aspon %s)"
+                                        % _minimum_z_requirements()]
+    assert _hlasky(zaznam, "Yellow") == []
+
+
+@pytest.mark.parametrize("sid, verzia", [
+    ("online_stary", "7.3.1"),
+    ("online_najnovsi", "7.3.1"),
+])
+def test_blok_v_powershelli_s_internetom(beh_bloku, sid, verzia):
+    zaznam = beh_bloku[sid]
+    assert zaznam[-1] == ("koniec", ["presiel"])
+    assert _hlasky(zaznam, "Yellow") == []
+    assert _hlasky(zaznam, "Green") == ["edge-tts %s ide do buildu (treba aspon %s)"
+                                        % (verzia, _minimum_z_requirements())]
+
+
+@pytest.mark.parametrize("sid, verzia, sonda", [
+    ("offline_dost_novy", "7.3.1", True),        # pip OK, az sonda zisti, ze siet nie je
+    ("pip_zlyhal_dost_novy", "7.10.0", False),   # pip zlyhal - sonda netreba
+])
+def test_blok_v_powershelli_bez_internetu_pokracuje_s_dost_novym(beh_bloku, sid, verzia, sonda):
+    zaznam = beh_bloku[sid]
+    assert zaznam[-1] == ("koniec", ["presiel"])
+    zlte = _hlasky(zaznam, "Yellow")
+    assert len(zlte) == 1 and "nevedel overit" in zlte[0] and verzia in zlte[0]
+    assert _hlasky(zaznam, "Green") == ["edge-tts %s ide do buildu (treba aspon %s)"
+                                        % (verzia, _minimum_z_requirements())]
+    assert any("--dry-run" in v for v in _pip_volania(zaznam)) == sonda
+
+
+@pytest.mark.parametrize("sid, verzia, internet", [
+    ("offline_stary", "7.2.8", True),
+    ("offline_ziadny", "?", True),
+    ("pip_ok_stale_stary", "7.2.8", False),
+])
+def test_blok_v_powershelli_pod_minimom_zastavi_build(beh_bloku, sid, verzia, internet):
+    zaznam = beh_bloku[sid]
+    druh, (koniec,) = zaznam[-1]
+    assert druh == "koniec" and koniec.startswith("CHYBA: edge-tts je ")
+    assert verzia in koniec and "prirodzeny hlas by v builde nefungoval" in koniec
+    assert ("skontroluj internet" in koniec) == internet
+    assert _hlasky(zaznam, "Green") == [] and _hlasky(zaznam, "Yellow") == []
+
+
+def test_blok_v_powershelli_bez_minima_v_requirements(beh_bloku):
+    zaznam = beh_bloku["bez_minima"]
+    assert zaznam[-1] == ("koniec", ["CHYBA: requirements.txt nema minimum pre edge-tts "
+                                     "(riadok edge-tts>=...)."])
+    assert _pip_volania(zaznam) == []
+
+
+# Falosny Python za python.bat: zapise sys.argv, pip nic nerobi (kod 0),
+# kontrolu verzie ('-c') spusti skutocny Python s -S nad falosnym dist-info.
+_FALOSNY_PY = r"""
+import json, os, subprocess, sys
+with open(os.environ["ZAZNAM"], "a", encoding="utf-8") as fh:
+    fh.write(json.dumps(sys.argv[1:]) + "\n")
+if sys.argv[1] == "-c":
+    env = dict(os.environ, PYTHONPATH=os.environ["SITE"])
+    sys.exit(subprocess.run([sys.executable, "-S"] + sys.argv[1:], env=env).returncode)
+sys.exit(0)
+"""
+
+
+def test_blok_cez_bat_doruci_poziadavku_celu_a_nic_nepresmeruje(tmp_path):
+    """Python cez .bat (napr. pyenv-win) ide cez cmd.exe: holy argument
+    edge-tts>=7.3.1,<8 by cmd vzal ako presmerovanie - pip by dostal zlomok
+    a v priecinku buildu (koren repa) by vznikol subor '7.3.1'. Bezi
+    skutocny Invoke-Py a Fail zo skriptu, nic sa neinstaluje."""
+    powershell = shutil.which("powershell.exe") or shutil.which("powershell")
+    if not powershell:
+        pytest.skip("powershell.exe tu nie je")
+    if not (sys.executable + str(tmp_path)).isascii():
+        pytest.skip("cesta s diakritikou - .bat by ju v inej kodovej stranke pokazil")
+    skript = _read("build_all.ps1")
+    fail = skript[skript.index("function Fail($message) {"):skript.index("# ----")]
+    invoke = skript[skript.index("function Invoke-Py {"):skript.index("$version = ")]
+    site, shim = tmp_path / "site", tmp_path / "python v kosi"
+    build, citlivost = tmp_path / "build", tmp_path / "citlivost"
+    for p in (site, shim, build, citlivost):
+        p.mkdir()
+    _dist_info(site, "7.3.1")
+    (tmp_path / "falosny.py").write_text(_FALOSNY_PY, encoding="ascii")
+    bat = shim / "python.bat"
+    bat.write_text('@"%s" "%s" %%*\r\n' % (sys.executable, tmp_path / "falosny.py"),
+                   encoding="ascii", newline="")
+    (build / "requirements.txt").write_text(_read("requirements.txt"), encoding="utf-8")
+    beh_ps = (fail + "$PY = @{ Exe = '%s'; Pre = @() }\n" % str(bat).replace("'", "''") +
+              invoke + _blok_z_buildu() +
+              "Set-Location '%s'\n" % str(citlivost).replace("'", "''") +
+              "Invoke-Py '-m' 'pip' 'install' 'edge-tts>=7.3.1,<8'\nexit 0\n")
+    (tmp_path / "beh.ps1").write_text(beh_ps, encoding="ascii")
+    zaznam = tmp_path / "zaznam.jsonl"
+    env = dict(os.environ, ZAZNAM=str(zaznam), SITE=str(site), PYTHONDONTWRITEBYTECODE="1")
+    beh = subprocess.run([powershell, "-NoProfile", "-NonInteractive", "-ExecutionPolicy",
+                          "Bypass", "-File", str(tmp_path / "beh.ps1")],
+                         cwd=str(build), env=env, capture_output=True, text=True, timeout=60)
+    assert beh.returncode == 0, beh.stdout + beh.stderr
+    assert "edge-tts 7.3.1 ide do buildu" in beh.stdout, beh.stdout
+    volania = [json.loads(r) for r in zaznam.read_text(encoding="utf-8").splitlines()]
+    poziadavka = "edge-tts " + _edge_riadok()[0]
+    pip = [v for v in volania if v[:2] == ["-m", "pip"]]
+    assert pip[:2] == [
+        ["-m", "pip", "install", "--upgrade", "--retries", "1", "--timeout", "15", poziadavka],
+        ["-m", "pip", "install", "--dry-run", "--ignore-installed", "--no-deps", "--quiet",
+         "--retries", "1", "--timeout", "15", poziadavka]]
+    assert ["-c", _kontrola_z_buildu(), _minimum_z_requirements()] in volania
+    # blok v priecinku buildu nic nevytvoril
+    assert sorted(p.name for p in build.iterdir()) == ["requirements.txt"]
+    # kontrola citlivosti: holy tvar ten isty .bat naozaj rozbije (cmd.exe) -
+    # inak by test nedokazal, ze medzera za menom je potrebna
+    assert pip[2:] != [["-m", "pip", "install", "edge-tts>=7.3.1,<8"]]
+    assert "7.3.1" in [p.name for p in citlivost.iterdir()]
 
 
 def _dist_info(koren, verzia):
