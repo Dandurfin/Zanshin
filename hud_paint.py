@@ -59,7 +59,46 @@ _FONT_CANDIDATES = {
             "YuGothB.ttc", "YuGothM.ttc", "meiryob.ttc", "meiryo.ttc",
             "msgothic.ttc", "msyh.ttc", "simhei.ttf",
             "NotoSerifCJK-Bold.ttc", "NotoSansCJK-Bold.ttc"],
+    # JAPONSKE A CINSKE POPISKY (0.2.2, skeptik UX 4b). Bahnschrift ani
+    # Segoe UI tieto znaky nemaju: HUD s jazykom v hre ja/zh aj jeho nahlad
+    # v uvode (krok 3, jazyk appky) kreslili namiesto "負荷" prazdne
+    # stvorceky. Text s CJK znakmi dostane gothic (sans) pismo - japonske,
+    # ked sa jeho znaky daju zapisat v JIS (cp932), inak cinske: YaHei ma
+    # aj zjednodusene znaky (负), ktore japonske pisma nemaju (`_druh_pisma`).
+    "label_ja": ["YuGothM.ttc", "meiryo.ttc", "msgothic.ttc", "msyh.ttc",
+                 "NotoSansCJK-Regular.ttc", "NotoSansCJK-Bold.ttc"],
+    "display_ja": ["YuGothB.ttc", "meiryob.ttc", "msgothic.ttc", "msyhbd.ttc",
+                   "NotoSansCJK-Bold.ttc"],
+    "label_zh": ["msyh.ttc", "simhei.ttf", "YuGothM.ttc", "msgothic.ttc",
+                 "NotoSansCJK-Regular.ttc", "NotoSansCJK-Bold.ttc"],
+    "display_zh": ["msyhbd.ttc", "msyh.ttc", "simhei.ttf", "YuGothB.ttc",
+                   "NotoSansCJK-Bold.ttc"],
 }
+
+
+def _cjk_znak(ch):
+    """Znak, ktory latinske pismo HUD (Bahnschrift/Segoe UI) nema: kana,
+    CJK interpunkcia, ideogramy, znaky plnej sirky."""
+    o = ord(ch)
+    return (0x3000 <= o <= 0x30FF or 0x31F0 <= o <= 0x31FF or 0x3400 <= o <= 0x9FFF
+            or 0xF900 <= o <= 0xFAFF or 0xFF00 <= o <= 0xFFEF)
+
+
+def _druh_pisma(kind, value):
+    """Druh pisma pre text `value`: latinka a cyrilika ostavaju v `kind`,
+    text s CJK znakmi dostane `kind_ja` / `kind_zh` (viz `_FONT_CANDIDATES`).
+    Len pre "label" a "display" - znak 残 ma vlastny druh "cjk"."""
+    if kind not in ("label", "display"):
+        return kind
+    cjk = "".join(ch for ch in str(value or "") if _cjk_znak(ch))
+    if not cjk:
+        return kind
+    try:
+        cjk.encode("cp932")
+        return kind + "_ja"
+    except UnicodeEncodeError:
+        return kind + "_zh"
+
 
 _FONT_DIRS = [
     os.path.join(os.environ.get("WINDIR", "C:\\Windows"), "Fonts"),
@@ -141,6 +180,9 @@ class Style:
         pal = pal or {}
         self.accent = _hex(pal.get("accent", "#00d2ff"))
         self.danger = _hex(pal.get("danger", "#ff5c73"))
+        # drobny cerveny text (cislo hranice v grafe) - `danger_text`
+        # (>= 4,5:1), `danger` len na plochy a ciary (pravidlo v theme.py)
+        self.danger_text = _hex(pal.get("danger_text", pal.get("danger", "#ff5c73")))
         self.warn = _hex(pal.get("warn", "#f5a623"))
         self.success = _hex(pal.get("success", "#3ddc84"))
         self.bengara = _hex(pal.get("bengara", "#a6432e"))
@@ -261,7 +303,7 @@ class Painter:
              anchor="lt", tracking=0.0):
         """Text s volitelnym prestrkanim (`tracking`) - kapitalky s medzerami
         medzi pismenami su to, co odlisi "HUD popisok" od beznej appky."""
-        font = _load_font(kind, self._s(size))
+        font = _load_font(_druh_pisma(kind, value), self._s(size))
         fill = _rgba(color, alpha)
         if not tracking:
             self._d.text((self._s(x), self._s(y)), value, font=font,
@@ -281,7 +323,7 @@ class Painter:
             px += cw + gap
 
     def measure(self, value, size, kind="label", tracking=0.0):
-        font = _load_font(kind, self._s(size))
+        font = _load_font(_druh_pisma(kind, value), self._s(size))
         total = self._d.textlength(value, font=font)
         if tracking:
             total += self._s(tracking) * max(0, len(value) - 1)
@@ -597,6 +639,7 @@ def render_breath(width, height, style, phase=0.0, inhale=True, cycle_text=None,
 
 HUD_WIDTH = 252.0     # logicke 1080p pixely
 HUD_HEIGHT = 106.0
+SESSION_MIN = 7.0     # najmensie pismo riadku relacie (`render_hud`)
 
 
 def _heart_path(cx, cy, size):
@@ -745,7 +788,7 @@ def render_hud(style, bpm=None, stress=0.0, history=(), threshold=None,
             pw = p.measure(popis, 8, kind="label") + 4.0
             for x in range(int(gx0), int(gx1 - pw), 6):
                 p.line([(x, ty), (x + 3, ty)], style.danger, 1.0, 0.55)
-            p.text(gx1, ty, popis, style.danger, 8, kind="label",
+            p.text(gx1, ty, popis, style.danger_text, 8, kind="label",
                    anchor="rm", alpha=0.8, tracking=0.4)
         p.line(pts, _mix(accent, (255, 255, 255), 0.35), 1.6, 0.95)
         p.ellipse(pts[-1][0], pts[-1][1], 2.4, 2.4, color=(255, 255, 255), alpha=0.95)
@@ -795,8 +838,19 @@ def render_hud(style, bpm=None, stress=0.0, history=(), threshold=None,
 
     # --- riadok relacie ---
     if session:
-        p.text(bar_x0, h - 7, session, style.dim, 8.5, anchor="lb", alpha=0.72,
-               tracking=0.5)
+        # Riadok sa musi zmestit do sirky pruhu (0.2.2, skeptik UX 4b): cas
+        # nad hranicou je od hodiny "1 h 15 min" (`ui_kit.cas_text`) a s
+        # dlhsim slovom ("ÜBER DER GRENZE", "AU-DESSUS DU SEUIL", "1 ч 15
+        # мин") presahoval pravy okraj panela. Najprv sa uberie prestrkanie,
+        # az potom pismo (najviac na SESSION_MIN) - text sa neoreze.
+        velkost, prestrk = 8.5, 0.5
+        sirka = bar_x1 - bar_x0
+        if p.measure(session, velkost, tracking=prestrk) > sirka:
+            prestrk = 0.0
+        while velkost > SESSION_MIN and p.measure(session, velkost) > sirka:
+            velkost = max(SESSION_MIN, velkost - 0.25)
+        p.text(bar_x0, h - 7, session, style.dim, velkost, anchor="lb", alpha=0.72,
+               tracking=prestrk)
 
     return p.finish(glow=1.8, gain=0.55)
 

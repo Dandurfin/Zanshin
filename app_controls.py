@@ -66,13 +66,13 @@ class ControlsMixin:
         # Vsetky texty palety idu cez i18n - predtym tu boli natvrdo po
         # slovensky, takze anglicky hrac videl v inak anglickom okne
         # "Navigácia" a "Pomoc". Sprievodca sa vola rovnako ako jeho panel
-        # (guide.panel_title), len bez ikonky: tk.Listbox emoji mimo BMP
-        # nevykresli spolahlivo.
+        # (guide.panel_title). Ten uz emoji nema (0.2.2 davka 4, strazi
+        # test_022e_nastavenia), takze ho netreba odstranovat.
         pomoc = tr("palette.cat.help")
         navigacia = tr("palette.cat.nav")
         appka = tr("palette.cat.app")
         profily = tr("palette.cat.profiles")
-        sprievodca = tr("guide.panel_title").replace("📖", "").strip()
+        sprievodca = tr("guide.panel_title")
         items = [
             (tr("palette.replay_intro"), pomoc, self.replay_onboarding),
             (tr("nav.dnes"), navigacia, lambda: self.sidebar._select("dnes")),

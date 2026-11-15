@@ -51,7 +51,7 @@ from i18n import tr
 from settings_model import (dashboard_stat_clickable, swap_dashboard_stats,
                             toggle_dashboard_stat)
 
-from app_spolocne import _ImageTk, app_log
+from app_spolocne import _ImageTk, app_log, obnov_texty_stranky, stranka_vhre
 
 
 def _text_bez_tepu(app):
@@ -216,13 +216,24 @@ class TodayMixin:
         """Po prepnuti sveta prepise meno stranky "V hre" v bocnom paneli.
         Svet sa prepina prefarbenim okna, nie prestavbou (`set_world`), takze
         popisok postaveny pri `_build_ui` by inak ostal z druheho sveta. Na
-        vete o obsadenom porte (meno stranky) sa prepise aj stav na Dnes."""
+        vete o obsadenom porte (meno stranky) sa prepise aj stav na Dnes.
+
+        To iste plati pre texty s `{page}`, ktore sa stavaju raz (0.2.2
+        davka 4b): vysvetlivky v Historii (`obnov_texty_stranky`) a ⓘ kariet
+        na Dnes (karty sa postavia znova - su styri)."""
         sidebar = getattr(self, "sidebar", None)
         if sidebar is not None and hasattr(sidebar, "set_label"):
             try:
                 sidebar.set_label("vhre", self._nazov_vhre())
             except Exception:
                 app_log.exception("bocny panel: meno stranky sa neprepisalo")
+        obnov_texty_stranky(self)
+        karty = getattr(self, "_rebuild_dashboard_stats_grid", None)
+        if callable(karty) and getattr(self, "dashboard_grid", None) is not None:
+            try:
+                karty()
+            except Exception:
+                app_log.exception("Dnes: karty sa po prepnuti sveta neprestavali")
         self._refresh_kamae_state_text()
 
     def _resume_cue_trigger(self):
@@ -577,6 +588,14 @@ class TodayMixin:
                 elif not ukaz and not empty.winfo_ismapped():
                     live.pack_forget()
                     empty.pack(fill="x", pady=(6, 0))
+                # OBSADENY PORT (0.2.2 davka 4b): problem povie pas aj hlavicka
+                # panela ("port je obsadeny") - veta "Ked sparujes hodinky..."
+                # by bola druha, ina sprava, a hodinky su pritom v poriadku.
+                # Tlacidlo ostava (navod ukaze aj stav prijmu).
+                ukaz_vetu = getattr(empty, "ukaz_vetu", None)
+                if callable(ukaz_vetu):
+                    ukaz_vetu(getattr(self, "_hr_state", None)
+                              not in ("busy", "busy_gave_up"))
                 # cez triedu: testy volaju tuto metodu na atrape appky
                 TodayMixin._sync_dnes_hero(self)
             # Pred prvou relaciou s tepom: karty a pasma len s pomlckami sa
@@ -868,8 +887,8 @@ class TodayMixin:
         if stat_id == "over":
             if bez_tepu:
                 return ("—", tr("dashboard.unit.over"))
-            over = int(stats.time_over)
-            return (f"{over // 60}:{over % 60:02d}", tr("dashboard.unit.over"))
+            # od hodiny "1 h 15 min", nie "75:12" (`ui_kit.cas_text`, 0.2.2 4b)
+            return (ui_kit.cas_text(int(stats.time_over)), tr("dashboard.unit.over"))
         if stat_id == "breath":
             return (str(stats.auto_triggers), tr("dashboard.unit.breath"))
         if stat_id == "avg":
@@ -960,7 +979,8 @@ class TodayMixin:
             # a rustine rozsiruje cely pravy stlpec na ukor stredu.
             card = ui_kit.StatCard(
                 grid, pal, color_token, tr(f"metric.{stat_id}.tag"), value,
-                tr(f"metric.{stat_id}.more"),
+                # meno stranky "V hre" podla sveta (`metric.over.more`)
+                tr(f"metric.{stat_id}.more", page=stranka_vhre(self)),
                 on_remove=((lambda k=stat_id: self._toggle_dashboard_stat(k))
                            if removable else None),
                 on_drag=lambda phase, e, k=stat_id: self._dashboard_drag(k, phase, e))
@@ -1473,13 +1493,69 @@ class TodayMixin:
         ey0 = dy
         self._dnes_hit["enso"] = (ex0, ey0, ex0 + enso_px, ey0 + enso_px)
         self._record_dnes_hits(canvas)   # kredit cez bbox (ma text); enso ostane
+        TodayMixin._podlozka_textu(self, canvas, mierka, pal, items)
+
+    # Podlozka pod textom stavu (0.2.2 davka 4b): krytie v strede (0-255) a
+    # o kolko logickych px presahuje text.
+    PODLOZKA_ALFA = 170
+    PODLOZKA_OKRAJ = (20, 10)
+    PODLOZKA_ROZMAZ = 14
+
+    def _podlozka_textu(self, canvas, mierka, pal, items):
+        """Makka tmava podlozka pod textom stavu - len ked je za nim fotka.
+
+        Kratke stavy ("Zastavene") lezali vo stmavenom strede fotky
+        (`background._scrim_maska`), dlha veta o obsadenom porte ale siahla
+        az k ziare lampionov a odlesku na podlahe - svetly text na svetlom
+        pozadi (de/ja su este dlhsie). Podlozka ide za textovym blokom, nech
+        je akokolvek dlhy: farba `bg`, okraje rozmazane, ziadny box s hranou
+        (ten isty princip ako zavoj za ensom). Je to obrazok s alfou medzi
+        dojom a textom; prestavia sa s textom (tag "dtext"). Nikdy nevyhodi
+        vynimku - bez podlozky ostane text s tienikom ako doteraz."""
+        try:
+            if getattr(self, "_dnes_dojo_tk", None) is None or _ImageTk is None:
+                return
+            box = canvas.bbox("dtext")
+            if not box:
+                return
+            from PIL import Image, ImageDraw, ImageFilter
+            ox, oy = (int(v * mierka) for v in self.PODLOZKA_OKRAJ)
+            rozmaz = max(2, int(self.PODLOZKA_ROZMAZ * mierka))
+            sirka = (box[2] - box[0]) + 2 * (ox + rozmaz)
+            vyska = (box[3] - box[1]) + 2 * (oy + rozmaz)
+            maska = Image.new("L", (sirka, vyska), 0)
+            ImageDraw.Draw(maska).rounded_rectangle(
+                [rozmaz, rozmaz, sirka - rozmaz, vyska - rozmaz],
+                radius=int(14 * mierka), fill=self.PODLOZKA_ALFA)
+            maska = maska.filter(ImageFilter.GaussianBlur(rozmaz / 2.0))
+            farba = pal["bg"].lstrip("#")
+            obr = Image.new("RGBA", (sirka, vyska),
+                            tuple(int(farba[i:i + 2], 16) for i in (0, 2, 4)) + (0,))
+            obr.putalpha(maska)
+            tkimg = _ImageTk.PhotoImage(obr)
+            self._dnes_tk_imgs["podlozka"] = tkimg
+            polozka = canvas.create_image((box[0] + box[2]) // 2, (box[1] + box[3]) // 2,
+                                          image=tkimg, anchor="center",
+                                          tags=("dtext", "podlozka"))
+            # nad dojo, pod ensom aj textom
+            canvas.tag_lower(polozka)
+            if items.get("dojo") is not None:
+                canvas.tag_raise(polozka, items["dojo"])
+        except Exception:
+            app_log.debug("Dnes: podlozka pod textom sa nenakreslila", exc_info=True)
 
     def _canvas_text(self, canvas, cx, y_top, text, font, fill, wrap=0, shadow=False):
         """Vycentrovany (viacriadkovy) text od `y_top` nadol; vrati spodok.
-        `shadow` prida tmavy tienik +1px pre citatelnost bez boxu."""
+        `shadow` prida tmavy tienik +1px pre citatelnost bez boxu.
+
+        Japoncinu a cinstinu zlomi vopred `ui_kit.zalom_kinsoku` (0.2.2
+        davka 4b) - Tk by riadok zacal 「。」 alebo 「）」."""
         kw = dict(anchor="n", justify="center", font=font)
         if wrap:
             kw["width"] = wrap
+            zmeraj = getattr(font, "measure", None)
+            if callable(zmeraj):
+                text = ui_kit.zalom_kinsoku(text, wrap, zmeraj)
         if shadow:
             canvas.create_text(cx + 1, y_top + 1, text=text, fill="#0b0b0f",
                                tags=("block", "dtext"), **kw)

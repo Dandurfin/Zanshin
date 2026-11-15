@@ -159,8 +159,10 @@ def test_zlyhana_registracia_nezhodi_appku():
     """Kombináciu môže držať iná appka. Nie je to chyba appky - beží ďalej
     a riadok v denníku povie, čo zostáva (zastaviť počúvanie)."""
     telo = _telo("app.py", "start_snooze_hotkey")
-    assert "log.hotkey_failed" in telo
     assert "except Exception" in telo
+    # riadok do dennika po skutocnom vysledku registracie (0.2.2 davka 4b)
+    assert "self._ohlas_vysledok_skratky(ok)" in telo
+    assert "log.hotkey_failed" in _telo("app.py", "_ohlas_vysledok_skratky")
 
 
 def test_tridsat_minut_podla_zadania():
@@ -219,12 +221,14 @@ def test_log_pri_starte_hovori_pravdu_o_skratke():
     import i18n
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
     import app as app_mod
-    predvolena = hotkey.format_combo(app_mod.DEFAULT_SNOOZE_HOTKEY).replace(" ", "")
+    predvolena = hotkey.format_combo(app_mod.DEFAULT_SNOOZE_HOTKEY, lang="en").replace(" ", "")
     assert predvolena == "Ctrl+Alt+Z"
     zaznam = i18n.STRINGS["log.safe_mode"]
     assert set(zaznam) == set(i18n.LANGUAGES)
     for jazyk, text in zaznam.items():
-        assert predvolena in text, jazyk
+        # po nemecky "Strg+Alt+Z" - mena klaves podla jazyka (0.2.2 davka 4b)
+        assert hotkey.format_combo(app_mod.DEFAULT_SNOOZE_HOTKEY,
+                                   lang=jazyk).replace(" ", "") in text, jazyk
         for stare in ("Anti-Cheat", "anti-cheat", "Safe Mode", "アンチチート", "反作弊",
                       "читов", "anti-trampas", "anti-triche"):
             assert stare not in text, (jazyk, stare)

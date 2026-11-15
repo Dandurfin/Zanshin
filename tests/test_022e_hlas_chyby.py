@@ -140,7 +140,9 @@ def test_odmietnutie_povie_skus_neskor_alebo_windows(monkeypatch):
     _zlyha(a, (EDGE_CHYBA_ODMIETNUTE, WSServerHandshakeError(403)))
     assert a.stavy[-1] == tr("edge.partial_refused", ok=0, total=3)
     assert a.edge_retry_btn.zabalene == "pack"
-    assert a.denn == [tr("log.edge_failed_refused", page=tr("nav.zvuk"),
+    # stranka, ktoru hrac naozaj vidi: Nastavenia → Zvuk (0.2.2 davka 4b)
+    assert a.denn == [tr("log.edge_failed_refused",
+                         page=tr("nav.nastavenia") + " → " + tr("nav.nastavenia_tabs.zvuk"),
                          retry=tr("common.retry"), cmd=tr("common.prepare_voices"))]
     assert "internet" not in a.stavy[-1]
 
@@ -149,7 +151,8 @@ def test_vypadok_siete_povie_internet_a_dennik_raz(monkeypatch):
     a = _atrapa(monkeypatch)
     _zlyha(a, (EDGE_CHYBA_OFFLINE, TimeoutError()))
     assert a.stavy[-1] == tr("edge.partial", ok=0, total=3)
-    assert a.denn == [tr("log.edge_failed_offline", page=tr("nav.zvuk"),
+    assert a.denn == [tr("log.edge_failed_offline",
+                         page=tr("nav.nastavenia") + " → " + tr("nav.nastavenia_tabs.zvuk"),
                          retry=tr("common.retry"), cmd=tr("common.prepare_voices"))]
     a.ui.clear()
     _zlyha(a, (EDGE_CHYBA_OFFLINE, TimeoutError()))

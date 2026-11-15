@@ -50,7 +50,13 @@ ZMAZANE = {"hr.qr_note", "log.listener_error", "settings.overlap", "settings.ove
            # mrtvy a k tomu s muzskym rodom v osloveni ("pokojnejsi, nez si vosiel")
            "onboarding.why.mission",
            # mrtvy, v rustine este stare slovo "реплика"
-           "log.cue_rate_changed"}
+           "log.cue_rate_changed",
+           # 0.2.2 davka 4b: nikde v kode - Sprievodca sa vola `guide.panel_title`
+           # (stary `nav.guide` s 📖 este prekryval mladsi), karta HRPI z Dnes
+           # odisla, prefix gamepadu a symptomy z uvodu 0.1 sa nekreslia
+           "nav.guide", "dnes.stat_hrpi", "key.gamepad_prefix",
+           "onboarding.hero.symptom.cramp", "onboarding.hero.symptom.jaw",
+           "onboarding.hero.symptom.breath"}
 MRTVE = frozenset()
 
 # "pocuvat" v prirodzenom zmysle, nie ako vypinac appky.
@@ -283,7 +289,7 @@ def test_hracske_texty_bez_zargonu():
                      "log.edge_cache_ready", "log.edge_gen_failed", "settings.engine_sub"):
             assert "SAPI" not in S[kluc][jazyk] and "TTS" not in S[kluc][jazyk], (kluc, jazyk)
         assert "TCP" not in S["settings.hr_status_udp_off"][jazyk], jazyk
-        for kluc in ("metric.hrpi.title", "dnes.stat_hrpi", "history.col_hrpi",
+        for kluc in ("metric.hrpi.title", "history.col_hrpi",
                      "history.detail_hrpi", "metric.hrr.title", "dnes.stat_hrr", "history.col_hrr"):
             assert "HRPI" not in S[kluc][jazyk] and "HRR" not in S[kluc][jazyk], (kluc, jazyk)
     assert S["common.log"]["sk"] == "Denník"

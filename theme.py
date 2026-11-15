@@ -29,7 +29,15 @@ PRAVIDLA, ktore z tokenov vyplyvaju (aby ich kazde miesto neriesilo samo):
     medzery. Ram panela ostava tichy (`line_soft`) - ram nema kricat.
   * Ram vedlajsieho tlacidla (`control_border`) ma aspon 3:1, inak tlacidlo
     vyzera vypnute. Text destruktivnej akcie (`danger_text`) ma 4,5:1;
-    samotny `danger` je na drobny text pritmavy.
+    samotny `danger` je na drobny text pritmavy - DROBNY CERVENY TEXT (stav,
+    chyba, veta pod ovladacom) je vzdy `danger_text`, `danger` len plocha
+    (vypln, hover krizika) a velke pismo.
+  * VYPNUTE tlacidlo ma jeden vzhlad pre vsetky druhy (`ui_kit.
+    vzhlad_vypnuteho`): text `text_faint`, ram `control_border`, ziadna
+    cervena ani zlata - vypnute "Zmazat" nesmie vyzerat pripravene.
+  * Ram okna dialogu (`ui_kit.DIALOG_RAM_TOKEN`) je `rule`: je to hrana
+    plochy ako deliaca linka, nie ovladac - `control_border` by z okna
+    urobil tlacidlo.
 
 POZOR NA KLUCE: `ZEN` a `MODERN` NIE SU nazvy farebnych schem - su to aj
 identifikatory SFX sad (`sfx_key` v nastaveniach ma tvar "zen:earth_thud").

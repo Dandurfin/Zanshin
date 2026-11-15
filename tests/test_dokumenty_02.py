@@ -396,7 +396,8 @@ def test_log_bez_listy_nemenuje_listu():
     s = i18n.STRINGS["log.hotkey_failed"]
     assert "lišt" not in s["sk"] and "tray" not in s["en"]
     assert "lišt" not in s["cs"] and "трея" not in s["bg"]
-    telo = zdroj_metody("start_snooze_hotkey")
+    # riadok ide po skutocnom vysledku registracie (0.2.2 davka 4b)
+    telo = zdroj_metody("_ohlas_vysledok_skratky")
     assert telo.index("elif TRAY_AVAILABLE") < telo.index('"log.hotkey_failed"')
 
 

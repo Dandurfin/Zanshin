@@ -74,20 +74,21 @@ ZDROJE = (
 #
 # Doteraz ziadne neboli. Kto otvoril TCP spojenie a nic neposlal, drzal jedno
 # zo 16 miest (`heart_rate._MAX_LIVE_SOCKETS`) navzdy - skener portov, alebo
-# hodinky, ktore odisli z Wi-Fi bez rozlucenia (spojenie na nasej strane
+# telefon, ktory odisiel z Wi-Fi bez rozlucenia (spojenie na nasej strane
 # potom visi polootvorene a ziadny paket ho uz nezavrie). Styrnast takych a
-# skutocne hodinky sa uz nepripojili.
+# skutocny telefon (appka, ktora posiela tep z hodiniek) sa uz nepripojil.
 #
 # Handshake: skutocny klient posle HTTP upgrade hned po pripojeni. 10 s je
 # CELKOVY limit (nie na jeden `recv`), aj pomala Wi-Fi to zvladne s rezervou.
 HANDSHAKE_TIMEOUT_S = 10.0
-# Po handshake: hodinky pisu kazdych ~1 az ~3 s. Az po NECINNOST_S uplneho
-# ticha posleme ping - kazda WebSocket kniznica nan podla RFC 6455 odpovie
-# SAMA, takze zive, len tiche hodinky (pauza merania) spojenie NESTRATIA. Az
+# Po handshake: appka v telefone pise kazdych ~1 az ~3 s. Az po NECINNOST_S
+# uplneho ticha posleme ping - kazda WebSocket kniznica nan podla RFC 6455
+# odpovie SAMA, takze zivy, len tichy telefon (hodinky v pauze merania)
+# spojenie NESTRATI. Az
 # ked nepride nic ani za dalsich NECINNOST_S, spojenie je mrtve a zavrie sa
 # ako kazde ine odpojenie. Mrtve spojenie tak zmizne najneskor za 2 minuty.
 #
-# Preco nie kratsie: falosne "hodinky odpojene" (a s nim zahodeny odpocet v
+# Preco nie kratsie: falosne "telefon odpojeny" (a s nim zahodeny odpocet v
 # spustaci) je horsie nez minuta cakania na uvolnenie miesta. Tep aj tak
 # vypadok hlasi sam po 12 s (`HeartRateMonitor.STALE_AFTER_S`), tento limit
 # sluzi len na upratanie socketu, nie na detekciu vypadku.
@@ -459,8 +460,8 @@ def serve_connection(conn, on_text, should_stop, on_connected=None):
     `on_text(text, meno_zdroja)` sa zavola pri kazdom zapise do textoveho
     zdroja. Meno moze byt `None`, ked ho klient neposlal.
     `on_connected()` hned po uspesnom handshake - vdaka tomu vie UI
-    rozlisit "este sa nikto nepripojil" od "hodinky su pripojene, ale
-    neposielaju tep", co su uplne ine problemy.
+    rozlisit "este sa nikto nepripojil" od "telefon je pripojeny, ale tep
+    nechodi", co su uplne ine problemy.
     `should_stop()` sa pyta medzi ramcami, ci uz mame skoncit.
 
     Casove limity socketu si nastavuje sama (viz `HANDSHAKE_TIMEOUT_S` a
@@ -483,7 +484,7 @@ def serve_connection(conn, on_text, should_stop, on_connected=None):
     vlastne = set()
     nepoznane = set()
     # Klient sa musí najprv identifikovať (op 1), než príjmeme zápis tepu.
-    # Skutočné hodinky to robia (protokol to vyžaduje); toto len zavrie dvere
+    # Skutocna appka v telefone to robi (protokol to vyzaduje); toto len zavrie dvere
     # pred čímkoľvek v LAN, čo by chcelo zapísať tep bez identifikácie (B6).
     identified = False
     # Po prvom tichu sme poslali ping a cakame na cokolvek (pong, tep...).

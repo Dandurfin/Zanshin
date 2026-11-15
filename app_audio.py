@@ -83,6 +83,14 @@ def _kratka_chyba(exc):
     return text if len(text) <= 120 else text[:119] + "…"
 
 
+def stranka_zvuku():
+    """Kde je "Skusit znova" pripravy hlasu - tak, ako to hrac naozaj vidi:
+    stranka Nastavenia, karta Zvuk ("Nastavenia → Zvuk", 0.2.2 davka 4b).
+    Predtym `nav.zvuk` ("Zvuk / Audio") - to je len polozka palety Ctrl+K,
+    ziadna stranka sa tak nevola."""
+    return f"{tr('nav.nastavenia')} → {tr('nav.nastavenia_tabs.zvuk')}"
+
+
 class AudioMixin:
     """Zvuky, hlasy, priprava Edge hlasok a prehratie slotu (mixin DandurfApp)."""
 
@@ -232,7 +240,9 @@ class AudioMixin:
         current = (self.edge_voice_id if self.engine == ENGINE_EDGE
                    else self.saved_voice_id)
         names = list(mapping.keys())
-        self.voice_box.configure(values=names or [tr("voice.none")])
+        # Nove hlasy = nova sirka (0.2.2 davka 4b): rozbalovacka sa stavia s
+        # "Nacitavam..." a dlhe meno hlasu Windows sa v nej orezalo.
+        ui_kit.nastav_hodnoty_menu(self.voice_box, names or [tr("voice.none")])
         label = next((n for n, vid in mapping.items() if vid == current), None)
         if label is None and names:
             label = names[0]
@@ -315,6 +325,13 @@ class AudioMixin:
             try:
                 self.edge_status_label.configure(text=text,
                                                  text_color=color or self.pal["text_dim"])
+                # Stitok je v riadku "Zdroj hlasu" (0.2.2 davka 4b) a vidno ho,
+                # len ked nieco hovori - prazdny by bol riadok medzery.
+                zabaleny = bool(self.edge_status_label.winfo_manager())
+                if text and not zabaleny:
+                    self.edge_status_label.pack(fill="x", pady=(6, 0))
+                elif not text and zabaleny:
+                    self.edge_status_label.pack_forget()
             except Exception:
                 pass
 
@@ -524,11 +541,11 @@ class AudioMixin:
         kluc_riadku = {audio_engine.EDGE_CHYBA_OFFLINE: "log.edge_failed_offline",
                        audio_engine.EDGE_CHYBA_ODMIETNUTE: "log.edge_failed_refused"}
         self.log(tr(kluc_riadku.get(druh, "log.edge_failed_other"),
-                    err=_kratka_chyba(exc), page=tr("nav.zvuk"),
+                    err=_kratka_chyba(exc), page=stranka_zvuku(),
                     retry=tr("common.retry"), cmd=tr("common.prepare_voices")))
 
     def _ukaz_skusit_hlas_znova(self, ukaz):
-        """Tlacidlo "Skusit znova" pod stavom pripravy hlasu (Zvuk / Audio)."""
+        """Tlacidlo "Skusit znova" pod stavom pripravy hlasu (Nastavenia → Zvuk)."""
         tlacidlo = getattr(self, "edge_retry_btn", None)
         stav = getattr(self, "edge_status_label", None)
         if tlacidlo is None:

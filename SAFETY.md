@@ -180,10 +180,13 @@ mechanizmus, aký používajú systémové tooltipy a Windows Ink.
 9. **IP adresy tohto PC, jeho sieťové adaptéry a zoznam monitorov** —
    adresy len na zobrazenie pri párovaní hodiniek (čo zadať v telefóne; na
    obrazovke sú skryté, kým neklikneš „Ukázať IP“), názvy, popisy, typy a
-   stav (pripojený či nie) adaptérov (`GetAdaptersAddresses`) len na to, aby
-   VPN a virtuálne adaptéry išli až za skutočné a mali značku
-   „(VPN/virtuálny)“, monitory s rozlíšením a DPI len na umiestnenie
-   obrázkov. Kód: `netinfo.py`, `display.monitors`.
+   stav (pripojený či nie) adaptérov (`GetAdaptersAddresses`) a adresa, cez
+   ktorú by Windows posielal dáta von (UDP socket sa len „pripojí“, nič sa
+   neodošle), len na to, aby VPN a virtuálne adaptéry išli až za skutočné a
+   mali značku „(VPN/virtuálna)“; adresa Mobilného hotspotu Windowsu má
+   namiesto nej značku „(hotspot)“ a varovanie nedostane. Monitory
+   s rozlíšením a DPI len na umiestnenie obrázkov. Kód: `netinfo.py`,
+   `display.monitors`.
 
 To je celé. Nič z toho neopúšťa počítač.
 

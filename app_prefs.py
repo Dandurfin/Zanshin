@@ -934,8 +934,9 @@ class PrefsMixin:
                         new=hotkey.format_combo(nahrada)))
         else:
             self.log(tr("log.hotkey_layout_off", combo=stara, char=znak))
+        # app.log po anglicky aj v nemcine ("Ctrl", nie "Strg") - ako `hotkey`
         app_log.info("hotkey: %s pise znak na rozlozeni klavesnice, nahrada: %s",
-                     stara, nahrada or "ziadna")
+                     hotkey.format_combo(combo, lang="en"), nahrada or "ziadna")
         try:
             self.save_settings()
         except Exception:
@@ -1002,7 +1003,11 @@ class PrefsMixin:
         Nastaveniach aj PO REGISTRACII PRI STARTE (`__init__`): riadok sa
         stavia v `_build_ui` skor, nez sa skratka zaregistruje, a start ju
         moze aj vymenit (`_vyber_skratku_pri_starte`) - bez toho by riadok
-        tvrdil, ze obsadena skratka funguje, a ponuka ukazovala staru."""
+        tvrdil, ze obsadena skratka funguje, a ponuka ukazovala staru.
+
+        Ked Windows registraciu nestihne do 2 s, vola sa este raz - az po
+        skutocnom vysledku z vlakna skratky (`_po_registracii_skratky`, 0.2.2
+        davka 4b). Dovtedy riadok netvrdi, ze skratku drzi iny program."""
         row = getattr(self, "snooze_hotkey_row", None)
         label = getattr(row, "sub_label", None)
         if label is None:

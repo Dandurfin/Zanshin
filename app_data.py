@@ -432,7 +432,9 @@ class DataMixin:
             return False
         try:
             started = float(session.get("started"))
-            kedy = time.strftime("%d.%m.%Y %H:%M", time.localtime(started))
+            time.localtime(started)         # cas mimo rozsahu -> vynimka
+            # datum v jazyku appky, ako tabulka v Historii (0.2.2 davka 4b)
+            kedy = ui_kit.datum_text(started, cas=True)
         except (TypeError, ValueError, OverflowError, OSError):
             return False
         dlzka = self._fmt_dlzka(session.get("duration_s"))
@@ -498,6 +500,20 @@ class DataMixin:
                          if c.get("typ") == trigger.E_DELIVER
                          and c.get("delivered"))
             dialog = SessionEndDialog(self, summary, cues=vsetky, silent=tiche)
+            # Kazdy otvoreny dotaznik si appka pamata (0.2.2 davka 4b): ked
+            # hrac ukonci appku z listy alebo sa vypina Windows, kym dotaznik
+            # z bezneho Stop este visi, `_dokonci_otvorene_dotazniky` ulozi
+            # dotknute odpovede - `root.destroy()` by ich inak zahodil.
+            # Zavrete okna sa pri tom zahodia, aby zoznam za dlhy beh nerastol.
+            otvorene = []
+            for stary in list(getattr(self, "_otvorene_dotazniky", None) or ()):
+                try:
+                    if stary.top.winfo_exists():
+                        otvorene.append(stary)
+                except Exception:
+                    pass
+            otvorene.append(dialog)
+            self._otvorene_dotazniky = otvorene
             # PRI ZATVARANI APPKY SA MUSI POCKAT.
             #
             # Dialog robi `grab_set()`, ale nie `wait_window()`, takze sa
@@ -519,6 +535,71 @@ class DataMixin:
                     self._dotaznik_pri_zatvarani = None
         except Exception:
             app_log.exception("dotaznik kontextu sa nepodarilo otvorit")
+
+    def _dokonci_dotaznik(self, dotaznik):
+        """Dokonci dotaznik, ktory by ukoncenie appky alebo vypnutie Windows
+        inak zahodilo (0.2.2, rozhodnutie zadavatela; davka 4b ho rozsirila).
+
+        Dotkol sa hrac aspon jednej odpovede -> ulozi sa ako "Ulozit"; nie ->
+        zavrie sa ako "Preskocit". Do dennika ide jeden riadok: ulozene,
+        zavrety prazdny, alebo ze sa ulozit nepodarilo. Pocas tohto ulozenia
+        `save_session_context` neotvara okno s chybou - pri zatvarani by na
+        neho nikto neklikol a vypnutie Windows by cakalo.
+
+        Dotaznik bez `bolo_vyplnene` (atrapy) sa bere ako prazdny. Zavrie sa
+        aj ked ulozenie zlyhalo: prvy `_quit` na neho moze cakat
+        (`wait_window`)."""
+        try:
+            vyplneny = bool(getattr(dotaznik, "bolo_vyplnene", lambda: False)())
+        except Exception:
+            app_log.exception("ukoncenie: stav dotaznika sa nedal zistit")
+            vyplneny = False
+        if not vyplneny:
+            try:
+                self.log(tr("log.quit_questionnaire_skipped"))
+                dotaznik.close()
+            except Exception:
+                app_log.exception("ukoncenie: dotaznik sa nepodarilo zavriet")
+            return False
+        self._dotaznik_bez_okna_chyby = True
+        try:
+            ok = dotaznik.confirm()
+        except Exception:
+            app_log.exception("ukoncenie: odpovede dotaznika sa nepodarilo ulozit")
+            ok = False
+            try:
+                dotaznik.close()
+            except Exception:
+                pass
+        finally:
+            self._dotaznik_bez_okna_chyby = False
+        # `confirm` atrap nic nevracia - None nie je neuspech.
+        try:
+            self.log(tr("session.context.save_failed") if ok is False
+                     else tr("log.quit_questionnaire_saved"))
+        except Exception:
+            app_log.exception("ukoncenie: riadok o dotazniku sa nezapisal")
+        return ok is not False
+
+    def _dokonci_otvorene_dotazniky(self):
+        """Kazdy este otvoreny dotaznik po relacii (`_otvorene_dotazniky`,
+        zaklada `_ask_session_context`) dokonci podla `_dokonci_dotaznik`.
+
+        Vola sa pri prvom "Ukoncit" a pri vypnuti Windows (WM_SAVE_YOURSELF).
+        Okno, ktore uz zaniklo (hrac ho ulozil alebo preskocil), sa preskoci.
+        Vracia pocet dokoncenych dotaznikov."""
+        zive = []
+        for dotaznik in list(getattr(self, "_otvorene_dotazniky", None) or ()):
+            top = getattr(dotaznik, "top", None)
+            try:
+                if top is not None and top.winfo_exists():
+                    zive.append(dotaznik)
+            except Exception:
+                pass
+        self._otvorene_dotazniky = []
+        for dotaznik in zive:
+            self._dokonci_dotaznik(dotaznik)
+        return len(zive)
 
     def save_session_context(self, summary, context, activity=None, note=None,
                              sleep=None, felt_load=None, valence=None,
@@ -564,6 +645,11 @@ class DataMixin:
         else:
             app_log.error("kontext relacie sa neulozil - relacia sa nenasla "
                           "alebo subor nebolo mozne zapisat")
+            # Pri ukonceni / vypnuti Windows dokoncuje dotaznik appka
+            # (`_dokonci_dotaznik`) a chybu zapise do dennika - okno by tam
+            # nikto nezavrel a vypnutie by na neho cakalo.
+            if getattr(self, "_dotaznik_bez_okna_chyby", False):
+                return False
             try:
                 # okno appky, nie systemove (0.2.2, davka 4)
                 ui_kit.notify(getattr(self, "root", None), getattr(self, "pal", None),
@@ -904,6 +990,14 @@ class DataMixin:
             return
         self._vypnutie_bezi = True
         try:
+            # Otvoreny dotaznik (z bezneho Stop, alebo ten, na ktory caka
+            # `_quit`) by proces zahodil: dotknute odpovede sa ulozia ako
+            # "Ulozit", nedotknuty sa zavrie ako "Preskocit" (0.2.2 davka 4b,
+            # to iste pravidlo ako pri ukonceni). Len zapis do suboru - rychle.
+            try:
+                self._dokonci_otvorene_dotazniky()
+            except Exception:
+                app_log.exception("vypnutie Windows: dotaznik sa nepodarilo dokoncit")
             try:
                 self._close_hr_session(pri_vypnuti=True)
             except Exception:
@@ -1007,9 +1101,8 @@ class DataMixin:
             return None
         if obnovena is None:
             return None
-        # Rovnaky tvar datumu ako zoznam relacii v Historii.
-        kedy = time.strftime("%d.%m.%Y %H:%M",
-                             time.localtime(float(obnovena["started"])))
+        # Rovnaky tvar datumu ako zoznam relacii v Historii (jazyk appky).
+        kedy = ui_kit.datum_text(obnovena["started"], cas=True)
         self.log(tr("log.hr_session_recovered", time=kedy))
         self._history_cache = (0.0, None)
         try:
@@ -1089,7 +1182,7 @@ class DataMixin:
             return []
         for s in doplnene:
             try:
-                kedy = time.strftime("%d.%m.%Y %H:%M", time.localtime(float(s["started"])))
+                kedy = ui_kit.datum_text(float(s["started"]), cas=True)
             except Exception:
                 kedy = "?"
             self.log(tr("log.hr_session_pending_saved", time=kedy))

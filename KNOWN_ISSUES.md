@@ -24,16 +24,16 @@ about, and a few will stay.
 - **Port 4455 accepts connections from every network your PC is connected to,
   without a password** (only your firewall limits who can reach it), so anything
   that reaches it could send a fake heart rate, or keep all its connections
-  busy so your watch can't get in. Allow it on your home network only.
+  busy so your phone can't get in. Allow it on your home network only.
 - **The "not now" shortcut is reserved.** While Zanshin runs, even in the
   tray, a game that uses that one key combination may not receive it. It's
   Ctrl+Alt+Z by default; from 0.2.2 you can pick another or switch it off in
   Settings → General → *Keyboard shortcut*, and "Not now" is also in the tray
   icon's menu. In 0.1 the start-up log line said input is read with "no
-  blocking"; in 0.2 it names the shortcut as the one exception. If Windows is
-  slow at start-up, the log (and, from 0.2.2, the shortcut's line in
-  Settings) can say another app holds the shortcut even though it works a
-  moment later.
+  blocking"; in 0.2 it names the shortcut as the one exception. If Windows
+  takes more than two seconds to register the shortcut at start-up, its line
+  in Settings already says it works while Windows hasn't confirmed it yet; the
+  line and the log follow Windows' answer once it comes.
 - **Zanshin isn't code-signed.** The ready-made ZIP gets Windows' "unknown
   publisher" warning (*More info → Run anyway*); building it yourself avoids
   it. With Smart App Control on, Windows can block unsigned programs
@@ -51,13 +51,16 @@ about, and a few will stay.
   SAFETY.md is in Slovak apart from its English summary at the top.
   *In-game language* (what the heart-rate panel and captions show; English by
   default, on purpose) is separate from the app language and sits in the panel
-  about which screen to draw on, so the two are easy to mix up. Japanese and
-  Chinese lines wrap without their own line-breaking rules, so a line can
-  start with a punctuation mark such as 。.
+  about which screen to draw on, so the two are easy to mix up. The tour's
+  bubbles and the Ctrl+K list still use a fixed Latin font, so Japanese and
+  Chinese text there comes out in whatever font Windows substitutes, not the
+  one the rest of the window uses.
 - **Untested:** the iPhone / Apple Watch route. Two checks new in 0.2.2 were
-  tested only with simulated data: how the pairing guide recognises VPN and
-  virtual network adapters, and whether the "not now" shortcut would type a
-  letter on one of your keyboard layouts.
+  tested only with simulated data, never on a PC with that setup: how the
+  pairing guide recognises VPN and virtual network adapters (including
+  Windows' Mobile hotspot and a Hyper-V external switch), and whether the
+  "not now" shortcut would type a letter on one of your keyboard layouts,
+  such as ż on a Polish one.
 - **The voice-versus-picture comparison isn't shown yet**, though some cues stay
   silent on purpose to collect it (about one in four in the first 15 sessions,
   then one in ten). When it comes, it will compare voice plus picture with
@@ -69,14 +72,12 @@ about, and a few will stay.
   and the cue card on *Today* count it, while the questionnaire, the cue
   ladder and "not now" treat it as not shown, even if its voice played.
 - **Texts and controls:** a few explanations and settings texts may still
-  claim a bit more than the code does (0.2.2 rewrote many of them). In the
-  Work world the sidebar calls the *In-game* page *Screen* (0.2.2), but a few
-  texts and log lines still call it *In-game*. *watch connected* on *Today*
-  and *Watch connected — waiting for heart rate…* mean that the phone app has
-  connected, not that the watch sends anything yet. While the heart-rate port
-  is busy, *Today* shows its pairing sentence under the busy message too.
-  Zanshin's dialogs have no border, so their edges can blend into the dark
-  window behind them.
+  claim a bit more than the code does (0.2.2 rewrote many of them). The
+  pairing guide's boxes *Watch won’t connect at all?* and *Watch connects
+  but no heart rate?* name the watch, though what connects to Zanshin is
+  the phone app. In the Work world, History without sessions still asks you
+  to play for at least a minute, and the hint under *One session up close*
+  still says when you were probably playing.
 - **Licence wording:** the app's title bar and *About* say "GPLv3", while the
   README and these documents say "GPLv3 or later". I haven't decided yet which
   wording stays; until then the two differ.
@@ -85,6 +86,12 @@ about, and a few will stay.
   and the icon that stays mine begins (see *License* in the README).
 - **No clip of a cue over a game yet.** The README shows Zanshin's own window
   only; a short GIF of a cue over a game in Borderless is still missing.
+- **The README's watch table doesn't name my watch.** Its *Tested by me* row
+  says only *Wear OS watch with an Android phone*; I still have to add the
+  model I tested with.
+- **The system requirements are from 0.2.1.** The download and disk size,
+  memory and CPU use in the README were measured on the 0.2.1 build; I'll
+  measure them again on the final 0.2.2 build.
 
 ## How to help
 

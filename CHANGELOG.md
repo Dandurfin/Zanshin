@@ -209,7 +209,8 @@ have them.
   contrast of 2.85:1, some text was very small, and the thin dividers were
   never actually drawn. **0.2.2:** that text has at least 4.5:1, the
   smallest text is bigger, the dividers show, and Japanese and Chinese use
-  one Windows UI font throughout.
+  one Windows UI font almost everywhere (the exceptions are in
+  [KNOWN_ISSUES.md](KNOWN_ISSUES.md)).
 - **Empty pages looked like measurements, and some dialogs had no place on
   the screen.** Before any heart rate, tiles on *Today* showed numbers, and
   History offered *Recompute* when there was nothing to compute yet; the
@@ -245,14 +246,18 @@ have them.
 - **A busy heart-rate port showed only in a small header.** **0.2.2:** when
   OBS or another program holds it, *Today* says *Port 4455 is busy*, names
   the usual cause (OBS with its WebSocket server on) and both fixes: switch
-  that server off, or change the port in Zanshin and in the phone app.
+  that server off, or change the port in Zanshin and in the phone app. It's
+  the only message there then (the pairing sentence stays hidden), on a soft
+  dark backing so it reads well over the picture.
 - **Questions and messages came in Windows' own boxes**, with buttons in the
   language of Windows, and the first × asked Yes or No. **0.2.2:** they open
   in Zanshin's own window, in the app's language, with the safe button
   focused. Windows' box is left only for when that window can't show one:
   before it exists, or while Zanshin is hidden in the tray. The first ×
   offers *Keep running in the tray* (Enter) and *Quit Zanshin*; Esc keeps
-  the window open, and it asks again next time.
+  the window open, and it asks again next time. Before you choose, it says
+  what happens if you keep Zanshin in the tray. Zanshin's dialogs have a thin
+  border, so their edges show against the dark window behind them.
 - **The "not now" shortcut could be changed only in the settings file, and
   on some keyboards it took a letter.** AltGr is the same as Ctrl+Alt, so on
   a Polish keyboard Ctrl+Alt+Z swallowed every ż, even with Zanshin in the
@@ -262,7 +267,10 @@ have them.
   picked one and the default would type a letter, Zanshin takes the first
   free one (or none) and says so once in its log. If another program holds
   yours, the row says so. *Today* and the tour name the shortcut, or point to
-  the tray icon's menu when there is none.
+  the tray icon's menu when there is none. The row and the log wait for
+  Windows' own answer, so a slow start-up no longer reports a working
+  shortcut as taken (0.2.1's log could). In German the keys read *Strg* and
+  *Umschalt*, as on a German keyboard.
 - **Sleep made one long session.** With the PC asleep while Zanshin was
   watching, one session ran through the night, its sleeping heart rate went
   into your resting baseline, and the only fix was deleting your whole
@@ -291,10 +299,12 @@ have them.
   the 400-session limit says how many of the oldest were dropped.
 - **Every failed voice preparation said "check your internet connection"**,
   even when Microsoft refused the request, and only the Ctrl+K palette could
-  retry. **0.2.2:** the line under *Voice source* tells an unreachable
+  retry. **0.2.2:** a line in the *Voice source* row tells an unreachable
   service from a refused request and other errors, with a *Try again* button
-  under it, and the log says how to retry. Like *Prepare the cue voice*, it
-  sends nothing while Zanshin is watching.
+  right there, and the log says where to retry (Settings → Sound, or
+  Ctrl+K). Like *Prepare the cue voice*, it sends nothing while Zanshin is
+  watching. The voice menu next to it grows wide enough for long Windows
+  voice names.
 - **Switching Play / Work while watching** changed how the running session's
   cues spoke, though the session itself stayed in its world. **0.2.2:** the
   session and its cues keep their world, the switch applies from the next
@@ -303,12 +313,16 @@ have them.
   the phone can't reach. **0.2.2:** it lists the PC's real network adapters
   first and marks VPN and virtual ones *(VPN/virtual)*, with a note on what
   to do; the *Network address (advanced)* field warns about such an address
-  too.
+  too. An address of Windows' Mobile hotspot is marked *(hotspot)* instead,
+  without a warning, and a Hyper-V external switch that carries your home
+  network counts as a real adapter.
 - **Quitting again while the questions after a session were open threw away
   your answers.** Quitting while Zanshin is watching saves the session and
   opens its questions first. **0.2.2:** a second Quit while they're open saves
   the answers you've touched as with *Save*; untouched questions close as
-  with *Skip*. The questions now start with how
+  with *Skip*. The same happens when the questions after an earlier stop
+  are still open and you quit from the tray or Windows shuts down; the log
+  says which it was. The questions now start with how
   long you played, and after a Play session with a cue while the game filled
   the whole screen, they say the pictures may not have shown and suggest
   Borderless.
@@ -317,12 +331,45 @@ have them.
   **0.2.2:** the grid shows the weeks since your first session (8 to 26)
   with month and weekday labels in the app's language, load reads *x/100*,
   numbers use your language's decimal mark and a real minus sign, and a
-  session of an hour or more reads like *1 h 10 min*.
+  session of an hour or more reads like *1 h 10 min*. The grid grows with
+  the panel and names all seven weekdays when there's room. Dates in
+  History, the trend chart, the insights and the delete question follow the
+  app language (*12 Nov 2026* in English, *12. 11. 2026* in Slovak), and time
+  over your heart-rate limit reads like *1 h 15 min* from an hour up, on
+  *Today*, in History and on the heart-rate panel.
+- **Some texts sent you to *In-game* in the Work world**, where the sidebar
+  calls that page *Screen*. **0.2.2:** every text that points to that page
+  uses the name your world shows, and texts already on screen change when
+  you switch worlds.
+- ***watch connected* was the phone.** **0.2.2:** while heart rate comes in,
+  *Today* says *phone connected*, and before it does, the line next to the
+  switch says *Phone connected — waiting for heart rate…*: what connects to
+  Zanshin is the phone app.
+- **Buttons looked different from window to window.** **0.2.2:** buttons,
+  menus and dialog buttons all come from one set, and a button that's off
+  looks the same everywhere (a *Delete* button that's off is no longer red).
+  *Show IP* in the pairing guide is an ordinary button, not a link-style
+  chip; *Pair a watch now* in the intro and the sound menu have no emoji;
+  and small red text, such as an error or the limit on the heart-rate
+  panel's chart, uses the readable red.
+- **Japanese and Chinese lines could start with 。 or ）, and the heart-rate
+  panel drew Japanese and Chinese text as empty boxes.** **0.2.2:** wrapped
+  text in those languages follows their line-breaking rules, and the panel,
+  its captions and its preview in the intro draw that text in a Japanese or
+  Chinese font.
 - **Smaller things.** Cue cards show the category's name above your wording;
   *How I speak up* is the first row of *Loudness* on the Sound page; in Aizome
   the calm zone is teal-green, so blue means recovery only; the intro's first
-  step says what you'll need. More texts in every language use the app's own
-  words, and more of them speak in the first person.
+  step says what you'll need: a smartwatch with its companion phone app, as
+  the README says. More texts in every language use the app's own words, and
+  more of them speak in the first person. In Work, the hint under the
+  session's curve in the questions after it says when you were probably
+  working, not playing; the
+  Bulgarian session title is grammatical for any length; Chinese uses one
+  dash style (——); and the log line about a session that wasn't saved
+  states the real rule (at least a minute and at least 10 heart-rate
+  readings). Running the tests from source no longer writes into the app's
+  own log.
 
 ## What 0.2.1 fixes
 

@@ -90,7 +90,8 @@ def test_zmazanie_relacie_s_potvrdenim_okna_aj_postrehy(tmp_path, monkeypatch):
     monkeypatch.setattr(app_data.ui_kit, "confirm", confirm)
     assert a.delete_history_session(dict(ciel)) is True
     (titul, text, ok, zrusit, danger), = otazky
-    kedy = time.strftime("%d.%m.%Y %H:%M", time.localtime(ciel["started"]))
+    # datum v jazyku appky (0.2.2 davka 4b) - ten isty ako tabulka v Historii
+    kedy = app_data.ui_kit.datum_text(ciel["started"], cas=True)
     assert titul == tr("history.delete_session.title")
     assert text == tr("history.delete_session.body", date=kedy,
                       duration=a._fmt_dlzka(ciel["duration_s"]))
@@ -324,7 +325,7 @@ def test_dalsi_start_doplni_cakajucu_raz_a_subor_zmaze(tmp_path):
     historia = _citaj(a.hr_sessions_path)
     assert len(historia) == 1 and historia[0]["recovered"] is True, "z obnovenej sa neuci"
     assert not os.path.exists(hr_stats.cesta_cakajucej(a.hr_sessions_path))
-    kedy = time.strftime("%d.%m.%Y %H:%M", time.localtime(s["started"]))
+    kedy = app_data.ui_kit.datum_text(s["started"], cas=True)
     assert a.denn == [tr("log.hr_session_pending_saved", time=kedy)]
     # uz v historii (napr. aj z kontrolneho bodu): neduplikuje sa
     hr_stats.zapis_cakajucu(a.hr_sessions_path, dict(s))

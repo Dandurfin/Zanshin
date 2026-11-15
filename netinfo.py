@@ -4,14 +4,15 @@ Preco samostatny modul
 ----------------------
 Hrac musi do telefonu prepisat IP tohto pocitaca. Stroj s Wi-Fi + Ethernet
 + VPN (+ Hyper-V/WSL virtualne adaptery) ma ale IP viacero a "ta spravna"
-je ta, na ktorej su hodinky/telefon - to appka nevie uhadnut. Preto:
+je ta, na ktorej je telefon (appka v nom posiela tep z hodiniek) - to appka
+nevie uhadnut. Preto:
 
   * `preferred_local_ip()` - adresa, cez ktoru by OS poslal paket von
     (typicky Wi-Fi/Ethernet s default route). Nikam sa nic neposiela: UDP
     socket sa len "pripoji" (co pri UDP znamena iba vyber zdrojovej adresy)
     a precita sa jeho vlastna adresa.
   * `local_ip_candidates()` - VSETKY IPv4 adresy stroja bez loopbacku a
-    APIPA (169.254.x.x - "nedostal som DHCP", tam hodinky nikdy nie su),
+    APIPA (169.254.x.x - "nedostal som DHCP", tam telefon nikdy nie je),
     preferovana prva, potom sukromne rozsahy (192.168 / 10 / 172.16-31),
     potom zvysok. UI ukaze prvu velkym a ostatne ako "alebo".
 
@@ -86,8 +87,8 @@ def local_ip_candidates(virtualne=None, preferovana=None, vsetky=None):
 
     PORADIE (0.2.2, audit 4): fyzicke adaptery pred VPN a virtualnymi
     (`virtualne_adresy`) - so zapnutou VPN ide predvolena cesta von cez
-    tunel a dialog parovania ukazoval adresu, na ktoru sa hodinky nikdy
-    nedostanu. Medzi rovnakymi potom adresa predvolenej cesty, potom
+    tunel a dialog parovania ukazoval adresu, na ktoru sa telefon nikdy
+    nedostane. Medzi rovnakymi potom adresa predvolenej cesty, potom
     domace rozsahy 192.168.* > 10.* > 172.16-31.*, potom zvysok.
 
     `virtualne` (mnozina IP), `preferovana` a `vsetky` sa daju vlozit
@@ -110,7 +111,7 @@ def local_ip_candidates(virtualne=None, preferovana=None, vsetky=None):
 
 def _poradie_rozsahu(ip):
     """192.168.* (domaca Wi-Fi) < 10.* < 172.16-31.* < ostatne sukromne <
-    verejne. Hodinky su takmer vzdy v domacej sieti."""
+    verejne. Telefon je takmer vzdy v domacej sieti."""
     try:
         addr = ipaddress.IPv4Address(ip)
     except Exception:
@@ -128,9 +129,10 @@ def _poradie_rozsahu(ip):
 # VPN a virtualne adaptery (0.2.2, audit 4)
 # ---------------------------------------------------------------------------
 #
-# PRECO: hodinky (telefon) su v domacej Wi-Fi. Adresa VPN tunela, Hyper-V /
-# WSL prepinaca ci VirtualBoxu je z nich nedosiahnutelna - a appka ju aj
-# tak ukazovala ako "adresu tohto PC". Adapter sa posudzuje podla mena,
+# PRECO: telefon (appka, ktora posiela tep z hodiniek) je v domacej Wi-Fi.
+# Adresa VPN tunela, Hyper-V / WSL prepinaca ci VirtualBoxu je z neho
+# nedosiahnutelna - a appka ju aj tak ukazovala ako "adresu tohto PC".
+# Adapter sa posudzuje podla mena,
 # popisu a typu rozhrania z Windowsu (`_adaptery_windows`). Bezne "Ethernet"
 # / "Wi-Fi" / "Realtek PCIe GbE" / "Intel Wi-Fi 6" sa NEOZNACIA - slova
 # kratsie nez styri znaky sa hladaju len ako cele slova.
@@ -150,19 +152,72 @@ _VIRTUALNE_CELE_SLOVA = re.compile(r"(?<![a-z0-9])(?:tap|tun|tun\d+|wg\d*|wsl|vp
 _VIRTUALNE_TYPY = frozenset({24, 131, 53, 23})
 
 
-def je_virtualny_adapter(meno="", popis="", typ=None):
-    """Je adapter VPN alebo virtualny (hodinky sa nan nedostanu)? Cista
-    funkcia - meno ("Ethernet 2", "vEthernet (WSL)"), popis z Windowsu
-    ("TAP-Windows Adapter V9") a typ rozhrania (IFTYPE) alebo None."""
+# Druh adresy (0.2.2 davka 4b). Hotspot NIE JE virtualny v tom zmysle, ktory
+# hraca zaujima: Mobilny hotspot Windowsu bezi na "Microsoft Wi-Fi Direct
+# Virtual Adapter" (meno "Local Area Connection* 10" a podobne) a telefon
+# pripojeny na ten hotspot sa na jeho adresu dostane. Slovo "Virtual" v
+# popise ho predtym oznacilo "(VPN/virtualna)" aj s varovanim.
+FYZICKY, HOTSPOT, VIRTUALNY = "fyzicky", "hotspot", "virtualny"
+
+_HOTSPOT_POPIS = re.compile(r"wi-?fi direct")
+# "Local Area Connection* 10" - hviezdicka a cislo dava Windows adapterom
+# Wi-Fi Direct v kazdom jazyku. Plati len ked popis chyba (zaloha psutil).
+_HOTSPOT_MENO = re.compile(r"\*\s*\d+\s*$")
+
+
+def druh_adaptera(meno="", popis="", typ=None):
+    """FYZICKY / HOTSPOT / VIRTUALNY pre jeden adapter. Cista funkcia -
+    meno ("Ethernet 2", "vEthernet (WSL)"), popis z Windowsu ("TAP-Windows
+    Adapter V9") a typ rozhrania (IFTYPE) alebo None.
+
+    Hotspot sa posudzuje PRVY: jeho popis obsahuje slovo "Virtual". Externy
+    prepinac Hyper-V tu ostava VIRTUALNY - ci drzi domacu siet, vie az
+    `druhy_adries` (potrebuje predvolenu cestu a ostatne adaptery)."""
+    text = f"{meno or ''} {popis or ''}".lower()
+    if _HOTSPOT_POPIS.search(text) or (
+            not (popis or "").strip() and _HOTSPOT_MENO.search(meno or "")):
+        return HOTSPOT
     try:
         if typ is not None and int(typ) in _VIRTUALNE_TYPY:
-            return True
+            return VIRTUALNY
     except (TypeError, ValueError):
         pass
-    text = f"{meno or ''} {popis or ''}".lower()
     if any(slovo in text for slovo in _VIRTUALNE_SLOVA):
-        return True
-    return bool(_VIRTUALNE_CELE_SLOVA.search(text))
+        return VIRTUALNY
+    return VIRTUALNY if _VIRTUALNE_CELE_SLOVA.search(text) else FYZICKY
+
+
+def je_virtualny_adapter(meno="", popis="", typ=None):
+    """Je adapter VPN alebo virtualny (telefon sa nan nedostane)? Hotspot
+    nie (`druh_adaptera`)."""
+    return druh_adaptera(meno, popis, typ) == VIRTUALNY
+
+
+def _je_externy_prepinac(meno="", popis=""):
+    """Adapter prepinaca Hyper-V ("vEthernet (...)"), ktory MOZE byt externy
+    - teda premosteny na fyzicku sietovku. WSL a "Default Switch" su vzdy
+    vnutorne siete s NAT (telefon sa na ne nedostane), Docker tiez."""
+    text = f"{meno or ''} {popis or ''}".lower()
+    if "vethernet" not in text and "hyper-v virtual ethernet" not in text:
+        return False
+    return not any(slovo in text for slovo in ("wsl", "default switch", "docker"))
+
+
+_LAN_ROZSAHY = (ipaddress.IPv4Network("10.0.0.0/8"),
+                ipaddress.IPv4Network("172.16.0.0/12"),
+                ipaddress.IPv4Network("192.168.0.0/16"))
+
+
+def _lan_siet(ip):
+    """Domaca siet adresy (/24 - Windows masku adaptera appka necita), ale
+    len pre sukromne rozsahy LAN. Inak None."""
+    try:
+        addr = ipaddress.IPv4Address(ip)
+    except Exception:
+        return None
+    if not any(addr in rozsah for rozsah in _LAN_ROZSAHY):
+        return None
+    return ipaddress.IPv4Network(f"{addr}/24", strict=False)
 
 
 def _adaptery_windows():
@@ -281,12 +336,59 @@ def adaptery(zdroj=None):
     return out
 
 
-def virtualne_adresy(zdroj=None):
-    """Mnozina IPv4 adries, ktore patria VPN alebo virtualnemu adapteru.
-    Adresa, ktoru ma aj fyzicky adapter, medzi ne nepatri."""
+def druhy_adries(zdroj=None, preferovana=None):
+    """{ip: FYZICKY / HOTSPOT / VIRTUALNY} pre IPv4 adresy tohto PC.
+
+    Adresa, ktoru ma aj fyzicky adapter, je fyzicka; ktoru ma hotspot (a
+    ziadny fyzicky), je hotspot.
+
+    EXTERNY PREPINAC HYPER-V (0.2.2 davka 4b): ked si hrac v Hyper-V spravi
+    externy prepinac, Windows premosti fyzicku sietovku na "vEthernet (...)"
+    a domacu adresu aj predvolenu cestu von potom drzi ten vEthernet -
+    fyzicka sietovka adresu nema. Telefon sa na nu dostane, takze sa taka
+    adresa berie ako fyzicka, ked: patri prepinacu Hyper-V (nie WSL ani
+    "Default Switch"), drzi predvolenu cestu (`preferovana`, inak sa pyta
+    OS), je v sukromnom rozsahu LAN a ziadny fyzicky adapter nema adresu
+    v tej istej sieti. VPN, ktora drzi cestu von, sa neprepise - nie je to
+    prepinac Hyper-V.
+
+    S vlozenym `zdroj` (testy) sa OS na predvolenu cestu nepyta - bez
+    `preferovana` vtedy externy prepinac neplati."""
     zoznam = adaptery(zdroj)
-    fyzicke = {z[0] for z in zoznam if not z[4]}
-    return {z[0] for z in zoznam if z[4] and z[0] not in fyzicke}
+    if preferovana is None and zdroj is None:
+        preferovana = preferred_local_ip()
+    podla_ip = {}
+    for ip, meno, popis, typ, _virtualny in zoznam:
+        podla_ip.setdefault(ip, []).append((meno, popis, druh_adaptera(meno, popis, typ)))
+    out = {}
+    for ip, zaznamy in podla_ip.items():
+        druhy = {z[2] for z in zaznamy}
+        out[ip] = (FYZICKY if FYZICKY in druhy
+                   else HOTSPOT if HOTSPOT in druhy else VIRTUALNY)
+    siet = _lan_siet(preferovana) if preferovana else None
+    if siet is not None and out.get(preferovana) == VIRTUALNY and all(
+            _je_externy_prepinac(meno, popis) for meno, popis, _d in podla_ip[preferovana]):
+        fyzicka_v_sieti = any(druh == FYZICKY and _lan_siet(ip) == siet
+                              for ip, druh in out.items())
+        if not fyzicka_v_sieti:
+            out[preferovana] = FYZICKY
+    return out
+
+
+def virtualne_adresy(zdroj=None, preferovana=None):
+    """Mnozina IPv4 adries, ktore patria VPN alebo virtualnemu adapteru
+    (`druhy_adries`). Adresa, ktoru ma aj fyzicky adapter, hotspot ani
+    externy prepinac Hyper-V s domacou sietou medzi ne nepatri."""
+    return {ip for ip, druh in druhy_adries(zdroj, preferovana).items()
+            if druh == VIRTUALNY}
+
+
+def hotspot_adresy(zdroj=None, preferovana=None):
+    """Mnozina IPv4 adries Mobilneho hotspotu Windowsu (Wi-Fi Direct). Telefon
+    pripojeny na hotspot sa na ne dostane - dostavaju stitok "(hotspot)",
+    nie varovanie."""
+    return {ip for ip, druh in druhy_adries(zdroj, preferovana).items()
+            if druh == HOTSPOT}
 
 
 # ---------------------------------------------------------------------------
@@ -356,20 +458,24 @@ def pairing_address(ip, port, show=False, stitok=""):
     """Hlavny riadok okna parovania "adresa   :   port". Port nie je
     citlivy (4455 ma kazdy), ostava viditelny aj pri skrytej adrese.
 
-    `stitok` (0.2.2) ide za port - "(VPN/virtualny)", ked adresa patri
+    `stitok` (0.2.2) ide za port - "(VPN/virtualna)", ked adresa patri
     virtualnemu adapteru. Nic o adrese neprezradi, preto aj pri skrytej."""
     riadok = f"{ip_for_screen(ip, show)}   :   {port}"
     return f"{riadok}  {stitok}" if stitok else riadok
 
 
-def pairing_other_ips(ips, show=False, virtualne=(), stitok=""):
+def pairing_other_ips(ips, show=False, virtualne=(), stitok="",
+                      hotspot=(), stitok_hotspot=""):
     """Riadok "dalsie adresy tohto PC" - kazda skryta rovnako ako hlavna.
-    Adresa z `virtualne` dostane za seba `stitok` (0.2.2)."""
+    Adresa z `virtualne` dostane za seba `stitok` (0.2.2), adresa z
+    `hotspot` zase `stitok_hotspot` (0.2.2 davka 4b)."""
     kusy = []
     for ip in ips or ():
         kus = str(ip_for_screen(ip, show))
         if stitok and ip in (virtualne or ()):
             kus = f"{kus} {stitok}"
+        elif stitok_hotspot and ip in (hotspot or ()):
+            kus = f"{kus} {stitok_hotspot}"
         kusy.append(kus)
     return ",  ".join(kusy)
 

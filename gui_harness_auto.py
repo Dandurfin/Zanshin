@@ -1198,7 +1198,8 @@ def s_history_empty_check():
     box = app.history_sessions_box
     labels = [w for w in box.winfo_children() if isinstance(w, ctk.CTkLabel)]
     rec("history: empty history shows the empty-state text (no crash)",
-        len(labels) == 1 and labels[0].cget("text") == tr("history.empty"))
+        len(labels) == 1 and labels[0].cget("text") == tr(
+            "history.empty", page=app._nazov_vhre()))
     rec("history: trend chart drawn empty without error", app.history_trend.winfo_ismapped())
     shot("21_history_empty")
     # syntetické relácie cez reálne HeartStats (rovnaké pole ako appka)

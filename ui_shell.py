@@ -29,6 +29,7 @@ import tkinter.font as tkfont
 
 import customtkinter as ctk
 
+import hotkey
 import hud_paint
 import ui_kit
 
@@ -548,7 +549,9 @@ class Sidebar(ctk.CTkFrame):
             self, self.pal, "hladat", "⌕", labels.get("search", "Hľadať"),
             on_click=lambda _k: self.on_palette() if self.on_palette else None,
             compact=True,
-            tip=lambda: f"{labels.get('cmdk', 'Hľadať a prepínať')}   Ctrl K")
+            # "Strg K" po nemecky - mena klaves podla jazyka (0.2.2 davka 4b)
+            tip=lambda: (f"{labels.get('cmdk', 'Hľadať a prepínať')}   "
+                         f"{hotkey.format_combo('ctrl+k', oddelovac=' ')}"))
         cmdk_hint.pack(fill="x", padx=8, pady=2)
         self.cmdk_btn = cmdk_hint
 

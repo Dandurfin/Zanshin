@@ -59,7 +59,11 @@ letter. If you never picked a shortcut and the default would type a letter
 on one of your layouts, Zanshin takes the first one that doesn't (or none)
 and says so once in its log. If another program already holds your
 shortcut, the setting keeps your choice and its line says it doesn't work
-right now. While "not now" holds, *Today* says until when and how to end it.
+right now. From 0.2.2 that line and the log wait for Windows' own answer, so
+a slow start-up no longer reports a working shortcut as taken. While "not
+now" holds, *Today* says until when and how to end it. In German the app
+writes the keys as on a German keyboard: *Strg* and *Umschalt* instead of
+Ctrl and Shift.
 
 ## What it learns, and from which sessions
 
@@ -108,7 +112,8 @@ for work — and switches without a restart. At work, cues are pictures only: no
 voice, no sound. The resting baseline is shared; the load threshold and high
 heart-rate limit are learned from play sessions only and used in both worlds,
 so if you only ever use Work, they stay on the average-player numbers. From
-0.2.2 the *In-game* page is called *Screen* in Work.
+0.2.2 the *In-game* page is called *Screen* in Work, and every text that
+sends you to that page uses the name your world shows.
 
 A running session stays in the world it started in, even if you flip the
 switch meanwhile. From 0.2.2 so do its cues: whether they speak or make a
@@ -133,9 +138,15 @@ From 0.2.2 the main switch at the top of *Today* is one button,
 menu and the Ctrl+K palette, and all three stay in step. The big text under
 the ensō says what Zanshin is doing; when another program holds the
 heart-rate port, it says *Port 4455 is busy* (with your port number), names
-the usual cause (OBS with its WebSocket server on) and how to fix it. Until
-your first session with heart rate, *Today* shows one sentence and *Pair your
-watch* instead of the tiles and zones.
+the usual cause (OBS with its WebSocket server on) and how to fix it, and
+that's the only message there: the pairing sentence stays hidden meanwhile.
+Until your first session with heart rate, *Today* shows one sentence and
+*Pair your watch* instead of the tiles and zones. While heart rate comes in,
+the *Heart rate and load* header says *phone connected* (from 0.2.2; it's
+the phone app that connects to Zanshin, not the watch). While the phone is
+connected but no heart rate has come yet, the header says *waiting for
+watch* and the line next to the receiving switch *Phone connected — waiting
+for heart rate…*.
 
 The sidebar lists *Today*, *History*, *In-game* (*Screen* in Work),
 *Settings* and *Search* (the Ctrl+K palette), then the watch ring (*Watch*),
@@ -153,7 +164,10 @@ From 0.2.2:
 - **Quitting with the questions open.** If you quit Zanshin while it's
   watching, it saves the session and opens its questions first. If you quit
   again while they're open, the answers you've touched are saved as with
-  *Save*; if you touched none, they close as with *Skip*.
+  *Save*; if you touched none, they close as with *Skip*. The same happens
+  when the questions after an earlier stop are still open and you quit from
+  the tray, or Windows shuts down, restarts or signs you out. The log says
+  which it was, or that the answers couldn't be saved.
 - **When the PC sleeps.** If a session's regular ticks stop for more than two
   minutes (sleep or hibernation), the session ends where the gap began,
   without the questions, and if Zanshin is still watching, a new one starts
@@ -178,6 +192,13 @@ From 0.2.2:
 
 History's *Consistency* grid shows the weeks since your first session (at
 least 8, at most 26) with month and weekday labels, and load reads *x/100*.
+From 0.2.2 the grid grows with the panel up to a set cell size and names all
+seven weekdays when there's room. Dates in History, the trend chart, the
+insights and the delete question are written the way your app language
+writes them (*12 Nov 2026* in English, *12. 11. 2026* in Slovak); the CSV
+export's file name keeps the `2026-11-12` form. Time over your heart-rate
+limit reads like *1 h 15 min* from an hour up, on *Today*, in History and on
+the heart-rate panel.
 
 ## Which address the pairing guide shows
 
@@ -188,8 +209,15 @@ home-network addresses (192.168.x.x before 10.x.x.x before 172.16–31.x.x). A
 VPN or virtual adapter's address is marked *(VPN/virtual)*, with a note to
 switch the VPN off or allow local network access in it, and the *Network
 address (advanced)* field warns the same way when it holds such an address.
-For this Zanshin uses only the adapters' names, descriptions and types and
-whether they're connected, as Windows reports them; nothing is sent anywhere.
+WSL, Hyper-V's *Default Switch*, Docker and loopback adapters count as
+virtual too. Two cases the phone can reach don't get that mark: an address
+of Windows' Mobile hotspot is marked *(hotspot)* instead, without a
+warning, and a Hyper-V external switch (a *vEthernet* adapter that carries
+your home network and the route out, with no real adapter in the same
+network) counts as a real adapter. For this Zanshin uses only the adapters'
+names, descriptions and types and whether they're connected, as Windows
+reports them, plus the address Windows would send outgoing traffic from;
+nothing is sent anywhere.
 
 ## The natural voice: when it prepares lines
 
@@ -258,6 +286,10 @@ use its built-in words (not reworded ones). The voice follows the words, not
 the menu: switching the language with English words keeps the English voice,
 and switching back doesn't undo a change. One voice reads all your profiles,
 except cues given a voice of their own.
+
+From 0.2.2 wrapped Japanese and Chinese text follows those languages'
+line-breaking rules, so a line doesn't start with 。 or ）, and dates follow
+the app language (see [Your sessions](#your-sessions)).
 
 Zanshin is written in Slovak; the other languages are AI-assisted translations
 not yet checked by a native speaker.

@@ -30,6 +30,7 @@ Ziadny prvok tu nema vlastnu logiku appky - vsetko berie cez callbacky.
 import math
 import os
 import sys
+import time
 import tkinter as tk
 from tkinter import font as tkfont
 from tkinter import messagebox    # len zaloha okien appky (`_systemove_okno`)
@@ -304,7 +305,7 @@ def _sirka_textu(text, font):
 
 
 def button(master, pal, text, command=None, kind="secondary", width=None,
-           height=30, font=None, **kw):
+           height=30, font=None, fit_texts=(), **kw):
     """Tlacidlo jedneho zo styroch druhov (`BUTTON_KINDS`).
 
       primary   - vypln `accent`; najviac jedno na kartu, je to "hlavna
@@ -317,29 +318,155 @@ def button(master, pal, text, command=None, kind="secondary", width=None,
     celu kartu (napr. "Ako sparovat hodinky..." cez ~1500 px) kricalo
     hlasnejsie nez obsah karty. Radius je ten isty ako pri ostatnych
     ovladacoch (`RADIUS_CONTROL`), nie vlastny.
+
+    `fit_texts` = dalsie texty, ktore tlacidlo neskor ukaze (prepinac
+    "Ukazat IP" / "Skryt IP"): prirodzena sirka sa vezme z najdlhsieho, aby
+    tlacidlo pri prepnuti neposkocilo.
+
+    VYPNUTE TLACIDLO (0.2.2 davka 4b) ma jeden vzhlad pre vsetky druhy
+    (`vzhlad_vypnuteho`): text `text_faint`, ram `control_border`. CTk pri
+    `state="disabled"` zosedivi len text - "Zmazat historiu" pocas
+    sledovania si nechalo cerveny ram a vyzeralo zapnute. Vzhlad sa prepne
+    pri kazdom `configure(state=...)` a pri zapnuti sa vrati (`_drz_vzhlad_
+    vypnuteho`), takze volajuci nic dalsie robit nemusi.
     """
     if kind not in BUTTON_KINDS:
         kind = "secondary"
     font = font or ui(12)
-    if kind == "primary":
-        style = {"fg_color": pal["accent"], "hover_color": pal["accent_hover"],
-                 "text_color": pal["bg"], "border_width": 0}
-    elif kind == "danger":
-        style = {"fg_color": "transparent", "hover_color": pal["surface_alt"],
-                 "text_color": pal["danger_text"], "border_width": 1,
-                 "border_color": pal["danger_text"]}
-    elif kind == "quiet":
-        style = {"fg_color": "transparent", "hover_color": pal["surface_alt"],
-                 "text_color": pal["text_dim"], "border_width": 0}
-    else:
-        style = {"fg_color": "transparent", "hover_color": pal["surface_alt"],
-                 "text_color": pal["text"], "border_width": 1,
-                 "border_color": pal["control_border"]}
+    style = _farby_druhu(kind, pal)
+    style["text_color_disabled"] = pal["text_faint"]
     if width is None:
-        width = _sirka_textu(text, font) + 2 * _BUTTON_PAD_X
+        width = max(_sirka_textu(t, font) for t in (text,) + tuple(fit_texts or ())) \
+            + 2 * _BUTTON_PAD_X
     style.update(corner_radius=RADIUS_CONTROL, height=height, width=width, font=font)
     style.update(kw)
-    return ctk.CTkButton(master, text=text, command=command, **style)
+    vypnute = str(style.get("state", "")) == "disabled"
+    style.pop("state", None)
+    btn = ctk.CTkButton(master, text=text, command=command, **style)
+    _drz_vzhlad_vypnuteho(btn, kind, pal)
+    if vypnute:
+        try:
+            btn.configure(state="disabled")
+        except Exception:
+            pass
+    return btn
+
+
+def _farby_druhu(kind, pal):
+    """Farby ZAPNUTEHO tlacidla druhu `kind` (viz `button`)."""
+    if kind == "primary":
+        return {"fg_color": pal["accent"], "hover_color": pal["accent_hover"],
+                "text_color": pal["bg"], "border_width": 0}
+    if kind == "danger":
+        return {"fg_color": "transparent", "hover_color": pal["surface_alt"],
+                "text_color": pal["danger_text"], "border_width": 1,
+                "border_color": pal["danger_text"]}
+    if kind == "quiet":
+        return {"fg_color": "transparent", "hover_color": pal["surface_alt"],
+                "text_color": pal["text_dim"], "border_width": 0}
+    return {"fg_color": "transparent", "hover_color": pal["surface_alt"],
+            "text_color": pal["text"], "border_width": 1,
+            "border_color": pal["control_border"]}
+
+
+# Token textu zapnuteho tlacidla - podla neho sa pozna, v ktorej teme prave
+# je (`_paleta_podla_farby`), aj ked sa medzitym prepol svet.
+_TOKEN_TEXTU = {"primary": "bg", "secondary": "text", "quiet": "text_dim",
+                "danger": "danger_text"}
+_FARBY_TLACIDLA = ("fg_color", "hover_color", "text_color", "border_color")
+
+
+def vzhlad_vypnuteho(kind, pal):
+    """Farby VYPNUTEHO tlacidla - jeden vzhlad pre vsetky druhy.
+
+    Text `text_faint` (>= 4,5:1, takze sa da precitat, preco tam je), ram
+    `control_border` u druhov, ktore ram maju (aj `danger` - vypnute
+    "Zmazat" nesmie svietit cervenou), `primary` straca zlatu vypln. Vypnute
+    tlacidlo nema hover, to zariadi CTk samo."""
+    st = {"text_color": pal["text_faint"], "text_color_disabled": pal["text_faint"]}
+    if kind == "primary":
+        st["fg_color"] = pal["surface_alt"]
+    if kind in ("secondary", "danger"):
+        st["border_color"] = pal["control_border"]
+    return st
+
+
+def _paleta_podla_farby(farba, token):
+    """Paleta temy, v ktorej ma `token` hodnotu `farba` (inak None)."""
+    farba = str(farba or "").lower()
+    for paleta in theme_mod.THEMES.values():
+        if str(paleta.get(token, "")).lower() == farba:
+            return paleta
+    return None
+
+
+def _drz_vzhlad_vypnuteho(btn, kind, pal):
+    """`configure(state=...)` na tlacidle prepne aj jeho vzhlad.
+
+    Vlastna metoda na INSTANCII (ako `_drz_pozadie_linky`), nie podtrieda -
+    `ctk.CTkButton` ide v testoch nahradit atrapou. Pri vypnuti si zapamata
+    farby, ktore tlacidlo prave ma (aj volajucim zmenene, napr. Test pocas
+    testu), a pri zapnuti ich vrati. Ked sa medzitym prepla tema (prefarbenie
+    `theme_recolor` meni farby podla hodnoty), zapamatane farby sa do novej
+    temy prelozia. Farby, ktore volajuci posle v tom istom volani, maju
+    prednost. Nikdy nevyhodi vlastnu vynimku."""
+    povodne = getattr(btn, "configure", None)
+    if povodne is None:
+        return
+    stav = {"zapnute": None, "pal": pal}
+
+    def _cget(meno):
+        try:
+            return btn.cget(meno)
+        except Exception:
+            return None
+
+    def _doplnok(kw):
+        """Farby, ktore treba k `kw` pridat (nikdy nie tie, co v nom su)."""
+        novy = str(kw.get("state", ""))
+        vypnut = novy == "disabled"
+        bolo_vypnute = stav["zapnute"] is not None
+        if vypnut and not bolo_vypnute:
+            aktualna = (_paleta_podla_farby(_cget("text_color"), _TOKEN_TEXTU[kind])
+                        or stav["pal"])
+            stav["zapnute"] = {k: _cget(k) for k in _FARBY_TLACIDLA}
+            stav["pal"] = aktualna
+            return vzhlad_vypnuteho(kind, aktualna)
+        if novy == "normal" and bolo_vypnute:
+            aktualna = (_paleta_podla_farby(_cget("text_color"), "text_faint")
+                        or stav["pal"])
+            zapnute, stav["zapnute"] = stav["zapnute"], None
+            mapa = {}
+            if aktualna is not stav["pal"]:
+                import theme_recolor
+                mapa = theme_recolor.build_color_map(stav["pal"], aktualna)
+            stav["pal"] = aktualna
+            von = {}
+            for meno, farba in zapnute.items():
+                if farba is None:
+                    continue
+                von[meno] = mapa.get(str(farba).lower(), farba) \
+                    if isinstance(farba, str) else farba
+            return von
+        if bolo_vypnute and "text_color" in kw and "state" not in kw:
+            # prefarbenie temy pocas vypnutia - aj text vypnuteho stavu
+            return {"text_color_disabled": kw["text_color"]}
+        return {}
+
+    def configure(require_redraw=False, **kw):
+        try:
+            for meno, farba in _doplnok(kw).items():
+                kw.setdefault(meno, farba)
+        except Exception:
+            pass
+        if require_redraw:
+            return povodne(require_redraw=True, **kw)
+        return povodne(**kw)
+
+    try:
+        btn.configure = configure
+    except Exception:
+        pass
 
 
 _MENU_CHROME_W = 56        # lavy okraj textu + sipka vpravo + rezerva
@@ -356,9 +483,9 @@ def option_menu(master, pal, width=CONTROL_W, **kw):
     Prava hrana ostava rovnaka, lebo riadok nastavenia drzi ovladac vpravo."""
     font = kw.get("font") or ui(12)
     hodnoty = kw.get("values") or []
+    min_width = width
     if hodnoty and not kw.get("dynamic_resizing"):
-        najdlhsia = max(_sirka_textu(h, font) for h in hodnoty)
-        width = max(width, najdlhsia + _MENU_CHROME_W)
+        width = sirka_menu(hodnoty, font, min_width)
     style = {
         "width": width, "height": 28, "corner_radius": RADIUS_CONTROL,
         "dynamic_resizing": False,
@@ -369,7 +496,45 @@ def option_menu(master, pal, width=CONTROL_W, **kw):
     }
     style.update(kw)
     style["width"] = width
-    return ctk.CTkOptionMenu(master, **style)
+    menu = ctk.CTkOptionMenu(master, **style)
+    try:
+        menu._zanshin_menu = (font, min_width, bool(kw.get("dynamic_resizing")))
+    except Exception:
+        pass
+    return menu
+
+
+def sirka_menu(hodnoty, font, min_width=CONTROL_W):
+    """Sirka rozbalovacky, do ktorej sa zmesti najdlhsia z `hodnoty`
+    (aspon `min_width`) - pravidlo `option_menu` na jednom mieste."""
+    try:
+        najdlhsia = max(_sirka_textu(h, font) for h in hodnoty)
+    except ValueError:
+        return min_width
+    return max(min_width, najdlhsia + _MENU_CHROME_W)
+
+
+def nastav_hodnoty_menu(menu, values):
+    """Nove polozky rozbalovacky z `option_menu` - a s nimi aj nova sirka.
+
+    `configure(values=...)` sirku nemeni: vyber hlasu sa plni az po starte
+    (hlasy Windows, prirodzene hlasy), takze rozbalovacka ostala na sirke
+    "Nacitavam..." a dlhe meno hlasu Windows ("Microsoft Hedda Desktop -
+    German (Germany)") sa orezalo. Sirka sa preto prepocita tym istym
+    pravidlom ako pri stavbe (`sirka_menu`); nikdy nie mensia nez povodna
+    minimalna. Nikdy nevyhodi vynimku."""
+    values = list(values or [])
+    try:
+        font, min_width, dynamicka = getattr(menu, "_zanshin_menu", (ui(12), CONTROL_W, False))
+        kw = {"values": values}
+        if values and not dynamicka:
+            kw["width"] = sirka_menu(values, font, min_width)
+        menu.configure(**kw)
+    except Exception:
+        try:
+            menu.configure(values=values)
+        except Exception:
+            pass
 
 
 def oznac_zvoleny_segment(seg, pal):
@@ -1024,19 +1189,282 @@ def bez_ikony(text):
     return text
 
 
-def dlzka_text(seconds):
+def dlzka_text(seconds, preklad=None):
     """Dlzka "45 min" alebo "2 h 05 min" v jazyku appky; pokazena hodnota
     -> "—". Jeden zdroj pre kartu "Dĺžka relácie", detail relacie v
-    Historii (`HistoryMixin._fmt_dlzka`) aj koniec osi stopy relacie."""
+    Historii (`HistoryMixin._fmt_dlzka`) aj koniec osi stopy relacie.
+
+    `preklad` = vlastna funkcia `tr` (HUD v hre pise v jazyku hry,
+    `_game_text`); bez nej jazyk appky."""
     try:
         total_min = int(max(0.0, float(seconds or 0.0)) // 60)
     except (TypeError, ValueError, OverflowError):
         return "—"
-    from i18n import tr
+    if preklad is None:
+        from i18n import tr as preklad
     hodiny, minuty = divmod(total_min, 60)
     if hodiny:
-        return tr("dashboard.fmt.h_min", h=hodiny, m=f"{minuty:02d}")
-    return tr("dashboard.fmt.min", n=minuty)
+        return preklad("dashboard.fmt.h_min", h=hodiny, m=f"{minuty:02d}")
+    return preklad("dashboard.fmt.min", n=minuty)
+
+
+# Od hodiny vyssie sa cas pise ako dlzka ("1 h 15 min"), nie m:ss - "75:12"
+# vyzeralo ako cas na hodinkach (0.2.2, audit UX). Ta ista hranica plati pre
+# koniec osi stopy relacie (`SessionTrace.OS_DLZKA_OD_S`).
+DLZKA_OD_S = 3600
+
+
+def cas_text(seconds, preklad=None):
+    """Cas "m:ss" pod hodinu, od hodiny "1 h 15 min" (`dlzka_text`).
+
+    Pre "Nad hranicou" (Dnes, Historia, panel v hre) a cas relacie nad
+    stopou - rovnako ako os stopy. Pokazena hodnota -> "—"."""
+    try:
+        total = int(max(0.0, float(seconds or 0.0)))
+    except (TypeError, ValueError, OverflowError):
+        return "—"
+    if total >= DLZKA_OD_S:
+        return dlzka_text(total, preklad)
+    return f"{total // 60}:{total % 60:02d}"
+
+
+# --------------------------------------------------------------------------
+# Datum v jazyku appky (0.2.2 davka 4b)
+# --------------------------------------------------------------------------
+#
+# "%d.%m.%Y" nie je datum v kazdom jazyku: Anglican cita "12.11.2026" ako
+# 11. decembra a Japonec ho tak nepise vobec. Kazdy jazyk ma jeden tvar
+# (s rokom / bez roku); skratky mesiacov su tie iste ako nad mriezkou
+# Pravidelnost (`history.grid_months`) - jeden zdroj. Cas ostava HH:MM,
+# nazov exportovaneho suboru ISO (`zanshin-relacie-2026-11-12.csv`).
+# {d} den, {dd} den s nulou, {m}/{mm} mesiac, {mes} skratka mesiaca, {r} rok.
+_TVAR_DATUMU = {
+    "sk": ("{d}. {m}. {r}", "{d}. {m}."),
+    "cs": ("{d}. {m}. {r}", "{d}. {m}."),
+    "de": ("{dd}.{mm}.{r}", "{dd}.{mm}."),
+    "ru": ("{dd}.{mm}.{r}", "{dd}.{mm}"),
+    "bg": ("{dd}.{mm}.{r}", "{dd}.{mm}"),
+    "en": ("{d} {mes} {r}", "{d} {mes}"),
+    "fr": ("{d} {mes} {r}", "{d} {mes}"),
+    "es": ("{d} {mes} {r}", "{d} {mes}"),
+    "pt": ("{d} {mes} {r}", "{d} {mes}"),
+    "ja": ("{r}年{m}月{d}日", "{m}月{d}日"),
+    "zh": ("{r}年{m}月{d}日", "{m}月{d}日"),
+}
+_TVAR_MESIACA = {"ja": "{r}年{m}月", "zh": "{r}年{m}月", "de": "{mes} {r}",
+                 "ru": "{mm}.{r}", "bg": "{mm}.{r}"}
+
+
+def _jazyk_appky():
+    try:
+        import i18n
+        return i18n._lang.get("code", "sk")
+    except Exception:
+        return "sk"
+
+
+def _cast_datumu(ts):
+    """time.struct_time z casu `ts` (sekundy), alebo None pri zlej hodnote."""
+    try:
+        return time.localtime(float(ts))
+    except (TypeError, ValueError, OverflowError, OSError):
+        return None
+
+
+def _mesiac_skratka(mesiac, jazyk):
+    try:
+        from i18n import tr_lang
+        mena = tr_lang(jazyk, "history.grid_months").split()
+        if len(mena) == 12:
+            return mena[mesiac - 1]
+    except Exception:
+        pass
+    return str(mesiac)
+
+
+def _vypln_tvar(tvar, t, jazyk):
+    return tvar.format(d=t.tm_mday, dd=f"{t.tm_mday:02d}", m=t.tm_mon,
+                       mm=f"{t.tm_mon:02d}", r=t.tm_year,
+                       mes=_mesiac_skratka(t.tm_mon, jazyk) if "{mes}" in tvar else "")
+
+
+def datum_text(ts, rok=True, cas=False, jazyk=None):
+    """Datum relacie v jazyku appky: sk "12. 11. 2026", de "12.11.2026",
+    en "12 Nov 2026", fr "12 nov. 2026", ja "2026年11月12日".
+
+    `rok=False` - kratky tvar ("12. 11.", "12 Nov", "11月12日"),
+    `cas=True` - za datum " HH:MM". Pokazeny cas -> "—"."""
+    t = _cast_datumu(ts)
+    if t is None:
+        return "—"
+    jazyk = jazyk or _jazyk_appky()
+    tvar = _TVAR_DATUMU.get(jazyk, _TVAR_DATUMU["en"])[0 if rok else 1]
+    text = _vypln_tvar(tvar, t, jazyk)
+    if cas:
+        text += f" {t.tm_hour:02d}:{t.tm_min:02d}"
+    return text
+
+
+def mesiac_text(ts, jazyk=None):
+    """Mesiac a rok ("nov 2026", "Nov 2026", "2026年11月") - popisok
+    mesacneho stlpca v grafe trendu."""
+    t = _cast_datumu(ts)
+    if t is None:
+        return "—"
+    jazyk = jazyk or _jazyk_appky()
+    return _vypln_tvar(_TVAR_MESIACA.get(jazyk, "{mes} {r}"), t, jazyk)
+
+
+# --------------------------------------------------------------------------
+# Zalamovanie japonciny a cinstiny (kinsoku, 0.2.2 davka 4b)
+# --------------------------------------------------------------------------
+#
+# Tk zalamuje len na medzere; text bez medzier (ja/zh) zlomi KDEKOLVEK -
+# riadok potom zacinal 「。」 alebo 「）」, co je v japonskej sadzbe chyba.
+# `zalom_kinsoku` zlomi text sam: riadok nezacne zatvaracim znakom,
+# interpunkciou ani malou kanou a neskonci otvaracou zatvorkou (znak sa
+# vtedy presunie na dalsi riadok, nikdy nevycnieva - Tk by ho inak zlomil
+# znova). Latinske slova v texte sa nedelia.
+_KINSOKU_ZACIATOK = frozenset(
+    "、。，．・：；？！ー）」』】〕〉》〙〗｝］〟"
+    "ぁぃぅぇぉっゃゅょゎゕゖァィゥェォッャュョヮヵヶㇰㇱㇲㇳㇴㇵㇶㇷㇸㇹㇺㇻㇼㇽㇾㇿ々〻"
+    "゛゜ゝゞヽヾ〜～…‥%,.!?:;)]}"
+    # cinstina dava nazvy do “…” (nie 「…」): zatvaracia ” nesmie zacat
+    # riadok, otvaracia “ ho nesmie skoncit (`_KINSOKU_KONIEC`)
+    "”’")
+_KINSOKU_KONIEC = frozenset("（「『【〔〈《〘〖｛［〝([{“‘")
+
+
+def _cjk_znak(ch):
+    o = ord(ch)
+    return (0x3000 <= o <= 0x30FF or 0x31F0 <= o <= 0x31FF or 0x3400 <= o <= 0x9FFF
+            or 0xF900 <= o <= 0xFAFF or 0xFF00 <= o <= 0xFFEF)
+
+
+def _tokeny_zlomu(riadok):
+    """Kusy, medzi ktorymi sa smie zlomit: kazdy CJK znak, kazda medzera a
+    cele latinske slovo."""
+    tokeny, slovo = [], ""
+    for ch in riadok:
+        if ch == " " or _cjk_znak(ch):
+            if slovo:
+                tokeny.append(slovo)
+                slovo = ""
+            tokeny.append(ch)
+        else:
+            slovo += ch
+    if slovo:
+        tokeny.append(slovo)
+    return tokeny
+
+
+def zalom_kinsoku(text, sirka, zmeraj):
+    """`text` so zlomami riadkov ("\\n") tak, aby ziadny riadok nebol sirsi
+    nez `sirka` (v jednotkach funkcie `zmeraj(retazec) -> sirka`) a
+    dodrzal kinsoku (viz vyssie). Text bez CJK znakov sa vrati nezmeneny -
+    latinku Tk zalamuje na medzerach spravne. Existujuce zlomy ostanu."""
+    text = "" if text is None else str(text)
+    if not text or not sirka or sirka <= 0 or not any(_cjk_znak(c) for c in text):
+        return text
+    von = []
+    for odsek in text.split("\n"):
+        tokeny = _tokeny_zlomu(odsek)
+        n, start, i = len(tokeny), 0, 0
+        while i < n:
+            if i > start and zmeraj("".join(tokeny[start:i + 1]).rstrip()) > sirka:
+                zlom = i
+                while zlom - start > 1 and (tokeny[zlom][0] in _KINSOKU_ZACIATOK
+                                            or tokeny[zlom - 1][-1] in _KINSOKU_KONIEC):
+                    zlom -= 1
+                von.append("".join(tokeny[start:zlom]).rstrip())
+                start = zlom
+                while start < n and tokeny[start] == " ":
+                    start += 1
+                i = start
+                continue
+            i += 1
+        von.append("".join(tokeny[start:]).rstrip())
+    return "\n".join(von)
+
+
+def _merac_pisma(font):
+    """`zmeraj(retazec) -> px` pre pismo labelu (tuple alebo CTkFont) v
+    LOGICKYCH px - v tych istych ako `wraplength` (CTk nasobi oboje tou
+    istou mierkou). Bez Tk (testy) odhad podla velkosti pisma."""
+    try:
+        if isinstance(font, (tuple, list)):
+            family, size = font[0], font[1]
+            weight = font[2] if len(font) > 2 else "normal"
+        else:
+            family, size, weight = font.cget("family"), font.cget("size"), font.cget("weight")
+        return tkfont.Font(family=family, size=-abs(int(size)), weight=weight).measure
+    except Exception:
+        try:
+            velkost = float(font[1])
+        except Exception:
+            velkost = 12.0
+
+        def zmeraj(s):
+            return sum(velkost if _cjk_znak(c) else velkost * 0.55 for c in s)
+        return zmeraj
+
+
+def _kinsoku_labelu(label):
+    """CTkLabel s `wraplength` v japoncine/cinstine ukaze text zlomeny
+    podla kinsoku (`zalom_kinsoku`), 2 % pod `wraplength`, aby ho Tk
+    nezlomil znova.
+
+    Zlomy dostane len vnutorny tk.Label - `_text` CTkLabelu ostava povodny,
+    takze `cget("text")` vrati presne to, co volajuci poslal. Ine jazyky,
+    label bez `wraplength` ci s `textvariable` sa nemenia. Nikdy nevyhodi
+    vynimku."""
+    try:
+        if not _jazyk_pisma():
+            return
+        text, wrap = getattr(label, "_text", None), getattr(label, "_wraplength", 0)
+        if not isinstance(text, str) or not text or not wrap:
+            return
+        zlomeny = zalom_kinsoku(text, float(wrap) * 0.98, _merac_pisma(label._font))
+        if zlomeny != text:
+            label._label.configure(text=zlomeny)
+    except Exception:
+        pass
+
+
+def zapni_kinsoku_v_labeloch(trieda=None):
+    """Kazdy CTkLabel s `wraplength` zlomi ja/zh text podla kinsoku - pri
+    stavbe aj pri `configure(text= / wraplength= / font=)`.
+
+    Labelov so `wraplength` je v appke vyse sto (Nastavenia, dialogy,
+    Sprievodca, Historia); upravit kazdy zvlast by bolo sto miest, kde sa
+    na to da zabudnut. Preto jeden hacik na triede, raz pri importe
+    `ui_kit` (opakovane volanie nic nespravi). Latinku a cyriliku necha
+    tak - tie Tk zalamuje na medzerach spravne."""
+    trieda = trieda or ctk.CTkLabel
+    if getattr(trieda, "_zanshin_kinsoku", False):
+        return
+    povodny_init, povodny_configure = trieda.__init__, trieda.configure
+
+    def __init__(self, *args, **kwargs):
+        povodny_init(self, *args, **kwargs)
+        _kinsoku_labelu(self)
+
+    def configure(self, require_redraw=False, **kwargs):
+        zmena = bool(kwargs.keys() & {"text", "wraplength", "font"})
+        vysledok = povodny_configure(self, require_redraw=require_redraw, **kwargs)
+        if zmena:
+            _kinsoku_labelu(self)
+        return vysledok
+
+    trieda.__init__ = __init__
+    trieda.configure = configure
+    trieda._zanshin_kinsoku = True
+
+
+try:
+    zapni_kinsoku_v_labeloch()
+except Exception:              # pragma: no cover - atrapa ctk bez CTkLabel
+    pass
 
 
 class SettingRow(ctk.CTkFrame):
@@ -1083,6 +1511,10 @@ class SettingRow(ctk.CTkFrame):
             self.icon.pack(side="left")
         text_col = ctk.CTkFrame(inner, fg_color="transparent")
         text_col.pack(side="left", fill="x", expand=True)
+        # Stlpec textu je verejny (0.2.2 davka 4b): stav, ktory k riadku
+        # patri (priprava hlasu pod "Zdrojom hlasu"), ide POD vysvetlenie -
+        # este nad deliacu linku riadku, nie pod nu do dalsieho riadku.
+        self.text_col = text_col
         self.title_label = ctk.CTkLabel(text_col, text=title, font=ui(13),
                                         text_color=pal["text"], anchor="w", justify="left")
         self.title_label.pack(fill="x")
@@ -1091,7 +1523,8 @@ class SettingRow(ctk.CTkFrame):
         self.sub_label = None
         if sub:
             # Vysvetlenie je OBSAH (preco a co to robi), nie dekoracia -
-            # preto `text_dim` (5,75:1), nie `text_faint`.
+            # preto `text_dim` (5,75:1), nie `text_faint`. V ja/zh ho zlomi
+            # kinsoku (`zapni_kinsoku_v_labeloch`) - Tk by zacal riadok 「。」.
             self.sub_label = ctk.CTkLabel(
                 text_col, text=sub, font=ui(11), text_color=pal["text_dim"],
                 anchor="w", justify="left", wraplength=wrap)
@@ -1205,15 +1638,35 @@ class EmptyState(ctk.CTkFrame):
                                   anchor="center" if stred else "w")
         self.action = None
         if action and command is not None:
-            self.label.pack(anchor=anchor, pady=(pady[0], 0))
+            self._veta_pack = dict(anchor=anchor, pady=(pady[0], 0))
+            self.label.pack(**self._veta_pack)
             self.action = button(self, pal, action, command=command, kind=kind)
             self.action.pack(anchor=anchor, pady=(10, pady[1]))
         else:
-            self.label.pack(anchor=anchor, pady=pady)
+            self._veta_pack = dict(anchor=anchor, pady=pady)
+            self.label.pack(**self._veta_pack)
 
     def set_text(self, text):
         try:
             self.label.configure(text=text)
+        except Exception:
+            pass
+
+    def ukaz_vetu(self, ukaz):
+        """Schova / vrati vetu, akcia ostava (0.2.2 davka 4b).
+
+        Pri obsadenom porte tepu hovori o probleme pas aj hlavicka panela -
+        "Ked sparujes hodinky..." pod tym by bola druha, ina sprava (a navyse
+        nepravdiva: hodinky su v poriadku). Nikdy nevyhodi vynimku."""
+        try:
+            vidno = bool(self.label.winfo_manager())
+            if ukaz and not vidno:
+                if self.action is not None and self.action.winfo_manager():
+                    self.label.pack(before=self.action, **self._veta_pack)
+                else:
+                    self.label.pack(**self._veta_pack)
+            elif not ukaz and vidno:
+                self.label.pack_forget()
         except Exception:
             pass
 
@@ -2186,8 +2639,9 @@ class SessionTrace(PalCanvas):
         return f"{total // 60}:{total % 60:02d}"
 
     # Od hodiny vyssie sa koniec osi pise ako dlzka ("2 h 18 min"), nie m:ss:
-    # "138:02" vyzeralo ako cas na hodinkach (0.2.2, audit UX, davka 4).
-    OS_DLZKA_OD_S = 3600
+    # "138:02" vyzeralo ako cas na hodinkach (0.2.2, audit UX, davka 4). Ta
+    # ista hranica ako `cas_text` ("Nad hranicou", cas relacie).
+    OS_DLZKA_OD_S = DLZKA_OD_S
 
     @classmethod
     def os_popisky(cls, duration_s):
@@ -2315,7 +2769,9 @@ class SessionTrace(PalCanvas):
         if self._threshold and lo <= self._threshold <= hi:
             y = y_of(self._threshold)
             c.create_line(0, y, pw, y, fill=pal["danger"], width=1, dash=(4, 4))
-            popisok(y, self._threshold, pal["danger"])
+            # cislo je drobny text (mono 10) - `danger_text`, nie `danger`
+            # (pravidlo v theme.py); ciara ostava `danger`
+            popisok(y, self._threshold, pal["danger_text"])
 
         krok = pw / float(len(values) - 1)
         body = []
@@ -2454,8 +2910,17 @@ class DayGrid(PalCanvas):
     su preto rovnako dolezite ako plne a kreslia sa tiez.
     """
 
-    CELL = 12
+    # VELKOST STVORCEKA PODLA SIRKY (0.2.2 davka 4b). Pevnych 12 px kreslilo
+    # 26 tyzdnov do ~170 px panela sirokeho ~1000 px - zvysok bola prazdna
+    # plocha a vzor sa v drobnych stvorcekoch hladal. Stvorcek teraz rastie,
+    # kym tyzdne nezaplnia sirku (`rozmer_bunky`), najviac na CELL_MAX - pri
+    # par tyzdnoch by inak boli obrie. Medzera rastie s nim (GAP..GAP_MAX)
+    # a s nimi aj vyska mriezky; popisky mesiacov a dni idu po tom istom
+    # kroku, takze sedia nad stlpcami a vedla riadkov.
+    CELL = 12           # najmensi stvorcek (uzke okno)
+    CELL_MAX = 22
     GAP = 3
+    GAP_MAX = 5
     LEGEND_H = 18
     # POPISKY (0.2.2, audit UX, davka 4): mesiace nad stlpcami a dni vlavo.
     # Bez nich sa z mriezky nedalo povedat, ktory stlpec je ktory tyzden ani
@@ -2463,12 +2928,13 @@ class DayGrid(PalCanvas):
     MONTH_H = 15
     STEPS = 4       # kolko odtienov nad "prazdny den"
     # Ktore riadky nesu meno dna: pondelok, streda, piatok - siedmy popisok
-    # pri 12 px riadku by sa s vedlajsimi slial.
+    # pri 12 px riadku by sa s vedlajsimi slial. Od kroku VSETKY_DNI_OD
+    # (stvorcek + medzera) sa zmesti meno kazdeho dna, aj soboty a nedele.
     DAY_ROWS = (0, 2, 4)
+    VSETKY_DNI_OD = 20
 
     def __init__(self, master, pal):
-        super().__init__(master, pal, self.MONTH_H + 7 * (self.CELL + self.GAP)
-                         - self.GAP + self.LEGEND_H)
+        super().__init__(master, pal, self.vyska_mriezky(self.CELL, self.GAP))
         self._days = []
         self._legend = ("", "")
         self._months = ()
@@ -2508,6 +2974,37 @@ class DayGrid(PalCanvas):
             vysledok.insert(0, (0, prvy_datum.month))
         return vysledok
 
+    @classmethod
+    def rozmer_bunky(cls, sirka, stlpcov):
+        """(stvorcek, medzera) v logickych px, aby `stlpcov` tyzdnov zaplnilo
+        `sirka` - stvorcek najviac CELL_MAX, najmenej CELL (vtedy sa zaciatok
+        historie oreze, viz `_redraw`)."""
+        if stlpcov <= 0 or sirka <= 0:
+            return float(cls.CELL), float(cls.GAP)
+        # medzera ~18 % kroku; za poslednym stlpcom medzera nie je
+        medzera = float(max(cls.GAP, min(cls.GAP_MAX,
+                                         round((float(sirka) + cls.GAP) / stlpcov * 0.18))))
+        krok = (float(sirka) + medzera) / stlpcov
+        bunka = max(float(cls.CELL), min(float(cls.CELL_MAX), krok - medzera))
+        return bunka, medzera
+
+    @classmethod
+    def vyska_mriezky(cls, bunka, medzera):
+        """Vyska celeho prvku v logickych px: mesiace + 7 riadkov + legenda."""
+        return int(math.ceil(cls.MONTH_H + 7 * (bunka + medzera) - medzera
+                             + cls.LEGEND_H))
+
+    def _mierka(self):
+        """Mierka DPI prvku (fyzicke px / logicke) - nie z vysky platna:
+        vyska sa tu meni so sirkou, takze by sa s nou menila aj mierka."""
+        try:
+            return float(self._get_widget_scaling()) or 1.0
+        except Exception:
+            try:
+                return int(self.canvas.winfo_height()) / float(self.height)
+            except Exception:
+                return 1.0
+
     def _odtiene(self):
         # odtiene smerom k farbe POKOJA danej temy, nie k univerzalnej
         # zelenej - v indigovej teme bola mriezka jediny zeleny ostrovcek
@@ -2518,12 +3015,14 @@ class DayGrid(PalCanvas):
 
     def _redraw(self):
         pal, c = self.pal, self.canvas
-        w, _h, s = self._canvas_size(60)
-        if not w or not self._days:
+        try:
+            w = int(c.winfo_width())
+        except Exception:
             return
+        if w < 60 or not self._days:
+            return
+        s = self._mierka()
         c.delete("all")
-        cell, gap = self.CELL * s, self.GAP * s
-        krok = cell + gap
         odtiene = self._odtiene()
         # Prah kazdeho odtiena je percentil TVOJICH dni, nie pevna minutaz -
         # hodinu denne ma niekto ako maximum a niekto ako rozcvicku.
@@ -2536,20 +3035,51 @@ class DayGrid(PalCanvas):
         vrch = self.MONTH_H * s
         # Stlpec dni vlavo: sirka podla najdlhsieho popisku v tomto jazyku
         # ("Mon" / "月" / "seg"), nie natvrdo - inak by "lun" prekryl mriezku.
+        # Popisky sa najprv len zmeraju; kam patria, sa vie az s krokom.
         lavo = 0
+        popisky_dni = []
         if len(self._weekdays) == 7:
-            for riadok in self.DAY_ROWS:
-                polozka = c.create_text(0, vrch + riadok * krok + cell / 2.0,
-                                        text=self._weekdays[riadok], anchor="w",
+            for riadok in range(7):
+                polozka = c.create_text(0, 0, text=self._weekdays[riadok], anchor="w",
                                         fill=farba_popisu, font=ui(10))
                 box = c.bbox(polozka)
                 if box:
                     lavo = max(lavo, box[2] - box[0])
+                popisky_dni.append((riadok, polozka))
             lavo += 6 * s if lavo else 0
+        # Velkost stvorceka podla sirky a poctu tyzdnov (`rozmer_bunky`).
+        tyzdnov = max(1, (len(self._days) + self._days[0]["date"].weekday() + 6) // 7)
+        bunka, medzera = self.rozmer_bunky((w - lavo) / s, tyzdnov)
+        vyska = self.vyska_mriezky(bunka, medzera)
+        if vyska != self.height:
+            # Vyska ide so sirkou: nova sa nastavi a <Configure> prekresli.
+            self.height = vyska
+            try:
+                self.configure(height=vyska)
+            except Exception:
+                pass
+        cell, gap = bunka * s, medzera * s
+        krok = cell + gap
+        # CELE PX (skeptik UX 4b): krok je podiel sirky (napr. 40,5 px) a Tk
+        # kresli vyhladeny polygon na zlomkovych suradniciach s ostnami na
+        # hranach - velke stvorceky mali zubate okraje. Roh stvorceka ide
+        # nadol na cely px, strana sa zaokruhli; popisky idu po tych istych
+        # suradniciach, takze sedia presne nad stlpcom a vedla riadku.
+        strana = max(1, int(round(cell)))
+
+        def px(v):
+            return math.floor(v + 1e-6)
+        vsetky_dni = bunka + medzera >= self.VSETKY_DNI_OD
+        for riadok, polozka in popisky_dni:
+            if vsetky_dni or riadok in self.DAY_ROWS:
+                c.coords(polozka, 0, px(vrch + riadok * krok) + strana / 2.0)
+            else:
+                c.delete(polozka)
         # Kolko tyzdnov sa zmesti - a orezava sa ZACIATOK, nie koniec:
         # dnesok musi byt v mriezke vzdy, aj keby sa historia nezmestila
         # cela. Volajuci preto moze pokojne poslat cely rok.
-        stlpcov = max(1, int((w - lavo + gap) // krok))
+        # (+1e-6: krok je presne podiel sirky - 25,9999 tyzdna nie je 25)
+        stlpcov = max(1, int((w - lavo + gap) / krok + 1e-6))
         dni = self._days
         for _ in range(3):
             prebytok = len(dni) + dni[0]["date"].weekday() - stlpcov * 7
@@ -2561,20 +3091,22 @@ class DayGrid(PalCanvas):
             poradie = i + prvy_den
             x = lavo + (poradie // 7) * krok
             y = vrch + (poradie % 7) * krok
-            if x + cell > w:
+            if x + cell > w + 0.5:
                 break
             if den["seconds"] <= 0:
                 farba = pal["line_soft"]
             else:
                 stupen = sum(1 for p in prahy if den["seconds"] > p)
                 farba = odtiene[min(stupen, self.STEPS - 1)]
-            round_rect(c, x, y, x + cell, y + cell, 3 * s, fill=farba, outline="")
+            x, y = px(x), px(y)
+            round_rect(c, x, y, x + strana, y + strana, max(3.0, bunka * 0.2) * s,
+                       fill=farba, outline="")
         if len(self._months) == 12:
             pouzite = (len(dni) + prvy_den + 6) // 7
             koniec = -1.0
             for stlpec, mesiac in self.stlpce_mesiacov(dni[0]["date"], prvy_den,
                                                        min(stlpcov, pouzite)):
-                x = lavo + stlpec * krok
+                x = px(lavo + stlpec * krok)
                 if x < koniec:
                     continue            # predosla skratka by sa prekryla
                 polozka = c.create_text(x, vrch - 3 * s, text=self._months[mesiac - 1],
@@ -2590,7 +3122,8 @@ class DayGrid(PalCanvas):
         box = c.bbox(polozka)
         x = max(46 * s, (box[2] + 6 * s) if box else 0)
         for farba in [pal["line_soft"]] + odtiene:
-            round_rect(c, x, legenda_y - 10 * s, x + 10 * s, legenda_y, 2 * s,
+            x0, y0 = px(x), px(legenda_y - 10 * s)
+            round_rect(c, x0, y0, x0 + int(round(10 * s)), y0 + int(round(10 * s)), 2 * s,
                        fill=farba, outline="")
             x += 13 * s
         c.create_text(x + 3 * s, legenda_y, text=viac, anchor="sw",
@@ -3063,6 +3596,26 @@ class InfoRow(ctk.CTkFrame):
 # Vlastna listka pre dialogy (bez OS ramu)
 # --------------------------------------------------------------------------
 
+DIALOG_RAM_TOKEN = "rule"
+
+
+def nastav_ram_okna(top, pal):
+    """1 px ram okolo okna dialogu vo farbe `pal[DIALOG_RAM_TOKEN]`.
+
+    Tk `highlightthickness` na samotnom okne: ram je VNUTRI okna a obsah
+    (pack) ide az za nim, takze ho nic neprekryje. `highlightcolor` (okno
+    s fokusom) aj `highlightbackground` (bez fokusu) maju tu istu farbu -
+    ram sa pri kliknuti nemeni. Volane cez `tk.Misc.configure`, lebo
+    `CTkToplevel.configure` `highlightcolor` nepozna. Nikdy nevyhodi
+    vynimku."""
+    try:
+        farba = pal[DIALOG_RAM_TOKEN]
+        tk.Misc.configure(top, highlightthickness=1, highlightbackground=farba,
+                          highlightcolor=farba)
+    except Exception:
+        pass
+
+
 class DialogChrome:
     """Da dialogu (CTkToplevel) vlastnu listku ako ma hlavne okno.
 
@@ -3108,6 +3661,14 @@ class DialogChrome:
                                               pripni_k_vlastnikovi(top)), add="+")
             except Exception:
                 pass
+
+        # RAM OKNA 1 px (0.2.2 davka 4b). Okno bez OS ramu malo pozadie `bg`
+        # ako hlavne okno za nim - dialog nad tmavou appkou nemal hranu a
+        # splyval s nou. `rule` je token hrany plochy (>= 1,5:1, viz
+        # theme.py), nie ovladaca: ram okna nema vyzerat ako tlacidlo.
+        # Kresli ho samo Tk okno (highlight), takze ide okolo vsetkeho
+        # obsahu a nezavisi od toho, co do okna kto zabali.
+        nastav_ram_okna(top, pal)
 
         bar = ctk.CTkFrame(top, fg_color=pal["bg"], height=34, corner_radius=0)
         bar.pack(fill="x", side="top")

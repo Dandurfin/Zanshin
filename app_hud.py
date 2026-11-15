@@ -430,9 +430,10 @@ class HudMixin:
         parts = [f"{elapsed // 60:02d}:{elapsed % 60:02d}",
                  self._game_text("hud.session.triggers", n=stats.triggers)]
         if stats.time_over >= 1.0:
-            over = int(stats.time_over)
-            parts.append(self._game_text("hud.session.over",
-                                         time=f"{over // 60}:{over % 60:02d}"))
+            # od hodiny "1 h 15 min", nie "75:12" - v jazyku HRY (0.2.2 4b)
+            parts.append(self._game_text(
+                "hud.session.over",
+                time=ui_kit.cas_text(int(stats.time_over), preklad=self._game_text)))
         self.hud.set_session_text("  ·  ".join(parts))
 
     # ---------- In-Game Vizualy (Overlay) ----------

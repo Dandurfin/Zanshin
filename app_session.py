@@ -38,7 +38,7 @@ from heart_rate import ANY_INTERFACE
 from i18n import tr
 from settings_model import clamp_int
 
-from app_spolocne import app_log
+from app_spolocne import app_log, stranka_vhre
 
 
 def _senzor_vypla_chyba(app):
@@ -146,14 +146,14 @@ class SessionMixin:
     def start_heart_rate_monitor(self):
         """Otvori novu meraciu relaciu A naštartuje sietovy prijem.
 
-        Ked treba len novu relaciu (zapnutie pocuvania, ked uz hodinky
-        posielaju), vola sa `_open_hr_session` priamo - restart socketu by
-        hodinky na chvilu odpojil.
+        Ked treba len novu relaciu (zapnutie sledovania, ked uz tep chodi),
+        vola sa `_open_hr_session` priamo - restart socketu by appku v
+        telefone na chvilu odpojil.
         """
         # Cakajuci pokus po obsadenom porte (`_retry_hr_bind`) patri
         # PREDOSLEMU behu. `_open_hr_session` ho len zabudne (None), no
         # `after` by ho o par sekund aj tak spustil - restartoval by tento
-        # novy prijem (iny port, vypnutie a zapnutie), hodinky by sa odpojili
+        # novy prijem (iny port, vypnutie a zapnutie), telefon by sa odpojil
         # a relacia by sa otvorila nanovo. Novy beh si pokusy zacne sam.
         _zrus_pokus_o_vazbu(self)
         # Novy beh od hraca (zapnutie, iny port) = pokusy po obsadenom porte
@@ -175,7 +175,7 @@ class SessionMixin:
     def _open_hr_session(self, prepoj=True, meria=True):
         """Zacne novu meraciu relaciu. Siete sa NEDOTYKA.
 
-        `prepoj=False` znamena "prijem uz bezi a hodinky posielaju" - vtedy
+        `prepoj=False` znamena "prijem uz bezi a tep chodi" - vtedy
         sa stav pripojenia nesmie zhodit na "connecting", lebo by okno
         tvrdilo, ze sa prave pripaja, hoci data chodia.
         """
@@ -453,8 +453,11 @@ class SessionMixin:
 
     def _hr_ip_virtual_hint(self, hodnota, virtualne=None):
         """Adresa v poli IP patri VPN alebo virtualnemu adapteru (0.2.2)?
-        Potom k vysvetlivke pod polom pribudne veta, ze hodinky sa na nu
-        vacsinou nedostanu. Vracia, ci veta plati. `virtualne` (mnozina IP)
+        Potom k vysvetlivke pod polom pribudne veta, ze telefon (appka, ktora
+        posiela tep z hodiniek) sa na nu vacsinou nedostane. Mobilny hotspot
+        Windowsu a externy prepinac Hyper-V s domacou sietou medzi virtualne
+        nepatria (`netinfo.druhy_adries`, 0.2.2 davka 4b). Vracia, ci veta
+        plati. `virtualne` (mnozina IP)
         sa da vlozit (testy); predvolene sa pyta `netinfo`."""
         hodnota = str(hodnota or "").strip()
         if virtualne is None:
@@ -595,7 +598,8 @@ class SessionMixin:
             self.refresh_hr_status_label()
             return
         if kind == "client":
-            # hodinky drzia spojenie - to este NEznamena, ze posielaju tep
+            # appka v telefone drzi spojenie - to este NEznamena, ze tep chodi
+            # (hodinky nemusia merat ani byt pri telefone)
             self._cancel_no_client_check()      # klient prisiel (B2)
             self._hr_client_linked = True
             self._hr_state = "linked"
@@ -614,7 +618,7 @@ class SessionMixin:
             self._hr_state = "connecting"
             self._hr_last_bpm = None
         elif kind == "disconnected":
-            # tep prestal chodit; ak hodinky spojenie stale drzia, je to
+            # tep prestal chodit; ak telefon spojenie stale drzi, je to
             # "pripojene, ale bez dat", nie "odpojene" - iny problem, iny text
             self._zaznamenaj_vypadok(kind)      # PRED clear_live
             self.hud.set_connected(False)
@@ -665,7 +669,8 @@ class SessionMixin:
                 # Stav sa MUSÍ zmeniť z "busy" - inak štítok navždy tvrdí
                 # "skúšam znova", hoci sme to vzdali (B3).
                 self._hr_state = "busy_gave_up"
-                self.log(tr("log.hr_port_busy", port=payload))
+                # meno stranky podla sveta ("Obrazovka" v Praci, 0.2.2 davka 4b)
+                self.log(tr("log.hr_port_busy", port=payload, page=stranka_vhre(self)))
             self.refresh_hr_status_label()
             self._refresh_dnes_stats()
             self._refresh_kamae_state_text()   # pás nesmie tvrdiť "sledujem"
@@ -766,7 +771,7 @@ class SessionMixin:
         if self._hr_overlay_warned:
             return
         self._hr_overlay_warned = True
-        self.log(tr("log.hr_overlay_disabled"))
+        self.log(tr("log.hr_overlay_disabled", page=stranka_vhre(self)))
 
     def _retry_hr_bind(self):
         """Skusi znova otvorit prijem po obsadenom TCP porte ("busy").
@@ -828,13 +833,14 @@ class SessionMixin:
             return tr("settings.hr_status_busy"), pal["warn"]
         if self._hr_state == "busy_gave_up":
             # Pokusy vycerpane - uz to neskusa, tak to ani netvrdi (B3).
-            return tr("settings.hr_status_busy_gave_up"), pal["danger"]
+            # Drobny text: `danger_text` (>= 4,5:1), nie `danger` (theme.py).
+            return tr("settings.hr_status_busy_gave_up"), pal["danger_text"]
         if (self._hr_state in ("connecting", "no_client") and self._hr_generation
                 and getattr(self, "_hr_udp_off_gen", None) == self._hr_generation):
             # UDP sa v tomto behu neotvorilo. Kym sa nikto nepripojil, je to
             # najpravdepodobnejsi dovod pre appky, ktore posielaju len UDP/OSC
             # (iPhone) - bez toho by hrac videl len "Pripaja sa...". Ked uz
-            # hodinky drzia TCP spojenie alebo chodi tep, UDP nechyba nikomu
+            # telefon drzi TCP spojenie alebo chodi tep, UDP nechyba nikomu
             # a stitok ukazuje skutocny stav spojenia.
             return tr("settings.hr_status_udp_off"), pal["warn"]
         if self._hr_state == "connecting":

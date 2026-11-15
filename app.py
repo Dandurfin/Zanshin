@@ -79,7 +79,7 @@ import hud_paint
 # (app_log, nazvy jazykov, skratka "Teraz nie", ImageTk) su v
 # app_spolocne.py - mixin nesmie importovat app (kruhovy import).
 from app_spolocne import (LANG_NATIVE_LABELS, SNOOZE_HOTKEY_MINUTES,
-                          _ImageTk, app_log)
+                          _ImageTk, app_log, stranka_vhre)
 # Tieto dve mena app.py sam nepouziva: DEFAULT_SNOOZE_HOTKEY cita
 # `load_settings` v app_prefs, LABEL_TO_LANG prepinace jazyka v app_prefs
 # a app_hud. Importuju sa, aby `app.DEFAULT_SNOOZE_HOTKEY` a
@@ -674,7 +674,7 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
             # Appka si prave sama zapla vizualy, ktore ju umlcovali. Nema to
             # spravit potichu - hrac ma vediet, ze sa mu nieco v nastaveniach
             # zmenilo, a ma to vediet vratit.
-            self.log(tr("log.vizualy_napravene"))
+            self.log(tr("log.vizualy_napravene", page=stranka_vhre(self)))
         # Nastavenia sa nedali nacitat a appka siahla po zalohe alebo po
         # predvolenych - povie to raz, teraz uz do dennika (`load_settings`).
         self._oznam_obnovu_nastaveni()
@@ -1012,13 +1012,17 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         wrap.pack(fill="both", expand=True, padx=ui_kit.PAGE_GUTTER, pady=(20, 20))
 
         # --- banner o chybajucom edge-tts (skryty, kym ho refresh_edge_banner nezapne) ---
-        self.banner = ctk.CTkFrame(wrap, fg_color=pal["danger"], corner_radius=ui_kit.RADIUS_CONTROL)
+        # Drobny text na cervenej vyplni `danger` mal len ~3:1 (0.2.2 davka 4b,
+        # pravidlo v theme.py) - banner je teraz plocha `surface` s ramom
+        # `danger_text`, text v `text`, "Skusit znova" z `ui_kit.button`.
+        self.banner = ctk.CTkFrame(wrap, fg_color=pal["surface"], border_width=1,
+                                   border_color=pal["danger_text"],
+                                   corner_radius=ui_kit.RADIUS_CONTROL)
         self.banner_label = ctk.CTkLabel(self.banner, text="", justify="left",
-                                         anchor="w", text_color=pal["bg"],
+                                         anchor="w", text_color=pal["text"],
                                          font=ui_kit.ui(11))
         self.banner_label.pack(side="left", padx=14, pady=10, fill="x", expand=True)
-        ctk.CTkButton(self.banner, text=tr("common.retry"), fg_color=pal["bg"],
-                      text_color=pal["text"], hover_color=pal["surface_alt"],
+        ui_kit.button(self.banner, pal, tr("common.retry"),
                       command=self.retry_edge_import).pack(side="right", padx=14, pady=10)
 
         anchor = ctk.CTkFrame(wrap, fg_color="transparent")
@@ -1555,16 +1559,19 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
             command=lambda _v: self.on_engine_change())
         self.engine_box.pack()
         # Stav pripravy Edge hlasok - patri pod prepinac motora, nie vedla
-        # neho: je to hlaska o priebehu, nie dalsie nastavenie.
+        # neho: je to hlaska o priebehu, nie dalsie nastavenie. Od 0.2.2
+        # davky 4b je VNUTRI riadku "Zdroj hlasu" (pod jeho vysvetlenim,
+        # `SettingRow.text_col`): pod panelom lezal az za deliacou linkou,
+        # takze vyzeral ako zaciatok riadku "Hlas". Pakuje sa, len ked ma co
+        # povedat (`set_edge_status`) - prazdny stitok by bol riadok medzery.
         self.edge_status_label = ctk.CTkLabel(
-            voice_panel.body, text="", font=ui_kit.ui(10), text_color=pal["text_dim"],
-            anchor="w", justify="left", wraplength=520)
-        self.edge_status_label.pack(fill="x", pady=(6, 0))
+            row.text_col, text="", font=ui_kit.ui(10), text_color=pal["text_dim"],
+            anchor="w", justify="left", wraplength=WRAP)
         # "Skusit znova" (0.2.2): ukaze sa len pod zlyhanou pripravou hlasu
         # (`_edge_priprava_zlyhala`, app_audio.py); pocas sledovania ju
         # `pregenerate` aj tak odlozi na po hre.
         self.edge_retry_btn = ui_kit.button(
-            voice_panel.body, pal, tr("common.retry"), command=self.skus_hlas_znova,
+            row.text_col, pal, tr("common.retry"), command=self.skus_hlas_znova,
             height=28)
 
         row = ui_kit.SettingRow(voice_panel.body, pal, tr("settings.voice"),
@@ -2953,31 +2960,19 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
             dotaznik = getattr(self, "_dotaznik_pri_zatvarani", None)
             if dotaznik is None:
                 return
-            # Dotaznik bez `bolo_vyplnene` (atrapy) sa bere ako prazdny.
-            try:
-                vyplneny = bool(getattr(dotaznik, "bolo_vyplnene", lambda: False)())
-            except Exception:
-                app_log.exception("ukoncenie: stav dotaznika sa nedal zistit")
-                vyplneny = False
-            try:
-                if vyplneny:
-                    self.log(tr("log.quit_questionnaire_saved"))
-                    dotaznik.confirm()
-                else:
-                    self.log(tr("log.quit_questionnaire_skipped"))
-                    dotaznik.close()
-            except Exception:
-                app_log.exception("ukoncenie: dotaznik sa nepodarilo zavriet")
-                # Prvy `_quit` na dotaznik caka (`wait_window`) - zavriet ho
-                # treba aj vtedy, ked ulozenie zlyhalo.
-                try:
-                    dotaznik.close()
-                except Exception:
-                    pass
+            self._dokonci_dotaznik(dotaznik)
             return
         self._quit_bezi = True
         # Kym je toto True, `_ask_session_context` na dotaznik pocka.
         self._zatvara_sa = True
+        # Dotaznik z bezneho Stop, ktory este visi (0.2.2 davka 4b): to iste
+        # pravidlo ako pri druhom "Ukoncit" - `root.destroy()` nizsie by ho
+        # inak zahodil aj s odpovedami. PRED `stop_listening`, aby sa novy
+        # dotaznik zatvarania neotvoril nad starym.
+        try:
+            self._dokonci_otvorene_dotazniky()
+        except Exception:
+            app_log.exception("ukoncenie: otvorene dotazniky sa nepodarilo dokoncit")
 
         # KAZDY KROK ZVLAST. Vynimka z jedneho kroku (napr. `stop_listening`)
         # preskocila vsetko za nim: HUD, vizualy v hre, skratka, port pre
@@ -3048,6 +3043,11 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         """
         self.stop_snooze_hotkey()
         self._hotkey_zlyhala = False
+        self._hotkey_caka = False
+        # Kazda registracia ma svoje cislo: neskory vysledok starej skratky
+        # (hrac medzitym vybral inu) sa zahodi (`_po_registracii_skratky`).
+        self._hotkey_gen = getattr(self, "_hotkey_gen", 0) + 1
+        gen = self._hotkey_gen
         if not self.snooze_hotkey:
             return False
         try:
@@ -3061,12 +3061,55 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
                 # zapise vzdy. Vysledok registracie zaloguje do okna az
                 # `start_snooze_hotkey` nizsie, z hlavneho vlakna.
                 log=app_log.info)
+            # SKUTOCNY VYSLEDOK, NIE ODHAD PODLA CASU (0.2.2 davka 4b).
+            # `start()` caka najviac 2 s; ked je Windows pri starte pomaly,
+            # vrati False, hoci skratku nikto nedrzi - riadok v Nastaveniach
+            # aj dennik potom tvrdili "drzi ju iny program". Vlakno povie
+            # vysledok samo, ked ho ma; do Tk ho prenesie `ui_call`
+            # (`root.after(0)`, pred `mainloop()` cez `_ui_pending`).
+            self._hotkey.on_result = (
+                lambda ok, g=gen: self.ui_call(
+                    lambda: self._po_registracii_skratky(g, ok)))
             ok = self._hotkey.start()
         except Exception:
             app_log.exception("hotkey: registracia zlyhala")
             self._hotkey = None
             self._hotkey_zlyhala = True
             return False
+        if getattr(self._hotkey, "caka", False):
+            # Este nie je hotovo - riadok neukaze "obsadene" a dennik nic,
+            # kym nepride vysledok z vlakna.
+            self._hotkey_caka = True
+            return False
+        # Vysledok mohol dobehnut az medzi `start()` a kontrolou `caka`:
+        # `start()` vtedy vratil este False, no vlakno uz skoncilo uspesne a
+        # jeho `on_result` sa (lebo `_hotkey_caka` je False) zahodi. Ked
+        # `caka` neplati, `registered` je uz konecny - vlakno ho nastavi
+        # PRED `_ready` (`GlobalHotkey._hotovo`).
+        ok = bool(getattr(self._hotkey, "registered", ok))
+        self._ohlas_vysledok_skratky(ok)
+        return ok
+
+    def _po_registracii_skratky(self, gen, ok):
+        """Vysledok registracie z vlakna skratky (`GlobalHotkey.on_result`),
+        uz v Tk vlakne. Plati len ked `start()` na neho nedockal (`caka`) a
+        patri poslednej registracii - inak ho uz povedal `start_snooze_hotkey`
+        alebo patri skratke, ktoru hrac medzitym vymenil."""
+        if gen != getattr(self, "_hotkey_gen", None) or not getattr(self, "_hotkey_caka", False):
+            return
+        self._hotkey_caka = False
+        self._ohlas_vysledok_skratky(bool(ok))
+        for meno in ("_refresh_snooze_hotkey_row", "_refresh_kamae_state_text"):
+            obnov = getattr(self, meno, None)
+            if callable(obnov):
+                try:
+                    obnov()
+                except Exception:
+                    app_log.exception("hotkey: %s po registracii zlyhal", meno)
+
+    def _ohlas_vysledok_skratky(self, ok):
+        """Stav pre riadok v Nastaveniach (`_hotkey_zlyhala`) a jeden riadok
+        do dennika - po skutocnom vysledku registracie."""
         self._hotkey_zlyhala = not ok
         if ok:
             self.log(tr("log.hotkey_on",
@@ -3079,7 +3122,6 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         else:
             self.log(tr("log.hotkey_failed",
                         combo=hotkey.format_combo(self.snooze_hotkey)))
-        return ok
 
     def stop_snooze_hotkey(self):
         if self._hotkey is None:

@@ -118,8 +118,7 @@ class ColorPickerDialog:
         if not _PIL:
             ctk.CTkLabel(body, text=tr("colorpick.no_pil"), text_color=pal["text"],
                          wraplength=320).pack(pady=10)
-            ctk.CTkButton(body, text=tr("common.close"), command=self.close,
-                          fg_color=pal["accent"], text_color=pal["bg"]).pack()
+            ui_kit.button(body, pal, tr("common.close"), command=self.close).pack()
             self.top.protocol("WM_DELETE_WINDOW", self.close)
             return
 
@@ -185,18 +184,17 @@ class ColorPickerDialog:
         if allow_default:
             act = ctk.CTkFrame(body, fg_color="transparent")
             act.pack(fill="x", pady=(14, 0))
-            ctk.CTkButton(act, text=tr("colorpick.reset_default"), width=int(120 * s),
-                          fg_color=pal["surface_alt"], hover_color=pal["border"],
-                          text_color=pal["text"], command=self._use_default).pack(side="left")
+            ui_kit.button(act, pal, tr("colorpick.reset_default"),
+                          command=self._use_default).pack(side="left")
 
         # --- OK / Zrusit -----------------------------------------------------
+        # `ui_kit.button` (0.2.2 davka 4b) - ten isty vzhlad ako v ostatnych
+        # oknach appky (Ulozit hlavne, Zrusit vedlajsie).
         btns = ctk.CTkFrame(body, fg_color="transparent")
         btns.pack(fill="x", pady=(16, 0))
-        ctk.CTkButton(btns, text=tr("common.cancel"), width=90, fg_color=pal["surface_alt"],
-                      hover_color=pal["border"], text_color=pal["text"],
+        ui_kit.button(btns, pal, tr("common.cancel"),
                       command=self.close).pack(side="right")
-        ctk.CTkButton(btns, text=tr("common.save"), width=90, fg_color=pal["accent"],
-                      hover_color=pal["accent_hover"], text_color=pal["bg"],
+        ui_kit.button(btns, pal, tr("common.save"), kind="primary",
                       command=self._ok).pack(side="right", padx=(0, 8))
 
         self.top.protocol("WM_DELETE_WINDOW", self.close)

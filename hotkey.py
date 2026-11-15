@@ -118,12 +118,38 @@ def is_valid(text):
         return False
 
 
-def format_combo(text):
-    """Pekny zapis pre rozhranie: 'ctrl+alt+z' -> 'Ctrl + Alt + Z'."""
+# Mena modifikatorov tak, ako ich ma klavesnica a Windows v danom jazyku
+# (0.2.2 davka 4b). Nemecka klavesnica ma "Strg" a "Umschalt", nie "Ctrl" a
+# "Shift" - nemecky hrac by "Ctrl + Alt + Z" hladal na klavesnici marne.
+# Nastavenia aj registracia ostavaju v anglickom zapise ('ctrl+alt+z'); toto
+# je LEN to, co sa ukaze. Jazyk, ktory tu nie je, ma anglicke mena.
+_MENA_MODIFIKATOROV = {
+    "de": {"ctrl": "Strg", "control": "Strg", "shift": "Umschalt"},
+}
+
+
+def _jazyk_appky():
+    """Jazyk rozhrania appky - lenivy import, aby `hotkey` nezavisel od i18n
+    (modul sa importuje aj samostatne, napr. v testoch)."""
+    try:
+        import i18n
+        return i18n._lang["code"]
+    except Exception:
+        return "en"
+
+
+def format_combo(text, lang=None, oddelovac=" + "):
+    """Pekny zapis pre rozhranie: 'ctrl+alt+z' -> 'Ctrl + Alt + Z'.
+
+    `lang` (predvolene jazyk appky) vyberie mena modifikatorov - po nemecky
+    'Strg + Alt + Z'. Pre app.log (`lang="en"`) ostava anglicky zapis."""
     if not is_valid(text):
         return ""
+    mena = _MENA_MODIFIKATOROV.get(_jazyk_appky() if lang is None else lang, {})
     kusy = [c.strip() for c in str(text).split("+") if c.strip()]
-    return " + ".join(k.upper() if len(k) == 1 else k.capitalize() for k in kusy)
+    return oddelovac.join(
+        mena.get(k.lower()) or (k.upper() if len(k) == 1 else k.capitalize())
+        for k in kusy)
 
 
 # --------------------------------------------------------------------------
@@ -287,11 +313,24 @@ class GlobalHotkey:
 
     `on_press()` sa vola z VLASTNEHO vlakna tohto modulu - volajuci ho musi
     preniest do Tk cez `ui_call`.
+
+    `on_result(ok)` (0.2.2 davka 4b) sa zavola z toho isteho vlakna RAZ, ked
+    Windows registraciu naozaj dokonci - uspesne aj neuspesne. `start()` caka
+    na vysledok najviac 2 s; ked je Windows pri starte pomaly, vrati False a
+    `caka` je True: skratka nie je obsadena, len este nie je hotova.
+    Pravdivy vysledok potom povie az `on_result`.
     """
 
-    def __init__(self, combo, on_press, log=None):
+    # Kolko `start()` caka na vysledok registracie (s). Atribut triedy, aby
+    # test s pomalou falosnou registraciou nemusel cakat cele 2 s.
+    CAKAJ_NA_REGISTRACIU_S = 2.0
+
+    def __init__(self, combo, on_press, log=None, on_result=None):
         self.combo = combo
         self._on_press = on_press
+        # Verejny atribut: da sa nastavit aj po vytvoreni (appka ho tak
+        # nastavuje, aby fungovali aj zjednodusene atrapy v testoch).
+        self.on_result = on_result
         self._log = log
         self._thread = None
         self._tid = None
@@ -321,9 +360,26 @@ class GlobalHotkey:
                                         name="hotkey")
         self._thread.start()
         # Cakanie je kratke a ohranicene: bez neho by volajuci nevedel, ci sa
-        # registracia podarila, a nemal by co napisat do logu.
-        self._ready.wait(timeout=2.0)
+        # registracia podarila, a nemal by co napisat do logu. Ked nestaci
+        # (pomaly start Windows), `caka` ostane True a vysledok pride cez
+        # `on_result` - volajuci nesmie False brat ako "obsadene".
+        self._ready.wait(timeout=self.CAKAJ_NA_REGISTRACIU_S)
         return self.registered
+
+    @property
+    def caka(self):
+        """Registracia este nedobehla (vlakno bezi, vysledok neprisiel)."""
+        return self._thread is not None and not self._ready.is_set()
+
+    def _hotovo(self, ok):
+        """Vysledok registracie: najprv `_ready` (to cita `start`), potom
+        `on_result`. Vynimka z callbacku nesmie zabit vlakno."""
+        self._ready.set()
+        if callable(self.on_result):
+            try:
+                self.on_result(bool(ok))
+            except Exception:
+                self._zaloguj("hotkey: on_result vyhodil vynimku")
 
     def stop(self):
         if self._thread is None:
@@ -354,14 +410,14 @@ class GlobalHotkey:
     def _slucka(self):
         ctypes, user32 = _win32()
         if user32 is None:
-            self._ready.set()
+            self._hotovo(False)
             return
         from ctypes import wintypes
         try:
             mody, vk = parse_combo(self.combo)
         except BadCombo as exc:
             self.error = str(exc)
-            self._ready.set()
+            self._hotovo(False)
             return
 
         if not user32.RegisterHotKey(None, _HOTKEY_ID, mody, vk):
@@ -370,7 +426,7 @@ class GlobalHotkey:
             self.error = ("kombinaciu sa nepodarilo zaregistrovat (%d)"
                           % ctypes.get_last_error())
             self._zaloguj("hotkey: %s" % self.error)
-            self._ready.set()
+            self._hotovo(False)
             return
 
         try:
@@ -379,8 +435,9 @@ class GlobalHotkey:
             self._tid = None
         self.registered = True
         self.error = None
-        self._ready.set()
-        self._zaloguj("hotkey: %s zaregistrovany" % format_combo(self.combo))
+        # app.log je po anglicky bez ohladu na jazyk appky
+        self._zaloguj("hotkey: %s zaregistrovany" % format_combo(self.combo, lang="en"))
+        self._hotovo(True)
 
         msg = wintypes.MSG()
         try:

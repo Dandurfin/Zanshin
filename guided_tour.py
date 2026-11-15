@@ -398,15 +398,13 @@ class GuidedTour:
         # tlacidla
         btns = ctk.CTkFrame(inner, fg_color="transparent")
         btns.pack(fill="x", pady=(14, 0))
-        ctk.CTkButton(btns, text=tr("tour.skip"), width=90, height=30,
-                      corner_radius=8, fg_color="transparent",
-                      hover_color=pal["surface_alt"], text_color=pal["text_faint"],
-                      font=("Segoe UI", 11), command=self.skip).pack(side="left")
+        # `ui_kit.button` (0.2.2 davka 4b): tie iste druhy tlacidiel ako
+        # v oknach appky a pismo jazyka appky (ja/zh maju vlastne).
+        ui_kit.button(btns, pal, tr("tour.skip"), kind="quiet", width=90, height=30,
+                      font=ui_kit.ui(11), command=self.skip).pack(side="left")
         last = self._index == len(self.steps) - 1
-        ctk.CTkButton(btns, text=tr("tour.done_btn") if last else tr("tour.next"),
-                      width=110, height=30, corner_radius=8,
-                      fg_color=pal["accent"], hover_color=pal["accent_hover"],
-                      text_color=pal["bg"], font=("Segoe UI", 11, "bold"),
+        ui_kit.button(btns, pal, tr("tour.done_btn") if last else tr("tour.next"),
+                      kind="primary", width=110, height=30, font=ui_kit.ui(11, "bold"),
                       command=self._next).pack(side="right")
 
         bubble.update_idletasks()

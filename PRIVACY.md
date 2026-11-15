@@ -11,19 +11,35 @@ anywhere:
 
 - **Heart-rate readings** received from your phone/watch (and steps or speed,
   if your watch app sends them),
-- **Session history** (`hr_sessions.json`; `hr_session_open.json`, a copy of
-  the session still running, kept every 5 minutes so a crash doesn't lose it;
-  and `hr_session_pending.json`, a session that couldn't be saved, kept until
-  the next start adds it to your history),
+- **Session history** (`hr_sessions.json`), and two files that keep a
+  session from getting lost:
+  - `hr_session_open.json`, a copy of the session still running, written
+    every 5 minutes. It's deleted once the session is saved; if Zanshin ended
+    without saving it (a crash, a power cut), the next start adds the copy
+    to your history and then deletes it.
+  - `hr_session_pending.json`, sessions that couldn't be saved (a full disk,
+    a locked file). Zanshin adds them to your history at the next start, or
+    right after the next session that saves, and then deletes the file. If
+    it can't read that file, it doesn't delete it but keeps it as
+    `hr_session_pending.json.corrupt-<time>`; a history file it can't read
+    is kept the same way, as `hr_sessions.json.corrupt-<time>`,
 - **Insights and baselines** (`hr_insights.json`),
 - **Measurement windows / raw events** (`hr_windows.json`, `hr_events.jsonl`),
+- **Backups before an import** (`<file>.pred-importom-<time>.bak`, next to
+  the files the import replaced),
 - **Your recorded audio.** The microphone is used only while you record your
   own voice for a cue — it switches on when you click **Record** on a cue
-  card, and the recording stays in the local `audio/` folder,
-- **Settings**, and their backup (`dandurf_settings.json.bak`) — with one
-  exception: the **wording of your spoken cues**, which the natural voice
-  sends to Microsoft to turn into speech (see *Text-to-speech* below),
-- **Logs / crash log** (kept in a local file — there is **no** remote crash
+  card, and the recording stays in the local `audio/` folder. A sound file
+  you pick for a cue is copied there too,
+- **Prepared voice clips** (`audio/tts_cache`): your cue wording spoken by
+  the natural voice, kept so cues play without the network,
+- **Settings**, and their backup (`dandurf_settings.json.bak`; a settings
+  file that can't be read is kept as
+  `dandurf_settings.json.corrupt-<date>-<time>`) — with one exception: the
+  **wording of your spoken cues**, which the natural voice sends to
+  Microsoft to turn into speech (see *Text-to-speech* below),
+- **Logs / crash log** (`logs/app.log` with its older copies, and
+  `logs/crash.log` — local files only; there is **no** remote crash
   reporting).
 
 Run from source (`python main.py`), these live next to the program; in the
@@ -130,7 +146,9 @@ analytics, and no update-checker** anywhere in the app.
      it the first time the port opens. Allow it on your private home network,
      not on public networks. The app hides your PC's IP address on screen by
      default, so it doesn't end up on a stream or in a screenshot; the
-     **Show IP** toggle reveals it (until the app restarts).
+     **Show IP** button in the pairing guide (a switch next to the *Network
+     address (advanced)* field) reveals it until you hide it again or the app
+     restarts.
 
 5. **No Steam.** Zanshin has no Steam integration — it doesn't load the Steam
    SDK or talk to Steam in any way.

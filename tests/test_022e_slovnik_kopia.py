@@ -62,7 +62,8 @@ def test_pripomienka_ma_v_kazdom_jazyku_jedno_slovo():
         assert "提示" in S[kluc]["zh"], kluc
     for zle in ("提醒间隔", "提醒响起", "提醒没用", "提醒之间"):
         assert not [k for k, v in _vsetky("zh") if zle in v], zle
-    assert S["palette.slot"]["zh"] == "提示 — {label}"
+    # cinska pomlcka "——" bez medzier ako vo vsetkych zh textoch (0.2.2 davka 4b)
+    assert S["palette.slot"]["zh"] == "提示——{label}"
     assert not [k for k, v in _vsetky("de") if "Erinnerung" in v]
     assert not [k for k, v in _vsetky("ru") if re.search(r"[Рр]еплик", v)]
     assert not [k for k, v in _vsetky("ja") if "セリフ" in v or "リマインダー" in v]
@@ -197,10 +198,17 @@ def test_uvod_povie_co_hrac_na_prvy_tep_potrebuje():
         assert "Wi‑Fi" in text or "WLAN" in text, jazyk
         if jazyk != "en":
             assert text != zaznam["en"], jazyk
-    assert "hrudný pás" in zaznam["sk"] and "telefóne" in zaznam["sk"]
+    # 0.2.2 davka 4b: hodinky s appkou v telefone ako README ("Getting your
+    # heart rate in"); hrudny pas nikto neoveril, tak ho uvod nesluby
+    assert "hodinky" in zaznam["sk"] and "telefóne" in zaznam["sk"]
     assert "domácej sieti" in zaznam["sk"]
-    assert "chest strap" in zaznam["en"] and "phone app" in zaznam["en"]
+    assert "smartwatch" in zaznam["en"] and "phone app" in zaznam["en"]
     assert "same home network" in zaznam["en"]
+    for jazyk, slovo in (("sk", "hrudn"), ("cs", "hrudn"), ("en", "chest"),
+                         ("de", "Brustgurt"), ("fr", "ceinture"), ("es", "banda"),
+                         ("pt", "cinta"), ("ru", "нагрудн"), ("bg", "гръден"),
+                         ("ja", "胸"), ("zh", "胸")):
+        assert slovo not in zaznam[jazyk], jazyk
 
 
 def test_krok_1_uvodu_ukaze_co_treba_pod_uvodom():

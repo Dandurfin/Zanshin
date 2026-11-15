@@ -546,7 +546,7 @@ class HeartRateMonitor:
                 pass
             # "client_gone" AZ KED ODIDE POSLEDNY KLIENT.
             #
-            # Hodinky sa po vypadku Wi-Fi pripoja NOVYM spojenim a stare na
+            # Telefon sa po vypadku Wi-Fi pripoji NOVYM spojenim a stare na
             # nasej strane visi polootvorene. Kym nebol limit necinnosti,
             # viselo navzdy a nic nehlasilo; teraz ho limit do dvoch minut
             # zavrie - a keby to hlasilo "client_gone", appka by uprostred

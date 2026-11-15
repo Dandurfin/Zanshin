@@ -198,6 +198,8 @@ def _atrapa_pre_quit(poradie, padne=None):
     class _Appka:
         _quit = D._quit
         stop_listening = D.stop_listening
+        _dokonci_dotaznik = D._dokonci_dotaznik
+        _dokonci_otvorene_dotazniky = D._dokonci_otvorene_dotazniky
 
     a = _Appka()
     a.listening = True
@@ -319,6 +321,8 @@ def test_druhe_ukoncit_pocas_dotaznika_nerozbije_prve(zapisovac, monkeypatch, tm
         _close_hr_session = D._close_hr_session
         _suhrn_relacie = D._suhrn_relacie
         _ask_session_context = D._ask_session_context
+        _dokonci_dotaznik = D._dokonci_dotaznik
+        _dokonci_otvorene_dotazniky = D._dokonci_otvorene_dotazniky
         log = D.log
         _dennik_bez_okna = D._dennik_bez_okna
 

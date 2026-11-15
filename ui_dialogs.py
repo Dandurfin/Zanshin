@@ -148,11 +148,12 @@ class SlotSettingsDialog:
                      anchor="w").pack(fill="x")
         self.voice_var = tk.StringVar()
         names = [tr("voice.global")] + app.current_voice_names()
-        self.voice_box = ctk.CTkOptionMenu(
-            body, values=names, variable=self.voice_var, width=340,
-            fg_color=pal["surface_alt"], button_color=pal["accent2"],
-            button_hover_color=pal["accent2_hover"], text_color=pal["text"],
-            dropdown_fg_color=pal["surface"], dropdown_text_color=pal["text"])
+        # `ui_kit.option_menu` (0.2.2 davka 4b), nie hola CTkOptionMenu: ten
+        # isty vzhlad ako vyber hlasu v Nastaveniach a sirka podla najdlhsieho
+        # mena hlasu - "Microsoft Hedda Desktop - German (Germany)" sa
+        # v pevnych 340 px orezalo.
+        self.voice_box = ui_kit.option_menu(
+            body, pal, width=340, values=names, variable=self.voice_var)
         self.voice_box.pack(fill="x", pady=(6, 6))
         self.voice_var.set(app.slot_voice_label(slot) or tr("voice.global"))
 
@@ -173,17 +174,16 @@ class SlotSettingsDialog:
             text_color=pal["text_dim"], anchor="w", justify="left", wraplength=340)
         self.voice_clip_status.pack(fill="x", pady=(4, 6))
 
+        # Tlacidla z `ui_kit.button` (0.2.2 davka 4b): vedlajsie s ramom
+        # `control_border`, Ulozit hlavne - ako vo vsetkych oknach appky.
         vrow = ctk.CTkFrame(body, fg_color="transparent")
         vrow.pack(fill="x", pady=(0, 4))
-        ctk.CTkButton(vrow, text=tr("dialog.voice_rec_record"), width=104,
-                      fg_color=pal["surface_alt"], hover_color=pal["border"],
-                      text_color=pal["text"], command=self.record_voice).pack(side="left")
-        ctk.CTkButton(vrow, text=tr("dialog.voice_rec_file"), width=104,
-                      fg_color=pal["surface_alt"], hover_color=pal["border"],
-                      text_color=pal["text"], command=self.choose_voice).pack(side="left", padx=8)
-        ctk.CTkButton(vrow, text=tr("dialog.voice_rec_clear"), width=88,
-                      fg_color=pal["surface_alt"], hover_color=pal["border"],
-                      text_color=pal["text"], command=self.clear_voice).pack(side="right")
+        ui_kit.button(vrow, pal, tr("dialog.voice_rec_record"),
+                      command=self.record_voice).pack(side="left")
+        ui_kit.button(vrow, pal, tr("dialog.voice_rec_file"),
+                      command=self.choose_voice).pack(side="left", padx=8)
+        ui_kit.button(vrow, pal, tr("dialog.voice_rec_clear"), kind="quiet",
+                      command=self.clear_voice).pack(side="right")
 
         ctk.CTkLabel(body, text=tr("dialog.voice_rec_note"), font=ui_kit.ui(10),
                      text_color=pal["text_dim"], anchor="w", justify="left",
@@ -191,13 +191,10 @@ class SlotSettingsDialog:
 
         buttons = ctk.CTkFrame(body, fg_color="transparent")
         buttons.pack(fill="x")
-        ctk.CTkButton(buttons, text=tr("common.cancel"), width=90,
-                      fg_color=pal["surface_alt"], hover_color=pal["border"],
-                      text_color=pal["text"], command=self.close).pack(side="right")
-        ctk.CTkButton(buttons, text=tr("common.save"), width=90,
-                      fg_color=pal["accent"], hover_color=pal["accent_hover"],
-                      text_color=pal["bg"], command=self.save).pack(
-            side="right", padx=(0, 8))
+        ui_kit.button(buttons, pal, tr("common.cancel"),
+                      command=self.close).pack(side="right")
+        ui_kit.button(buttons, pal, tr("common.save"), kind="primary",
+                      command=self.save).pack(side="right", padx=(0, 8))
 
         self.top.protocol("WM_DELETE_WINDOW", self.close)
 
@@ -314,12 +311,10 @@ class NewProfileDialog:
 
         buttons = ctk.CTkFrame(body, fg_color="transparent")
         buttons.pack(fill="x")
-        ctk.CTkButton(buttons, text=tr("common.cancel"), width=90, fg_color=pal["surface_alt"],
-                     hover_color=pal["border"], text_color=pal["text"],
-                     command=self.close).pack(side="right")
-        ctk.CTkButton(buttons, text=tr("common.save"), width=90, fg_color=pal["accent"],
-                     hover_color=pal["accent_hover"], text_color=pal["bg"],
-                     command=self.confirm).pack(side="right", padx=(0, 8))
+        ui_kit.button(buttons, pal, tr("common.cancel"),
+                      command=self.close).pack(side="right")
+        ui_kit.button(buttons, pal, tr("common.save"), kind="primary",
+                      command=self.confirm).pack(side="right", padx=(0, 8))
 
         self.top.protocol("WM_DELETE_WINDOW", self.close)
 
@@ -660,7 +655,9 @@ class SessionEndDialog:
                 duration_s=summary.get("duration_s") or 0.0,
                 triggers=summary.get("trigger_offsets_s") or (),
                 activity=summary.get("activity_curve") or ())
-            ctk.CTkLabel(body, text=tr("session.end.trace_hint"),
+            # vo svete Praca "kedy sa pracovalo", nie "hralo" (0.2.2 davka 4b)
+            ctk.CTkLabel(body, text=tr("session.end.trace_hint_work" if self._svet == "work"
+                                       else "session.end.trace_hint"),
                          font=ui_kit.ui(10), text_color=pal["text_faint"],
                          anchor="w", justify="left", wraplength=420).pack(
                 fill="x", pady=(0, 14))
@@ -867,13 +864,11 @@ class SessionEndDialog:
         tlacidla = ctk.CTkFrame(self._footer, fg_color="transparent")
         tlacidla.pack(fill="x")
         # Rovnaka sirka oboch: preskocenie musi byt rovnako lahke ako ulozenie.
-        ctk.CTkButton(tlacidla, text=tr("common.save"), width=132, height=34,
-                      corner_radius=ui_kit.RADIUS_CONTROL, fg_color=pal["accent"],
-                      hover_color=pal["accent_hover"], text_color=pal["bg"],
-                      command=self.confirm).pack(side="left")
-        ctk.CTkButton(tlacidla, text=tr("session.end.skip"), width=132, height=34,
-                      corner_radius=ui_kit.RADIUS_CONTROL, fg_color=pal["surface_alt"],
-                      hover_color=pal["border"], text_color=pal["text"],
+        # `ui_kit.button` (0.2.2 davka 4b): Preskocit je vedlajsie tlacidlo
+        # s ramom `control_border` ako vo vsetkych oknach, nie siva vypln.
+        ui_kit.button(tlacidla, pal, tr("common.save"), kind="primary", width=132,
+                      height=34, command=self.confirm).pack(side="left")
+        ui_kit.button(tlacidla, pal, tr("session.end.skip"), width=132, height=34,
                       command=self.close).pack(side="left", padx=(8, 0))
 
         self.top.protocol("WM_DELETE_WINDOW", self.close)
@@ -1098,13 +1093,17 @@ class SessionEndDialog:
                 poznamka = self.note_box.get("1.0", "end")
             except Exception:
                 poznamka = ""
-        self.app.save_session_context(
+        # Vysledok ulozenia sa vracia (0.2.2 davka 4b): pri ukonceni appky
+        # dotaznik dokoncuje appka (`_dokonci_dotaznik`) a do dennika podla
+        # neho zapise, ci sa odpovede ulozili.
+        ok = self.app.save_session_context(
             self.summary, sorted(self.vybrane),
             activity=self.activity, note=poznamka,
             sleep=self.sleep, felt_load=self.felt_load, valence=self.valence,
             body_peak=(sorted(self._body_sel) or None), cue_verdict=self.cue_verdict,
             setup=self.setup)
         self.close()
+        return ok
 
     def close(self):
         try:
@@ -1144,18 +1143,17 @@ class ImportProfileDialog:
         self.code_box.bind("<FocusIn>", lambda _e: app.set_typing(True))
         self.code_box.bind("<FocusOut>", lambda _e: app.set_typing(True))
 
-        self.error_label = ctk.CTkLabel(body, text="", text_color=pal["danger"],
+        # drobny text chyby: `danger_text` (>= 4,5:1), nie `danger` (theme.py)
+        self.error_label = ctk.CTkLabel(body, text="", text_color=pal["danger_text"],
                                         wraplength=380, justify="left")
         self.error_label.pack(anchor="w", pady=(0, 6))
 
         buttons = ctk.CTkFrame(body, fg_color="transparent")
         buttons.pack(fill="x")
-        ctk.CTkButton(buttons, text=tr("common.cancel"), width=90, fg_color=pal["surface_alt"],
-                     hover_color=pal["border"], text_color=pal["text"],
-                     command=self.close).pack(side="right")
-        ctk.CTkButton(buttons, text=tr("import.confirm"), width=140, fg_color=pal["accent"],
-                     hover_color=pal["accent_hover"], text_color=pal["bg"],
-                     command=self.confirm).pack(side="right", padx=(0, 8))
+        ui_kit.button(buttons, pal, tr("common.cancel"),
+                      command=self.close).pack(side="right")
+        ui_kit.button(buttons, pal, tr("import.confirm"), kind="primary",
+                      command=self.confirm).pack(side="right", padx=(0, 8))
 
         self.top.protocol("WM_DELETE_WINDOW", self.close)
 
@@ -1223,19 +1221,13 @@ class ImportDataDialog:
         self.top.protocol("WM_DELETE_WINDOW", self.close)
 
     def _button(self, text, command, primary=False, danger=False, width=120):
-        pal = self.pal
-        if primary:
-            kw = dict(fg_color=pal["accent"], hover_color=pal["accent_hover"],
-                      text_color=pal["bg"])
-        elif danger:
-            kw = dict(fg_color="transparent", border_width=1,
-                      border_color=pal["danger"], hover_color=pal["danger"],
-                      text_color=pal["text"])
-        else:
-            kw = dict(fg_color=pal["surface_alt"], hover_color=pal["border"],
-                      text_color=pal["text"])
-        btn = ctk.CTkButton(self.buttons, text=text, width=width,
-                            corner_radius=ui_kit.RADIUS_CONTROL, command=command, **kw)
+        """Tlacidlo z `ui_kit.button` (0.2.2 davka 4b): Nahradit je druh
+        `danger` (ram aj text `danger_text`) ako "Zmazat" vsade v appke,
+        nie biely text v tmavocervenom rame s cervenym hoverom."""
+        kind = "primary" if primary else ("danger" if danger else "secondary")
+        btn = ui_kit.button(self.buttons, self.pal, text, command=command, kind=kind,
+                            width=max(width, ui_kit._sirka_textu(text, ui_kit.ui(12))
+                                      + 2 * ui_kit._BUTTON_PAD_X))
         btn.pack(side="right", padx=(8, 0))
         return btn
 
@@ -1558,6 +1550,23 @@ def watch_app_qr(parent, pal, v_navode=False, **pack_kw):
     return widget
 
 
+def _stranka_vhre(app=None, tema=None):
+    """Meno stranky "V hre" pre texty s `{page}` (0.2.2 davka 4b).
+
+    Vo svete Praca sa stranka vola "Obrazovka" ako v bocnom paneli: pri
+    appke ju povie `app._nazov_vhre`, v uvode (appka este nie je) svet tej
+    temy, ktoru ma uvod prave zvolenu. Atrapy bez oboch -> meno z Hry."""
+    nazov = getattr(app, "_nazov_vhre", None)
+    if callable(nazov):
+        try:
+            return nazov()
+        except Exception:
+            pass
+    if tema is not None and theme_mod.theme_world(tema) == "work":
+        return tr("nav.vhre_work_short")
+    return tr("nav.vhre_short")
+
+
 def stav_parovania(app):
     """(druh, text) riadku stavu v okne parovania - zo SKUTOCNEHO prijmu.
 
@@ -1577,7 +1586,8 @@ def stav_parovania(app):
         # Okno je modalne a prijem zapina uz jeho otvorenie, takze vypnuty
         # prijem tu znamena chybu portu alebo siete, nie volbu hraca.
         if stav == "busy_gave_up":
-            return "chyba", tr("hr.pair_status_gave_up", port=port)
+            return "chyba", tr("hr.pair_status_gave_up", port=port,
+                               page=_stranka_vhre(app))
         return "chyba", tr("hr.pair_status_off")
     surovy = getattr(app, "_hr_last_bpm", None)
     if stav == "connected" and surovy is not None:
@@ -1682,6 +1692,9 @@ class WatchPairingDialog:
         # (`netinfo.local_ip_candidates`), virtualne nesu stitok a pod
         # adresou je veta, ked aj ta prva je virtualna.
         self._virtualne = self._virtual_ips()
+        # Mobilny hotspot Windowsu (0.2.2 davka 4b): telefon sa nan dostane,
+        # takze len neutralny stitok "(hotspot)", ziadne varovanie.
+        self._hotspoty = self._hotspot_ips()
         addr_row = ctk.CTkFrame(net_in, fg_color="transparent")
         addr_row.pack(fill="x", pady=(4, 0))
         self.ip_label = ctk.CTkLabel(addr_row, text=tr("hr.pair_ip_unknown"),
@@ -1700,8 +1713,12 @@ class WatchPairingDialog:
             # "Ukazat IP" sa pakuje PRED adresu (`before=`), takze miesto v
             # rade dostane ako prve. Dlhsi riadok adresy ho inak z okna
             # vytlacil a adresa sa potom nedala odkryt (0.2.2, stitok VPN).
-            self.ip_toggle = ui_kit.chip(addr_row, pal, tr("hr.ip_show"),
-                                         self._toggle_ip)
+            # Vedlajsie tlacidlo, nie chip (0.2.2 davka 4b): chip je len pre
+            # externe odkazy (↗ GitHub). Sirka podla dlhsieho z oboch textov,
+            # aby pri "Ukazat IP" <-> "Skryt IP" neposkocilo.
+            self.ip_toggle = ui_kit.button(
+                addr_row, pal, tr("hr.ip_show"), command=self._toggle_ip,
+                fit_texts=(tr("hr.ip_hide"),), height=28)
             self.ip_toggle.pack(side="right", padx=(8, 0), before=self.ip_label)
             # veta pod skrytou adresou - ako ju odkryt (len kym je skryta)
             self.ip_hidden_label = ctk.CTkLabel(
@@ -1710,7 +1727,7 @@ class WatchPairingDialog:
                 justify="left")
             self._ip_hidden_after = addr_row
             if ip in self._virtualne:
-                # Stitok "(VPN/virtualny)" NIE v riadku adresy (mono 20): tam
+                # Stitok "(VPN/virtualna)" NIE v riadku adresy (mono 20): tam
                 # sa nezmestil, orezal sa a vytlacil "Ukazat IP". Je to vlastny
                 # maly riadok hned pod adresou; veta pod nim povie, co s tym.
                 self.ip_virtual_label = ctk.CTkLabel(
@@ -1721,8 +1738,15 @@ class WatchPairingDialog:
                 ctk.CTkLabel(net_in, text=tr("hr.ip_virtual_note"), font=ui_kit.ui(10),
                              text_color=pal["warn"], wraplength=480, anchor="w",
                              justify="left").pack(fill="x", pady=(6, 0))
+            elif ip in self._hotspoty:
+                # ten isty riadok pod adresou, ale bez varovnej farby a vety
+                self.ip_virtual_label = ctk.CTkLabel(
+                    net_in, text=tr("hr.ip_hotspot"), font=ui_kit.ui(11, "bold"),
+                    text_color=pal["text_dim"], anchor="w")
+                self.ip_virtual_label.pack(fill="x", pady=(2, 0))
+                self._ip_hidden_after = self.ip_virtual_label
             # PC s Wi-Fi + Ethernet + VPN ma adries viac a appka nevie, na
-            # ktorej su hodinky - ukazeme aj ostatne, nech si hrac vyberie
+            # ktorej je telefon - ukazeme aj ostatne, nech si hrac vyberie
             if len(candidates) > 1:
                 self.other_ips_label = ctk.CTkLabel(
                     net_in, text="", font=ui_kit.ui(10), text_color=pal["text_dim"],
@@ -1771,9 +1795,7 @@ class WatchPairingDialog:
 
         footer = ctk.CTkFrame(root, fg_color="transparent")
         footer.pack(fill="x", padx=24, pady=(0, 16))
-        ctk.CTkButton(footer, text=tr("common.close"), width=110, height=32,
-                      corner_radius=ui_kit.RADIUS_CONTROL, fg_color=pal["accent2"],
-                      hover_color=pal["accent2_hover"], text_color=pal["text"],
+        ui_kit.button(footer, pal, tr("common.close"), width=110, height=32,
                       command=self.close).pack(side="right")
 
     @staticmethod
@@ -1810,8 +1832,11 @@ class WatchPairingDialog:
         try:
             druh, text = stav_parovania(self.app)
             pal = self.app.pal
+            # chyba je text (12 bold) - `danger_text` (>= 4,5:1), nie
+            # `danger` (~3,7:1 na `bg`, pravidlo v theme.py)
             farba = {"ok": pal["success"], "pozor": pal["warn"],
-                     "chyba": pal["danger"]}.get(druh, pal["text_dim"])
+                     "chyba": pal.get("danger_text", pal["danger"])}.get(
+                         druh, pal["text_dim"])
             self.status_label.configure(text=text, text_color=farba)
             self._stav_job = self.top.after(self.STAV_OBNOVA_MS, self._obnov_stav)
         except Exception:
@@ -1852,6 +1877,14 @@ class WatchPairingDialog:
         except Exception:
             return set()
 
+    def _hotspot_ips(self):
+        """Adresy Mobilneho hotspotu Windowsu (`netinfo.hotspot_adresy`)."""
+        try:
+            import netinfo
+            return netinfo.hotspot_adresy()
+        except Exception:
+            return set()
+
     def _local_ip(self):
         """Zachovane pre spatnu kompatibilitu - preferovana adresa alebo None."""
         ips = self._local_ips()
@@ -1872,7 +1905,9 @@ class WatchPairingDialog:
                     ips=netinfo.pairing_other_ips(
                         self._candidates[1:], show,
                         virtualne=getattr(self, "_virtualne", set()),
-                        stitok=tr("hr.ip_virtual"))))
+                        stitok=tr("hr.ip_virtual"),
+                        hotspot=getattr(self, "_hotspoty", set()),
+                        stitok_hotspot=tr("hr.ip_hotspot"))))
             if self.ip_toggle is not None:
                 self.ip_toggle.configure(
                     text=tr("hr.ip_hide") if show else tr("hr.ip_show"))
@@ -2444,18 +2479,18 @@ class RecordDialog:
 
         row = ctk.CTkFrame(body, fg_color="transparent")
         row.pack(fill="x")
-        self.rec_btn = ctk.CTkButton(row, text=tr("record.start"), fg_color=pal["danger"],
-                                     hover_color=pal["warn"], text_color=pal["bg"],
-                                     command=self.toggle)
+        # `ui_kit.button` (0.2.2 davka 4b): nahravanie je hlavna akcia okna
+        # (`primary`), nie cervena vypln s tmavym textom (~3:1 - `danger` je
+        # len pre chybu a zmazanie, theme.py). Prehrat je vypnute, kym nie je
+        # co prehrat - jednym vzhladom vypnuteho tlacidla.
+        self.rec_btn = ui_kit.button(row, pal, tr("record.start"), kind="primary",
+                                     fit_texts=(tr("record.stop"),), command=self.toggle)
         self.rec_btn.pack(side="left")
-        self.preview_btn = ctk.CTkButton(row, text=tr("record.preview"),
-                                         fg_color=pal["surface_alt"],
-                                         hover_color=pal["border"], text_color=pal["text"],
+        self.preview_btn = ui_kit.button(row, pal, tr("record.preview"),
                                          state="disabled", command=self.preview)
         self.preview_btn.pack(side="left", padx=8)
-        ctk.CTkButton(row, text=tr("common.close"), fg_color=pal["surface_alt"],
-                     hover_color=pal["border"], text_color=pal["text"],
-                     command=self.close).pack(side="right")
+        ui_kit.button(row, pal, tr("common.close"),
+                      command=self.close).pack(side="right")
 
         if os.path.exists(target_path):
             self.preview_btn.configure(state="normal")
@@ -2755,17 +2790,15 @@ class OnboardingWizard:
                      justify="center").pack(pady=(0, 22))
         row = ctk.CTkFrame(inner, fg_color="transparent")
         row.pack()
-        ctk.CTkButton(row, text=tr("ob.quit.yes"), width=130, height=38,
-                      corner_radius=ui_kit.RADIUS_CONTROL, fg_color="transparent",
-                      border_width=1, border_color=pal["border"],
-                      hover_color=pal["surface_alt"], text_color=pal["text_dim"],
-                      font=ui_kit.ui(12), command=self._quit).pack(side="left", padx=6)
+        # `ui_kit.button` (0.2.2 davka 4b): ram `border` (1,2:1) vyzeral
+        # ako vypnute tlacidlo - vedlajsie ma ram `control_border` (>= 3:1).
+        ui_kit.button(row, pal, tr("ob.quit.yes"), width=130, height=38,
+                      command=self._quit).pack(side="left", padx=6)
         # Pokracovat je to bezpecne a hlavne tlacidlo - kto len omylom
         # stlacil Esc, jednym klikom alebo Enterom pokracuje.
-        dalej = ctk.CTkButton(row, text=tr("ob.quit.no"), width=150, height=38,
-                              corner_radius=ui_kit.RADIUS_CONTROL, fg_color=pal["accent"],
-                              hover_color=pal["accent_hover"], text_color=pal["bg"],
-                              font=ui_kit.ui(12, "bold"), command=self._hide_quit_question)
+        dalej = ui_kit.button(row, pal, tr("ob.quit.no"), kind="primary", width=150,
+                              height=38, font=ui_kit.ui(12, "bold"),
+                              command=self._hide_quit_question)
         dalej.pack(side="left", padx=6)
         self.top.bind("<Return>", lambda _e: self._hide_quit_question())
 
@@ -2792,11 +2825,12 @@ class OnboardingWizard:
     def _build_footer(self):
         pal = self._pal
         # vlavo: preskocit na krok s hodinkami (len na krokoch 1-2)
-        self.skip_btn = ctk.CTkButton(
-            self.footer, text=tr("ob.skip"), width=120, height=34,
-            corner_radius=ui_kit.RADIUS_CONTROL, fg_color="transparent", hover_color=pal["surface_alt"],
-            text_color=pal["text_faint"], font=ui_kit.ui(11),
-            command=lambda: self._show_step(self.KROK_HODINKY))
+        # Tlacidla patky z `ui_kit.button` (0.2.2 davka 4b): tie iste druhy
+        # ako v kazdom okne appky - Spat malo ram `border` (1,2:1), takze
+        # vyzeralo vypnute.
+        self.skip_btn = ui_kit.button(
+            self.footer, pal, tr("ob.skip"), kind="quiet", width=120, height=34,
+            font=ui_kit.ui(11), command=lambda: self._show_step(self.KROK_HODINKY))
         self.skip_btn.pack(side="left", padx=24)
 
         # bodky postupu
@@ -2810,18 +2844,12 @@ class OnboardingWizard:
             self._dot_widgets.append(d)
 
         # vpravo: spat + dalej/vstupit
-        self.next_btn = ctk.CTkButton(
-            self.footer, text=tr("ob.next"), width=150, height=38,
-            corner_radius=ui_kit.RADIUS_CONTROL, fg_color=pal["accent"], hover_color=pal["accent_hover"],
-            text_color=pal["bg"], font=ui_kit.ui(12, "bold"),
-            command=self._on_next)
+        self.next_btn = ui_kit.button(
+            self.footer, pal, tr("ob.next"), kind="primary", width=150, height=38,
+            font=ui_kit.ui(12, "bold"), command=self._on_next)
         self.next_btn.pack(side="right", padx=(6, 24))
-        self.back_btn = ctk.CTkButton(
-            self.footer, text=tr("ob.back"), width=90, height=38,
-            corner_radius=ui_kit.RADIUS_CONTROL, fg_color="transparent", border_width=1,
-            border_color=pal["border"], hover_color=pal["surface_alt"],
-            text_color=pal["text_dim"], font=ui_kit.ui(12),
-            command=self._on_back)
+        self.back_btn = ui_kit.button(
+            self.footer, pal, tr("ob.back"), width=90, height=38, command=self._on_back)
         self.back_btn.pack(side="right", padx=6)
 
     def _on_next(self):
@@ -2944,7 +2972,8 @@ class OnboardingWizard:
         preview = self._build_screen_preview(parent)
         preview.pack(pady=(6, 16))
 
-        self._para(parent, tr("ob.step2.body"), width=540)
+        self._para(parent, tr("ob.step2.body", page=_stranka_vhre(tema=self.choice)),
+                   width=540)
 
         # Dve otazky, ktore si pri tejto appke polozi kazdy: "nezabanuju ma
         # za to?" a "kam idu moje data?". Obe maju odpoved hned tu, nie az
@@ -3049,7 +3078,9 @@ class OnboardingWizard:
                                       font=ui_kit.ui(12, "bold"), command=self._pair_now)
         self._pair_button_look()
         self.pair_btn.pack(pady=(12, 6))
-        ctk.CTkLabel(parent, text=tr("ob.step3.later_note"), font=ui_kit.ui(10),
+        ctk.CTkLabel(parent, text=tr("ob.step3.later_note",
+                                     page=_stranka_vhre(tema=self.choice)),
+                     font=ui_kit.ui(10),
                      text_color=pal["text_faint"]).pack(pady=(6, 0))
 
     def _pair_button_look(self):
@@ -3062,8 +3093,10 @@ class OnboardingWizard:
                 border_width=1, border_color=pal["accent"],
                 hover_color=pal["surface_alt"], text_color=pal["accent"])
         else:
+            # bez emoji (0.2.2 davka 4b): 🕑 bol jediny farebny obrazok na
+            # tlacidle v tichom rozhrani - a hodiny nie su hodinky
             self.pair_btn.configure(
-                text="🕑  " + tr("ob.step3.pair_now"), fg_color=pal["accent"],
+                text=tr("ob.step3.pair_now"), fg_color=pal["accent"],
                 border_width=0, hover_color=pal["accent_hover"], text_color=pal["bg"])
 
     def _pair_now(self):
@@ -3250,10 +3283,13 @@ class OnboardingWizard:
         row.pack(fill="x", pady=(4, 0))
         row.pack_propagate(False)
         self._preview_row = ctk.CTkFrame(row, fg_color="transparent")
-        self.preview_btn = ctk.CTkButton(
-            self._preview_row, height=36, corner_radius=ui_kit.RADIUS_CONTROL,
-            fg_color=pal["accent2"], hover_color=pal["accent2_hover"],
-            text_color=pal["text"], font=ui_kit.ui(11), command=self._play_preview)
+        # Vedlajsie tlacidlo z `ui_kit.button` (0.2.2 davka 4b), nie vypln
+        # `accent2` (ta sama nic neznaci, theme.py); pocas pripravy zvukov je
+        # vypnute jednym vzhladom vypnuteho. Sirka rastie s textom odpovede
+        # (ukazka hlasu ma dlhu vetu, zvuk a obrazok kratku).
+        self.preview_btn = ui_kit.button(
+            self._preview_row, pal, "", width=140, height=36, font=ui_kit.ui(11),
+            command=self._play_preview)
         self.preview_btn.pack(side="left")
         self._volume_box = ctk.CTkFrame(self._preview_row, fg_color="transparent")
         self.volume_var = tk.IntVar(value=self.volume_value)

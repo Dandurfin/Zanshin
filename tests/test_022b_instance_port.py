@@ -102,7 +102,9 @@ def test_po_vzdani_vypnute_len_v_pamati_a_nic_sa_neulozi():
     assert a.hr_enabled_var.get() is False
     assert a._hr_vypnute_chybou is True, "save_settings musi vediet, ze to nebol hrac"
     assert a.ulozenia == [], "vzdanie sa nesmie ulozit vypnutie"
-    assert a.denn[-1] == i18n.tr("log.hr_port_busy", port=4455)
+    # atrapa nema `_nazov_vhre` -> meno stranky z Hry (0.2.2 davka 4b)
+    assert a.denn[-1] == i18n.tr("log.hr_port_busy", port=4455,
+                                 page=i18n.tr("nav.vhre_short"))
     assert a.naplanovane == [], "po vzdani sa uz nic neplanuje"
 
 
@@ -369,18 +371,17 @@ def test_appka_po_zalohe_ip_neprepise_ani_neulozi():
 # --------------------------------------------------------------------------
 
 def test_obsadeny_port_menuje_obs_a_opravu():
-    sk = i18n.tr_lang("sk", "log.hr_port_busy", port=4455)
+    # meno stranky dosadza appka podla sveta (`{page}`, 0.2.2 davka 4b)
+    sk = i18n.tr_lang("sk", "log.hr_port_busy", port=4455,
+                      page=i18n.tr_lang("sk", "nav.vhre_short"))
     assert sk == ("Port 4455 už používa iný program — často OBS so zapnutým "
                   "WebSocket serverom alebo druhá kópia Zanshinu. Na stránke "
                   "„V hre“ zmeň port (napr. na 4456) a rovnaké číslo zadaj v "
                   "appke na telefóne.")
     for jazyk in i18n.LANGUAGES:
         text = i18n.STRINGS["log.hr_port_busy"][jazyk]
-        assert set(re.findall(r"\{(\w+)\}", text)) == {"port"}, jazyk
+        assert set(re.findall(r"\{(\w+)\}", text)) == {"port", "page"}, jazyk
         assert "OBS" in text and "4456" in text, jazyk
-        # stranka sa vola tak, ako ju appka menuje v bocnej liste
-        stranka = i18n.STRINGS["nav.vhre_short"][jazyk]
-        assert stranka.lower().split()[-1] in text.lower(), jazyk
 
 
 def test_dokumenty_hovoria_to_iste_co_kod():

@@ -7,10 +7,10 @@ you've been under strain for a while, Zanshin waits for a short lull in your
 input and gives you a calm cue: breathe out, unclench your jaw, loosen your
 grip.**
 
-**You need:** Windows 11 64-bit (Windows 10 untested) · a smartwatch and a
-phone or watch app that sends its heart rate to this PC over your home network
-(tested: Wear OS with *HeartRateOnStream for OBS*, free) · the phone and the PC
-on the same home network.
+**You need:** Windows 11 64-bit (Windows 10 untested) · a smartwatch that
+measures heart rate, with its companion phone app that sends the heart rate to
+this PC (tested: a Wear OS watch with an Android phone and *HeartRateOnStream
+for OBS*, free) · the phone and the PC on the same home network (Wi‑Fi).
 
 [Download](https://github.com/Dandurfin/Zanshin/releases/latest) ·
 [Quick start](#quick-start) · [Pair your watch](#getting-your-heart-rate-in) ·

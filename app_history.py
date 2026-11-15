@@ -51,7 +51,7 @@ from guide_content import origin_sources
 from i18n import cislo, tr
 from paths import APP_NAME
 
-from app_spolocne import app_log
+from app_spolocne import app_log, stranka_vhre, zapamataj_text_stranky
 
 
 class HistoryMixin:
@@ -68,9 +68,15 @@ class HistoryMixin:
         vysvetlivky pod tabulkou, kde hlavicky stlpcov uz odrolovali a tri
         "ⓘ co to znamena" pod sebou nehovorili, ku ktoremu cislu patria."""
         nazov = tr(f"metric.{metric}.title") if titled else None
-        return ui_kit.InfoRow(parent, pal, tr(f"metric.{metric}.short"),
-                              tr(f"metric.{metric}.more"), tr("history.info_more"),
-                              tr("history.info_less"), wrap=wrap, title=nazov)
+        # `page`: `metric.over.more` posiela na stranku "V hre" jej menom
+        # v aktualnom svete (0.2.2 davka 4b); ostatne texty ho nepouziju.
+        # Po prepnuti sveta ho prepise `obnov_texty_stranky`.
+        riadok = ui_kit.InfoRow(parent, pal, tr(f"metric.{metric}.short"),
+                                tr(f"metric.{metric}.more", page=stranka_vhre(self)),
+                                tr("history.info_more"),
+                                tr("history.info_less"), wrap=wrap, title=nazov)
+        zapamataj_text_stranky(self, getattr(riadok, "more", None), f"metric.{metric}.more")
+        return riadok
 
     # ---------- stranka Historia ----------
 
@@ -216,7 +222,9 @@ class HistoryMixin:
         # s pack_propagate(False) by si ju panel nechal aj s tromi riadkami
         # textu - pod mriezkou by ostala prazdna tretina panela.
         days_box = ctk.CTkFrame(grid_row, fg_color="transparent", width=150, height=118)
-        days_box.pack(side="right", padx=(18, 0))
+        # hore, nie v strede: mriezka rastie so sirkou (0.2.2 davka 4b) a
+        # cislo ma ostat na vyske prvych riadkov, nie plavat pod nimi
+        days_box.pack(side="right", padx=(18, 0), anchor="n")
         days_box.pack_propagate(False)
         # Popisok nesie pocet tyzdnov mriezky - ten sa meni s historiou,
         # preto si ho stranka drzi (`_refresh_history_rhythm`).
@@ -396,11 +404,30 @@ class HistoryMixin:
 
     @staticmethod
     def _fmt_minutes(seconds):
+        """Cas "m:ss", od hodiny "1 h 15 min" (`ui_kit.cas_text`, 0.2.2
+        davka 4b) - "Nad hranicou" za dlhy vecer ukazovalo "75:12", co
+        vyzeralo ako cas na hodinkach. Ta ista hranica ako os stopy."""
         try:
             total = int(float(seconds or 0))
         except (TypeError, ValueError):
             total = 0
-        return f"{total // 60}:{total % 60:02d}"
+        return ui_kit.cas_text(total)
+
+    @staticmethod
+    def _popisok_bucketu(bucket, period):
+        """Popisok stlpca grafu trendu v jazyku appky (0.2.2 davka 4b).
+
+        `hr_stats` dava popisok cez `strftime` ("12.11", "11.2026") - to je
+        tvar datumu jedneho jazyka. Den a tyzden su kratky datum bez roku,
+        mesiac je "nov 2026" / "2026年11月", hodina a rok ostavaju."""
+        started = bucket.get("started")
+        if started is None:
+            return bucket.get("label", "")
+        if period in (hr_stats.PERIOD_DAY, hr_stats.PERIOD_WEEK):
+            return ui_kit.datum_text(started, rok=False)
+        if period == hr_stats.PERIOD_MONTH:
+            return ui_kit.mesiac_text(started)
+        return bucket.get("label", "")
 
     # ---------- trend: metrika + casove obdobie (chips) ----------
 
@@ -482,7 +509,10 @@ class HistoryMixin:
         # posunul na jej miesto. Popisky osi x su uz spocitane v buckete.
         chart_values = [None if b[bucket_key] is None else b[bucket_key] * scale
                         for b in buckets]
-        labels = [b["label"] for b in buckets]
+        # Popisky osi v tvare datumu JAZYKA APPKY (0.2.2 davka 4b, `ui_kit.
+        # datum_text`): "12. 11." / "12 Nov" / "11月12日", nie vsade "12.11".
+        # Cez triedu: testy volaju tuto metodu na atrape appky.
+        labels = [HistoryMixin._popisok_bucketu(b, bucket_period) for b in buckets]
         raw_values = [b[bucket_key] for b in buckets if b[bucket_key] is not None]
         title_key = {k: t for k, t, _c in self.HISTORY_METRICS}[metric]
         color_token = {k: c for k, _t, c in self.HISTORY_METRICS}[metric]
@@ -576,7 +606,8 @@ class HistoryMixin:
             child.destroy()
         self.history_sessions_panel.set_right(tr("history.sessions_count", n=len(sessions)))
         if not sessions:
-            ctk.CTkLabel(box, text=tr("history.empty"), font=ui_kit.ui(11),
+            ctk.CTkLabel(box, text=tr("history.empty", page=stranka_vhre(self)),
+                         font=ui_kit.ui(11),
                          text_color=pal["text_faint"], wraplength=620, anchor="w",
                          justify="left").pack(fill="x")
         else:
@@ -617,7 +648,8 @@ class HistoryMixin:
                 row.pack(fill="x")
                 _stlpce(row)
                 started = float(s.get("started") or 0)
-                date = time.strftime("%d.%m.%Y %H:%M", time.localtime(started)) if started else "-"
+                # datum v jazyku appky (0.2.2 davka 4b), cas HH:MM
+                date = ui_kit.datum_text(started, cas=True) if started else "-"
                 hrr = s.get("hrr_bpm")
                 # Hlasky = to iste cislo ako detail, graf aj CSV: len tie,
                 # ktore appka poslala sama (`hlasky_relacie`). Stare
@@ -934,7 +966,7 @@ class HistoryMixin:
         self._history_detail_prazdny(False)
         started = float(session.get("started") or 0)
         self.history_detail_panel.set_right(
-            time.strftime("%d.%m.%Y %H:%M", time.localtime(started)) if started else "")
+            ui_kit.datum_text(started, cas=True) if started else "")
         curve = session.get("curve") or []
         # `activity_curve` pribudla neskor - starsie relacie ju nemaju a
         # vtedy sa pruh proste nekresli (viz `SessionTrace._draw_activity`).
@@ -1133,7 +1165,7 @@ class HistoryMixin:
         if stamp:
             self.history_insights_panel.set_right(tr(
                 "history.analysis_stamp",
-                when=time.strftime("%d.%m. %H:%M", time.localtime(stamp))))
+                when=ui_kit.datum_text(stamp, rok=False, cas=True)))
         else:
             # Po prepnuti sveta sa postrehy zahodia - cas analyzy druheho
             # sveta by pri nich klamal.

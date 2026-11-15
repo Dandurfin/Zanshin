@@ -5,8 +5,9 @@
     sekcia 0.2.2 ma bod davky 4 ("Fewer dead ends") s nazvami z UI a
     cislami z kodu,
   * KNOWN_ISSUES.md: uz len otvorene veci - a kazda nova veta je naviazana
-    na kod, aby po oprave zmizla (licencia, ikona, GIF, Obrazovka vs V hre,
-    "watch connected", veci overene len na simulovanych datach),
+    na kod, aby po oprave zmizla (licencia, ikona, GIF, titulky "Watch ..."
+    v navode parovania, pevne pismo v prehliadke, veci overene len na
+    simulovanych datach, tabulka hodiniek a poziadavky, davka 4b),
   * README: hlavny vypinac v Quick start, dialog pri prvom ×, skratka v
     Nastaveniach, odkazy na CHANGELOG,
   * PRIVACY: hr_session_pending.json medzi lokalnymi subormi, "Try again",
@@ -170,14 +171,68 @@ def test_known_issues_otvorene_texty_su_v_appke():
     """Kazda veta je naviazana na text v appke: ked sa opravi, test povie,
     ze bod v KNOWN_ISSUES musi ist prec."""
     o = _otvorene()
-    # vo svete Praca sa stranka vola Obrazovka, no niektore texty este V hre
-    assert "*%s*" % _en("nav.vhre_work_short") in o
-    assert _en("nav.vhre_short") in _en("history.empty")
-    # "watch connected" znamena pripojeny telefon
+    # Davka 4b opravila: meno stranky podla sveta ({page}), "phone connected",
+    # jednu vetu pri obsadenom porte, ram dialogov a zalamovanie ja/zh -
+    # KNOWN_ISSUES to uz za otvorene nevydava.
+    assert "{page}" in _en("history.empty")
+    assert "*%s*" % _en("nav.vhre_work_short") not in o
     for kluc in ("dnes.hr_connected", "settings.hr_status_waiting"):
+        assert _en(kluc).startswith(("phone", "Phone")), kluc
+        assert "*%s*" % _en(kluc) not in o, kluc
+    assert "dialogs have no border" not in o
+    assert "Japanese and Chinese lines wrap" not in o
+    assert "pairing sentence under the busy message" not in o
+    # titulky boxov v navode parovania stale menuju hodinky, hoci sa
+    # pripaja telefon (appka v nom)
+    for kluc in ("hr.noconnect_title", "hr.trouble_title"):
+        assert _en(kluc).startswith("Watch"), kluc
         assert "*%s*" % _en(kluc) in o, kluc
+    # prazdna Historia nema variant pre Pracu: aj tam "zahraj si"
+    assert "play for at least a minute" in _en("history.empty")
+    assert not [k for k in i18n.STRINGS if k.startswith("history.empty_w")]
+    assert 'tr("history.empty", page=' in zdroj_suboru("app_history.py")
+    assert "History without sessions still asks you to play" in o
+    # stopa relacie v Historii: len hracia veta (Pracu ma len dotaznik)
+    historia = zdroj_suboru("app_history.py")
+    assert 'tr("session.end.trace_hint")' in historia
+    assert "trace_hint_work" not in historia
+    assert "trace_hint_work" in zdroj_suboru("ui_dialogs.py")
+    assert "*One session up close* still says when you were probably playing" in o
+    # pevne latinske pismo: bubliny prehliadky a zoznam palety Ctrl+K
+    assert 'font=("Segoe UI"' in zdroj_suboru("guided_tour.py")
+    assert 'tkfont.Font(family="Segoe UI"' in zdroj_suboru("ui_shell.py")
+    assert "bubbles and the Ctrl+K list still use a fixed Latin font" in o
     assert "tested only with simulated data" in o
-    assert "Japanese and Chinese lines wrap" in o
+
+
+def test_known_issues_skratka_sa_riadi_odpovedou_windowsu():
+    """Davka 4b: riadok skratky a dennik cakaju na skutocny vysledok
+    registracie (`on_result`), takze uz netvrdia "drzi ju iny program", ked
+    je Windows len pomaly. Ostava len to, ze kym Windows neodpovie, riadok
+    ukazuje bezny text ("funguje")."""
+    o = _otvorene()
+    assert "another app holds the shortcut even though it works" not in o
+    assert "line and the log follow Windows' answer" in o
+    assert hotkey.GlobalHotkey.CAKAJ_NA_REGISTRACIU_S == 2.0
+    assert "more than two seconds" in o
+    # kym sa caka, riadok nema vlastny text "registrujem..."
+    sub = zdroj_metody("_snooze_hotkey_sub")
+    assert "_hotkey_caka" not in sub and "_hotkey_zlyhala" in sub
+    assert "self._hotkey_caka = True" in zdroj_suboru("app.py")
+
+
+def test_known_issues_watch_tabulka_a_poziadavky_cakaju_na_autora():
+    """Dve veci caka na autora: model hodiniek v tabulke README a nove
+    meranie systemovych poziadaviek na finalnom builde 0.2.2. Ked sa
+    doplnia, bod v KNOWN_ISSUES treba zmazat (tento test spadne)."""
+    o = _otvorene()
+    readme = _read("README.md")
+    tabulka = _sekcia(readme, "Getting your heart rate in")
+    assert "| Wear OS watch with an Android phone |" in tabulka
+    assert "doesn't name my watch" in o
+    poziadavky = _plain_text(_sekcia(readme, "System requirements"))
+    assert "the 0.2.1 ZIP is about 59 MB" in poziadavky
+    assert "The system requirements are from 0.2.1." in o
 
 
 # --------------------------------------------------------------------------
