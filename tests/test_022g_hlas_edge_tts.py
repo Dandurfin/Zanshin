@@ -277,8 +277,8 @@ def test_py_c_riadky_prezyju_powershell_aj_cmd():
 def test_build_vyskusa_api_a_skusobne_slovo():
     blok = _blok_z_buildu()
     riadky = [r.strip() for r in blok.splitlines()]
-    # order: version check -> API (always, even without internet) -> "ide do
-    # buildu" -> test word (only with internet)
+    # order: version check -> API (always, even without internet) -> "goes
+    # into the build" -> test word (only with internet)
     over = blok.index("$edgeVerzia = \"$(Invoke-Py '-c' $edgeKontrola $edgeMin)\".Trim()")
     api = blok.index("$edgeApiDovod = \"$(Invoke-Py '-c' $edgeApi)\".Trim()")
     ide = blok.index('Write-Host "edge-tts $edgeVerzia goes into the build')
@@ -309,7 +309,7 @@ def test_build_vyskusa_api_a_skusobne_slovo():
     assert varovanie.count("-ForegroundColor Yellow") == 3
     assert "Microsoft refuses even edge-tts $edgeVerzia" in varovanie
     assert "Windows voice" in varovanie and "Update voice" in varovanie
-    # with internet = the same condition as the yellow "nevedel overit" message
+    # with internet = the same condition as the yellow "Couldn't check" message
     assert blok.count("if ($edgePip -ne 0) {") == 3
 
 
