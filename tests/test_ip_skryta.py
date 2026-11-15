@@ -79,7 +79,7 @@ def test_adresa_na_obrazovku_je_cela_len_na_vyziadanie():
 
 
 def test_parovanie_skryje_adresu_ale_port_necha():
-    """The port (4455) is the same for all - the phone needs it visible."""
+    """Port (4455) is the same for all - it must be visible for the phone."""
     text = netinfo.pairing_address(IP, 4455)
     assert IP not in text and "4455" in text
     assert IP in netinfo.pairing_address(IP, 4455, show=True)

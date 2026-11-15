@@ -62,7 +62,7 @@ def _label(kod):
 
 
 def _appka(monkeypatch, lang, hlas, sloty):
-    """Real `on_lang_switch`, `_hlas_k_hlaskam`; rest of the window is fake.
+    """Real `on_lang_switch`, `_hlas_k_hlaskam`; rest of the window is a dummy.
     It records the voice at the moment of saving, preparation and
     restoring the voice selection."""
     import app as app_mod
@@ -190,7 +190,7 @@ def test_prepnutie_spat(monkeypatch):
 
     # The app does not change a voice other than the default even with
     # English words: it does not know whether the player chose it themselves
-    # (a voice left over from an old switch they will pick again).
+    # (a voice left over from an old switch the player will re-pick).
     c = _appka(monkeypatch, "ja", NANAMI, _sloty("en"))
     c.on_lang_switch(_label("en"))
     assert c.edge_voice_id == NANAMI

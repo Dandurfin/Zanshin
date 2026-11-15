@@ -270,8 +270,7 @@ class SlotSettingsDialog:
             self.slot.voice_path = self.slot._import_into_store(
                 path, f"voice_pick_{self.slot.uid}")
         except Exception as exc:
-            # the app's window above this dialog, not a system one (0.3, batch
-            # 4)
+            # an app window above this dialog, not a system one (0.3, batch 4)
             ui_kit.notify(self.top, self.app.pal, APP_NAME,
                           tr("record.save_error", err=exc), kind="error")
             return
@@ -343,8 +342,8 @@ class DevLayerDialog:
 
     WHY IT EXISTS: those numbers are estimates from the literature, not
     from this player's body. In the first weeks it will turn out that the
-    cue comes either too early or not at all. Without a way to turn it at
-    runtime one would have to rebuild every evening.
+    cue comes either too early or not at all. Without a way to adjust
+    that at runtime the app would have to be rebuilt every evening.
 
     WHY IT CAN BE EDITED ONLY BETWEEN SESSIONS: spec §3.3. Changing
     thresholds in the middle of a session means measuring a moving target -
@@ -923,7 +922,7 @@ class SessionEndDialog:
         """Why not a single cue sounded during the whole session.
 
         The order of conditions is NOT arbitrary: heart-rate dropouts are
-        asked first, because with them the other numbers are
+        checked first, because with them the other numbers are
         untrustworthy - the longest stretch may look short just because
         gaps in the data chopped it up.
 
@@ -946,7 +945,7 @@ class SessionEndDialog:
         if vypadkov >= 2 and vypadkov >= (summary.get("runs_cancelled_dip") or 0):
             return tr("session.end.none_dropouts", n=vypadkov)
         # "NOT NOW" DURING THE SESSION (since 24. 9. it does not close it). The
-        # automation was asleep then, so the counters below do not see that
+        # state machine was asleep then, so the counters below do not see that
         # time: "the load never got above the limit" could claim a silence that
         # the player chose themselves. The dropouts above are true anyway
         # (outside the snooze).
@@ -975,7 +974,7 @@ class SessionEndDialog:
         except (TypeError, ValueError):
             branou = 0
         if branou > 0:
-            # Only the gate (body), not `nedalo_sa` (spacing, snooze,
+            # Only the gate (body), not `nedalo_sa` (gap, snooze,
             # walking) - the sentence talks about the heart rate and would
             # not be true then.
             return tr("session.end.none_withheld")
@@ -1115,7 +1114,7 @@ class SessionEndDialog:
 
         A second "Quit" from the tray while the questionnaire was open used
         to close it like "Skip" and the filled-in answers disappeared. The
-        product owner's decision: something filled in = save (like "Save"),
+        author's decision: something filled in = save (like "Save"),
         nothing = close like "Skip" (`app._quit`). Neither the highlighted
         session world nor the setup chip set by the app counts as an
         answer - only a click."""
@@ -1191,7 +1190,7 @@ class ImportProfileDialog:
         self.code_box.bind("<FocusIn>", lambda _e: app.set_typing(True))
         self.code_box.bind("<FocusOut>", lambda _e: app.set_typing(True))
 
-        # small error text: `danger_text` (>= 4,5:1), not `danger` (theme.py)
+        # small error text: `danger_text` (>= 4.5:1), not `danger` (theme.py)
         self.error_label = ctk.CTkLabel(body, text="", text_color=pal["danger_text"],
                                         wraplength=380, justify="left")
         self.error_label.pack(anchor="w", pady=(0, 6))
@@ -1363,7 +1362,7 @@ class OverlaySettingsDialog:
         # NOTE: the monitor choice was drawn here and the whole HUD card below.
         # They were SECOND copies of the same settings that are in Settings ->
         # General, and they drifted apart: switching the HUD in this dialog
-        # overwrote `hud_config`, but no longer the switch variable on the
+        # overwrote `hud_config`, but not the switch variable on the
         # page - the player then saw it off in one place and on in the other
         # and had no way to find out which value applied.
         #
@@ -1418,7 +1417,7 @@ class OverlaySettingsDialog:
         scale_row = ctk.CTkFrame(inner, fg_color="transparent")
         scale_row.pack(fill="x", pady=(10, 0))
         # The app font (`ui_kit.ui`), not the CTk default; the size with a
-        # comma by language and the × sign (0.3 batch 4).
+        # decimal comma depending on the language and the × sign (0.3 batch 4).
         ctk.CTkLabel(scale_row, text=tr("overlay.scale"), text_color=pal["text_dim"],
                      font=ui_kit.ui(12), width=90, anchor="w").pack(side="left")
         scale_value_label = ctk.CTkLabel(scale_row, text=f"{cislo(cfg['scale'], 2)}×",
@@ -1494,7 +1493,7 @@ class OverlaySettingsDialog:
         self._rows.append({"x_label": x_label, "y_label": y_label})
 
         # A secondary button of natural width (frame >= 3:1), not a frame
-        # across the whole card with a contrast of 1,24:1 that looked switched
+        # across the whole card with a contrast of 1.24:1 that looked switched
         # off.
         ui_kit.button(inner, pal, tr("overlay.test"), height=32,
                       command=lambda idx=index: self.app.test_overlay(idx)).pack(
@@ -1609,8 +1608,8 @@ def _stranka_vhre(app=None, tema=None):
 
     In the Work world the page is called "Screen", as in the sidebar: with
     the app, `app._nazov_vhre` tells it; in the introduction (no app yet)
-    the world of the theme the introduction currently has selected. Fakes
-    without both -> the name from Play."""
+    the world of the theme the introduction currently has selected. Dummies
+    without either -> the name from Play."""
     nazov = getattr(app, "_nazov_vhre", None)
     if callable(nazov):
         try:
@@ -1629,7 +1628,7 @@ def stav_parovania(app):
     heart rate), "pozor" (something is off, but I am still trying),
     "chyba" (receiving is not running). The dialog picks the colour for the
     kind. A module function, not a dialog method, so it can be checked on
-    an app fake without Tk.
+    an app dummy without Tk.
 
     The number is smoothed (`HeartStats.display_bpm`) - the same as on the
     HUD, on Today and at the switch, otherwise the pairing window would
@@ -1794,7 +1793,7 @@ class WatchPairingDialog:
                 justify="left")
             self._ip_hidden_after = addr_row
             if ip in self._virtualne:
-                # The "(VPN/virtualna)" label NOT in the address row (mono 20):
+                # The "(VPN/virtual)" label NOT in the address row (mono 20):
                 # it did not fit there, got cut off and pushed out "Show IP".
                 # It is its own small row right under the address; the sentence
                 # under it says what to do about it.
@@ -1909,8 +1908,8 @@ class WatchPairingDialog:
         try:
             druh, text = stav_parovania(self.app)
             pal = self.app.pal
-            # the error is text (12 bold) - `danger_text` (>= 4,5:1), not
-            # `danger` (~3,7:1 on `bg`, the rule in theme.py)
+            # the error is text (12 bold) - `danger_text` (>= 4.5:1), not
+            # `danger` (~3.7:1 on `bg`, the rule in theme.py)
             farba = {"ok": pal["success"], "pozor": pal["warn"],
                      "chyba": pal.get("danger_text", pal["danger"])}.get(
                          druh, pal["text_dim"])
@@ -2244,7 +2243,7 @@ class SlotCard:
         sfx_tools = ctk.CTkFrame(self.sfx_group, fg_color="transparent")
         sfx_tools.pack(side="top", fill="x", pady=(4, 0))
         # Secondary buttons (`ui_kit.button`): a `control_border` frame >= 3:1.
-        # With `line_soft` (1,11:1) they looked switched off. The grid column
+        # With `line_soft` (1.11:1) they looked switched off. The grid column
         # gives the width.
         self.rec_button = ui_kit.button(
             sfx_tools, pal, tr("slot.record_short"), width=0, height=22,
@@ -2750,7 +2749,7 @@ class OnboardingWizard:
         self._otazka = None               # the "Quit Zanshin?" box while it is shown
         self._otazka_od = 0.0
         self.wants_pairing = False        # clicked "Pair a watch now"?
-        # Cue style from step 5. NOTHING is preselected (product owner: no
+        # Cue style from step 5. NOTHING is preselected (the author: no
         # prejudging) - whoever does not choose stays with what they had (a new
         # player on voice, as with "Not sure").
         self.cue_style = None
@@ -2802,10 +2801,10 @@ class OnboardingWizard:
         if self._prvy_start:
             # The app's only window (the main one is hidden) and without a
             # taskbar button: after a click elsewhere it would disappear behind
-            # another window and could not be found. On top only while it lives
-            # - Windows dialogs (SmartScreen, UAC) come before launch or on the
-            # secure desktop, and the firewall prompt only when a port is
-            # opened, i.e. AFTER the introduction.
+            # another window and could not be found. On top only while it
+            # lives - Windows dialogs (SmartScreen, UAC) come before launch or
+            # on the secure desktop, and the firewall prompt only when a port
+            # is opened, i.e. AFTER the introduction.
             try:
                 self.top.attributes("-topmost", True)
             except Exception:
@@ -2904,7 +2903,7 @@ class OnboardingWizard:
                      justify="center").pack(pady=(0, 22))
         row = ctk.CTkFrame(inner, fg_color="transparent")
         row.pack()
-        # `ui_kit.button` (0.3 batch 4b): the `border` frame (1,2:1) looked
+        # `ui_kit.button` (0.3 batch 4b): the `border` frame (1.2:1) looked
         # like a disabled button - a secondary one has a `control_border` frame
         # (>= 3:1).
         ui_kit.button(row, pal, tr("ob.quit.yes"), width=130, height=38,
@@ -2942,7 +2941,7 @@ class OnboardingWizard:
         pal = self._pal
         # left: skip to the watch step (only on steps 1-2)
         # Footer buttons from `ui_kit.button` (0.3 batch 4b): the same kinds as
-        # in every app window - Back had a `border` frame (1,2:1), so it looked
+        # in every app window - Back had a `border` frame (1.2:1), so it looked
         # disabled.
         self.skip_btn = ui_kit.button(
             self.footer, pal, tr("ob.skip"), kind="quiet", width=120, height=34,
@@ -3321,7 +3320,7 @@ class OnboardingWizard:
 
     # ---- STEP 5: how the app should speak up (cue style) ----
 
-    # Four answers in the order approved by the product owner. "Not sure" is
+    # Four answers in the order approved by the author. "Not sure" is
     # saved as voice: the ladder (`rebrik.py`) goes one rung lower after the
     # first objection.
     NEVIEM = "unsure"
@@ -3387,7 +3386,7 @@ class OnboardingWizard:
         self._oznac_styl()
 
     def _oznac_styl(self):
-        """The chosen answer has an accent-coloured border, the others stay."""
+        """The chosen answer has an accent border, the others stay unchanged."""
         pal = self._pal
         for volba, btn in getattr(self, "_cue_buttons", {}).items():
             vybrana = volba == self._cue_volba

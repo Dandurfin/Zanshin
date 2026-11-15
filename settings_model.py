@@ -515,7 +515,7 @@ def optional_cooldown(value):
 # ignoring letter case and surrounding spaces). Only an EXACT match is
 # changed - the player's own word (even "my teeth") stays as they wrote
 # it.
-#   "Teeth" -> "Jaw": outside the game it sounded odd (the requester's
+#   "Teeth" -> "Jaw": outside the game it sounded odd (the author's
 #   decision).
 #   ja 脱力 and zh 放松 mean "relax" - a cue never says "relax / calm
 #   down" (tests/test_cue_words.py), not even from an old profile.

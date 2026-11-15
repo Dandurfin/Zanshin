@@ -9,10 +9,10 @@ key and from the outside cannot be told apart from a keylogger.
 
 `RegisterHotKey` is something completely different. The app announces a
 single combination to Windows IN ADVANCE and the system sends it a message
-only when someone presses it. It learns about no other key - technically it
-cannot even, no stream of input flows through it. When the combination is
-already taken by another app, the registration simply fails and
-`RegisterHotKey` returns zero.
+only when someone presses it. It learns about no other key - technically
+it could not even do so, no stream of input flows through it. When the
+combination is already taken by another app, the registration simply fails
+and `RegisterHotKey` returns zero.
 
 The difference in one sentence: a hook ASKS about everything and filters for
 itself; a hotkey SAYS what it wants to be woken up for, and gets nothing
@@ -327,7 +327,7 @@ class GlobalHotkey:
     when Windows really finishes the registration - successfully or not.
     `start()` waits for the result at most 2 s; when Windows is slow at
     start, it returns False and `caka` is True: the shortcut is not taken,
-    just not ready yet. The true result is then told only by `on_result`.
+    just not ready yet. Only `on_result` then reports the true result.
     """
 
     # How long `start()` waits for the registration result (s). A class
@@ -339,7 +339,7 @@ class GlobalHotkey:
         self.combo = combo
         self._on_press = on_press
         # Public attribute: it can also be set after creation (the app sets
-        # it this way so that simplified fakes in tests work too).
+        # it this way so that simplified dummies in tests work too).
         self.on_result = on_result
         self._log = log
         self._thread = None

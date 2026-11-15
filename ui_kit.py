@@ -215,7 +215,7 @@ def _drz_pozadie_linky(ciara):
     panel heading until the window was rebuilt. So every `bg_color` here is
     replaced with the line's fill (the new fill, if it came in the same
     call). A method of its own on the INSTANCE, not a subclass:
-    `ctk.CTkFrame` can be replaced by a fake in tests."""
+    `ctk.CTkFrame` can be replaced by a dummy in tests."""
     povodne = getattr(ciara, "configure", None)
     if povodne is None:
         return
@@ -417,7 +417,7 @@ def _drz_vzhlad_vypnuteho(btn, kind, pal):
     """`configure(state=...)` on the button also switches its look.
 
     A method of its own on the INSTANCE (like `_drz_pozadie_linky`), not a
-    subclass - `ctk.CTkButton` can be replaced by a fake in tests. When
+    subclass - `ctk.CTkButton` can be replaced by a dummy in tests. When
     disabled, it remembers the colours the button has right now (including
     ones changed by the caller, e.g. Test during a test), and gives them back
     when enabled. If the theme was switched in the meantime (`theme_recolor`
@@ -1040,7 +1040,7 @@ def rozmer_dialogu(window, width, height, mon=None):
     125-150 % a 640 px tall dialog is taller than the area even after
     shrinking, and its bottom with the Close button ended up under the
     taskbar - in a borderless window that cannot be shrunk by dragging its
-    edge. So the dialog here would rather stay shorter; the content has a
+    edge. So here the dialog stays shorter instead; the content has a
     scrollbar, the footer with the buttons stays visible. On any error it
     returns the size unchanged and the monitor None."""
     try:
@@ -1258,7 +1258,7 @@ def dlzka_text(seconds, preklad=None):
 
 
 # From one hour up, time is written as a duration ("1 h 15 min"), not m:ss -
-# "75:12" looked like a time on a clock (0.3, UX audit). The same threshold
+# "75:12" looked like a time on a clock (0.3, UX audit). The same boundary
 # applies to the end of the session trace axis (`SessionTrace.OS_DLZKA_OD_S`).
 DLZKA_OD_S = 3600
 
@@ -1517,7 +1517,7 @@ def zapni_kinsoku_v_labeloch(trieda=None):
 
 try:
     zapni_kinsoku_v_labeloch()
-except Exception:              # pragma: no cover - fake ctk without CTkLabel
+except Exception:              # pragma: no cover - dummy ctk without CTkLabel
     pass
 
 
@@ -1532,7 +1532,7 @@ class SettingRow(ctk.CTkFrame):
     `icon` (optional) goes into a FIXED-width column before the name - every
     emoji has a different width, so the name in the text "🖱️ Uvolnenie"
     (Release) started somewhere else than "🥾 Tazisko" (Grounding) (reported
-    as "switch off the axis"). The same principle as the side menu
+    as "switch out of line"). The same principle as the side menu
     (_NavRow).
 
     `note` (optional) is a small, quieter footnote under the WHOLE row -
@@ -1554,8 +1554,8 @@ class SettingRow(ctk.CTkFrame):
         self.control.pack(side="right", padx=(14, 0))
 
         # `icon_slot` (the visual's name) takes precedence over a text icon:
-        # the image from `hud_paint` is what the player sees in game - emoji
-        # not.
+        # the image from `hud_paint` is what the player sees in game, the
+        # emoji is not.
         if icon_slot:
             ikona_wrap = ctk.CTkFrame(inner, fg_color="transparent",
                                       width=self.ICON_W, height=26)
@@ -1894,7 +1894,7 @@ class KamaeBar(ctk.CTkFrame):
         # otherwise only adjusted (coords/itemconfigure). Same pattern as the
         # Today centre.
         self._it = None
-        self._it_sig = None       # (w, h, mierka) the items were built for
+        self._it_sig = None       # (w, h, scale) the items were built for
         self._last_mierka = 1.0
 
         # `takefocus=1`: the main switch can be reached with the keyboard
@@ -2317,7 +2317,7 @@ class PalCanvas(ctk.CTkFrame):
     line would stay in the old colour until something redraws it. Live
     charts are redrawn with every heart-rate sample and heal themselves;
     the chart in History stands still until someone clicks through it, so
-    without `set_pal` it would glow the old way after a theme change.
+    without `set_pal` it would keep the old colours after a theme change.
     `DandurfApp._recolor_ui` walks the tree and calls it on every
     descendant.
     """
@@ -2385,7 +2385,7 @@ class Sparkline(PalCanvas):
         changes the colour by the selected metric) - without it the default
         accent stays.
 
-        WATCH OUT FOR ZERO: the filter here used to be `if v`, so it also
+        BEWARE OF ZERO: the filter here used to be `if v`, so it also
         dropped zeros. For heart rate it does not matter (0 BPM does not
         exist), but History also sends "time over the limit" here - and
         there zero is a VALID value. A day without exceeding dropped out of
@@ -2448,7 +2448,7 @@ class SegmentBar(PalCanvas):
     CURRENT zone (`zone` from `HeartStats.zone`, heart rate against rest) -
     all the same, as on the HUD. The bar has no zone boundaries of its own:
     before, it coloured the segments by 35/60/80 % of the length, so at
-    load 57 it ended "elevated", the HUD at the same load "high" (quarters
+    load 57 it ended "raised", the HUD at the same load "high" (quarters
     of the bar), and the word above it could say something else again.
     Without `zone` the segments are neutral (accent).
     """
@@ -2589,8 +2589,7 @@ class TrendChart(PalCanvas):
         return f"{value:.{self._decimals}f}"
 
     def _bounds(self):
-        """(lo, hi) of the y axis. Columns always from zero, a line with
-        headroom around the data."""
+        """Y-axis (lo, hi). Columns always from zero, a line with headroom."""
         values = [v for v in self._values if v is not None]
         lo, hi = min(values), max(values)
         if self._band:
@@ -2745,7 +2744,7 @@ class SessionTrace(PalCanvas):
 
     # From one hour up, the end of the axis is written as a duration ("2 h 18
     # min"), not m:ss: "138:02" looked like a time on a clock (0.3, UX audit,
-    # batch 4). The same threshold as `cas_text` ("Over the limit", session
+    # batch 4). The same boundary as `cas_text` ("Over the limit", session
     # time).
     OS_DLZKA_OD_S = DLZKA_OD_S
 
@@ -2814,7 +2813,7 @@ class SessionTrace(PalCanvas):
                                fill=pal["text_faint"], outline="")
 
     def _draw_triggers(self, w, bottom, s):
-        """When the app triggered breathing - a small mark above the zones."""
+        """When the app triggered breathing - a mark above the zone strip."""
         pal, c = self.pal, self.canvas
         if not self._triggers or self._duration <= 0:
             return
@@ -3018,7 +3017,7 @@ class DayGrid(PalCanvas):
     top), the saturation of a square how much you played that day.
 
     It shows what no other chart in the app shows: the pattern. Weekends,
-    runs of evenings, the week the app lay switched off. So the empty days
+    streaks of evenings, the week the app lay switched off. So the empty days
     are as important as the full ones and are drawn too.
     """
 
@@ -3465,8 +3464,8 @@ class StatCard(ctk.CTkFrame):
             self._remove_btn.pack(side="right")
 
     def _on_leave(self, _event=None):
-        # Leave also arrives when moving onto our own child - react only once
-        # the cursor has really left the whole card (same trick as
+        # Leave also arrives when moving onto one of its own children - react
+        # only once the cursor has really left the whole card (same trick as
         # _NavRow._leave).
         if self._still_inside():
             return
@@ -3506,9 +3505,8 @@ class QrReveal(ctk.CTkFrame):
     ICON = 40
 
     def __init__(self, master, pal, codes, show_label, hide_label, size=150):
-        """`codes` is [(path to PNG, label)] - as many codes, as many columns
-        side by side (Android and iOS are two different apps, so two
-        codes)."""
+        """`codes` is [(path to PNG, label)] - one column per code, side by
+        side (Android and iOS are two different apps, so two codes)."""
         super().__init__(master, fg_color="transparent")
         self.pal = pal
         self._codes = [c for c in codes if c and os.path.exists(c[0])]
@@ -3775,7 +3773,7 @@ class DialogChrome:
     reliably, we restore the override after every <Map> (the same pattern
     as enable_frameless for the root).
 
-    CAREFUL WHEN CHECKING ON WINDOWS: a borderless modal window is delicate
+    WARNING WHEN CHECKING ON WINDOWS: a borderless modal window is delicate
     in Tk. Check that it can be dragged by the title bar, that it can be
     closed with the cross and with Escape, and that the dialog does not
     disappear after minimising the main window and coming back. If the
@@ -3932,7 +3930,7 @@ def _vlastnik_pouzitelny(owner):
     Not without a main window. And not over a window hidden in the tray
     either: `transient` inherits the owner's state, so the dialog would
     stay hidden with a grab - the app would wait for an answer nobody sees.
-    A fake without these methods (tests) counts as usable."""
+    A dummy without these methods (tests) counts as usable."""
     if owner is None:
         return False
     try:

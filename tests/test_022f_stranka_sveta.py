@@ -34,7 +34,7 @@ KLUCE_SO_STRANKOU = (
 
 
 def _vzor_stranky(jazyk):
-    """The page name from Play in quotes or before an arrow (= a link to the
+    """The Play world's page name in quotes or before an arrow (= a link to the
     page, not an adjective as in "In-game pictures" / 「ゲーム中の画像」)."""
     mena = {S["nav.vhre_short"][jazyk], S["nav.nastavenia_tabs.vhre"][jazyk]}
     kusy = []
@@ -79,8 +79,8 @@ def test_stranka_vhre_podla_sveta():
         a = types.SimpleNamespace(world=svet)
         a._nazov_vhre = types.MethodType(D._nazov_vhre, a)
         assert app_spolocne.stranka_vhre(a) == i18n.tr(kluc)
-    # a dummy without `_nazov_vhre` and a broken method -> the name from
-    # Play, no exception
+    # a dummy without `_nazov_vhre` and a broken method -> the Play world's
+    # name, no exception
     assert app_spolocne.stranka_vhre(types.SimpleNamespace()) == i18n.tr("nav.vhre_short")
 
     def zle():

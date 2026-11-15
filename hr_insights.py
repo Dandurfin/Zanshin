@@ -55,7 +55,7 @@ MIN_TRIGGERS = 6               # fewer triggers in the comparison = an evening, 
 # "2x and at least 6 triggers", the message in 4-18 % of cases, with this
 # safeguard around 2 % (even when the tense evenings are shorter or longer
 # than the calm ones - see the per-session expectation in analyze()).
-# The price: from three 90-min sessions a real ramp-up shows rarely (after
+# The price: from three 90-min sessions a real ramp-up rarely shows (after
 # the first hour there is only half an hour in them to compare) - the
 # insight only comes with further sessions. Rather silence than a false
 # alarm.
@@ -227,7 +227,7 @@ def analyze(sessions, now=None):
     #
     # "Early" = the first hour against the rest, in sessions from 90 min.
     # "Late" = after two hours against the first two, only in sessions from
-    # 150 min - only there is there at least half an hour after two hours to
+    # 150 min - only those have at least half an hour after the two hours to
     # compare.
     #
     # The expectation is computed PER SESSION, not from the sum of times: every
@@ -268,7 +268,7 @@ def analyze(sessions, now=None):
                     before_late += 1
     # {share} stays the plain share of triggers in the window - the sentence
     # "X % of triggers came in the first hour" is literally true; that it is
-    # MORE than the time would correspond to was checked by _denser.
+    # MORE than the time alone would account for was checked by _denser.
     if _denser(early, after_early, t_early, t_after_early):
         insights.append(_insight("triggers_early", TONE_INFO,
                                  share=int(round(100.0 * early / (early + after_early)))))
@@ -315,8 +315,8 @@ def analyze(sessions, now=None):
         elif hlasok == 0 and any(s.get("cue_rung") == "pause" for s in posledne):
             # 0.2 (cue ladder): the app had switched cues off itself - "I had
             # no reason to speak up", "only briefly" or "I haven't noticed
-            # anything" would not be true. Why, the sentence in History and the
-            # questionnaire say.
+            # anything" would not be true. The sentence in History and the
+            # questionnaire say why.
             flagged = True
         elif hlasok == 0 and any(_cislo_or_0(s.get("snoozed_s")) > 0
                                  for s in posledne):
@@ -324,7 +324,7 @@ def analyze(sessions, now=None):
             # effect, the state machine slept and neither `above_runs` nor
             # `longest_above_s` see that time - "did not get above the limit" /
             # "only briefly" would explain a silence the player chose
-            # themselves. What happened, the questionnaire says.
+            # themselves. The questionnaire says what happened.
             flagged = True
         elif hlasok == 0 and behov == 0:
             # The body did not get above the threshold even once - the policy
@@ -335,10 +335,10 @@ def analyze(sessions, now=None):
             flagged = True
         elif hlasok == 0 and _zadrzanych(posledne) > 0:
             # 0.2 (stress-gate): the trigger armed, but the app stayed silent
-            # itself (gate, gap). So the load held up and "only briefly" /
-            # "it was close" would lie. Rather no tip at all (not even "I
-            # haven't noticed anything") - what happened, the questionnaire
-            # after the session says.
+            # itself (gate, gap). So the load did stay up and "only briefly" /
+            # "it was close" would lie. Better no tip at all (not even "I
+            # haven't noticed anything") - the questionnaire after the
+            # session says what happened.
             flagged = True
         elif hlasok == 0 and behov > 0:
             najdlhsi = max(float(s.get("longest_above_s") or 0) for s in posledne)

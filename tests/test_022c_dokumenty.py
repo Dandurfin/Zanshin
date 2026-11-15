@@ -96,11 +96,11 @@ def test_readme_kroky_menuju_ovladace_ako_appka():
         assert _plain(_en(kluc)) in s, kluc
     assert "**%s → %s**" % (_en("nav.vhre_short"),
                             _en("settings.hr_section_title")) in s
-    # scene and source are the ones the phone app offers (how-to step 4)
+    # scene and source are the ones the phone app offers (pairing guide step 4)
     krok4 = _en("hr.step4_body")
     assert "“Zanshin”" in krok4 and "“Tep”" in krok4
     assert 'the scene "Zanshin" and the source "Tep"' in s
-    # 0.0.0.0 does not go in the phone - README says it like the app's field
+    # 0.0.0.0 does not go in the phone - README says so, like the app's field
     assert "not the `0.0.0.0`" in s
     assert "0.0.0.0" in _en("settings.hr_ip_hint")
 
@@ -138,9 +138,9 @@ def test_readme_cisla_parovania_su_z_kodu():
 
 
 def test_navod_uz_neradi_prepnut_prijem():
-    """Step 5 of the how-to used to advise switching on a toggle that opening
-    the how-to had already switched on - whoever obeyed switched reception
-    off. The README steps do not do that either."""
+    """Step 5 of the pairing guide used to advise switching on a toggle that
+    opening the guide had already switched on - whoever obeyed switched
+    reception off. The README steps do not do that either."""
     prepinac = _en("settings.hr_enable_switch")
     assert prepinac not in _en("hr.step5_body")
     assert "self._enable_hr_monitoring()" in zdroj_metody("open_watch_pairing")
@@ -229,7 +229,7 @@ def test_known_issues_022_cituje_texty_z_appky():
                  "settings.hr_ip_label", "hr.pair_button"):
         assert "*%s*" % _plain(_en(kluc)) in k, kluc
     assert '"%s"' % _en("hr.pair_this_pc") in k
-    # live status in the how-to - from waiting to heart rate
+    # live status in the pairing guide - from waiting to heart rate
     assert "*%s*" % _en("hr.pair_status_waiting").lstrip("● ") in k
 
 

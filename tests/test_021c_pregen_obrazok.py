@@ -210,7 +210,8 @@ def test_zapnutie_obrazka_bez_slov_ani_v_praci_nic_neposle(monkeypatch):
 
 def test_vypnutie_obrazka_uprostred_pripravy_zvysok_neposle(monkeypatch):
     """Turning off the Jaw picture during the first cue: Jaw does not go to the
-    network even in the next scheduled preparation; Release gets prepared."""
+    network even in the next scheduled preparation; Release is still
+    prepared."""
     a = _atrapa(monkeypatch, _tri())
 
     def posli(text, voice, rate, abort=None):

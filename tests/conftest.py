@@ -57,7 +57,7 @@ if logging_setup._configured:
 
 
 def _uprac():
-    """After the run closes the log file (Windows would not let it be deleted
+    """After the run, closes the log file (Windows would not let it be deleted
     otherwise) and deletes the temporary folder. A cleanup error must not
     spoil the test result."""
     for _h in list(logging.getLogger("zanshin").handlers):

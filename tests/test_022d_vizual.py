@@ -94,7 +94,7 @@ def test_ovladace_a_linky_maju_kontrast(tema):
     assert _kontrast(pal["control_border"], pal["surface"]) >= 3.0
     assert _kontrast(pal["rule"], pal["surface"]) >= 1.5
     assert _kontrast(pal["danger_text"], pal["surface"]) >= 4.5
-    # a switch that is on (accent) against one that is off (switch_off): up to
+    # a switch that is on (accent) against one that is off (switch_off): before
     # 0.3 the on state had `accent2` and a contrast of 1.07:1
     assert _kontrast(pal["accent"], pal["switch_off"]) >= 3.0
     # dark text on the primary button

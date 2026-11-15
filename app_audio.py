@@ -51,7 +51,7 @@ from settings_model import (DEFAULT_EDGE_VOICE, ENGINE_EDGE, ENGINE_SAPI,
 
 def _posledna_chyba_edge(cache):
     """(kind, exception) of the last failed `ensure` in this thread, or
-    None. Cache stubs in tests have no `posledna_chyba`."""
+    None. Cache dummies in tests have no `posledna_chyba`."""
     zisti = getattr(cache, "posledna_chyba", None)
     if not callable(zisti):
         return None
@@ -103,9 +103,9 @@ def _verzia_edge_tts():
     403, the minimum is in requirements.txt).
 
     After "Update voice" the downloaded library runs (`audio_engine.EDGE_
-    STIAHNUTY`) and `importlib.metadata` would talk about the bundled one -
-    the downloaded package has no dist-info. Otherwise the one in use is
-    exactly the bundled one."""
+    STIAHNUTY`) and `importlib.metadata` would report the bundled one -
+    the downloaded package has no dist-info. Otherwise the bundled one is
+    the one in use."""
     verzia = getattr(audio_engine, "EDGE_VERZIA", None)
     if verzia and getattr(audio_engine, "EDGE_STIAHNUTY", False):
         return "%s (stiahnuta)" % verzia
@@ -133,9 +133,9 @@ def _prepni_balenie(widget, ukaz, **pack_kw):
 
 # Result of "Update voice" (`hlas_kniznica.STAV_*`) -> (status key under
 # Voice source, journal line key, success, link to the new release).
-# The link to the official releases goes only where only a new Zanshin fixes
-# the voice: Microsoft rejects even the newest edge-tts, or this Zanshin
-# cannot use it.
+# The link to the official releases is shown only where nothing but a new
+# Zanshin fixes the voice: Microsoft rejects even the newest edge-tts, or
+# this Zanshin cannot use it.
 # "busy" (another update is running right now) is not here - the button is
 # disabled while it runs, so it could only come from an outside call; it gets
 # the general sentence.
@@ -358,8 +358,8 @@ class AudioMixin:
         self.log(tr("log.engine_switched", engine=engine_labels()[engine]))
         if engine == ENGINE_EDGE:
             # Safety net: the Edge voice picker is filled at start (no
-            # network); if it were empty, it is filled now - otherwise the
-            # combobox would be empty.
+            # network); should it be empty, it is filled now - otherwise
+            # the combobox would be empty.
             if not getattr(self, "edge_voice_map", None):
                 self._load_edge_voices(pregen=False)
             self.pregenerate()
@@ -806,9 +806,9 @@ class AudioMixin:
         prirodzeny = getattr(self, "engine", None) == ENGINE_EDGE
         if stav == hlas_kniznica.STAV_ZRUSENY:
             # Watching started (or the Windows voice was chosen) - nothing
-            # changed. The "only after watching" sentence only when watching is
-            # really on (the player could have switched to the Windows voice
-            # and back in the meantime).
+            # changed. The "only after watching" sentence is shown only when
+            # watching is really on (the player could have switched to the
+            # Windows voice and back in the meantime).
             if prirodzeny and getattr(self, "listening", False):
                 self.set_edge_status(tr("edge.update.after_watching"),
                                      self.pal["text_dim"])
@@ -850,8 +850,9 @@ class AudioMixin:
         """A preparation that `pregenerate` postponed while the update was
         running (`_pregen_po_aktualizacii`) must not get lost on failure.
 
-        While watching it goes to after the game (`_pregen_po_hre`, the same
-        postponement as in `pregenerate`) - no network and no status change.
+        While watching, it is put off until after the game (`_pregen_po_hre`,
+        the same postponement as in `pregenerate`) - no network and no
+        status change.
         Typical case: auto-profile switches the profile when the game starts
         (`schedule_pregenerate`) and watching is switched on right away,
         which cancels the update; without this the new profile's cues would

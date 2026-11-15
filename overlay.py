@@ -12,7 +12,7 @@ What changed since alpha 0.4, and why
    monitor from `display.resolve_target()`, not relative to
    `winfo_screenwidth()` (which is always only the primary screen).
    Whoever has the game on a second monitor will finally see the visual
-   there. The "auto" preset takes the monitor that has the active
+   there. The default, "auto", takes the monitor that has the active
    window - i.e. the game.
 
 3. LOOK. Drawing moved from tk.Canvas (hard edges, emoji) to PIL +
@@ -426,7 +426,8 @@ class _SlotOverlay:
             # redraw
             self._render(intro)
             self._static_done = True
-        # in test mode it NEVER ends by itself - stays until the test is off
+        # in test mode it NEVER ends by itself - it stays until the player
+        # turns the test off
         if self._test_mode:
             return False
         return elapsed >= self.HOLD_S

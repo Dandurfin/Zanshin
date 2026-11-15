@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Background photo — the mechanism, not the look.
 
-The point of these tests is only one: that the photo can be swapped for
+These tests have one purpose only: that the photo can be swapped for
 another without anything breaking, and that its absence never brings the
 window down.
 """

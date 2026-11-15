@@ -203,9 +203,9 @@ class ProfilesMixin:
 
         The app can start by itself when it finds a running game - but only
         with automatic profile switching on (`_handle_game_found`), and
-        that can be switched off. So the sentence asks about the real state
-        instead of promising something that will not come with switching
-        off.
+        that can be switched off. So the sentence checks the real state
+        instead of promising something that will not happen while switching
+        is off.
         """
         kluc = ("kamae.stopped_sub_auto" if self.auto_profile_enabled
                 else "kamae.stopped_sub")
@@ -223,10 +223,10 @@ class ProfilesMixin:
             self._auto_started_listening = False
         self.save_settings()
         # The sentence about the stopped app (`_kamae_zastavene`, centre of
-        # Today) talks about this setting, so it has to be rewritten right
-        # away - otherwise after switching off it would still promise a start
-        # with a game. Since 0.3 (batch 4) it is carried by the centre of the
-        # page, not the bar - the bar only has the button now.
+        # the Today page) talks about this setting, so it has to be rewritten
+        # right away - otherwise after switching off it would still promise a
+        # start with a game. Since 0.3 (batch 4) it is carried by the centre of
+        # the page, not the bar - the bar only has the button now.
         if not self.listening and getattr(self, "kamae", None) is not None:
             self._refresh_kamae_state_text()
         self.log(tr("log.auto_profile_on") if self.auto_profile_enabled

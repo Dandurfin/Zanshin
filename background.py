@@ -20,7 +20,7 @@ No caller knows the file name or the path - everything goes through `load()`.
 IF THE FILE IS MISSING, NOTHING HAPPENS
 ---------------------------------------
 `load()` returns None and the app draws as before. This is deliberate: the
-photo is decoration, not part of the function, and a missing file must not
+photo is decoration, not part of the functionality, and a missing file must not
 bring the window down. It is logged ONCE, not on every redraw.
 
 WHY IT IS CACHED
@@ -67,15 +67,14 @@ IMAGE_NAME = "dojo_noc"
 EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp")
 
 # Opacity for new profiles, 0.0 - 1.0. Deliberately LOW: the whole design of
-# the app rests on catching the "natiahnute" ("Armed") ring out of the corner
-# of your eye, and peripheral vision reacts to motion and contrast in a CALM
-# field. A striking photo behind everything is the most effective way to kill
-# that.
+# the app rests on catching the "Armed" ring out of the corner of your eye,
+# and peripheral vision reacts to motion and contrast in a CALM field. A
+# striking photo behind everything is the most effective way to kill that.
 DEFAULT_OPACITY = 0.10
 
 # You cannot go above this value even through the settings. It is not
 # arbitrary: at a higher value the small text in the panels stops being
-# readable, and there are eleven languages of it, including Japanese and
+# readable, and it comes in eleven languages, including Japanese and
 # Chinese.
 MAX_OPACITY = 0.35
 
@@ -204,7 +203,7 @@ def load(width, height, opacity=DEFAULT_OPACITY, log=None):
 # never move at once.
 
 # Brightness threshold for the bloom and the breathing limits of its
-# strength. The requester chose "subtle", so it breathes low: 0.35 at rest,
+# strength. The author chose "subtle", so it breathes low: 0.35 at rest,
 # 0.55 at the peak of the inhale.
 _BLOOM_PRAH = 165
 HERO_BLOOM_MIN = 0.35

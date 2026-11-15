@@ -8,7 +8,7 @@ session world, B3-worlds).
 
 The TOP (the loudest allowed rung) is set by the player and the world, not
 by the ladder:
-  * WORK is picture only - the requester's decision from B3-worlds. The
+  * WORK is picture only - the author's decision from B3-worlds. The
     world is not recomputed here; the caller sends the one B3 sealed at
     opening.
   * the style the player chose (the `cue_style` setting; a question in
@@ -16,7 +16,7 @@ by the ladder:
     Sound): "visual" = picture only; "sound" = the voice rung with the words
     muted (the slot plays its sound and shows the picture, neither TTS nor
     the player's own recording is heard); "voice" or a missing key = voice.
-    The answer "neviem" (I don't know) in onboarding = voice.
+    The answer "neviem" (Not sure) in onboarding = voice.
 The ladder only goes BELOW the top, never above it.
 
 DOWN, by one rung per session, when:
@@ -25,8 +25,8 @@ DOWN, by one rung per session, when:
   * or the player pressed "not now" (Ctrl+Alt+Z) within
     `SNOOZE_PO_HLASKE_S` after a delivered cue - BUT only when the session
     still ran on after it for at least `SNOOZE_POTOM_S` and the verdict of
-    that session is not "sadla" (it landed). The requester is not sure
-    whether he does not mean "I'm done" by that shortcut; cues come right
+    that session is not "sadla" (it landed). The author is not sure that
+    by that shortcut he does not mean "I'm done"; cues come right
     at the end of rounds, which is also when people stop. So it only
     counts when playing went on.
     Since 24. 9. "not now" does NOT CLOSE the session - it only silences
@@ -136,7 +136,7 @@ def _hlasok(session):
 
 
 def signal_dole(session):
-    """Why the next rung after this session is one lower - or None.
+    """Why the ladder goes one rung lower after this session - or None.
 
     The verdict takes priority over snooze: it is the player's direct word.
     Per session it is always at most one rung."""

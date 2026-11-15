@@ -434,7 +434,7 @@ def ip_for_screen(ip, show=False):
 
 # Address candidates in free text. Whether it really is an address only
 # `ipaddress` decides - so neither the time "12:34:56" nor the version
-# "0.2.1" get masked. The context guards only against a further number
+# "0.3" get masked. The context guards only against a further number
 # ("1.2.3.4.5" is not an address), not against a dot on its own - an
 # address at the end of a sentence ("... z 10.0.0.5.") must be masked too.
 _IPV4_V_TEXTE = re.compile(r"(?<!\d)(?<!\d\.)(?:\d{1,3}\.){3}\d{1,3}(?!\.?\d)")

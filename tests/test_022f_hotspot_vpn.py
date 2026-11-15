@@ -84,7 +84,7 @@ def test_hotspot_je_dosiahnutelny_a_bez_varovania():
     assert druhy == {WIFI[0]: F, HOTSPOT[0]: H, VPN[0]: V}
     assert netinfo.virtualne_adresy(zdroj, WIFI[0]) == {VPN[0]}
     assert netinfo.hotspot_adresy(zdroj, WIFI[0]) == {HOTSPOT[0]}
-    # order in the guide: the hotspot does not go to the end after the VPN
+    # order in the pairing guide: the hotspot does not go last, after the VPN
     poradie = netinfo.local_ip_candidates(
         virtualne=netinfo.virtualne_adresy(zdroj, WIFI[0]), preferovana=WIFI[0],
         vsetky=[VPN[0], HOTSPOT[0], WIFI[0]])

@@ -3,14 +3,14 @@
 
 Sessions here are not made up as ready-made dicts. Every evening goes through
 the real `hr_stats.HeartStats` - calibration at the start, an occasional
-heart-rate outage, zones, summary - with the critical heart rate and the
+heart-rate dropout, zones, summary - with the critical heart rate and the
 long-term baseline from the history so far, the way `app._open_hr_session`
 sets them (baseline from everything, critical heart rate from play). Closing
 goes the `_close_hr_session` way: `hr_stats.save_session` and right after it
-the real `DandurfApp._maybe_graduate` on a small fake app with the real
+the real `DandurfApp._maybe_graduate` on a small dummy app with the real
 `save_settings` / `load_settings` and the real `ui_shell._EnsoHero`.
 
-Decision (easter-egg-check): ONLY GAME sessions count towards the series
+Decision (easter-egg-check): ONLY GAME sessions count towards the streak
 (`hr_stats.ZEN_SVET`), the same as the critical heart rate and the load
 threshold. The circle closes only after a game session - not in the
 questionnaire after work.
@@ -97,7 +97,7 @@ def _vecer(hodiny, historia, den, druh="calm", svet="play", hodina=20,
 
 @pytest.fixture
 def appka(tmp_path, monkeypatch, hodiny):
-    """Minimal `DandurfApp` fake for `_maybe_graduate`.
+    """Minimal `DandurfApp` dummy for `_maybe_graduate`.
 
     The settings are from the first start (`load_settings` without a file)
     and the real `save_settings` saves them to a temporary file; the mark is
@@ -187,7 +187,7 @@ def _prehraj(hodiny, a, plan):
 def test_realna_pokojna_historia_spusti_promociu_prave_raz(hodiny, appka):
     """Two tilts at the start, then calm evenings of play. In between, calm
     work afternoons, one 6-minute peek and an evening with a 4-minute
-    heart-rate outage. The graduation comes after the FIRST evening when
+    heart-rate dropout. The graduation comes after the FIRST evening when
     everything holds at once: 10 counted game evenings, 10 days, 5 of 7
     calm, the last one calm. That is the evening of day 10 - not earlier,
     and never again."""
@@ -246,7 +246,7 @@ def test_realna_pokojna_historia_spusti_promociu_prave_raz(hodiny, appka):
 def test_takmer_splnena_historia_nespusti_nic(hodiny, appka):
     """In every 7 evenings of play four are calm - one fewer than needed. The
     last evening is calm, there are enough sessions and days. Every
-    afternoon is calm work: if it counted, the series would fill up - but
+    afternoon is calm work: if it counted, the streak would fill up - but
     the graduation counts only play, so it never came."""
     a = appka()
     vzor = ("tilt", "calm", "tilt", "calm", "tilt", "calm", "calm")

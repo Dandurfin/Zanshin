@@ -2,8 +2,8 @@
 """Fixes from the 0.2 triage - things a person would rely on.
 
   * switched-off visuals: the one-time fix of the default really stayed
-    one-time - whoever switches off all four, the app does not switch them
-    on at the next start,
+    one-time - if someone switches off all four, the app does not switch
+    them back on at the next start,
   * the journal does not write "odpocuvanie pozastavene" (listening paused)
     when listening keeps running,
   * the introduction replayed from the command palette starts on the current

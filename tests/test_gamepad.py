@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Controller as activity source (gamepad.py) - JOY* and CONTROLLER* events.
 
-Measured by the requester on a G7 Pro (pygame-ce 2.5.8 / SDL 2.32.10): pygame
+Measured by the author on a G7 Pro (pygame-ce 2.5.8 / SDL 2.32.10): pygame
 sends ONLY JOY* events, never CONTROLLER*. The listener listened only to
 CONTROLLER*, so it never saw playing on a controller - and a cue could catch
 a player with a controller in the middle of a fight.
@@ -22,8 +22,8 @@ pygame = pytest.importorskip("pygame")
 
 import gamepad  # noqa: E402
 
-# The requester's real SDL mapping of the G7 Pro ("(Xbox 360 Controller for
-# Windows)", 6 axes, 11 buttons, 1 hat) - triggers are a4/a5, rest at -1.0.
+# The author's real SDL mapping of the G7 Pro ("(Xbox 360 Controller for
+# Windows)", 6 axes, 11 buttons, 1 hat) - triggers are a4/a5 and rest at -1.0.
 G7_MAPPING = {
     'a': 'b0', 'b': 'b1', 'x': 'b2', 'y': 'b3', 'back': 'b6', 'guide': 'b10',
     'start': 'b7', 'leftstick': 'b8', 'rightstick': 'b9',
@@ -137,7 +137,7 @@ def test_pacicka_za_mrtvou_zonou_je_aktivita_aj_drzana():
     L = _Listener()
     L.axis(0, 0.6)
     assert L.out == [gamepad.ACTIVITY]
-    # a held still stick sends no new events - the re-assert confirms it
+    # a stick held still sends no new events - the re-assert confirms it
     assert L.activity_during(1.0) >= 4
     L.axis(0, 0.05)
     assert L.activity_during(1.0) == 0

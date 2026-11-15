@@ -118,7 +118,7 @@ THEMES = {
         # --- heart rate zones (see the note under THEMES) ---
         # Aizome starts at the COLD end, the hot end stays hot - warmth is
         # warmth in every theme. Calm is ASAGI (blue-green, a shade from the
-        # same indigo dye works), NOT blue: until 0.3 it was #6FA5C9 and the
+        # same indigo dye works), NOT blue: before 0.3 it was #6FA5C9 and the
         # "Resting HR" card next to the "Recovery" card (`blue`) were two
         # blues - and blue belongs only to recovery (0.3 batch 4, UX audit). As
         # in Sumi, where calm is matcha: greenish, cooler than the rest of the

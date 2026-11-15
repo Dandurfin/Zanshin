@@ -7,8 +7,8 @@ settings. So a second copy of the app permanently turned off heart-rate
 receiving for the first one - the same settings file. Now:
 
   * busy and error turn the sensor off only IN MEMORY (the switch shows
-    off, because the heart rate really is not coming), the file keeps
-    getting on - whichever place in the app triggers the save, even quitting,
+    off, because the heart rate really is not coming), the file still gets
+    "on" - whichever place in the app triggers the save, even quitting,
   * the next start tries again; a change of IP/port (the fix the journal
     suggests) tries right away,
   * the player's own click on the switch counts as before,
@@ -104,7 +104,7 @@ def test_po_vzdani_vypnute_len_v_pamati_a_nic_sa_neulozi():
     assert a.hr_enabled_var.get() is False
     assert a._hr_vypnute_chybou is True, "save_settings musi vediet, ze to nebol hrac"
     assert a.ulozenia == [], "vzdanie sa nesmie ulozit vypnutie"
-    # the fake has no `_nazov_vhre` -> page name from the Play world
+    # the dummy has no `_nazov_vhre` -> page name from the Play world
     # (0.3 batch 4b)
     assert a.denn[-1] == i18n.tr("log.hr_port_busy", port=4455,
                                  page=i18n.tr("nav.vhre_short"))
@@ -177,12 +177,12 @@ def test_apply_hr_status_nastavenia_neuklada_vobec():
 
 
 # --------------------------------------------------------------------------
-# every further save writes on; the next start tries again
+# every further save writes "on"; the next start tries again
 # --------------------------------------------------------------------------
 
 @pytest.fixture
 def appka(tmp_path, monkeypatch):
-    """A fake with the real `load_settings` / `save_settings` over a temporary
+    """A dummy with the real `load_settings` / `save_settings` over a temporary
     file (the same as tests/test_zanshin_easter_egg.py)."""
     import app_prefs
     cesta = str(tmp_path / "dandurf_settings.json")
@@ -249,7 +249,7 @@ def test_klik_hraca_na_prepinac_plati(appka):
     spustene, zastavene = [], []
     a.start_heart_rate_monitor = lambda: spustene.append(1)
     a.stop_heart_rate_monitor = lambda: zastavene.append(1)
-    # the player turns the switch on -> it tries again and saves on
+    # the player turns the switch on -> it tries again and "on" is saved
     a.hr_enabled_var.set(True)
     _D().on_hr_toggle(a)
     assert spustene == [1] and a._hr_vypnute_chybou is False

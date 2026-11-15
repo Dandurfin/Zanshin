@@ -39,7 +39,7 @@ JAZYKY = i18n.LANGUAGES
 
 # Keys the app no longer used (leftovers from 0.1 - overlapping cues, the
 # strict lock, delay, cooldown, the QR note, Start / Stop in the tray).
-# Until 0.3 they were an exception from the dictionary here; in batch 4
+# Before 0.3 they were exempt from the dictionary check here; in batch 4
 # they were DELETED from the dictionary in all eleven languages, so the
 # dictionary now guards every key without exception.
 # test_mrtve_kluce_su_zmazane guards that they do not come back.
@@ -117,7 +117,7 @@ def test_prepinac_tepu_sa_vola_prijimat_tep_a_texty_ho_cituju_presne():
     for jazyk in JAZYKY:
         meno = S["settings.hr_enable_switch"][jazyk]
         # the line in the journal advises switching that toggle off and on - it
-        # has to call it exactly as it is written at the toggle
+        # has to name it exactly as the toggle is labelled
         assert meno in S["log.hr_udp_busy"][jazyk], jazyk
     assert "príjem tepu" in S["tray.close_first"]["sk"]
     assert "heart-rate receiving" in S["tray.close_first"]["en"]

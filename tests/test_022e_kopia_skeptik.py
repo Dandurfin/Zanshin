@@ -3,7 +3,7 @@
 review of the new and changed keys in all 11 languages.
 
 What this test guards:
-  * the note about the VPN address (pairing and the "Sietova adresa" field)
+  * the note about the VPN address (pairing and the "Network address" field)
     names the PHONE - it is the app on the phone that connects to the PC's
     address, not the watch (same as `log.hr_client_gone`,
     `hr.pair_status_waiting`, `dnes.hr_no_client`),

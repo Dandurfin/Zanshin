@@ -542,7 +542,7 @@ def rozober_poziadavku(riadok):
 
 def _najdi_modul(dist):
     """Importable name of the package `dist` in this process, or None.
-    Nothing is run in the process (`find_spec` only looks up top-level
+    Nothing is run while doing so (`find_spec` only looks up top-level
     names)."""
     norm = re.sub(r"[-_.]+", "_", dist).lower()
     kandidati = []
@@ -1279,7 +1279,7 @@ def _uprac_tmp():
 
 
 def _uprac_stare(ponechaj):
-    """After activation: the other edge_tts-<verzia> folders and tmp/ go.
+    """After activation: removes the other edge_tts-<verzia> folders and tmp/.
     Nothing else in the library folder is deleted."""
     koren = kniznica_dir()
     try:
@@ -1406,7 +1406,7 @@ def skusobne_slovo(modul, hlas=None, timeout=TEST_TIMEOUT_S):
     """Says `TEST_TEXT` with the module `modul` into a temporary file in tmp/
     and deletes it. Success = a non-empty file. Error -> _Zlyhanie according
     to audio_engine.druh_chyby_edge (refused / offline / other). Goes to the
-    network (Microsoft) - only from a thread and only outside watching."""
+    network (Microsoft) - only from a thread and only when not watching."""
     tmp = _tmp_dir()
     os.makedirs(tmp, exist_ok=True)
     cesta = os.path.join(tmp, "test-%s.mp3" % uuid.uuid4().hex[:12])

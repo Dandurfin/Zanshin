@@ -14,7 +14,7 @@
   * HOW-IT-WORKS: from adapters the name, description, type and state are
     used - not the MAC.
 
-Everything on stubs and synthetic data.
+Everything on dummies and synthetic data.
 """
 import os
 import sys
@@ -155,7 +155,7 @@ def test_pravidlo_ulozenia_relacie_v_dokumentoch_sedi_s_kodom():
     c = _read("CHANGELOG.md")
     assert "session without even a minute of heart rate still isn't saved" not in c
     assert "(fewer than 10 readings) still isn't saved, but the log now says so" in c
-    # journal: only a session from a minute with fewer than 10 samples
+    # journal: only a session of at least a minute with fewer than 10 samples
     kod = zdroj_metody("_kratka_relacia_bez_tepu")
     assert "trvanie >= 60 and vzorky < 10" in kod
 

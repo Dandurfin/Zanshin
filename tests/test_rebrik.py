@@ -3,17 +3,18 @@
 
     voice -> picture -> pause
 
-The client's decisions these tests guard:
-  * no "sound" step and no measured cap - the "sound" style is the voice
-    step with muted words, not a separate step,
+The author's decisions these tests guard:
+  * no "sound" rung and no measured cap - the "sound" style is the voice
+    rung with muted words, not a separate rung,
   * the top is given by the world (work = picture only, B3-worlds) and
     the player's style (`cue_style`); the ladder goes only BELOW the top,
-  * one step down per session: the verdict "it disrupted" / "it wound me
+  * one rung down per session: the verdict "it disrupted" / "it wound me
     up" for a session with a cue, or "not now" within 60 s after a cue -
     the latter only when the session then ran for at least 120 s more and
     the verdict is not "it landed",
-  * up after 3 sessions with a cue without a signal, pause 3 sessions
-    >= 300 s or until the verdict "yes, it should have", then picture.
+  * up after 3 sessions with a cue without a signal; the pause lasts 3
+    sessions of >= 300 s or until the verdict "yes, it should have", then
+    picture.
 """
 import ast
 import os
@@ -91,9 +92,9 @@ def test_snooze_a_sadla_nie_je_signal():
 
 
 def test_snooze_a_relacia_skoncila_do_120_s_nie_je_signal():
-    """The client cannot tell whether Ctrl+Alt+Z means "I'm done" - without
+    """The author cannot tell whether Ctrl+Alt+Z means "I'm done" - without
     the session continuing it does not count. (Since 24. 9. `_start_snooze`
-    does not close the session, so the signal really can fall - the whole
+    does not close the session, so the signal really can occur - the whole
     path is in tests/test_teraz_nie.py.)"""
     for potom in (0.0, 119.9, None):
         s = stav([rel(0, snooze_after_cue_s=20.0, snooze_then_s=potom)])
@@ -398,7 +399,7 @@ def _volania(uzol):
 
 def test_pod_stupnom_hlasu_nezaznie_ziadne_tts():
     """`_emit` is triggered in `_fire_somatic_cue` ONLY in the branch that
-    requires both `hlas` and the voice step - below it the cue goes as a
+    requires both `hlas` and the voice rung - below it the cue goes as a
     picture only."""
     fn = _funkcia("app.py", "_fire_somatic_cue")
     vetvy = [u for u in ast.walk(fn) if isinstance(u, ast.If)
@@ -429,7 +430,7 @@ def test_bez_slov_nezaznie_tts_ani_nahravka():
 def test_snooze_sa_zapise_a_relaciu_nezatvara():
     """24. 9.: "not now" only silences cues - the session keeps running,
     otherwise `snooze_then_s` would always be ~0 and the ladder signal
-    would never fall."""
+    would never occur."""
     fn = _funkcia("app.py", "_start_snooze")
     telo = ast.unparse(fn)
     assert telo.index("self._zapis_snooze_po_hlaske(") < telo.index(
@@ -446,7 +447,7 @@ def test_relacia_nesie_stupen_styl_a_snooze():
         "self.cue_trigger.open_session(")
     assert "self.cue_trigger.params['cues_enabled'] = False" in otvor
     assert "self._cue_rung == rebrik.HLAS" in otvor
-    # the step is computed from the sessions of THE world that B3 stamped
+    # the rung is computed from the sessions of THE world that B3 stamped
     urci = ast.unparse(_funkcia("app.py", "_urci_stupen_hlasky"))
     assert "hr_stats.sessions_in_world(" in urci and "_session_world" in urci
     # The summary is put together by `_suhrn_relacie` (0.3, also for the

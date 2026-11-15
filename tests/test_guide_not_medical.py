@@ -111,7 +111,7 @@ def test_techniky_su_len_na_karte_dychania():
 
 
 def test_do_hry_nejde():
-    """While playing, nothing asks the player anything or reminds them."""
+    """During play the player is asked nothing and reminded of nothing."""
     for modul in ("overlay.py", "hud.py", "hud_paint.py", "layer_window.py"):
         if os.path.exists(os.path.join(os.path.dirname(os.path.dirname(
                 os.path.abspath(__file__))), modul)):

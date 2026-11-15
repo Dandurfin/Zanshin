@@ -34,7 +34,7 @@ modules:
   app_controls.py     - ControlsMixin (part of DandurfApp): command palette,
                         "not now", journal, controller and manual cue (Test)
   app_cues.py         - CuesMixin (part of DandurfApp): state of the cue
-                        trigger, ladder step for the session, cue style
+                        trigger, ladder rung for the session, cue style
   app_data.py         - DataMixin (part of DandurfApp): export/import/deletion
                         of data, saving a session, sharing profiles by code
   app_history.py      - HistoryMixin (part of DandurfApp): History page
@@ -104,7 +104,7 @@ except Exception as exc:  # pragma: no cover - sanity guard for a missing depend
 
 def _install_crash_hooks():
     """Sets up writing unhandled exceptions to crash.log (main thread and
-    own threads) and returns `log_crash` for Tk callbacks.
+    our own threads) and returns `log_crash` for Tk callbacks.
 
     logging_setup is light (only stdlib + paths), so we can load it
     before app without slowing down the start. Importing paths determines
@@ -145,7 +145,7 @@ def _install_crash_hooks():
 # hidden under the ^ arrow by default. Whoever did not find it there ran
 # Zanshin.exe again - and the second copy failed on the Ctrl+Alt+Z
 # shortcut ("another app holds it") and on the heart rate port that the
-# first one holds. Until 0.3 it also SAVED, after ~24 s, the sensor as
+# first one holds. Before 0.3 it also SAVED, after ~24 s, the sensor as
 # turned off into the shared settings, so heart rate was not received at
 # the next start either. Hence a named mutex: the second copy only tells
 # the first one "show the window" (a named event) and quietly exits.
@@ -215,8 +215,8 @@ def _straz_jednej_kopie(api=None, environ=None, platforma=None):
     None: the guard is skipped (another OS, bypass, Windows API error).
 
     The guard must NEVER prevent the start - when something fails for it,
-    the app starts as before 0.3. A second copy caught wrongly is less harm
-    than an app that cannot be started at all.
+    the app starts as before 0.3. A second copy that is not caught properly
+    is less harm than an app that cannot be started at all.
     """
     environ = os.environ if environ is None else environ
     platforma = sys.platform if platforma is None else platforma
@@ -294,7 +294,7 @@ def _ulozeny_jazyk():
 
 
 def _text_uz_bezi(lang=None):
-    """Box text: in the player's language, otherwise English and Slovak."""
+    """Message text: in the player's language, else English and Slovak."""
     try:
         import i18n
         if lang in i18n.LANGUAGES:

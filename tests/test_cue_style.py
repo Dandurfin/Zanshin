@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Cue style (0.2): a question in onboarding and a row in Settings.
 
-The requester's decisions that these tests guard:
+The author's decisions that these tests guard:
   * the question „Keď ťa hra poriadne vytočí, ako chceš, aby sa appka ozvala?“
     (When a game really winds you up, how do you want the app to speak up?)
     with four equal answers, nothing preselected,
@@ -117,7 +117,7 @@ class _Vlakno:
 
 def _relacia_so_stylom(monkeypatch, styl, svet="play"):
     """Opens a session like `_open_hr_session` (rung + state-machine voice) and
-    delivers one cue from the loud arm. Returns (rung, fired _emit calls,
+    delivers one cue from the voice arm. Returns (rung, fired _emit calls,
     drawn pictograms, cue record)."""
     import app as app_mod
     import app_today
@@ -175,7 +175,7 @@ def test_praca_je_len_obrazok_pri_kazdom_style(monkeypatch, styl):
 
 
 def test_styl_je_vrchol_rebrika_nikdy_nie_hlasnejsie():
-    """Picture as style: three clean cue sessions do not restore the voice."""
+    """Picture as style: not even three clean cue sessions bring voice back."""
     ciste = [{"started": 1_789_000_000.0 + i * 3600.0, "duration_s": 1800.0,
               "auto_triggers": 1} for i in range(6)]
     assert rebrik.stupen(ciste, styl="visual")["stupen"] == rebrik.OBRAZ
@@ -387,7 +387,7 @@ def test_onboarding_povie_co_posiela_prirodzeny_hlas():
     assert "und wird dort in Sprache umgewandelt" in zaznam["de"]
     krok = ast.unparse(_funkcia("ui_dialogs.py", "_step5", "OnboardingWizard"))
     assert "tr('ob.cue.online_note')" in krok
-    # the quiet style as a row above it, and only below the answers
+    # quiet style like the row above it, and placed only below the answers
     assert krok.index("tr('ob.cue.note')") < krok.index("tr('ob.cue.online_note')")
     riadok = krok[krok.index("tr('ob.cue.online_note')"):]
     assert "ui_kit.ui(11)" in riadok and "pal['text_faint']" in riadok

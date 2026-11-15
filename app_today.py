@@ -9,7 +9,7 @@ it through `self` - the mixin has no __init__ and no attributes of its own.
 Moved from app.py unchanged:
   * live dojo (empty-state hero) - animation of the Today centre (the enso
     and the dojo behind it), the sentence under the mark, the live
-    heart-rate block, load, session traces and bands; the section also
+    heart-rate block, load, the session trace and zones; the section also
     carries the delivery of the automatic cue (`_tick_cue_trigger`,
     `_cue_can_fire`, `_on_cue_event`, `_dalsi_cue_slot`,
     `_fire_somatic_cue`), the "armed" ring on the enso and the badges in
@@ -57,7 +57,7 @@ from app_spolocne import _ImageTk, app_log, obnov_texty_stranky, stranka_vhre
 
 
 def _text_bez_tepu(app):
-    """Text right in the "Heart rate and load" header while no HR comes (0.3).
+    """Right-hand text of the "Heart rate and load" header while no HR (0.3).
 
     Before, it always said "waiting for watch" there - even with reception
     switched off, with the port busy and when the phone never connected at
@@ -87,8 +87,8 @@ class TodayMixin:
         """Is anything MOVING still being drawn? Now only when the enso is alive
         or it is the moon (listening / graduation). The STOPPED state STANDS
         STILL - the dojo no longer BREATHES, because redrawing (almost)
-        identical content 8x/s made the window flicker. The bar reads it
-        the same way: "otherwise it rests"."""
+        identical content 8x/s made the window flicker. The bar says the
+        same: "otherwise it rests"."""
         enso = getattr(self, "enso", None)
         return bool(enso is not None and (enso._live or enso._moon))
 
@@ -150,7 +150,7 @@ class TodayMixin:
         self._ensure_dnes_tick()
 
     def _sync_dnes_hero(self):
-        """Photo brightness behind the enso per WATCHING state (0.3, UX audit).
+        """Photo brightness behind the enso: WATCHING or not (0.3, UX audit).
 
         Before 0.3 the brightness was driven by the watch connection: the
         same "Not watching anything" state had a dimmed photo one time and
@@ -232,8 +232,8 @@ class TodayMixin:
         """After a world switch, rewrites the name of the "In-game" page in the
         side panel. The world is switched by recolouring the window, not by
         rebuilding (`set_world`), so the label built at `_build_ui` would
-        otherwise stay from the other world. For the busy-port sentence
-        (page name) the state on Today is rewritten too.
+        otherwise stay from the other world. Because the busy-port sentence
+        contains the page name, the state on Today is rewritten too.
 
         The same holds for texts with `{page}` that are built once (0.3
         batch 4b): the explanations in History (`obnov_texty_stranky`) and
@@ -265,7 +265,7 @@ class TodayMixin:
 
         WHILE "NOT NOW" IS IN EFFECT, IT LIFTS NOTHING. Since 24. 9. snooze
         does not stop listening, so `start_listening` (the player pressed
-        stop and start during the quiet time) would otherwise silently
+        stop and start while muted) would otherwise silently
         cancel it. The end and cancellation of snooze clear `_snooze_job`
         BEFORE the call.
         """
@@ -442,7 +442,7 @@ class TodayMixin:
         return dalsi
 
     def _fire_somatic_cue(self, ev):
-        """Delivers a cue. VISUAL IN BOTH ARMS, sound only in the audible one.
+        """Delivers a cue. VISUAL IN BOTH ARMS, sound only in the voice arm.
 
         If the silent arm did not show even the visual, the arms could not
         be compared - it would measure the difference between "something
@@ -498,7 +498,7 @@ class TodayMixin:
 
         # The delivery record goes into the window (`measure.build_window`):
         # the rung, whether something really sounded, load and its peak, the
-        # heart-rate band.
+        # heart-rate zone.
         self.hr_stats.note_trigger(
             ts=ev["ts"], auto=True,
             category=measure.category_for_slot(index),
@@ -566,7 +566,7 @@ class TodayMixin:
 
         That is why the first occurrence is logged in full and later ones
         are only counted (`app_log.exception` on every call would flood the
-        log). gui_screenshots asks for `_dnes_refresh_fails`.
+        log). gui_screenshots checks `_dnes_refresh_fails`.
         """
         if getattr(self, "dnes_bpm", None) is None:
             return
@@ -574,7 +574,7 @@ class TodayMixin:
         connected = self._hr_state == "connected" and stats.last_bpm is not None
         # A DROPOUT IS NOT "I HAVEN'T HEARD YOU YET". During a dropout the live
         # block and the session trace stay (no "Pair your watch" in the middle
-        # of the evening), but the number is "--" and the band "—" -
+        # of the evening), but the number is "--" and the zone "—" -
         # `connected` below handles that, so there is no false calm.
         lost = bool(getattr(self, "_hr_lost", False)) and not connected
         ukaz = connected or lost
@@ -589,7 +589,7 @@ class TodayMixin:
                                        threshold=self.hr_critical_bpm,
                                        baseline=stats.baseline)
             # While the session is calibrating, the bar stays empty and instead
-            # of the band there is a quiet "calibrating…" - just like the
+            # of the zone there is a quiet "calibrating…" - just like the
             # in-game HUD. Right after heart rate returns (`is_settling`) the
             # same, only with "…" instead of the word: load ramps up from zero
             # and would otherwise claim "Calm" for a few seconds.
@@ -597,7 +597,7 @@ class TodayMixin:
             usadza = connected and not kalibruje and stats.is_settling
             tlmene = kalibruje or usadza
             # The word and the colour of the filled segments are `stats.zone`
-            # (heart rate against resting) - the same as on the HUD and on the
+            # (heart rate relative to rest) - the same as on the HUD and on the
             # heart-rate indicator. The length of the bar is load.
             zone = stats.zone if connected and not tlmene else None
             self.dnes_load.set_value(stats.stress if connected and not tlmene else 0,
@@ -630,20 +630,19 @@ class TodayMixin:
                 elif not ukaz and not empty.winfo_ismapped():
                     live.pack_forget()
                     empty.pack(fill="x", pady=(6, 0))
-                # BUSY PORT (0.3 batch 4b): the bar and the panel
-                # header both state the problem ("port is busy") -
-                # the sentence "Once you pair your watch..." would
-                # be a second, different message, while the watch
-                # is fine.
-                # The button stays (the how-to also shows the
-                # reception status).
+                # BUSY PORT (0.3 batch 4b): both the bar and the panel header
+                # state the problem ("port is busy") - the sentence "Once you
+                # pair your watch..." would be a second, different message,
+                # and the watch is fine.
+                # The button stays (the pairing guide also shows the reception
+                # status).
                 ukaz_vetu = getattr(empty, "ukaz_vetu", None)
                 if callable(ukaz_vetu):
                     ukaz_vetu(getattr(self, "_hr_state", None)
                               not in ("busy", "busy_gave_up"))
                 # via the class: tests call this method on a dummy app
                 TodayMixin._sync_dnes_hero(self)
-            # Before the first session with heart rate: cards and bands with
+            # Before the first session with heart rate: cards and zones with
             # only dashes are hidden (0.3 batch 4) - see
             # `_sync_dnes_prazdny_stav`.
             TodayMixin._sync_dnes_prazdny_stav(self)
@@ -690,7 +689,7 @@ class TodayMixin:
             your watch" (`dnes_empty`) - the heart-rate number with its
             sentence (`dnes_bpm_box`) is hidden,
           * the header and the grid of the "My stats" cards are hidden,
-          * the bands panel has one sentence instead of the bar and four
+          * the zones panel has one sentence instead of the bar and four
             rows (`dnes_zone_empty`) and does not stretch to the full
             column height.
         The first heart-rate sample brings back the full view. Rebuilt only
@@ -766,9 +765,9 @@ class TodayMixin:
     # long.
     def _relacie_na_ucenie(self, historia):
         """How many of `historia` count towards learning the limit - at most
-        `KRITICKY_MIN_RELACII` (no more needs to be known, and it can stop
-        earlier from the newest: a seasoned player does not re-check 400
-        curves)."""
+        `KRITICKY_MIN_RELACII` (no need to know more, and going from the
+        newest it can stop early: for a seasoned player it does not re-check
+        400 curves)."""
         svet = getattr(self, "ALGORITMUS_SVET", hr_stats.WORLD_DEFAULT)
         treba = hr_stats.KRITICKY_MIN_RELACII
         n = 0
@@ -844,7 +843,7 @@ class TodayMixin:
         self.dnes_trace_meta.configure(text=meta)
 
     def _refresh_zone_panel(self):
-        """Split of the session's time into bands (bar + four rows)."""
+        """Split of the session's time into zones (bar + four rows)."""
         bar = getattr(self, "dnes_zone_bar", None)
         if bar is None or not bar.winfo_exists():
             return
@@ -867,12 +866,12 @@ class TodayMixin:
         recoloured after a theme change, and a token finds its new colour
         by itself."""
         # COLOUR MARKS STATE, NOT THE METRIC (0.3, UX audit) - the same rule
-        # as `HISTORY_METRICS`: a number is `text`, only a value that is a band
-        # gets a band colour (calm, time over the limit), `blue` only recovery.
+        # as `HISTORY_METRICS`: a number is `text`, only a value that is a zone
+        # gets a zone colour (calm, time over the limit), `blue` only recovery.
         # "Highest heart rate" in `zone_critical` looked like an alarm at an
         # ordinary in-game maximum.
         return [
-            # heart rate belongs to the row of bands, not to
+            # heart rate belongs to the zone row, not to
             # success/warn/danger - otherwise the "Resting baseline" card
             # would glow a different green than the calm in the bar next to
             # it (see theme.ZONE_TOKENS)
@@ -983,9 +982,10 @@ class TodayMixin:
             sub = f"{hours}h {minutes}m" if hours else f"{minutes}m"
             return (str(count), sub)
         # --- 0.2 (widgets-history). What is not known is "—", not zero. ---
-        # Length, last cue and signal ask only an OPEN session: after it is
-        # closed the clock would keep running from the start of an already
-        # finished session and coverage would silently drop towards zero.
+        # Length, last cue and signal are only asked of an OPEN session: after
+        # it is closed the clock would keep running from the start of an
+        # already finished session and coverage would silently drop towards
+        # zero.
         otvorena = getattr(self, "_hr_session_open", False)
         if stat_id == "session_len":
             unit = tr("dashboard.unit.session_len")
@@ -1287,7 +1287,7 @@ class TodayMixin:
 
     # NOTE: here used to be `_refresh_kamae_metrics()` - session length, cue
     # count and heart rate, drawn on the right in the breathing bar. Removed:
-    # length and count are a little way off in the right panel of this same
+    # length and count are right beside it in the right panel of this same
     # page, so the bar only repeated them, and the bar should carry state,
     # not a score.
     # `self._listen_started` is still used (session length in the panel).
@@ -1371,7 +1371,7 @@ class TodayMixin:
 
     def _build_dojo_photo(self, w, h, hero_on, breath, scrim):
         """PIL -> ImageTk dojo for the Canvas. The Canvas uses PHYSICAL
-        pixels 1:1 (unlike `CTkImage`, which multiplies logical ones by
+        pixels 1:1 (unlike `CTkImage`, which scales logical pixels by
         itself), so we build directly at (w, h) from `winfo_*` and draw
         without rescaling."""
         if _ImageTk is None:

@@ -91,16 +91,16 @@ HANDSHAKE_TIMEOUT_S = 10.0
 # After the handshake: the phone app writes every ~1 to ~3 s. Only after
 # NECINNOST_S of complete silence do we send a ping - per RFC 6455 every
 # WebSocket library answers it ON ITS OWN, so a live but quiet phone (the
-# watch with measuring paused) does NOT LOSE the connection. Only
-# when nothing arrives for another NECINNOST_S is the connection dead, and it
-# is closed like any other disconnect. So a dead connection disappears within
+# watch with measuring paused) does NOT LOSE the connection. Only when
+# nothing arrives for another NECINNOST_S is the connection dead, and it is
+# closed like any other disconnect. So a dead connection disappears within
 # 2 minutes at the latest.
 #
 # Why not shorter: a false "phone disconnected" (and with it a discarded
 # countdown in the trigger) is worse than a minute of waiting for a slot to
-# free up. The heart rate reports an outage on its own after 12 s anyway
+# free up. The heart rate reports a dropout on its own after 12 s anyway
 # (`HeartRateMonitor.STALE_AFTER_S`); this limit only serves to clean up the
-# socket, not to detect an outage.
+# socket, not to detect a dropout.
 NECINNOST_S = 60.0
 
 # The largest frame we accept. Real messages are hundreds of bytes (a heart
@@ -324,7 +324,7 @@ def _odbav(data, on_text, vlastne, nepoznane, zapis_ok=True):
         #
         # An empty reply is as bad as none for some apps: they wait for a
         # specific field, never get it and after 10 seconds report
-        # "timeout". Without this entry there is no way to find out on what.
+        # "timeout". Without this entry there is no way to find out which.
         nepoznane.add(request_type)
         log.info("OBS: neznama poziadavka %s - odpovedam prazdnym objektom",
                  _do_dennika(request_type))
@@ -507,8 +507,8 @@ def serve_connection(conn, on_text, should_stop, on_connected=None):
     # shuts the door on anything on the LAN that would want to write a heart rate
     # without identifying (B6).
     identified = False
-    # After the first silence we sent a ping and wait for anything (pong, heart
-    # rate...).
+    # After the first silence we have sent a ping and are waiting for anything
+    # (pong, heart rate...).
     ping_poslany = False
 
     while not should_stop():

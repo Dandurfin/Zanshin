@@ -195,7 +195,8 @@ def test_changelog_hlas_menuje_minimum_a_co_build_robi():
     assert "(a downloaded one is marked as such)" in bod
     # from source: the same pip command as in DEVELOPMENT, the pre-run check
     assert "`py -m pip install -r requirements.txt` updates an older `edge-tts`" in bod
-    # pip (only-if-needed) may also raise an edge-tts dependency - as in README
+    # pip (only-if-needed) may also upgrade a dependency of edge-tts - as in
+    # README
     assert ("(and a library it uses, only if the new version needs a newer one) "
             "and leaves the rest as it is") in bod
     assert "8. edge-tts version" in _read("check_before_run.py")
@@ -406,7 +407,8 @@ def test_changelog_zamok_suboru_cisla_z_kodu():
     assert 'tmp = bak + ".tmp"' in prefs
     assert "nahrad_subor(tmp, bak, uprac_zdroj=True)" in prefs
     assert "`dandurf_settings.json.bak.tmp`" in bod
-    # the line to app.log: a logger under "zanshin", which logging_setup writes
+    # the line to app.log: a logger under "zanshin", whose records
+    # logging_setup writes
     assert paths._log.name == "zanshin.paths"
     assert 'logging.getLogger("zanshin")' in _read("logging_setup.py")
     assert "`app.log` notes every save that needed more than one try" in bod

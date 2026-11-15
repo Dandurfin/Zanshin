@@ -234,7 +234,8 @@ def test_ticho_vybraneho_zdroja_prepusti_iny():
     # meanwhile the second source must not take over
     s.note_metrics(steps=5000, ts=1001.0, zdroj="iny")
     assert s.steps_per_min(now=1001.0) == 0.0
-    # ...but after the original goes quiet, yes - and without a fake increment
+    # ...but after the original goes quiet, yes - and without a fictitious
+    # increment
     t = 1000.0 + hr_stats.PRELADENIE_ZDROJA_S + 1.0
     s.note_metrics(steps=5000, ts=t, zdroj="iny")
     assert s.steps_per_min(now=t) == 0.0
@@ -453,12 +454,13 @@ def test_steps_per_min_je_none_ked_kroky_prestali_chodit():
 
 
 # ---------------------------------------------------------------------------
-# the guide in every language names the source exactly as the phone will see it
+# the pairing guide in every language names the source exactly as the phone
+# will see it
 # ---------------------------------------------------------------------------
 
 def test_navod_menuje_zdroj_doslova_vo_vsetkych_jazykoch():
     """The phone will see the scene "Zanshin" and the source "Tep"
-    (SCENE_NAME, INPUT_NAME). The English guide and its ja..pt
+    (SCENE_NAME, INPUT_NAME). The English pairing guide and its ja..pt
     translations advised picking a "Heart rate" source, which does not
     exist. Names in OBS are not translated."""
     import i18n

@@ -8,11 +8,11 @@ the methods that work with it through `self` are here - the mixin has no
 __init__ and no attributes of its own.
 
 Moved from app.py unchanged: the rest of the "Auto-Profile Engine
-(detecting the running game)" section - it stood under that marker although
+(recognising a running game)" section - it stood under that marker although
 it has nothing to do with game detection (the first part of the section is
 in app_profiles.py), so here it has a new marker: setting up and switching
 on the sensor, opening a measurement session (world, long-term baseline,
-critical heart rate, trigger thresholds, ladder step), receiving heart rate,
+critical heart rate, trigger thresholds, ladder rung), receiving heart rate,
 steps and connection state, heart-rate dropouts, repeated binding to a busy
 port, sensor status in Settings, the hidden IP, and the session and activity
 ticks. The helpers `_hr_overlay_available` and
@@ -25,7 +25,7 @@ the other class constants - `_schedule_no_client_check` reads it through
 
 Watch out in tests: `_open_hr_session`, `_apply_hr_bpm` and
 `_tick_nonstop_input` read `time` from this module - a fake clock must be
-slipped in here too (`app_session.time`), not only on the app module.
+patched in here too (`app_session.time`), not only on the app module.
 """
 
 import time
@@ -55,7 +55,7 @@ def _senzor_vypla_chyba(app):
     again. The flag is cleared only by the player (`on_hr_toggle`) or by a
     new attempt after an IP/port change (`on_hr_config_change`).
 
-    A module function, not a method: `_apply_hr_status` also runs on stubs
+    A module function, not a method: `_apply_hr_status` also runs on dummies
     in tests (SimpleNamespace), which would not have a new method.
     """
     app.hr_monitoring_enabled = False
@@ -68,8 +68,8 @@ def _senzor_vypla_chyba(app):
 # second) and heart-rate samples do not come during sleep/hibernation. A gap
 # longer than this means the PC slept (or the app hung) - the session is
 # closed at the last tick before the gap and a new one starts after it.
-# Without this, one 14-hour "session" came about and the sleeping heart rate
-# went into the resting baseline.
+# Without this, a single 14-hour "session" was created and the heart rate
+# during sleep went into the resting baseline.
 MEDZERA_SPANKU_S = 120.0
 
 
@@ -77,7 +77,7 @@ def je_medzera_spanku(posledny, teraz, limit=MEDZERA_SPANKU_S):
     """Did the PC sleep in a gap between two session ticks? Pure function.
 
     A clock going BACKWARDS (time sync, manual change) is not a gap - the
-    difference is negative. A broken number (None, NaN, text) is not either."""
+    difference is negative. Neither is a broken number (None, NaN, text)."""
     try:
         rozdiel = float(teraz) - float(posledny)
     except (TypeError, ValueError):
@@ -92,7 +92,7 @@ def _zrus_pokus_o_vazbu(app):
     `_open_hr_session` only overwrote it with None: the timer in Tk lived on
     and a few seconds later restarted receiving - even after the sensor was
     switched off, after a port change or after watching was switched on. A
-    module function, not a method: it is also called on stubs
+    module function, not a method: it is also called on dummies
     (SimpleNamespace) in the `_apply_hr_status` tests."""
     job = getattr(app, "_hr_retry_job", None)
     app._hr_retry_job = None
@@ -287,7 +287,7 @@ class SessionMixin:
         # the measurement windows see nothing from before the sensor was
         # switched on.
         self.activity.reset_session()
-        # The "no pause in input" line is once per session.
+        # The "no pause in input" line appears once per session.
         self._nonstop_input.reset()
         # The share of silent cues drops after calibration (25 % -> 10 %), but
         # never to zero. The number of sessions is taken from history.
@@ -308,27 +308,27 @@ class SessionMixin:
         if getattr(self, "_dev_params", None):
             self.cue_trigger.params.update(self._dev_params)
         podiel = self._silent_share_for_next_session()
-        # CUE LADDER (0.2): which step this session runs on. Pause = the
-        # automaton is not armed at all (diagnostics keep running).
+        # CUE LADDER (0.2): which rung this session runs on. Pause = the
+        # state machine is not armed at all (diagnostics keep running).
         self._urci_stupen_hlasky()
         if self._cue_rung == rebrik.PAUZA:
             self.cue_trigger.params["cues_enabled"] = False
         self._snooze_po_hlaske = None
         self._snooze_rel_s = 0.0
         self._snooze_rel_od = None
-        # WORK = PICTURE ONLY (B3-worlds, the requester's decision). Whoever is
+        # WORK = PICTURE ONLY (B3-worlds, the author's decision). Whoever is
         # concentrating at work should not have anything talking or chiming at
         # them - a visual in the corner of the eye is enough. Applies to the
         # whole session by the world it started in.
-        # Below the voice step (ladder) also picture only - `hlas` in the event
+        # Below the voice rung (ladder) also picture only - `hlas` in the event
         # thus tells the truth about what could have been heard.
         self.cue_trigger.open_session(silent_share=podiel,
                                       voice=self._session_world != "work"
                                       and self._cue_rung == rebrik.HLAS)
-        # "NOT NOW" ALSO HOLDS ACROSS A NEW SESSION. `open_session` re-arms the
-        # automaton - and a new session can also be opened during a snooze
-        # (stop and start, sensor switched on, IP change), since snooze no
-        # longer stops listening (24. 9.).
+        # "NOT NOW" ALSO HOLDS ACROSS A NEW SESSION. `open_session` lifts the
+        # state machine's suspension - and a new session can also be opened
+        # during a snooze (stop and start, sensor switched on, IP change),
+        # since snooze no longer stops listening (24. 9.).
         if getattr(self, "_snooze_job", None) is not None:
             self._suspend_cue_trigger(trigger.A_SNOOZE)
             # Also into the new session's `snoozed_s` - from its start.
@@ -392,9 +392,9 @@ class SessionMixin:
         self.hr_stats.clear_live()
         self.refresh_hr_status_label()
         # Today and the bar show the status by receiving ("heart-rate
-        # receiving off"), not "waiting for watch" - after switching off they
-        # must be rewritten right away, not only at the next event from the
-        # watch, which will not come any more.
+        # receiving off"), not "waiting for the watch" - after switching off
+        # they must be rewritten right away, not only at the next event from
+        # the watch, which will not come any more.
         self._refresh_dnes_stats()
         self._refresh_kamae_state_text()
         self.log(tr("log.hr_disabled"))
@@ -513,7 +513,7 @@ class SessionMixin:
         if generation is not None and generation != self._hr_generation:
             return                      # a message from an already stopped thread
         # A sample after the PC slept already belongs to a new session
-        # (`_hlidaj_medzeru_relacie`). Stubs in tests do not have this method.
+        # (`_hlidaj_medzeru_relacie`). Dummies in tests do not have this method.
         hlidac = getattr(self, "_hlidaj_medzeru_relacie", None)
         if callable(hlidac):
             try:
@@ -544,14 +544,14 @@ class SessionMixin:
         # `sustained` - the share of the last two minutes above the
         # baseline - so "a spike after a headshot is not stress" is built
         # into the number itself, not glued on.
-        # LOAD IS FED TO THE AUTOMATON ONLY DURING A SESSION.
+        # LOAD IS FED TO THE STATE MACHINE ONLY DURING A SESSION.
         #
         # This was called on every sample, even when no session was running
-        # (sensor on, listening off). So the automaton armed, the ring on the
-        # enso lit up - and `_tick_cue_trigger` returned right away because
-        # of `_hr_session_open`, so nothing could clear it any more. The
-        # "armed" ring then stayed lit forever and claimed a state that did
-        # not exist.
+        # (sensor on, listening off). So the state machine armed, the ring on
+        # the enso lit up - and `_tick_cue_trigger` returned right away
+        # because of `_hr_session_open`, so nothing could clear it any more.
+        # The "armed" ring then stayed lit forever and claimed a state that
+        # did not exist.
         if not self._hr_session_open:
             return
         self.cue_trigger.resume(now)
@@ -638,8 +638,8 @@ class SessionMixin:
             return
         if kind == "client":
             # the app on the phone holds the connection - that does NOT yet
-            # mean heart rate is coming (the watch may not be measuring or be
-            # near the phone)
+            # mean heart rate is coming (the watch may not be measuring, or
+            # may not be near the phone)
             self._cancel_no_client_check()      # client arrived (B2)
             self._hr_client_linked = True
             self._hr_state = "linked"
@@ -703,11 +703,11 @@ class SessionMixin:
                     self.HR_BIND_RETRY_MS, self._retry_hr_bind)
             else:
                 # Giving up is NOT the player's decision either (0.3): the
-                # switch shows off only for this run, settings still get on -
-                # the next start tries again. Before 0.3 the switch-off was
-                # saved here, and a second running copy of the app thus
-                # switched off heart-rate receiving for the first one for good
-                # (shared settings file).
+                # switch shows off only for this run, the settings still get
+                # on - the next start tries again. Before 0.3 the switch-off
+                # was saved here, and a second running copy of the app thus
+                # switched off heart-rate receiving for the first one for
+                # good (shared settings file).
                 _senzor_vypla_chyba(self)
                 # The state MUST change from "busy" - otherwise the label
                 # claims "retrying" forever, even though we gave up (B3).
@@ -864,14 +864,14 @@ class SessionMixin:
         if self._hr_state == "connected" and self._hr_last_bpm is not None:
             # THE NUMBER IS SMOOTHED (0.3) - the same as on the HUD and on
             # Today (`HeartStats.display_bpm`). Whether it is shown is still
-            # decided by the raw `_hr_last_bpm`; without `hr_stats` (stubs) it
-            # stays raw.
+            # decided by the raw `_hr_last_bpm`; without `hr_stats` (dummies)
+            # it stays raw.
             tep = getattr(getattr(self, "hr_stats", None), "display_bpm", None)
             if tep is None:
                 tep = self._hr_last_bpm
             if (self._hr_generation
                     and getattr(self, "_hr_dva_tepy_gen", None) == self._hr_generation):
-                # Two heart-rate series in one source. Only when heart rate is
+                # Two heart-rate streams in one source. Only when heart rate is
                 # coming - without data the real connection state takes
                 # precedence (and UDP below), because that is what the player
                 # needs to know right now. The number stays, the text is added
@@ -891,7 +891,7 @@ class SessionMixin:
             # journal.
             return tr("settings.hr_status_busy"), pal["warn"]
         if self._hr_state == "busy_gave_up":
-            # Attempts used up - it no longer tries, so it does not say so
+            # Attempts used up - it no longer tries, so it no longer claims to
             # (B3). Small text: `danger_text` (>= 4,5:1), not `danger`
             # (theme.py).
             return tr("settings.hr_status_busy_gave_up"), pal["danger_text"]
@@ -977,7 +977,7 @@ class SessionMixin:
         """Once a second refreshes "last spoke X min ago" and, with an open
         session, checks for exclusive fullscreen.
 
-        Alongside it only `_tick_activity` runs (4x per second); everything
+        Alongside it `_tick_activity` also runs (4x per second); everything
         else is redrawn only based on incoming data.
 
         NOTE: `_refresh_kamae_metrics()` was also here - three numbers on the
@@ -1022,8 +1022,8 @@ class SessionMixin:
         is switched on.
 
         The `after` id is kept so it can be cancelled on quit - otherwise,
-        4x per second, the chance would grow that one callback runs only
-        over an already dismantled window.
+        at 4x per second, the chance would grow that a callback runs only
+        after the window has already been dismantled.
         """
         # PC sleep: the first tick after waking up came after a long gap.
         try:
@@ -1062,7 +1062,7 @@ class SessionMixin:
         """A quiet line on Today when the app has not seen even a short pause
         in input for a long time (`activity.NonstopInputWatch`).
 
-        It happened to the requester: the controller's gyroscope reported
+        It happened to the author: the controller's gyroscope reported
         input to Windows every ~16 ms and the app never had a chance to find
         a pause. It is counted only while the app is listening and heart rate
         is coming (the player is at the PC). ONLY on Today - not in game, not

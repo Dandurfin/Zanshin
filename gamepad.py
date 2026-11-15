@@ -8,7 +8,7 @@ connected device, for the journal, leave the listener. Which button, stick
 or trigger it was goes NOWHERE (SAFETY.md); inside, only what is held RIGHT
 NOW is kept, and it is dropped on release.
 
-JOY*, NOT CONTROLLER* (measured by the requester on a G7 Pro, pygame-ce
+JOY*, NOT CONTROLLER* (measured by the author on a G7 Pro, pygame-ce
 2.5.8 / SDL 2.32.10): pygame sends ONLY JOY* events (JOYAXISMOTION,
 JOYBUTTONDOWN/UP, JOYHATMOTION). SDL sends CONTROLLER* events only for a
 device opened as an SDL_GameController - and the listener opens it as a
@@ -118,7 +118,7 @@ if GAMEPAD_AVAILABLE:
 def axis_roles(mapping):
     """SDL controller mapping -> {joystick axis index: role}.
 
-    `mapping` is the dict from `Controller.get_mapping()`; the requester's
+    `mapping` is the dict from `Controller.get_mapping()`; the author's
     G7 Pro has {'leftx': 'a0', 'lefty': 'a1', 'rightx': 'a2', 'righty': 'a3',
     'lefttrigger': 'a4', 'righttrigger': 'a5', ...}. The notation is SDL's:
     '+a4' / '-a4' is half an axis (role `half+` / `half-`), 'a3~' an
@@ -243,8 +243,8 @@ class GamepadListener:
                     self._handle(event)
             except Exception:
                 # An error in event handling would otherwise silently kill all
-                # input from the controller. We log it once, so it does not
-                # flood the loop.
+                # input from the controller. We log it once, so the loop does
+                # not flood the log.
                 if not getattr(self, "_loop_warned", False):
                     self._loop_warned = True
                     log.exception("gamepad: spracovanie udalosti zlyhalo "
@@ -281,7 +281,7 @@ class GamepadListener:
 
     def _open(self, index):
         try:
-            # pygame 2 opens the device right here (`init()` is
+            # pygame 2 already opens the device here (`init()` is
             # deprecated since 2.4).
             joy = pygame.joystick.Joystick(index)
             iid = joy.get_instance_id()

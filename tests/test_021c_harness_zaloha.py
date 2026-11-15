@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """0.2.1c: gui_harness_auto.py keeps the heart rate history even when cut off.
 
-The harness runs on the Zanshin data of the sources next to main.py. It
+The harness runs on the data of Zanshin run from source, next to main.py. It
 put the heart rate history (hr_sessions.json, hr_insights.json) aside only
 in MEMORY and the last `finally` did not restore it - Ctrl+C, closing the
 window or a crash between putting aside and restoring deleted it forever.

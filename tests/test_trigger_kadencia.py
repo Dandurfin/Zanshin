@@ -1,14 +1,14 @@
 # -*- coding: utf-8 -*-
-"""A sparser watch cadence is not an outage (C1).
+"""A sparser watch cadence is not a dropout (C1).
 
 Since 20. 9. the watch sends the heart rate every ~2.9 s (in OBS it
 alternates with steps), and one lost packet is a gap of ~5.6 s. Until then
-the trigger took every gap over 5 s (`MAX_KROK_S`) as an outage and wiped
+the trigger took every gap over 5 s (`MAX_KROK_S`) as a dropout and wiped
 all the accumulated time: 194 of 199 runs above the threshold cancelled by
-an "outage", one cue in over 4 hours.
+a "dropout", one cue in over 4 hours.
 
 The fix separates two questions: how much time one gap ADDS (at most
-`MAX_KROK_S`) and from what gap size it is an OUTAGE (`DIERA_S` = the
+`MAX_KROK_S`) and from what gap size it is a DROPOUT (`DIERA_S` = the
 disconnect threshold).
 """
 import os
@@ -56,8 +56,8 @@ def ridke_kroky(n, krok=2.8, kazdy=5):
 
 def test_ridka_kadencia_pod_zatazou_sa_natiahne():
     """Exactly the pattern from the evenings since 20. 9.: the load stays up,
-    the watch sends every ~2.8 s and every fifth packet is lost. Before:
-    never arms."""
+    the watch sends every ~2.8 s and every fifth packet is lost. Before: it
+    never armed."""
     t, h = spusti(stress_threshold=55.0, stress_hold_s=45.0)
     start = h.t
     ev = None
@@ -102,7 +102,7 @@ def test_ridka_kadencia_kumulativne_okno_prezije():
 
 def test_medzera_nepripise_viac_nez_max_krok():
     """Time nobody measured is not added to the window - even when the gap is
-    no longer an outage."""
+    no longer a dropout."""
     t, h = spusti(stress_threshold=55.0, stress_hold_s=45.0)
     assert t.note_load(80.0, h.t) is None
     for _ in range(3):
@@ -115,7 +115,7 @@ def test_medzera_nepripise_viac_nez_max_krok():
 
 
 def test_medzera_tesne_pod_dierou_okno_nezmaze():
-    """Boundary: 11.5 s of silence is not an outage yet."""
+    """Boundary: 11.5 s of silence is not a dropout yet."""
     t, h = spusti(stress_threshold=55.0, stress_hold_s=45.0)
     for _ in range(20):                        # 19 s added (the first step is 0)
         assert t.note_load(80.0, h.t) is None
@@ -128,11 +128,11 @@ def test_medzera_tesne_pod_dierou_okno_nezmaze():
 
 
 # --------------------------------------------------------------------------
-# A real outage still wipes (B4 without suspend)
+# A real dropout still wipes (B4 without suspend)
 # --------------------------------------------------------------------------
 
 def test_skutocny_vypadok_okno_stale_zahodi():
-    """A gap of `DIERA_S` or more is an outage - even if the app has not yet
+    """A gap of `DIERA_S` or more is a dropout - even if the app has not yet
     declared it via `suspend`. The old accumulated time must not survive."""
     t, h = spusti(stress_threshold=50.0, stress_hold_s=30.0)
     for _ in range(29):                        # 28 s in the window, just under 30
@@ -154,15 +154,15 @@ def test_skutocny_vypadok_okno_stale_zahodi():
 
 
 def test_diera_sedi_s_hranicou_odpojenia():
-    """The trigger and the watchdog must have the same outage threshold. The
-    app does not treat a shorter gap as an outage (the HUD does not report
+    """The trigger and the watchdog must have the same dropout threshold. The
+    app does not treat a shorter gap as a dropout (the HUD does not report
     "Disconnected") - nor does the trigger."""
     assert trigger.DIERA_S == heart_rate.HeartRateMonitor.STALE_AFTER_S
     assert trigger.DIERA_S > trigger.MAX_KROK_S
 
 
 # --------------------------------------------------------------------------
-# Spacing and cap apply with a sparse cadence too
+# The gap and the cap apply with a sparse cadence too
 # --------------------------------------------------------------------------
 
 def test_ridka_kadencia_drzi_strop_a_odstup():
@@ -190,11 +190,11 @@ def test_ridka_kadencia_drzi_strop_a_odstup():
 
 
 # --------------------------------------------------------------------------
-# Snooze is not an outage
+# Snooze is not a dropout
 # --------------------------------------------------------------------------
 
 def test_snooze_sa_nerata_ako_vypadok():
-    """"Not now" is the player's decision. If it counted as an outage, after
+    """"Not now" is the player's decision. If it counted as a dropout, after
     the evening the app would advise them to put the watch closer to the
     computer."""
     t, h = spusti(stress_threshold=55.0, stress_hold_s=45.0)
@@ -206,7 +206,7 @@ def test_snooze_sa_nerata_ako_vypadok():
     assert t.najdlhsi_nad_s >= 19.0, "usek sa aj tak zapise"
     assert t._nad_okno == [], "nazbierany cas ide prec aj pri snooze (B4)"
 
-    # a heart-rate outage MUST be counted
+    # a heart-rate dropout MUST be counted
     t.resume(now=h.t, force=True)
     for _ in range(20):
         t.note_load(80.0, h.t)
@@ -259,7 +259,7 @@ def test_suhrn_relacie_ma_kadenciu():
 
 
 def _zavri_relaciu(monkeypatch, tmp_path, prah, dlhodoba):
-    """Runs the real `DandurfApp._close_hr_session` on a minimal fake and
+    """Runs the real `DandurfApp._close_hr_session` on a minimal dummy and
     returns the summary that would be saved."""
     import app as app_mod
     ulozene = []

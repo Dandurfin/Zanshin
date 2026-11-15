@@ -135,7 +135,7 @@ class GuidedTour:
 
     def _nav_row(self, key):
         """Navigation target widget: the main item in the side menu, or a tab
-        in Settings (Cues/Sound/In game/Guide are tabs after the
+        in Settings (Cues/Sound/In game/Guide are tabs since the
         feedback, not menu items). None -> bubble in the centre."""
         app = self.app
         sb = getattr(app, "sidebar", None)
@@ -263,7 +263,7 @@ class GuidedTour:
         self._finished = True
         self._cleanup()
         self._save_progress(0)
-        # remember that the tour has been seen (app saves it to the settings)
+        # remember that the tour has been seen (the app saves it in settings)
         try:
             self.app.mark_tour_seen()
         except Exception:

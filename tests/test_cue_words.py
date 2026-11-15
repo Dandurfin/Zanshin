@@ -101,7 +101,7 @@ def test_hlasove_slovo_celuste_je_jaw():
 
 def test_zh_uvolnenie_je_povol():
     assert i18n.STRINGS["slot.default.release"]["zh"] == "松开"
-    # 0.3: the slot 2 category is "hand and gaze" (UX audit), not just grip
+    # 0.3: the slot 2 category is "grip & gaze" (UX audit), not just a squeeze
     assert i18n.STRINGS["cue.category.release"]["zh"] == "手与视线"
 
 

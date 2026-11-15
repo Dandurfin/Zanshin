@@ -158,7 +158,7 @@ def system_lang(default=LANG_EN):
     """
     kod = _win_locale() or ""
     primarny = kod.replace("_", "-").lower().split("-")[0]
-    # A Czech Windows got Slovak until 0.2 (Czech was not among the
+    # A Czech Windows got Slovak before 0.2 (Czech was not among the
     # languages); since 0.2 Czech has its own translation, Bulgarian too.
     if primarny in LANGUAGES:
         return primarny
@@ -171,7 +171,7 @@ def tr_lang(code, msg_key, **kwargs):
     It is for what the app draws INTO THE GAME (the HUD bottom left, the
     labels under the visuals). Those are not seen only by the player -
     viewers on a stream and buyers on store screenshots see them too. So
-    the interface can be in Slovak and the game can have English.
+    the interface can be in Slovak and the in-game text in English.
 
     `code` outside `LANGUAGES` (typically `LANG_SAME_AS_APP`) means "use
     the interface language".
@@ -1019,7 +1019,7 @@ STRINGS = {
     },
     # 0.3: the sentence names a common cause (OBS with a WebSocket server on
     # 4455) and the fix that always works - another port. Changing the port
-    # in the field restarts the sensor by itself after it gave up
+    # in the field restarts the sensor by itself after it has given up
     # (`on_hr_config_change`).
     'log.hr_port_busy': {
         'sk': 'Port {port} už používa iný program — často OBS so zapnutým WebSocket serverom alebo druhá kópia Zanshinu. Na stránke „{page}“ zmeň port (napr. na 4456) a rovnaké číslo zadaj v appke na telefóne.',
@@ -1044,9 +1044,9 @@ STRINGS = {
         'pt': 'Não foi possível iniciar a recepção do pulso (IP/porta): {err}',
     },
     # No longer logged anywhere - the trigger from phase 1 (heart rate above
-    # critical for 5 s -> breathing circle) is deleted (app.py, B28). Only
-    # the HUD illustration in the onboarding reads it (ui_dialogs.py, step 3,
-    # slice [:40]) - hence a short true text that fits whole into 40
+    # critical for 5 s -> breathing circle) has been deleted (app.py, B28).
+    # Only the HUD illustration in the onboarding reads it (ui_dialogs.py,
+    # step 3, slice [:40]) - hence a short true text that fits whole into 40
     # characters.
     'log.hr_breathing_triggered': {
         'sk': 'Tep {bpm} BPM — záťaž drží hore',
@@ -1605,8 +1605,8 @@ STRINGS = {
         'pt': 'Iniciada, mas sem pulso',
     },
     # 0.3: points to the watch icon (turns reception on and opens the
-    # guide), not to the bare switch - without pairing the switch would not
-    # help.
+    # pairing guide), not to the bare switch - without pairing the switch
+    # would not help.
     'kamae.no_watch_sub': {
         'sk': 'Bez hodiniek neviem, kedy ti záťaž stúpa, tak mlčím. Spáruj ich — ikona hodiniek vľavo.',
         'en': 'Without a watch I can’t tell when your load rises, so I stay quiet. Pair it — the watch icon on the left.',
@@ -2702,7 +2702,7 @@ STRINGS = {
         'fr': "Quand le corps se plie vers l'écran",
         'pt': 'Quando o corpo se dobra para a frente, para o monitor',
     },
-    # 0.2: a description of what happens to how the body is held during the
+    # 0.2: a description of what happens to your posture during the
     # exercise - not a claim about "activating the stabilisation system"
     # without a source.
     'guide.grounding.physiology': {
@@ -3916,7 +3916,7 @@ STRINGS.update({
     },
     # 0.3: the first start holds back watching until the natural voice is
     # prepared (`app._zacni_sledovat_po_priprave_hlasu`, at most 15 s).
-    # Without a prompt to click - a click would stop the preparation.
+    # No prompt to click - a click would stop the preparation.
     'kamae.voice_prep': {
         'sk': 'Pripravujem hlas',
         'en': 'Preparing the voice',
@@ -5119,7 +5119,7 @@ STRINGS.update({
         'Čo som si všimla',
         'What I noticed'),
     # B3-worlds: insights are computed only from the world that is currently
-    # on - "from the whole history" would no longer be true (old
+    # active - "from the whole history" would no longer be true (old
     # translations deleted).
     'history.insights_note': _sk_en(
         'Počíta sa na pozadí z histórie tohto sveta. Sú to postrehy a tipy, nie diagnózy.',
@@ -5190,7 +5190,7 @@ STRINGS.update({
     'origin.full_list': _sk_en('Celý zoznam zdrojov je na GitHube v ZDROJE.md.',
                                'The full list of sources is on GitHub in ZDROJE.md.'),
 
-    # --- metrics: a short text (the sentence by the number) +
+    # --- metrics: a short text (the sentence next to the number) +
     # "what it means" (2-3 sentences) ---
     'metric.bpm.title': _sk_en('Tep teraz', 'Heart rate now'),
     'metric.bpm.short': _sk_en('Koľko úderov za minútu ti bije srdce práve teraz.',
@@ -5336,7 +5336,7 @@ STRINGS.update({
         'The week counts from Monday, and only sessions of the world you are in (Play or Work) count. It is just an overview of how much I have logged this week.'),
     # --- 0.2 (widgets-history): five new cards. Each says what it measures
     # and what it does NOT measure; no score, grade or streak. History shows
-    # the same texts (under the chart length, rest and signal; felt/measured
+    # the same texts (length, rest and signal under the chart; felt/measured
     # under the table), so `short` does not talk only about the live card.
     'metric.session_len.title': _sk_en('Dĺžka relácie', 'Session length'),
     'metric.session_len.short': _sk_en(
@@ -5972,7 +5972,7 @@ STRINGS.update({
     # --- onboarding: fixes to the first four steps ------------------------
     # A fourth pictogram (the app installs FOUR triggers, the step showed
     # three), a sentence about the mechanism (nowhere in the introduction
-    # did it say that it hangs on keys the player presses anyway) and a CTA
+    # did it say that it depends on keys the player presses anyway) and a CTA
     # that did not promise getting into the game.
     'ob.step1.cap_release': _sk_en(
         'Pusti stisk',
@@ -6012,7 +6012,7 @@ STRINGS.update({
         'How your pulse moved after a cue'),
     # 0.2 (ladder + gate): a cue comes only when load is not rising, so the
     # drop after it is partly built in - the sentence has to say so. The old
-    # _tr7 translation deleted, so that the old wording does not survive in
+    # _tr7 translation was deleted, so that the old wording does not survive in
     # any language.
     'history.effect_hint': _sk_en(
         'Posun tepu po pripomienke, ktorá zaznela (len hra). Vľavo od stredu znamená, že tep klesol — ale tep klesá aj sám a pripomienka teraz chodí, až keď záťaž už nestúpa, takže pokles po nej nie je dôkaz, že zabrala. Tenká čiarka je rozsah, v ktorom sa skutočná hodnota pravdepodobne nachádza — kým presahuje stred, rozdiel môže byť aj opačný.',
@@ -6462,9 +6462,9 @@ STRINGS.update({
         'Zatiaľ nič. Nazbiera sa to hraním, nie čakaním.',
         'Nothing yet. This builds up by playing, not by waiting.'),
 
-    # Log line after a delivered cue. The SAME in both arms - in the loud
-    # and in the silent one. The player hears anyway whether something
-    # sounded, so it cannot be blinded, but the log should not be yet
+    # Log line after a delivered cue. The SAME in both arms - in the voice
+    # arm and in the silent one. The player hears anyway whether something
+    # sounded, so it cannot be blinded anyway, but the log should not be yet
     # another place where the arms differ. That is why there is not a word
     # here about whether anything was spoken.
     'log.cue_delivered': _sk_en(
@@ -6483,7 +6483,7 @@ STRINGS.update({
 # the HUD shows "--" as before.
 # The chain heart rate travels is watch → phone (Bluetooth) → Wi‑Fi →
 # computer; the advice on a dropout (`insight.cue_dropouts`,
-# `session.end.none_dropouts`) says the same one.
+# `session.end.none_dropouts`) describes the same chain.
 STRINGS.update({
     'dnes.hr_lost': _sk_en('tep vypadol', 'heart rate lost'),
     # 0.3: instead of "waiting for the watch" where the watch cannot come
@@ -6661,7 +6661,7 @@ STRINGS.update({
 
     # --- developer overlay (§3.2) --------------------------------------
     # The numbers from spec §2 are estimates from the literature, not from
-    # this player's body. Without being able to turn them at runtime it
+    # this player's body. Without being able to adjust them at runtime it
     # would have to be rebuilt every evening.
     'dev.title': _sk_en('Ladenie', 'Tuning'),
     'dev.hint': _sk_en(
@@ -7063,7 +7063,7 @@ _tr7('log.quit_questionnaire_saved', '終了するときに、アンケートに
 _tr7('log.quit_questionnaire_skipped', '終了するときに、未記入のアンケートを閉じました — セッションは回答なしで保存されています。', '退出时，我关闭了空白的问卷——记录已保存，只是没有回答。', 'При выходе я закрыла пустой опрос — сессия сохранена без ответов.', 'Al salir, cerré el cuestionario vacío: la sesión queda guardada sin respuestas.', 'Beim Beenden habe ich den leeren Fragebogen geschlossen — die Sitzung bleibt ohne Antworten gespeichert.', 'En quittant, j’ai fermé le questionnaire vide — la séance reste enregistrée sans réponses.', 'Ao sair, fechei o questionário vazio — a sessão continua salva sem respostas.')
 
 # --- 0.3 batch 4: dictionary and copy of existing keys (onboarding step 1) ---
-# Until now the introduction nowhere asked what the player needs for the
+# Until now the introduction never asked what the player needs for the
 # first heart rate reading. The sentence is true to what the app knows: a
 # smartwatch with a companion app on the phone that sends heart rate
 # straight to this PC (OSC, UDP, obs-websocket - README "Getting your
@@ -7190,8 +7190,8 @@ _DOPLNENE_PREKLADY = {
         'fr': 'Je travaillais',
         'pt': 'Trabalhando',
     },
-    # 0.3: a session in which the app was only being set up is not learnt
-    # from for the thresholds (`hr_stats.ciste_relacie`, `setup`). After the
+    # 0.3: the thresholds are not learnt from a session in which the app was
+    # only being set up (`hr_stats.ciste_relacie`, `setup`). After the
     # introduction the chip is turned on by the app.
     "session.context.setup": {"sk": "Len nastavovanie appky", "en": "Just setting up the app", "ja": "アプリの設定だけ", "zh": "只是在设置应用", "ru": "Только настройка приложения", "es": "Solo configurando la app", "de": "Nur die App eingerichtet", "fr": "Juste la configuration de l'app", "pt": "Só configurando o app"},
     "session.context.setup_hint": {"sk": "Z takej relácie sa neučím, čo je u teba pokoj a záťaž. V histórii ostane.", "en": "I won't learn your calm or your load from it. It stays in History.", "ja": "このセッションからは、あなたの平静や負荷を学びません。履歴には残ります。", "zh": "我不会从这次记录里学习你的平静和负荷。它仍会留在历史中。", "ru": "По такой сессии я не учусь, что для тебя покой и нагрузка. В истории она останется.", "es": "De una sesión así no aprendo tu calma ni tu carga. Se queda en el historial.", "de": "Aus so einer Sitzung lerne ich weder deine Ruhe noch deine Belastung. Im Verlauf bleibt sie.", "fr": "Je n’apprends ni ton calme ni ta charge d’une telle séance. Elle reste dans l’historique.", "pt": "Com uma sessão assim, não aprendo sua calma nem sua carga. Ela continua no histórico."},
@@ -7445,10 +7445,10 @@ STRINGS.update({
 
 # --- 0.2 cue style: question in the onboarding and row in Settings ----------
 # The question and the four answers were approved word for word by the
-# client. The same three sentences (without "I don't know") are the
+# author. The same three sentences (without "I don't know") are the
 # values in Settings -> Sound, so that one choice does not have two
 # names. The kicker of steps 1-4 changed to "of 5" (their _tr7 lines
-# deleted). SK/EN by hand, the other languages: _tr7 at the end of the
+# were deleted). SK/EN by hand, the other languages: _tr7 at the end of the
 # file.
 STRINGS.update({
     'ob.step5.kicker': _sk_en('KROK 5 z 5', 'STEP 5 of 5'),
@@ -7523,7 +7523,8 @@ STRINGS.update({
 
 # --- 0.2 controller: input without a single pause ----------------------------
 # A controller's gyroscope or a stick without a dead zone reports input to
-# Windows non-stop and the app finds no pause (measured at the client's).
+# Windows non-stop and the app finds no pause (measured on the author's
+# setup).
 # A quiet line on Today once per session (`_tick_nonstop_input`) and a tip
 # in the pairing guide. The same advice as `session.end.none_nopause`.
 # SK/EN by hand, the other languages: _tr7 at the end of the file.
@@ -7544,7 +7545,7 @@ STRINGS.update({
         'report input nonstop and I find no pause to speak up in.'),
 })
 
-# --- 24. 9. the client's decisions -------------------------------------------
+# --- 24. 9. the author's decisions -------------------------------------------
 # "Not now" silences only cues and measuring goes on (state in the middle
 # of the Today page). The "How it sounds" preview follows the cue style -
 # the sentence under it says what it will really do. SK/EN by hand, the
@@ -7566,13 +7567,13 @@ STRINGS.update({
     'settings.preview_sub_visual': _sk_en(
         'Máš nastavený len obrázok, takže v hre nič nezaznie — pripomienka sa len ukáže. Tlačidlo ukáže obrázok prvej pripomienky.',
         'You chose just a picture, so nothing plays in-game — the cue is only shown. The button shows the first cue’s picture.'),
-    # Preview in the "sound"/"picture" style when no enabled cue has a
-    # picture in game - in game no cue would come then.
+    # Preview in the "sound"/"picture" style when no enabled cue has an
+    # in-game picture - then no cue would come in game at all.
     'log.preview_no_picture': _sk_en(
         'Ukážka: žiadna zapnutá pripomienka nemá zapnutý obrázok v hre, takže v tomto štýle by som sa v hre neozvala vôbec.',
         'Preview: no enabled cue has its in-game picture turned on, so in this style I would not show up in-game at all.'),
     # Post-session questionnaire after a session without a cue in which "not
-    # now" applied - the automaton was asleep then and the other sentences
+    # now" applied - the state machine was asleep then and the other sentences
     # about the silence could be lies (`_preco_ticho`).
     'session.end.none_snoozed': _sk_en(
         '{min} min z relácie platilo tvoje „teraz nie“ — vtedy som mlčala, '
@@ -7870,7 +7871,7 @@ _tr7('settings.hr_status_udp_off', 'Android は接続できます。iPhone（Pul
 
 
 # --- 0.3: two different heart rates in one source ----------------------------
-# The app on the watch can write two series of heart rate into one OBS
+# The app on the watch can write two heart-rate streams into one OBS
 # source at once and the number then jumps (`heart_rate.dva_rady_v_okne`).
 # A journal line once per run (source name, no values) and a text by the
 # switch after the heart rate number (`_hr_status_display`). The sentence

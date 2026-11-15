@@ -26,7 +26,7 @@ from _zdroj_appky import zdroj_appky, zdroj_metody  # noqa: E402
 
 
 def test_i18n_pozna_jedenast_jazykov():
-    """Guard for the rest: if a language is added/removed, fix the tests."""
+    """Guard for this file: add/remove a language, update the tests too."""
     assert len(i18n.LANGUAGES) == 11, (
         f"i18n.LANGUAGES ma {len(i18n.LANGUAGES)} jazykov, cakalo sa 11")
     for code in ("sk", "en", "ja", "zh", "ru", "es", "de", "fr", "pt", "cs", "bg"):
@@ -45,8 +45,8 @@ def test_kazdy_ponukany_jazyk_ma_preklady():
 
 
 def test_load_settings_neobmedzuje_jazyk_na_rucny_zoznam():
-    """The core of the regression: the filter must go against LANGUAGES, not
-    against the triple.
+    """The core of the regression: the filter must check against LANGUAGES,
+    not against the triple.
 
     A hand-written list of constants is exactly what once already drifted
     apart from reality and silently threw away the player's choice.

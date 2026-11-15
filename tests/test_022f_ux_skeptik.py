@@ -4,7 +4,7 @@
 Guarded:
   * the Consistency grid squares lie on whole px - Tk drew an anti-aliased
     polygon at fractional coordinates (the step is a fraction of the width,
-    e.g. 40,5 px) with jagged spikes on the edges,
+    e.g. 40.5 px) with jagged spikes on the edges,
   * month and day labels follow the same whole px,
   * the session row in the in-game heart-rate panel fits in the panel even
     with "1 h 15 min" (since 4b) in every language - before, it overflowed
@@ -15,7 +15,7 @@ Guarded:
   * "nad hranicou" (above the limit) in the heart-rate panel is the
     heart-rate limit, not the load threshold, also in ja/zh/ru/fr.
 
-Synthetic data, no Tk window (canvas fake, PIL image in memory).
+Synthetic data, no Tk window (canvas dummy, PIL image in memory).
 """
 import os
 import sys
@@ -35,7 +35,7 @@ JAZYKY = ("sk", "en", "ja", "zh", "ru", "es", "de", "fr", "pt", "cs", "bg")
 
 
 class _Platno:
-    """tk.Canvas fake: items with coordinates, bbox ~7 px/char."""
+    """tk.Canvas dummy: items with coordinates, bbox ~7 px/char."""
 
     def __init__(self, sirka):
         self.sirka = sirka
@@ -94,7 +94,7 @@ def _mriezka(sirka, mierka, tyzdnov=26):
 
 def test_stvorceky_mriezky_lezia_na_celych_px():
     # 150 % DPI and a width at which the step comes out fractional
-    # (screenshot: 40,5 px)
+    # (screenshot: 40.5 px)
     for sirka, mierka in ((1253, 1.5), (1001, 1.25), (777, 1.0)):
         g = _mriezka(sirka, mierka)
         polygony = [p for p in g.canvas.polozky.values() if p["druh"] == "poly"]

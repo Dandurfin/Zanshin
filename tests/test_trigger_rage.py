@@ -214,7 +214,7 @@ def test_bez_pauzy_pri_stupajucej_zatazi_zrusi():
 
 
 def test_ked_brana_pusti_ale_appka_nesmie_je_to_nedalo_sa():
-    """Spacing/snooze/walking (`can_fire`) is not the body - its own reason."""
+    """Gap/snooze/walking (`can_fire`) is not the body - its own reason."""
     g = Hra()
     g.natiahni(80.0)
     h, t = g.h, g.t
@@ -306,7 +306,7 @@ def test_snooze_ani_koniec_relacie_sa_neratajú_ako_zadrzane():
 
 
 # --------------------------------------------------------------------------
-# Silent arm, cap and spacing
+# Silent arm, cap and gap
 # --------------------------------------------------------------------------
 
 def test_tiche_rameno_ma_tu_istu_branu():
@@ -503,7 +503,7 @@ def test_zadrzane_branou_povie_ze_mlcala_sama():
 
 
 def test_nedalo_sa_samo_vetu_o_tepe_netvrdi():
-    """`nedalo_sa` = spacing/snooze/walking, not HR; an HR line would lie."""
+    """`nedalo_sa` = gap/snooze/walking, not HR; an HR line would lie."""
     veta = _preco(**ZAKLAD, pause_episodes=12,
                   cues_withheld={"bez_pauzy": 0, "nevhodna_chvila": 0,
                                  "nedalo_sa": 3})

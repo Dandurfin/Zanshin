@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """The "not now" shortcut (0.3, batch 4): clash with the keyboard layout
 (AltGr = Ctrl+Alt), choice in Settings -> General, the sentence in the bar
-and in the tour. All on fakes - no real layout and no registration."""
+and in the tour. All on dummies - no real layout and no registration."""
 import types
 
 import app as app_mod

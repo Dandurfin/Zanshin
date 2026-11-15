@@ -23,7 +23,7 @@ even know what is on the screen. In addition the window has:
 
 We deliberately do NOT use `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)`.
 It would hide the overlay from screenshots and OBS - which is exactly the
-behaviour by which cheating overlays are searched for. Our overlay should
+behaviour people look for to find cheating overlays. Our overlay should
 be visible on every recording and screenshot; that is its best defence.
 
 If the layered mode fails for any reason (old Windows, another OS, driver),
@@ -115,8 +115,8 @@ if IS_WINDOWS:
 def to_premultiplied_bgra(image):
     """RGBA PIL image -> BGRA bytes with premultiplied alpha.
 
-    Premultiplying is an AC_SRC_ALPHA requirement: Windows no longer
-    multiplies by alpha, it expects it to be already included in the colour.
+    Premultiplying is an AC_SRC_ALPHA requirement: Windows does not
+    multiply by alpha itself, it expects it already included in the colour.
     Without it every semi-transparent pixel would shine too bright and the
     edges would have a white fringe.
     """

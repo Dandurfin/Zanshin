@@ -287,7 +287,7 @@ def test_soul_hranica_a_licencia():
 
 def test_safety_harness_odklada_nastavenia_a_historiu_ako_skript():
     """Since 0.3d the details of the harness backups are in DEVELOPMENT.md
-    (in English); SAFETY only has that the scripts move the mouse and the
+    (in English); SAFETY only says that the scripts move the mouse and the
     build does not package them, and a link here. The sentence follows the
     code: when the backup changes, the test says where."""
     skript = _read("gui_harness_auto.py")

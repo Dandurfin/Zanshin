@@ -65,7 +65,7 @@ def _slovencina():
 
 
 class _Zaznam:
-    """Widget fake: records configure/pack/place calls."""
+    """Widget dummy: records configure/pack/place calls."""
 
     def __init__(self):
         self.volania = []
@@ -457,7 +457,7 @@ def test_parovanie_z_prehliadky_pokracuje_dalsim_krokom():
     tour._pair()
     assert app.progres == [3], "pozicia uz za krokom o tepe"
     assert len(app.parovanie) == 1 and callable(app.parovanie[0])
-    app.parovanie[0]()                       # the how-to was closed
+    app.parovanie[0]()                       # the pairing guide was closed
     assert tour._index == 3 and app.stranky[-1] == "spustace"
     assert app.root.after_volania, "dalsia bublina sa kresli"
 
@@ -472,7 +472,7 @@ def test_parovanie_nepokracuje_v_nahradenej_prehliadke():
 
 
 def test_stara_pozicia_prehliadky_sa_zmesti():
-    """Up to 0.2.1 the tour had 10 steps - a saved "8" would show "step 9 of
+    """Until 0.2.1 the tour had 10 steps - a saved "8" would show "step 9 of
     6" in Settings."""
     init = zdroj_metody("__init__")
     riadok = init[init.index("self.tour_step = "):]

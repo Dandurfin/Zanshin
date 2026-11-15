@@ -18,10 +18,10 @@ Moved from app.py unchanged:
     of the selected session, value formats (`_fmt_*` are also used by the
     cards on Today in app_today.py) and the insights from the analysis,
   * background history analysis - only its first part: starting the
-    analysis in a thread, taking over the result and re-running it. The
+    analysis in a thread, picking up the result and re-running it. The
     rest of that section (building the Settings and In game pages, the
     heart rate sensor card) has nothing to do with history - it stayed in
-    app.py under the new marker for "the Settings and In game pages".
+    app.py under the new marker "Settings and In-game pages".
 
 Page constants (`HISTORY_ROWS`, `HISTORY_METRICS`, `_METRIC_*`,
 `HISTORY_DETAIL_COLS`, `HISTORY_DETAIL_CELLS`) stayed in the DandurfApp
@@ -31,7 +31,7 @@ class among the other class constants - the methods read them through
 Careful in tests: `_refresh_history_page`, `export_sessions_csv`,
 `_refresh_history_detail`, `_render_hr_insights` and `_apply_hr_insights`
 read `time` from this module and `run_hr_analysis` reads `threading` - a
-fake clock and a synchronous thread have to be slipped in here too
+fake clock and a synchronous thread have to be swapped in here too
 (`app_history.time`, `app_history.threading`), not only on the app module.
 """
 
@@ -309,7 +309,7 @@ class HistoryMixin:
             text_color=pal["text_faint"], anchor="w", justify="left", wraplength=640)
         self.history_detail_hint.pack(fill="x", pady=(10, 0))
         # "DELETE THIS SESSION" (0.3, audit 4): e.g. a 14-hour "session"
-        # through a sleeping PC would otherwise push sleeping heart rate into
+        # spanning a sleeping PC would otherwise push sleeping heart rate into
         # the resting baseline, and the only fix was to delete the whole
         # history. Unobtrusive - on the right under the detail, smaller; the
         # confirmation with date and length (focus on Cancel) is in
@@ -794,7 +794,7 @@ class HistoryMixin:
     def _refresh_cue_effect(self):
         """Fills the "which cue works" chart.
 
-        Computed ONLY from the loud arm (see `measure.by_category`) - the
+        Computed ONLY from the voice arm (see `measure.by_category`) - the
         silent windows are the reference for whether a cue works at all,
         not for comparing the categories with each other.
 
@@ -1060,9 +1060,9 @@ class HistoryMixin:
                             info = dict(posledne["kwargs"])
                         else:
                             info = dict(widget.pack_info())
-                        # the order is kept by the list order itself - links
-                        # to neighbours would point at an unpacked widget on
-                        # the way back
+                        # the order is kept by the list order itself -
+                        # references to neighbours would point at an unpacked
+                        # widget when the widgets are restored
                         for kluc in ("in", "in_", "before", "after"):
                             info.pop(kluc, None)
                         packy.append((widget, info))
@@ -1235,10 +1235,11 @@ class HistoryMixin:
         after every saved session, after a world switch and on the
         'Recompute' button.
 
-        Insights are for ONE world - the one that applied at launch
-        (B3-worlds). When an analysis is already running, a new one is not
-        refused silently: `_hr_analysis_rerun` is recorded and after the
-        running one finishes it runs again (see `_po_analyze`). Otherwise,
+        Insights are for ONE world - the one that applied when the
+        analysis was started (B3-worlds). When an analysis is already
+        running, a new one is not refused silently: `_hr_analysis_rerun` is
+        recorded and after the running one finishes it runs again (see
+        `_po_analyze`). Otherwise,
         after a quick world switch, the other world's insights would stay
         on the screen."""
         existing = getattr(self, "_hr_analysis_thread", None)

@@ -8,7 +8,7 @@ only from PyPI, verified, tried with one word and kept only when it works.
 
 No test goes to the network: `_otvor` (HTTP) and `_syntetizuj` (Microsoft)
 are replaced with an error in an autouse fixture. Tests that need the test
-word only let it through the package stub (`ATRAPA = True`), which writes a
+word only let it through the package dummy (`ATRAPA = True`), which writes a
 local file.
 """
 import asyncio
@@ -71,7 +71,7 @@ def izolacia(monkeypatch, tmp_path):
 
 
 def _lokalna_synteza(monkeypatch, zaznam=None):
-    """The test word may only go through the stub - it writes a local file."""
+    """The test word may only go through the dummy - it writes a local file."""
     def _synt(modul, text, hlas, cesta, timeout):
         assert getattr(modul, "ATRAPA", False), "skusobne slovo by islo na Microsoft"
         if zaznam is not None:
@@ -81,7 +81,7 @@ def _lokalna_synteza(monkeypatch, zaznam=None):
 
 
 # --------------------------------------------------------------------------
-# Stub of the edge_tts package, the wheel and the PyPI response
+# Dummy edge_tts package, the wheel and the PyPI response
 # --------------------------------------------------------------------------
 
 ULOZ_OK = ('        with open(audio_fname, "wb") as fh:\n'
@@ -1552,7 +1552,7 @@ def test_skutocny_wheel_731_prejde_celou_kontrolou(monkeypatch):
     hk.skontroluj_kod(subory)
     assert hk.skontroluj_metadata(meta, verzia) == []
 
-    # whole flow with this wheel as the "new" version (the active is older)
+    # whole flow with this wheel as the "new" version (the active one is older)
     _aktivny_pribaleny(monkeypatch, verzia="7.2.8", modul=object())
     data = _pypi({verzia: [_subor_pypi(verzia, wheel)]})
     _falosna_siet(monkeypatch, {JSON_URL: json.dumps(data).encode(),

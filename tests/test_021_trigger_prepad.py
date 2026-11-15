@@ -265,7 +265,7 @@ def test_vzorka_v_case_nula_sa_na_suvislej_ceste_pocita():
 
 
 # --------------------------------------------------------------------------
-# Post-session sentence: "longest X s, I need Y s" must not claim X >= Y
+# Post-session sentence: "longest X s, need Y s" must not claim X >= Y
 # about a stretch that did not arm
 # --------------------------------------------------------------------------
 
@@ -301,8 +301,8 @@ def test_dlhy_prepad_tesne_pod_drzanim_netvrdi_drzanie():
 
 
 def test_ridka_kadencia_a_prepad_netvrdia_drzanie():
-    """Cadence ~2,9 s: 16 samples above the threshold are 43,5 s, no arming.
-    The gap to the first sample below the threshold (2,9 s) must not be
+    """Cadence ~2.9 s: 16 samples above the threshold are 43.5 s, it does not
+    arm. The gap to the first sample below the threshold (2.9 s) must not be
     added to the stretch - otherwise the summary would claim 46 s."""
     t, h = spusti()
     for _ in range(16):

@@ -260,7 +260,7 @@ def test_cas_nad_hranicou(jazyk):
     assert ui_kit.cas_text(75 * 60 + 12) == tr("dashboard.fmt.h_min", h=1, m="15")
     assert ui_kit.cas_text("zle") == "—"
     assert ui_kit.cas_text(None) == "0:00"
-    # the same threshold as the end of the session trace axis
+    # the same boundary as the end of the session trace axis
     assert ui_kit.DLZKA_OD_S == ui_kit.SessionTrace.OS_DLZKA_OD_S == 3600
 
 

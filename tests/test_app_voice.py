@@ -81,7 +81,7 @@ def test_znamy_dlh_je_stale_aktualny():
 
 
 def test_zenske_tvary_appky_ostali():
-    """A few lines where the app talks about itself - they stay feminine."""
+    """A few lines where the app speaks of itself - they must stay feminine."""
     for kluc, tvar in (("session.end.none_withheld", "som mlčala"),
                        ("session.end.cues_visual", "Ozvala som sa"),
                        ("dnes.nonstop_input", "som nezachytila"),

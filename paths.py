@@ -268,8 +268,9 @@ def resolve_audio_path(path):
 # fails with PermissionError: WinError 5 when they hold the target,
 # WinError 32 when they hold the .tmp. In the log of a test copy (0.3)
 # the settings backup failed exactly like this ("zalohu nastaveni sa
-# nepodarilo zapisat", .bak.tmp -> .bak). Such a lock lasts milliseconds,
-# so a few short attempts are enough.
+# nepodarilo zapisat" - the settings backup could not be written,
+# .bak.tmp -> .bak). Such a lock lasts milliseconds, so a few short
+# attempts are enough.
 #
 # The pauses grow and add up to 0.31 s per file. No more: `save_settings`
 # runs in the GUI thread (it saves on every slider move) and replaces TWO

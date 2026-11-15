@@ -174,7 +174,7 @@ def test_build_cita_poziadavku_z_requirements_tym_istym_vzorom():
                if (z := re.match(vzor, r, re.I))]
     assert najdene == [(podmienka, minimum)]
     assert podmienka == ">=%s" % minimum
-    # a temporary cap (build advice on a changed API) is still read whole
+    # the pattern still reads a temporary cap (build advice, changed API) whole
     for riadok, cakane in (
             ("edge-tts >= 7.3.1, <8  # komentar", (">= 7.3.1, <8", "7.3.1")),
             ("edge-tts>=7.10.0,<8", (">=7.10.0,<8", "7.10.0")),
@@ -902,12 +902,12 @@ def test_app_log_ide_cez_spolocny_logger():
 # Real rejection: aiohttp + edge-tts, no network
 # --------------------------------------------------------------------------
 #
-# The stubs above (test_022e_hlas_chyby) have their own classes. Here a REAL
-# aiohttp.WSServerHandshakeError, built as in aiohttp/client.py, goes through
-# the REAL edge-tts (its second attempt after 403 with the clock adjusted by
-# the Date header) and `EdgeTTSCache.ensure`. `ws_connect` is slipped in -
-# nothing goes to the network. Verified 2026-11: edge-tts 7.2.8 gets exactly
-# this from Microsoft.
+# The dummies above (test_022e_hlas_chyby) have their own classes. Here a
+# REAL aiohttp.WSServerHandshakeError, built as in aiohttp/client.py, goes
+# through the REAL edge-tts (its second attempt after 403 with the clock
+# adjusted by the Date header) and `EdgeTTSCache.ensure`. `ws_connect` is
+# patched - nothing goes to the network. Verified 2026-11: edge-tts 7.2.8
+# gets exactly this from Microsoft.
 
 def _skutocne_odmietnutie(aiohttp, status=403, date=True):
     from multidict import CIMultiDict, CIMultiDictProxy

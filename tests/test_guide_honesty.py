@@ -1,4 +1,4 @@
-"""Guide states no unsourced mechanism as fact (KNOWN_ISSUES.md, item 4).
+"""The Guide states no unsourced mechanism as fact (KNOWN_ISSUES.md, item 4).
 
 Checks ALL languages: otherwise the old text would survive in ja..bg, where
 make_translation_todo.py does not find it (it looks only for strings equal

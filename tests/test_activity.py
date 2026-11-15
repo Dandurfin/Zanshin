@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Activity watching without a keyboard hook.
+"""Watching activity without a keyboard hook.
 
 `ActivityTracker` gets both the clock and the idle source from outside, so
 it can be run through entirely without Windows and without waiting in real
@@ -90,7 +90,7 @@ def test_zaznam_je_redsi_nez_pytanie():
 
 
 def test_druhy_zdroj_sa_beri_ako_minimum():
-    """A gamepad (if it proves needed) is another input, not a replacement.
+    """A gamepad (if needed) is another input source, not a replacement.
 
     The resulting idle is "since the last input FROM ANYWHERE", i.e. the
     minimum.
@@ -116,13 +116,13 @@ def test_chybajuci_zdroj_idle_nespadne():
 
 
 def test_neznama_pauza_nie_je_nulova_pauza():
-    """None means "I don't know", not "no pause" - and that is a difference.
+    """None means "I don't know", not "no pause" - and the difference matters.
 
     Phase 2 postpones a cue to a pause. If "I don't know" pretended to be
     zero, on a machine without idle a pause would never occur, all cues
     would fall into the "pause did not come" branch and the silent control
     arm would get mixed up with them. The measurement would come out
-    without a single loud cue.
+    without a single spoken cue.
     """
     slepy = activity.ActivityTracker(idle_fn=lambda: None, clock=Hodiny())
     slepy.poll()
@@ -203,7 +203,7 @@ def test_cerstvy_vstup_z_ovladaca_sa_rozozna():
 
 
 def test_ked_ovladac_mlci_je_to_klavesnica():
-    """`GetLastInputInfo` has input, the controller none - so something else."""
+    """`GetLastInputInfo` reports input, the controller not - something else."""
     tracker, hodiny = sleduj([50] * 5)
     tracker.set_gamepad_watched(True)
     tracker.poll()

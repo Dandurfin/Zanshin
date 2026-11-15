@@ -117,7 +117,7 @@ def test_armed_ring_changes_the_picture(style):
 
 
 def test_armed_ring_only_when_live(style):
-    """Armed cannot happen without listening; must not be drawn by mistake."""
+    """Armed can't happen without listening; never draw it, even by mistake."""
     bez = hud_paint.render_enso(68, style, live=False, phase=0.45, ss=2)
     s_prstencom = hud_paint.render_enso(68, style, live=False, phase=0.45,
                                         armed=True, ss=2)

@@ -41,8 +41,8 @@ def spusti(silent_share=0.0, rng_seed=1, **params):
 def natiahni(t, h, stress=80.0, krok=1.0, zona="high"):
     """Hold load above the threshold until it arms. Returns the arming event.
 
-    `zona` is the heart-rate band for the gate (0.2): "high" = known and
-    not critical, load is steady — the gate lets it through. Without a band
+    `zona` is the heart-rate zone for the gate (0.2): "high" = known and
+    not critical, load is steady — the gate lets it through. Without a zone
     (None) the cue would not go at all."""
     for _ in range(200):
         ev = t.note_load(stress, h.t, zona=zona)
@@ -149,7 +149,7 @@ def _drz(t, h, sekund, stress=80.0, zona="high", pause_s=0.0, krok=1.0):
 
 def test_ked_pauza_nepride_ide_tichy_vizual():
     """0.2: the silent picture after max_wait_s stays — but only when the gate
-    lets it through (band known and not critical, load not rising).
+    lets it through (zone known and not critical, load not rising).
     Otherwise the arming is cancelled."""
     t, h = spusti()
     natiahni(t, h)
@@ -212,7 +212,7 @@ def test_neznama_pauza_nedoruci_hned_ale_ani_necaka_navzdy():
     """pause_s() returns None when the system does not report idle.
 
     That must not pretend to be "there is a pause" (it would be delivered
-    at once), nor "there is never a pause". max_wait_s is let run out and
+    at once), nor "there is never a pause". max_wait_s may run out and
     then the same applies as without a pause: a silent picture via the
     gate, voice never.
     """
@@ -583,9 +583,8 @@ def test_prstenec_sa_zhadzuje_na_kazdej_ceste_von_z_natiahnutia():
 
 
 def test_ikona_hodiniek_zapina_a_nikdy_nevypina():
-    """Spec §1.10. Before, the icon only opened the dialog — over a switched
-    off sensor, so the player followed the panel and the app received
-    nothing.
+    """Spec §1.10. Before, the icon only opened the dialog — with the sensor
+    off, so the player followed the panel and the app received nothing.
 
     And above all: it must not switch off. An icon that switches on one
     time and off another is unreadable for a single pictogram without a
@@ -1017,7 +1016,7 @@ def test_vypadok_tepu_sa_odlisi_od_prepadu():
 
 
 def test_kratky_prepad_beh_nerozbije():
-    """The `dip_grace_s` tolerance must not count a new run - otherwise the
+    """The `dip_grace_s` tolerance must not start a new run - otherwise the
     numbers would claim a fragmentation that did not happen."""
     t, h = spusti(stress_hold_s=90.0, dip_grace_s=5.0)
     for _ in range(30):
@@ -1081,7 +1080,7 @@ def test_preco_ticho_stare_relacie_nic_netvrdia():
 
 def test_preco_ticho_telo_nebolo_hore():
     veta = _preco(above_runs=0, runs_cancelled_gap=0, runs_cancelled_dip=0)
-    # 0.3: load has a "prah" (threshold), "hranica" is only heart rate in BPM
+    # 0.3: load has a "prah" (threshold); "hranica" (limit) is only BPM
     assert veta and "prah" in veta.lower(), veta
 
 
@@ -1093,7 +1092,7 @@ def test_preco_ticho_bolo_hore_ale_kratko():
 
 def test_preco_ticho_vypadky_maju_prednost():
     """With dropouts the "longest stretch" is untrustworthy - it is chopped
-    up by gaps in the data, not by physiology. That is why they are asked
+    up by gaps in the data, not by physiology. That is why they are checked
     first."""
     veta = _preco(above_runs=9, runs_cancelled_gap=7, runs_cancelled_dip=2,
                   longest_above_s=11.0, stress_hold_s=90.0)
@@ -1139,8 +1138,8 @@ def test_pokojny_vecer_sa_nenatiahne_ani_kumulativne():
     """Guard for the previous: cumulative window must not arm on just anything.
 
     If a few seconds above the threshold over a long time were enough, the
-    app would speak up even during calm play — that is exactly the
-    opposite that makes it annoying.
+    app would speak up even during calm play — exactly the opposite of
+    what we want, and what makes it annoying.
     """
     t, h = spusti(stress_threshold=55.0, stress_hold_s=45.0)
     for _ in range(40):

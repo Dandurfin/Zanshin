@@ -159,14 +159,14 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
     # the WRIST counts hand movement, and playing is all hand movement, so
     # zero would probably throw everything away.
     #
-    # 15 is a PROVISIONAL number from the product owner, not measured. The
+    # 15 is a PROVISIONAL number from the author, not measured. The
     # first 10 step messages of each session are written to the journal
     # (`_metrics_log_left`) precisely so it can be replaced with a value from
     # our own data.
     KROKY_PRAH_ZA_MIN = 15.0
 
     # Which world the critical heart rate and the load threshold are computed
-    # from. Product owner's decision (B3-worlds): ONLY from play - both are
+    # from. The author's decision (B3-worlds): ONLY from play - both are
     # defined as percentiles of PLAYING (`hr_stats.dynamicky_kriticky`,
     # `dynamicky_prah_zataze`). On test data a single work session in the
     # shared pool pulled play time above the threshold from ~23 % to ~9 %
@@ -177,7 +177,7 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
     # The side menu has 4 main items + the enso (Today, History, In-game,
     # Settings); since the "Sumi noc" redesign "vhre" is a separate page, not
     # a tab - SETTINGS_TABS are only the tabs INSIDE Settings. The keys are
-    # also page keys, so sidebar._select(kluc) / _navigate(kluc)
+    # also page keys, so sidebar._select(key) / _navigate(key)
     # work for all of them (command palette, onboarding "Pair a watch now" ->
     # vhre, guided tour).
     # "guide" was a separate tab here until 18. 9. The explanations and theory
@@ -203,10 +203,10 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
     # `ui_kit.umiestni_pevne_okno`).
     WINDOW_W, WINDOW_H = 1180, 760
     # The mark in the centre of the Today page. At 68 px (its original place
-    # in the side panel) the ring had a "stretched" 1.4 px and got lost. 168 px
-    # is the size from the mockup - at that size the ring is about 4 px and
-    # really registers in peripheral vision. Above 100 px the set is drawn
-    # with double (not triple) supersampling, see `ui_shell._EnsoButton`.
+    # in the side panel) the "armed" ring was 1.4 px and got lost. 168 px is
+    # the size from the mockup - at that size the ring is about 4 px and
+    # really registers in peripheral vision. Above 100 px the frame set is
+    # drawn with double (not triple) supersampling, see `ui_shell._EnsoButton`.
     ENSO_SIZE = 168
     # Opacity of the soft central veil behind the enso and the text. < 255 so
     # the dojo SHOWS THROUGH (translucent) - not a dark box, only as much
@@ -258,7 +258,7 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
     # goes to a value that IS a zone (calm, time over the limit); `blue` only
     # to recovery (HRR), because blue = calm/low (see `theme.py`).
     HISTORY_METRICS = (
-        # colours from the zone series (theme.ZONE_TOKENS), not success/warn -
+        # colours from the row of zones (theme.ZONE_TOKENS), not success/warn -
         # the chart and the zone bar next to it must speak the same colour
         # language
         ("baseline", "metric.baseline.title", "zone_calm"),
@@ -388,8 +388,8 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         # The world of the RUNNING session - sealed when it opens, and the
         # switch no longer changes it (see `_open_hr_session`).
         self._session_world = self.world
-        # The cue style the player chose, and the ladder step of the running
-        # session (0.2, `rebrik.py`). The step is decided when the session
+        # The cue style the player chose, and the ladder rung of the running
+        # session (0.2, `rebrik.py`). The rung is decided when the session
         # opens.
         self.cue_style = settings["cue_style"]
         self._cue_style_rel = self.cue_style
@@ -490,7 +490,7 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
                                            color=cfg.get("color") or "")
 
         # Plain-python mirrors - listener threads must not read Tk variables.
-        # Cooldown for a MANUAL trigger (Test, HUD preview). A constant - see
+        # The gap for a MANUAL trigger (Test, HUD preview). A constant - see
         # the NOTE at the removed "Timing" panel on the Sound page.
         self.cooldown_value = DEFAULT_COOLDOWN
         self.rate_value = int(settings["rate"])
@@ -634,7 +634,7 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         # introduction, pairing and the tour are calm at the desk, not playing.
         # The first saved session gets `setup` and the thresholds do not learn
         # from it (`_suhrn_relacie`, `hr_stats.ciste_relacie`);
-        # `_close_hr_session` drops the mark after saving. Only during a run
+        # `_close_hr_session` drops the flag after saving. Only during a run
         # with the introduction - not after a restart.
         self._relacia_nastavovania = bool(settings["first_run"])
         # How many seconds of the session the HUD was visible (biofeedback: a
@@ -1248,7 +1248,8 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         ctk.CTkLabel(bpm_row, text=tr("dnes.bpm_unit"), font=ui_kit.ui(11),
                      text_color=pal["text_faint"]).pack(side="left", padx=(9, 0),
                                                         pady=(14, 0))
-        # "so the user knows": a sentence by the number + an expandable meaning
+        # "so the user knows": a sentence by the number + an expandable
+        # "what it means"
         self.dnes_info_bpm = self._metric_info(bpm_box, pal, "bpm")
         self.dnes_info_bpm.pack(fill="x", pady=(2, 0))
 
@@ -1293,8 +1294,8 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
 
         # EMPTY STATE (0.3 batch 4, `ui_kit.EmptyState`): while no heart rate
         # is coming in, one sentence and one action - "Pair your watch" (opens
-        # the instructions and switches on heart-rate receiving,
-        # `open_watch_pairing`). Up to 0.3 there was also a dimmed HUD preview
+        # the pairing guide and switches on heart-rate receiving,
+        # `open_watch_pairing`). Before 0.3 there was also a dimmed HUD preview
         # here with a made-up heart rate of 72 and a heading above the
         # sentence - the preview faked a measurement and the heading repeated
         # the panel's heading. It hides once connected (_refresh_dnes_stats).
@@ -1304,7 +1305,7 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         # which of the pair (live / empty) is visible is handled by
         # _refresh_dnes_stats
 
-        # "My stats" - an optional 2x2 grid (replaces the original fixed
+        # "My stats" - a configurable 2x2 grid (replaces the original fixed
         # 7-row StatList). "✎ edit" opens a popup with all the metrics, at most
         # 4 can be chosen (DASHBOARD_MAX_CARDS); both the choice and the order
         # are saved to settings (self.dashboard_stats).
@@ -1317,7 +1318,7 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         # (biofeedback - a heart rate you can see gets regulated
         # subconsciously), so it is worth keeping it in sight.
         # ⚙ next to it opens the full HUD settings (Settings -> General, the
-        # heart-rate panel section) - up to 0.3 it led to the In-game page,
+        # heart-rate panel section) - before 0.3 it led to the In-game page,
         # where the HUD is not.
         hud_row = ctk.CTkFrame(stats_wrap, fg_color="transparent")
         hud_row.pack(fill="x", pady=(0, 12))
@@ -1459,7 +1460,7 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
     # ---------- Settings and In-game pages ----------
 
     def _build_spustace_page(self, page, pal):
-        """Cues: the profile, sharing it, and the trigger map.
+        """Triggers: the profile, sharing it, and the trigger map.
 
         The page is no longer called "Profiles" - the profile is the
         mechanism, the trigger is what the user really sets. The profile
@@ -1690,8 +1691,8 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         # quiet button: a helper action, not a setting. The row is below the
         # status and "Try again" and is only visible with the natural voice
         # (`_obnov_aktualizaciu_hlasu`). The link to the official releases next
-        # to it shows only when only a new Zanshin fixes the voice; a chip,
-        # because it is an external link (opens the browser).
+        # to it shows only when it takes a new Zanshin to fix the voice; a
+        # chip, because it is an external link (opens the browser).
         rad = ctk.CTkFrame(row.text_col, fg_color="transparent")
         self.edge_update_row = rad
         self.edge_update_btn = ui_kit.button(
@@ -1775,8 +1776,9 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         # cue: the gap between cues is handled by
         # `trigger.params["min_gap_s"]`, which has a hard floor of 210 s, i.e.
         # seven times the maximum of that slider. The player thought they had
-        # tuned the app and changed nothing - and on top of that it
-        # contradicted the "How often I speak up" option, which really does it.
+        # tuned the app and changed nothing - and on top of that they were
+        # working against the "How often I speak up" option, which really does
+        # it.
         #
         # Both values stay as constants for a MANUAL trigger (the Test button,
         # a click in the HUD preview), where they make sense and nobody has to
@@ -2302,8 +2304,8 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
 
         # NOTE: here used to be a "Behaviour" panel with a single switch, "Only
         # one cue at a time". It was the only switch in the whole panel, so it
-        # came across as an important setting - and yet the automation did not
-        # read it at all: it does not and cannot fire two cues at once
+        # came across as an important setting - and yet the state machine did
+        # not read it at all: it does not and cannot fire two cues at once
         # (`min_gap_s` is 210 s and up). The only reader was `fire_slot`, i.e.
         # the Test button. There the protection makes sense, so it stayed
         # there - hard-coded, without a switch.
@@ -2334,7 +2336,8 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
     def _build_heart_rate_card(self, page, pal, pady=(14, 0)):
         """Heart-Rate Sensor (Wi-Fi / UDP) - receives BPM from the watch (e.g.
         HeartRateOnStream for OBS) and the automatic biofeedback trigger
-        of the breathing circle (Slot 4) on a long-raised heart rate.
+        of the breathing circle (Slot 4) on a long-lasting raised heart
+        rate.
 
         `pady` is the panel's top padding - the first panel on the page
         has it at zero, the others 14 px (the same convention as the rest
@@ -2348,7 +2351,7 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         # by itself.
         panel = ui_kit.Panel(page, pal, title=tr("settings.hr_section_title"))
         panel.pack(fill="x", pady=pady)
-        self.hr_card = panel          # target of the tour step about the HR sensor
+        self.hr_card = panel          # target of the tour step about the heart-rate sensor
         inner = ctk.CTkFrame(panel.body, fg_color="transparent")
         inner.pack(fill="x")
         inner.grid_columnconfigure(1, weight=1)
@@ -3167,7 +3170,7 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         # `_close_hr_session` crashed with a TclError (a crash in app.log from
         # a build). A second "Quit" now only closes the questionnaire and the
         # first `_quit` finishes the quitting, in the order below. FILLED-IN
-        # ANSWERS ARE NOT LOST (0.3, the product owner's decision): when the
+        # ANSWERS ARE NOT LOST (0.3, the author's decision): when the
         # player touched at least one answer, they are saved (as with "Save");
         # when not, it closes as with "Skip".
         if getattr(self, "_quit_bezi", False):

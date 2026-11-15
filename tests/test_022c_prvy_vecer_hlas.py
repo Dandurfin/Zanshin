@@ -189,7 +189,7 @@ def test_po_priprave_zacne_sledovat_sama(edge):
 
 
 def test_nikdy_necaka_navzdy(edge):
-    """Offline, preparation won't finish - it starts after PRVY_START_MAX_S."""
+    """Offline, prep never ends - it still starts after PRVY_START_MAX_S."""
     import app as app_mod
     assert 0 < app_mod.DandurfApp.PRVY_START_MAX_S <= 15
     a = _appka()

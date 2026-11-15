@@ -68,7 +68,7 @@ def _statistika(minut=15, teraz=None):
 
 def _appka(tmp_path, minut=15):
     """The real `_close_hr_session`, `_suhrn_relacie` and session protection
-    on `DandurfApp` without Tk. The questionnaire, promotion, analysis and
+    on `DandurfApp` without Tk. The questionnaire, graduation, analysis and
     settings are only recorded."""
     import app as app_mod
     a = app_mod.DandurfApp.__new__(app_mod.DandurfApp)
@@ -177,7 +177,7 @@ def test_vypnutie_ulozi_relaciu_a_nastavenia_bez_dotaznika(tmp_path):
     assert a._hr_session_open is False
     assert a.nastavenia == [True]
     # Windows waits a few seconds - no questionnaire (it would be thrown away
-    # with the process), no promotion or analysis in the background
+    # with the process), no graduation or analysis in the background
     assert a.dotazniky == [] and a.promocie == [] and a.analyzy == []
     # the "Session saved" line goes to the journal anyway
     assert len(a.denn) == 1

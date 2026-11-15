@@ -150,7 +150,7 @@ def test_en_hranice_su_prahy_nie_limity_nastroja():
     """„Hranice si appka počíta z tvojich vlastných relácií“ (the app computes
     its limits from your own sessions) are load thresholds (EN elsewhere
     "threshold"). "its limits" would, in a card headed "the tool’s
-    limits", sound like "the app counts what it does not know"."""
+    limits", sound like "the app works out what it cannot do"."""
     en = i18n.STRINGS["origin.text"]["en"]
     assert "works out its thresholds from your own sessions" in en
     assert "its limits" not in en

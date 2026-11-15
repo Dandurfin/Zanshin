@@ -274,7 +274,7 @@ def monitor_at_cursor(tk_widget=None):
 
 
 def foreground_window_rect():
-    """Rectangle of the focused window (typically the game), or None."""
+    """Rect of the focused window (typically the game). None if unavailable."""
     if not IS_WINDOWS:
         return None
     try:

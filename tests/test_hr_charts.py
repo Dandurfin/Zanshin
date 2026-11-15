@@ -259,7 +259,7 @@ def test_graf_historie_kresli_popisky_osi():
 
 
 def test_pasma_beru_farbu_z_jedneho_miesta():
-    """Whoever colours zones alone drifts from the legend sooner or later."""
+    """Colour zones yourself and sooner or later you drift from the legend."""
     ui = _read("ui_kit.py")
     for trieda in ("class ZoneBar(", "class SessionTrace("):
         start = ui.index(trieda)

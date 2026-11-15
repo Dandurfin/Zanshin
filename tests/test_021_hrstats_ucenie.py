@@ -29,7 +29,7 @@ def _relacia(minut, pokrytie=None, kadencia_s=1.0, bodov=None, **kw):
     """Session summary like `HeartStats.summary`, only fields learning reads.
 
     `pokrytie` None = an old session without `zone_seconds` (the whole
-    duration is replayed). Otherwise the bands together are
+    duration is replayed). Otherwise the zones together are
     `trvanie * pokrytie` and the curve has as many points as the watch
     with the given cadence would send in that time (at most
     `CURVE_POINTS`, like `downsample`). A smooth wave - `je_podozriva`
@@ -102,7 +102,7 @@ def test_minimum_bodov_lezi_medzi_slubenymi_hranami():
 
 
 def test_dlha_relacia_s_dierami_sa_do_prahu_rata_ako_doteraz():
-    """Changing the minimum: not WHICH sessions count, only how many points.
+    """A new minimum does not change WHICH sessions count, only points needed.
 
     Two long sessions have enough points even on their own, so the result
     is decided only by the number of sessions and their length, not by
@@ -133,7 +133,7 @@ def test_je_dost_dlha_to_iste_pravidlo_ako_prah():
 
 def test_tri_kratke_relacie_nenahradia_zalohu_kritickeho_tepu():
     """Three two-minute sessions (pairing the watch, heart rate at rest) have
-    360 curve points in total - above `KRITICKY_MIN_BODOV`. Up to 0.2.1
+    360 curve points in total - above `KRITICKY_MIN_BODOV`. Until 0.2.1
     they produced a limit of 80 instead of the fallback 110."""
     kratke = [_relacia(2, 1.0) for _ in range(3)]
     assert sum(len(r["curve"]) for r in kratke) >= hr_stats.KRITICKY_MIN_BODOV
@@ -159,7 +159,7 @@ def test_kratke_relacie_nevytlacia_dlhe_z_okna_poslednych_dvadsiatich():
     like for the threshold. Otherwise a few short sessions at the end
     would push out the long evenings."""
     # The first five long evenings are tenser. If the window were cut first
-    # and filtered only afterwards, exactly they would drop out - with
+    # and filtered only afterwards, those would be the ones to drop out - with
     # identical curves the test would not notice (15 identical evenings give
     # the same percentile as 20).
     napate = [_relacia(20, 1.0, curve=[120.0] * 400) for _ in range(5)]

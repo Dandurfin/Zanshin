@@ -14,8 +14,8 @@ and then via a Tk `after()` chain:
     walks a WindowFromPoint grid (grabbability), checks the fleur cursor,
     drags the window with the REAL mouse, saves the position, reopens,
     switches to another slot,
-  * opens the pairing dialog, checks override/focus/grab, drags it by the
-    bar and closes it with a real Escape,
+  * opens the pairing dialog, checks override/focus/grab, drags it by its
+    title bar and closes it with a real Escape,
   * saves a pictogram colour and checks on a screenshot that the visual is
     red,
   * bulk-selects slots (refusing "all" + deleting two),
@@ -34,7 +34,7 @@ What you need to know
   * The settings (dandurf_settings.json and its .bak) and the heart-rate
     history (hr_sessions.json, hr_insights.json, the session checkpoint
     hr_session_open.json) are backed up at the start ON DISK next to the
-    originals (`<subor>.pred-harnessom`) and RESTORED at the end - bulk
+    originals (`<file>.pred-harnessom`) and RESTORED at the end - bulk
     deletion, drag and the history test would otherwise change them. After
     a run that someone killed hard, the next run restores them right at
     the start (see "Data backup").
@@ -57,14 +57,14 @@ os.chdir(PROJ)
 # Data backup (settings + heart-rate history) - on disk, not in memory
 # ---------------------------------------------------------------------------
 # The harness runs on the Zanshin data of the source tree next to main.py,
-# i.e. on the real heart-rate history. Up to 0.2.1c it put it aside only in
+# i.e. on the real heart-rate history. Until 0.2.1c it put it aside only in
 # MEMORY and the last `finally` did not even restore it: Ctrl+C, closing the
 # window or a crash between setting aside and restoring deleted it forever.
 # The settings backup was on disk, but the next run overwrote it with the
 # settings the interrupted run had changed. So now:
 #   * BEFORE the first touch every file is copied next to itself as
-#     `<subor>.pred-harnessom`; a file that did not exist before the run
-#     gets the marker `<subor>.pred-harnessom-nebol`. On disk it survives
+#     `<file>.pred-harnessom`; a file that did not exist before the run
+#     gets the marker `<file>.pred-harnessom-nebol`. On disk it survives
 #     even the process being killed.
 #   * It is restored in `finish()`, in the `finally` around mainloop
 #     (Ctrl+C, closed window) and via `atexit` (a crash even before
@@ -101,7 +101,7 @@ def obnov_po_prerusenom_behu(cesty, znacka=None):
     (synthetic data), but so may the app started in the meantime (a new
     real session), and the two cannot be told apart. If the file differs
     from the backup (or did not exist before the run), it is set aside next
-    to it as `<subor>.pred-obnovou-<cas>` and it is printed where it is.
+    to it as `<file>.pred-obnovou-<time>` and its location is printed.
     That way nothing is lost; one identical to the backup need not be kept.
     Returns the list of restored files.
     """
@@ -137,8 +137,8 @@ def zaloz_zalohy(cesty):
         if os.path.exists(p + ZALOHA) or os.path.exists(p + NEBOL):
             # A backup that `obnov_po_prerusenom_behu` did not restore (e.g. a
             # locked file). Overwriting it with the current file would be
-            # exactly the data loss it protects against - the run would rather
-            # not start.
+            # exactly the data loss it protects against - better that the run
+            # does not start.
             raise SystemExit("harness: %s ma nevratenu zalohu z preruseneho "
                              "behu - vrat ju rucne a spusti znova" % p)
     for p in cesty:
@@ -182,9 +182,9 @@ HR_INSIGHTS = os.path.join(PROJ, "hr_insights.json")
 # app would be gone forever. The same for the settings .bak: otherwise it
 # would be left after the run with the settings the harness modified.
 HR_SESSION_OPEN = os.path.join(PROJ, "hr_session_open.json")
-# Sessions that could not be saved (0.3, hr_stats.CAKAJUCA_MENO) - start
-# adds them to history and deletes the file, exactly like the checkpoint
-# above.
+# Sessions that could not be saved (0.3, hr_stats.CAKAJUCA_MENO) - the
+# app start adds them to history and deletes the file, exactly like the
+# checkpoint above.
 HR_SESSION_PENDING = os.path.join(PROJ, "hr_session_pending.json")
 SETTINGS_BAK = SETTINGS + ".bak"
 ODLOZENE = (SETTINGS, HR_SESSIONS, HR_INSIGHTS, HR_SESSION_OPEN, SETTINGS_BAK,
@@ -650,7 +650,7 @@ def s_dock_and_hook():
     rec("quick dock is gone", getattr(app, "quick_dock", None) is None)
     shot("01f_dnes_compact")
     # start listening. NOTE: here was also `state["counts0"] = dict(...)` -
-    # the baseline for the keyboard hook check, which no longer exists (see
+    # a reading for the keyboard hook check, which no longer exists (see
     # `s_stop_listening` below).
     app.toggle_listening()
 
@@ -1096,11 +1096,11 @@ def s_normal_check():
 @step(200, )
 def s_dialog_open():
     # a transient dialog is not topmost - if root stayed topmost, it would
-    # cover it and a real click on the bar would go to root (a harness
+    # cover it and a real click on the title bar would go to root (a harness
     # artefact, not the app's)
     root.attributes("-topmost", False)
     import ui_dialogs
-    state["pair_dlg"] = ui_dialogs.WatchPairingDialog(app)   # like open_watch_pairing, plus a reference
+    state["pair_dlg"] = ui_dialogs.WatchPairingDialog(app)   # like open_watch_pairing, but keeps a ref
     d = state["pair_dlg"]
     ip = d._local_ip()
     ips = d._local_ips()
@@ -1139,7 +1139,7 @@ def s_dialog_inspect():
     rec("dialog has grab", root.grab_current() is not None and root.grab_current().winfo_toplevel() is dlg, f"grab={root.grab_current()}")
     shot("13_dialog", widget=dlg)
     state["dlg_xy0"] = (dlg.winfo_x(), dlg.winfo_y())
-    # real drag by the bar (17 px from the top, left of the cross)
+    # real drag by the title bar (17 px from the top, left of the cross)
     state["dlg_bar"] = (dlg.winfo_rootx() + 200, dlg.winfo_rooty() + 17)
     rec("dialog bar is under the cursor point (not covered)", hit_root(*state["dlg_bar"]) == top_hwnd(dlg),
         f"hit={hit_root(*state['dlg_bar'])} dlg={top_hwnd(dlg)}")

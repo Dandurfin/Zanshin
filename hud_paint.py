@@ -34,7 +34,7 @@ try:
     # was left unused.
     from PIL import Image, ImageDraw, ImageFilter, ImageFont
     PIL_AVAILABLE = True
-except Exception:  # pragma: no cover - without pillow the app draws a fallback
+except Exception:  # pragma: no cover - without pillow the app draws with a fallback
     PIL_AVAILABLE = False
 
 SS = 3  # supersampling - 3x is enough for smooth edges and is 2x faster than 4x

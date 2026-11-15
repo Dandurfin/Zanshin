@@ -9,7 +9,7 @@ actually play" fix.
      the enabled cues of the new profile were not prepared (in game they
      played in the Windows voice).
 
-  2. A safeguard against a too strict filter (`_slot_na_pripravu`): every
+  2. A safeguard against an overly strict filter (`_slot_na_pripravu`): every
      cue that the category rotation (`_dalsi_cue_slot`) can pick in game
      and that TTS speaks gets prepared - the fix must not drop a cue that
      will really play in game.

@@ -455,7 +455,7 @@ def test_importovane_okna_sa_do_ucinnosti_nerataju():
 
 
 def _aktivita(t0, t1, idle_ms):
-    """Even activity over a stretch - [(time, idle_ms)] as ActivityTracker."""
+    """Even activity in a stretch - [(time, idle_ms)] like ActivityTracker."""
     return [(t, idle_ms) for t in range(int(t0), int(t1), 2)]
 
 

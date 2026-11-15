@@ -3,7 +3,7 @@
 
 Audit: the start of the README was legalese, installation came after 2 273
 words, there was no Troubleshooting, Uninstall or system requirements, half
-the README was for developers and the tests locked it in length. Now:
+the README was for developers and the tests pinned its length. Now:
 
   * README: introduction -> Quick start -> Install -> pairing ->
     requirements -> what the app does -> privacy -> Troubleshooting ->
@@ -92,7 +92,7 @@ def test_readme_quick_start_hned_po_uvode():
     """Whoever opens the README gets, within a few hundred words, what the app
     is, what it needs and how to start - not 2 273 words of disclaimers."""
     readme = _read("README.md")
-    # 0.3d: ~410 words to Quick start, ~570 to Install (until 0.3d 2 273)
+    # 0.3d: ~410 words to Quick start, ~570 to Install (before 0.3d 2 273)
     pred = readme[:readme.index("\n## Quick start")]
     assert len(pred.split()) < 500, len(pred.split())
     pred_instalaciou = readme[:readme.index("\n## Install")]

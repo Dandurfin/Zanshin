@@ -12,7 +12,7 @@ Until now:
   * the frameless window had no position.
 
 Tests run without Tk: `stav_parovania` is a module function and the dialog's
-methods are called on a stub.
+methods are called on a dummy.
 """
 import ast
 import os

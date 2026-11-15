@@ -215,7 +215,7 @@ def test_bodka_vypadok_je_trojuholnik_v_danger_text(tema):
         bodka.set_lost(True)
         assert _typy(bodka) == [("polygon", pal["danger_text"])]
         # a dropout takes precedence even over "not now" (the player turned
-        # that on)
+        # that on themselves)
         bodka.set_snoozed(True, tip="do 21:45")
         assert _typy(bodka) == [("polygon", pal["danger_text"])]
         assert bodka._aktualny_tip() == "ZAKLAD"

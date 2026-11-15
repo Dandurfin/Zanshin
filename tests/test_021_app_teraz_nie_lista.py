@@ -59,7 +59,7 @@ class _Bodka:
 
 
 # --------------------------------------------------------------------------
-# Fake pystray
+# Dummy pystray
 # --------------------------------------------------------------------------
 
 class _Polozka:
@@ -151,7 +151,7 @@ def test_lista_ma_teraz_nie_a_robi_to_iste_co_skratka(monkeypatch):
 
 
 def test_polozka_funguje_so_skutocnym_pystray(monkeypatch):
-    """The fake above accepts anything. The real `pystray.MenuItem` wraps
+    """The dummy above accepts anything. The real `pystray.MenuItem` wraps
     both the action and `checked` according to the number of arguments -
     this checks that the click and the tick mark go through the way pystray
     calls them (without an icon and without the tray thread)."""

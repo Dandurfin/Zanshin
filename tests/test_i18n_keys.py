@@ -71,7 +71,7 @@ def test_kazdy_kluc_ma_vsetkych_jedenast_jazykov():
 def test_kazda_karta_na_dnes_ma_vsetky_tri_texty():
     """A stats card needs `tag`, `more` and `title`.
 
-    `metric.over.more` was missing - and "Over the limit" is one of the
+    `metric.over.more` was missing - and "over HR limit" is one of the
     FOUR default cards on the main page. A click on the question mark thus
     showed the raw translation key 'metric.over.more'. `tr()` returns a
     missing key as it got it: it does not crash, it just looks like a

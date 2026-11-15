@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Input without a single pause: a quiet line on Today, once per session.
 
-It happened to the requester: the controller gyroscope ("Motion Always On")
+It happened to the author: the controller gyroscope ("Motion Always On")
 reported input to Windows every ~16 ms, `GetLastInputInfo` was never idle
 and the app found no pause in which to speak up - until he turned the gyro
 off. The app cannot know this for sure, so only a quiet line on Today (not

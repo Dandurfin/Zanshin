@@ -103,7 +103,7 @@ def test_baseline_trend_flags_insufficient_span_instead_of_exploding():
     # first/last/delta are independent of the regression and may stay usable
     assert trend["first"] == 62.0 and trend["last"] == 61.0
 
-    # exactly at the limit (2 days) the spacing is already sufficient
+    # exactly at the boundary (2 days) the spacing is already sufficient
     sessions_ok = [
         {"started": 1000.0, "baseline_bpm": 60.0},
         {"started": 1000.0 + hr_stats.MIN_TREND_SPAN_S, "baseline_bpm": 64.0},
@@ -173,7 +173,7 @@ def test_count_sessions_since_filters_and_sums_duration():
     sessions = [
         {"started": 100.0, "duration_s": 120.0},
         {"started": 200.0, "duration_s": 60.0},
-        {"started": 50.0, "duration_s": 999.0},   # before the limit
+        {"started": 50.0, "duration_s": 999.0},   # before the cutoff
         "junk",
     ]
     count, duration = hr_stats.count_sessions_since(sessions, since_ts=100.0)
@@ -181,7 +181,7 @@ def test_count_sessions_since_filters_and_sums_duration():
 
 
 # --------------------------------------------------------------------------
-# Time in bands - in seconds, not in samples
+# Time in zones - in seconds, not in samples
 # --------------------------------------------------------------------------
 
 def test_time_in_zones_counts_seconds_not_samples():
@@ -603,7 +603,7 @@ def test_podozriva_relacia_neurcuje_zakladnu_ani_hranicu():
 
 
 def test_kriticky_tep_bez_dat_padne_na_zalohu():
-    """Until there's data to compute from, no claiming a computed number."""
+    """No data to compute from: the app must not claim a computed number."""
     assert hr_stats.dynamicky_kriticky([]) == hr_stats.KRITICKY_ZALOHA
     assert hr_stats.dynamicky_kriticky(
         [{"curve": [80] * 120}]) == hr_stats.KRITICKY_ZALOHA
@@ -693,7 +693,7 @@ def test_bez_vzoriek_je_krivka_prazdna():
 def test_pokazena_relacia_bez_krivky_je_podozriva():
     """B11/B12: an impossible maximum (steps read as heart rate) must be
     caught even when the curve is missing or downsampling smoothed it out.
-    `max_bpm` comes from the raw ones."""
+    `max_bpm` comes from the raw samples."""
     assert hr_stats.je_podozriva({"max_bpm": 235, "avg_bpm": 124}) is True
     assert hr_stats.je_podozriva(
         {"max_bpm": 235, "avg_bpm": 124, "curve": [120] * 600}) is True
@@ -752,7 +752,7 @@ def _vlna(hore, opakovani=60):
 
 
 def test_pokrytie_signalu_z_ulozenych_poli():
-    """Sum of bands / duration - from what every summary already stores."""
+    """Sum of zones / duration - from what every summary already stores."""
     p = hr_stats.pokrytie_signalu(
         {"duration_s": 1000.0,
          "zone_seconds": {"calm": 600.0, "raised": 200.0, "high": 100.0,
@@ -789,7 +789,7 @@ def test_prehravanie_prahu_nevazi_vecer_podla_dier():
     """The curve is thinned by samples, not by time - it has no gaps.
 
     The same evening with a double `duration_s` (half the time the watch
-    was silent) and the same sum of bands must be replayed the same way -
+    was silent) and the same sum of zones must be replayed the same way -
     the same number of points, the same 80th percentile. Before, it was
     stretched over the whole time and weighed twice as much in the
     threshold.
@@ -803,13 +803,13 @@ def test_prehravanie_prahu_nevazi_vecer_podla_dier():
     assert a and abs(len(a) - len(b)) <= 1
     assert hr_stats._percentile(sorted(a), 0.8) == \
         hr_stats._percentile(sorted(b), 0.8)
-    # no bands (old session): stretched over the whole duration as before
+    # no zones (old session): stretched over the whole duration as before
     stara = {k: v for k, v in dierava.items() if k != "zone_seconds"}
     assert len(hr_stats.load_z_krivky(stara, 70.0, 110)) > 1.9 * len(a)
 
 
 def test_relacia_bez_pokrytia_sa_prehra_ako_doteraz():
-    """Without bands, with a zero sum, with full coverage - as before C4."""
+    """Without zones, with a zero sum, with full coverage - as before C4."""
     krivka = [70 + (i % 20) for i in range(600)]
     bez = {"curve": krivka, "duration_s": 600.0}
     ocakavane = hr_stats.load_z_krivky(bez, 65.0, 110)

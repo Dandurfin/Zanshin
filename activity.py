@@ -50,7 +50,7 @@ import time
 # to run for the whole time you play.
 POLL_S = 0.25
 
-# For the record for the measurement windows, 1x per second is enough - the
+# For the measurement-window record, 1x per second is enough - the
 # same density as heart rate from the watch. 4 Hz would grow to ~58k pairs
 # over four hours.
 LOG_EVERY_S = 1.0
@@ -129,7 +129,7 @@ def _make_idle_reader():
             # masking to 32 bits keeps the difference correct across the wrap.
             return (kernel32.GetTickCount() - info.dwTime) & 0xFFFFFFFF
 
-        idle_ms()          # verify it really works now, not only mid-game
+        idle_ms()          # check that it really works now, not only during play
         return idle_ms
     except Exception:
         return None
@@ -304,7 +304,7 @@ class ActivityTracker:
         a machine without idle a pause would never come and ALL cues would
         fall into the "pause did not come" branch - i.e. they would be
         delivered silently and the silent control arm would get mixed in
-        with them. The measurement would come out without a single audible
+        with them. The measurement would come out without a single voiced
         cue and nobody would know why.
         """
         if self.last_idle is None:
@@ -330,7 +330,7 @@ class ActivityTracker:
 # --------------------------------------------------------------------------
 # Input without a single pause
 # --------------------------------------------------------------------------
-# Measured on the requester's setup: a G7 Pro with the gyroscope on ("Motion
+# Measured on the author's setup: a G7 Pro with the gyroscope on ("Motion
 # Always On") reset `GetLastInputInfo` every ~16 ms, so the app saw no pause
 # until the gyro was switched off - and a cue waiting for a pause never got
 # a chance to come.

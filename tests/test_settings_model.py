@@ -213,7 +213,7 @@ def test_predvolene_vizualy_su_zapnute():
     `app._cue_can_fire` does not let a cue through until at least one
     in-game visual is enabled. While they were off by default, a new
     installation played through a whole evening and did not say a word -
-    the state machine wound up and every time quietly dropped out after
+    the state machine armed and every time quietly fell through after
     90 seconds.
     """
     cfgs = default_overlay_configs()
@@ -346,7 +346,7 @@ def test_copyright_je_v_appke_vidiet():
 
 
 def test_nazov_appky_je_holy_zanshin():
-    """„DojoSync" said nothing. The sentence by the name makes it clear."""
+    """„DojoSync" said nothing. Clarity comes from the sentence by the name."""
     import paths
     assert paths.APP_NAME == "Zanshin"
     # and the old name must stay in the migration, otherwise an installed

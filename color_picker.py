@@ -73,7 +73,7 @@ def _sv_image(hue, w, h):
 
 
 def _hue_image(w, h):
-    """Vertical hue strip 0..1 (top->bottom), full saturation, brightness."""
+    """Vertical hue strip 0..1 (top->bottom), max saturation and brightness."""
     ys = np.linspace(0.0, 1.0, h, dtype=np.float32)
     rgb = np.array([colorsys.hsv_to_rgb(y, 1.0, 1.0) for y in ys], dtype=np.float32)
     arr = (rgb[:, None, :] * 255).astype(np.uint8).repeat(w, axis=1)

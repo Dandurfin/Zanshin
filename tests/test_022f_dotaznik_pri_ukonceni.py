@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
 """Session questionnaire on every quit and Windows shutdown (0.3 batch 4b).
 
-Up to batch 4, touched answers were saved only by a second "Quit" during
+Until batch 4, touched answers were saved only by a second "Quit" during
 the closing questionnaire (`_dotaznik_pri_zatvarani`). A questionnaire
 opened by an ordinary Stop, still hanging when the player quit the app
 from the tray or Windows was shutting down (WM_SAVE_YOURSELF), died with
 `root.destroy()` along with the answers.
 
-The requester's rule now applies on EVERY quit: touched answers are saved
+The author's rule now applies on EVERY quit: touched answers are saved
 as with "Save", an untouched questionnaire is closed as with "Skip", one
 line goes to the journal. The save-error window does not open in the
 process. All data is made up.

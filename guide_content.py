@@ -15,7 +15,7 @@ from i18n import tr
 # DISCORD IS NOT HERE ON PURPOSE. Bug reports, ideas and collaboration go
 # to GitHub: a discussion there stays public, searchable and tied to the
 # code, while on Discord it sinks after a week. On top of that an invite
-# has a limited validity and after it expired it would stop working for
+# has a limited validity and once it expired it would stop working for
 # everyone who has already downloaded the app - and the author would not
 # find out.
 #

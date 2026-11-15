@@ -5,7 +5,7 @@ WHY THIS IS NOT IN app.py
 Not a single test in tests/ imports `app.py` - it pulls in tkinter,
 customtkinter, pynput and pygame (audio_engine runs pygame.mixer.init() on
 import). Logic that lived there could not be tested. This module is purely
-data: no Tk, no I/O, the clock can be slipped in. The same discipline as
+data: no Tk, no I/O, the clock can be injected. The same discipline as
 `measure.py` and `activity.py`.
 
 HOW IT WORKS
@@ -106,7 +106,7 @@ A_NEDALO_SA = "nedalo_sa"
 # After `max_wait_s` the gate did not let even the silent visual through
 # (0.2, stress-gate):
 A_BEZ_PAUZY = "bez_pauzy"              # ... and no pause came during the whole wait
-A_NEVHODNA_CHVILA = "nevhodna_chvila"  # ... pauses came, something stopped each one
+A_NEVHODNA_CHVILA = "nevhodna_chvila"  # ... pauses came, the gate stopped each one
 
 # Cancellations where the app ITSELF decided to stay silent. They count into
 # the session summary (`zadrzane`); snooze, leaving, a dropout or the end of
@@ -139,7 +139,8 @@ D_TIMEOUT = "timeout"
 
 def default_params():
     """Starting numbers. They are from the literature, not from the player's
-    body - the spec counts on that too and the first evenings will be tuned.
+    body - the spec counts on that too, and the first evenings are for
+    tuning them.
 
     Every session saves them with itself (spec §3.3): without that, a month
     later you cannot tell whether a difference came from what changed or
@@ -171,7 +172,7 @@ def default_params():
         # too, so one combat stretch does not fall apart into three short ones.
         "dip_grace_s": 20.0,
         # A pause in activity that counts as a breakpoint.
-        # NOTE: 2,5 s is the requester's decision. Published research
+        # NOTE: 2,5 s is the author's decision. Published research
         # (Iqbal & Bailey, CHI 2008) says that the finest breakpoints did
         # worse than medium and coarse ones. That is why it is a parameter and
         # why it is written into every window - it can be checked back from
@@ -195,10 +196,10 @@ def default_params():
         # protects the PLAYER (so the app is not chatty). That is why they are
         # two parameters and not one.
         "max_per_hour": 5.0,
-        # May it arm at all? False = the "pauza" step of the ladder
-        # (`rebrik.py`): the automaton behaves as when the hour is full - it
-        # does not arm, but diagnostics (runs above the threshold, pauses)
-        # are still collected.
+        # May it arm at all? False = the "pauza" rung of the ladder
+        # (`rebrik.py`): the state machine behaves as when the hourly cap is
+        # full - it does not arm, but diagnostics (runs above the threshold,
+        # pauses) are still collected.
         "cues_enabled": True,
         # Gate marker (0.2, stress-gate). Every window carries its parameters
         # (`app._save_measure_windows`), so windows after a timing change do
@@ -244,7 +245,7 @@ _CITLIVOST = {
     # Numbers from the spec - what is in `default_params()`.
     CITLIVOST_BEZNE: {},
     # For a body that swings over the threshold only briefly. The gap goes
-    # to the safety net, not below it.
+    # down to the safety net, not below it.
     CITLIVOST_VIAC: {"stress_threshold": 48.0, "stress_hold_s": 30.0,
                      "min_gap_s": MIN_GAP_FLOOR_S, "max_per_hour": 8.0},
 }
@@ -308,8 +309,8 @@ def _nove_preskocene():
 
 
 class CueTrigger:
-    """State machine of one session. No Tk, no I/O, with a clock that can be
-    slipped in - so it can be run through entirely in tests without waiting."""
+    """State machine of one session. No Tk, no I/O, with an injectable clock -
+    so it can be run through entirely in tests without waiting."""
 
     def __init__(self, params=None, rng=None, clock=time.time):
         self.params = dict(default_params())
@@ -340,7 +341,7 @@ class CueTrigger:
         self._arm = None             # the drawn arm, already at arming
         self._cooldown_until = 0.0
         self._last_load = None
-        # Why the automaton is suspended. See `suspend` / `resume`.
+        # Why the state machine is suspended. See `suspend` / `resume`.
         self._suspended_by = None
         self.armed_count = 0
         self.delivered_count = 0
@@ -395,12 +396,12 @@ class CueTrigger:
         would be enough for the app to keep talking - and the player would
         do that exactly when it annoys them.
 
-        `voice=False` = the work world: the automaton runs the same (arming,
-        pause, the arm is still drawn), only `hlas` at delivery is always
-        False - the cue goes only as a picture. The arm is NOT OVERWRITTEN:
-        it is drawn before delivery and must not be merged with the way of
-        delivery (see the module header); the window carries the world, so
-        the two can be separated.
+        `voice=False` = the work world: the state machine runs the same
+        (arming, pause, the arm is still drawn), only `hlas` at delivery is
+        always False - the cue goes only as a picture. The arm is NOT
+        OVERWRITTEN: it is drawn before delivery and must not be merged with
+        the way of delivery (see the module header); the window carries the
+        world, so the two can be separated.
         """
         historia = list(self._delivered_at)
         self.reset()
@@ -474,7 +475,7 @@ class CueTrigger:
         return udalost
 
     def resume(self, now=None, force=False):
-        """Lifts the suspension. The 90 s count FROM SCRATCH - a half-armed
+        """Lifts the suspension. The 90 s are counted FROM SCRATCH - a half-armed
         state does not exist.
 
         `force=False` means "a heart-rate sample came" and lifts ONLY a
@@ -530,7 +531,7 @@ class CueTrigger:
         now = self._clock() if now is None else now
         self._last_load = stress
         # THE GATE is fed on EVERY sample - even in the ARMED state, because
-        # that is exactly when decisions are made by it (hence before the
+        # that is exactly when it is used to decide (hence before the
         # return below).
         self._zona = zona
         self._load_hist.append((now, stress))
@@ -686,9 +687,9 @@ class CueTrigger:
         `pause_s` comes from `activity.ActivityTracker.pause_s()` and may be
         None - that means "the system does not report idle, we do not know".
         Then it does NOT wait for a pause forever, but does not pretend there
-        is one either: `max_wait_s` is let run out and then the same applies
-        as without a pause (a silent visual, if the gate lets it through). A
-        voice without a pause is never heard.
+        is one either: `max_wait_s` is allowed to run out and then the same
+        applies as without a pause (a silent visual, if the gate lets it
+        through). A voice without a pause is never heard.
 
         `can_fire` is decided by the app - cooldowns, snooze, visual
         availability. When it is False, the arming is NOT USED UP: waiting
@@ -780,7 +781,7 @@ class CueTrigger:
         46 s, 45 s needed" about a stretch that did not arm.
 
         `is None`, not truthiness: time 0.0 is a valid time (the clock can be
-        slipped in), not an "error".
+        injected), not an "error".
         """
         if self._above_since is None or self._posledny_nad_koniec is None:
             return 0.0
@@ -864,7 +865,7 @@ class CueTrigger:
         """Delivers. `arm` is the drawn arm, `delivery` is the way - they are
         two different things (see the module header).
 
-        The sound plays only when BOTH hold: the arm is voiced and the pause
+        The sound plays only when BOTH hold: it is the voice arm and the pause
         really came. The visual is always shown, in both arms - otherwise the
         arms could not be compared. In the work world (`voice=False`) the
         sound never plays.

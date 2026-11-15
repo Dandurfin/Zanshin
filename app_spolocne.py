@@ -103,7 +103,7 @@ LANG_NATIVE_LABELS = {
 LABEL_TO_LANG = {v: k for k, v in LANG_NATIVE_LABELS.items()}
 
 
-# "Teraz nie" (Not now) (spec §1.9). Ctrl+Alt+Z on purpose: in games Z is
+# "Not now" (spec §1.9). Ctrl+Alt+Z on purpose: in games Z is
 # hardly ever used with both modifiers at once, so the risk of a clash
 # with a game binding is small. An empty string disables the hotkey.
 DEFAULT_SNOOZE_HOTKEY = "ctrl+alt+z"

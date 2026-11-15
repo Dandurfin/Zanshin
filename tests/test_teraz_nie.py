@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""The "Not now" key (Ctrl+Alt+Z) and sound preview - owner's decisions, 24. 9.
+"""The "Not now" (Ctrl+Alt+Z) and sound preview - author's decisions, 24. 9.
 
   * "Not now" ONLY mutes the cues for the chosen time. Listening and
     measuring go on: the session stays open, heart rate is recorded, the

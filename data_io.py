@@ -8,7 +8,7 @@ deletion left something behind, it would be the worst kind of bug - one
 that nobody sees.
 
 EXPORT is harmless. It comes in two kinds: a CSV of sessions (that is in
-`hr_stats`, for a person, into a spreadsheet) and a JSON with EVERYTHING
+`hr_stats`, for a person to open in a spreadsheet) and a JSON with EVERYTHING
 including the measurement windows - for moving to another computer or
 "send it to me, I'm a beta tester".
 
@@ -43,7 +43,7 @@ from datetime import datetime
 import shutil
 
 # os.replace that survives a short file lock on Windows (antivirus,
-# indexing). `paths` pulls in no app module - no Tk and no cycle.
+# indexing). `paths` pulls in no app module - no Tk, no import cycle.
 from paths import nahrad_subor
 
 # Format version. Once the shape of the data changes, an old file can be
@@ -262,8 +262,8 @@ def build_bundle(sessions, windows, insights=None, app_version=""):
 
 
 def write_bundle(path, bundle):
-    """Write via `.tmp` + `os.replace` - a crash midway does not leave a half
-    file where the player expects a backup."""
+    """Write via `.tmp` + `os.replace` - a crash midway does not leave a
+    half-written file where the player expects a backup."""
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as fh:
         json.dump(bundle, fh, ensure_ascii=False, indent=2)
@@ -324,7 +324,7 @@ def _konecne(hodnota):
 
     `1e999` gives infinity from `json.loads` even without
     `parse_constant`. An integer beyond the float range (10**400) cannot
-    be converted by `math.isfinite` - OverflowError, so also no."""
+    be converted by `math.isfinite` - OverflowError, so not that either."""
     if isinstance(hodnota, bool) or not isinstance(hodnota, (int, float)):
         return False
     try:
@@ -668,8 +668,9 @@ def zaloha_pred_importom(cesty, znacka=None):
 
 
 def zapis_zoznam(cesta, data):
-    """List to JSON via `.tmp` + `os.replace` - a crash midway does not leave
-    a half history (the import used to write directly via open('w'))."""
+    """List to JSON via `.tmp` + `os.replace` - a crash midway does not
+    leave a half-written history (the import used to write directly via
+    open('w'))."""
     tmp = cesta + ".tmp"
     with open(tmp, "w", encoding="utf-8") as fh:
         json.dump(list(data), fh, ensure_ascii=False, indent=2)

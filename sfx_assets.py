@@ -134,7 +134,7 @@ def _synth_earth_thud(path):
 
 def _synth_wood_temple_block(path):
     """A dry wooden knock of a monastery temple block for teeth / reload
-    (percussive ~800 Hz tone with a short reverb)."""
+    (percussive ~800 Hz tone with a short decay)."""
     dur = 0.35
     t = _t(dur)
     click = _band_limit(_noise(dur), 600, 2200) * np.exp(-t * 45.0)

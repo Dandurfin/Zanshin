@@ -143,7 +143,7 @@ def test_log_na_znicenom_denniku_nespadne_a_ide_do_suboru_bez_ip(zapisovac, co_z
             root.destroy()             # exactly what the nested `_quit` did
         else:
             dennik.destroy()
-        # Premise: this is the error from app.log - without the fix `log`
+        # Precondition: this is the error from app.log - without the fix `log`
         # would let it through.
         with pytest.raises(tk.TclError):
             dennik.configure(state="normal")

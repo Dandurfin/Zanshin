@@ -217,8 +217,8 @@ def foto_okna(okno, meno):
     what happened before this helper was here.
     """
     # Dialogs are now FRAMELESS (ui_kit.DialogChrome) - `y - 40` was the offset
-    # for the OS title, which is no longer there; we draw from the top of the
-    # window. lift() tries to bring them to the top (in the harness this is
+    # for the OS title bar, which is no longer there; we draw from the top of
+    # the window. lift() tries to bring them to the top (in the harness this is
     # unreliable for modal windows, but it does no harm - in the real app
     # DialogChrome._take_focus raises them by itself).
     try:
@@ -301,7 +301,7 @@ def historia(pocet=46, dni=74):
                 krivka.append(int(round(bpm)))
                 if bpm >= kriticky:
                     nad += trvanie / hr_stats.CURVE_POINTS
-            # one number for the count, the automatic ones and ▼ in the curve
+            # one number for the count, the automatic cues and ▼ in the curve
             hlasok = random.randint(0, 4)
             sessions.append({
                 "started": start, "duration_s": round(trvanie, 1),

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """The heart-rate number on screen is smoothed, the measurement is not (0.3).
 
-The watch app can write two heart-rate series into one source (5-10 BPM
+The watch app can write two heart-rate streams into one source (5-10 BPM
 apart, ~2 messages per second). The screen showed the last raw value, so
 the number jumped up and down within the same second.
 
@@ -14,7 +14,7 @@ Guarded:
   * the window is reset on a dropout and stop (`clear_live`) and on a new
     session (`reset_session`) - where `_hr_last_bpm` is reset.
 
-All series are artificial - no real measured data.
+All streams are artificial - no real measured data.
 """
 import os
 import sys
@@ -31,7 +31,7 @@ import theme  # noqa: E402
 from _zdroj_appky import zdroj_metody  # noqa: E402
 
 T0 = 1_700_000_000.0
-# Artificial values of two series (7 BPM apart) - made up, not measured.
+# Artificial values of two streams (7 BPM apart) - made up, not measured.
 HORE, DOLE = 97, 90
 
 
@@ -45,7 +45,7 @@ def _app():
 
 
 def _dva_rady(st, t=T0, n=10, hore=HORE, dole=DOLE):
-    """Artificial series: per second the higher value, 0,5 s later the lower."""
+    """Artificial streams: each second the higher, 0,5 s later the lower."""
     for _ in range(n):
         st.add(hore, ts=t)
         st.add(dole, ts=t + 0.5)
@@ -82,7 +82,7 @@ def test_dva_rady_nerozskacu_cislo():
         st.add(DOLE, ts=t + 0.5)
         zobrazene.add(st.display_bpm)
         t += 1.0
-    # the raw value jumps HORE <-> DOLE, the number holds between the series
+    # the raw value jumps HORE <-> DOLE, the number holds between the streams
     assert st.last_bpm == DOLE
     assert all(DOLE < z < HORE for z in zobrazene), zobrazene
     assert max(zobrazene) - min(zobrazene) <= 2, zobrazene
@@ -145,7 +145,7 @@ def test_vypadok_a_nova_relacia_okno_vynuluju():
 
 
 def test_meranie_dostava_kazdu_vzorku():
-    """Raw samples stay wherever it measures - only the number is smoothed."""
+    """Raw samples stay in every measurement - only the number is smoothed."""
     st = hr_stats.HeartStats(critical_bpm=110)
     hodnoty = []
     t = T0
@@ -172,7 +172,7 @@ def test_meranie_dostava_kazdu_vzorku():
 # --------------------------------------------------------------------------
 
 class _Stats:
-    """Stub `hr_stats` that remembers what came into measuring."""
+    """Dummy `hr_stats` that remembers what came into measuring."""
 
     def __init__(self):
         self.prijate = []
@@ -314,5 +314,5 @@ def test_hud_kresli_vyhladene_cislo(monkeypatch):
     h._draw()
     assert zachytene["bpm"] == st.display_bpm
     assert zachytene["bpm"] != st.last_bpm
-    # the curve stays raw - the two series remain visible in it
+    # the curve stays raw - the two streams remain visible in it
     assert HORE in zachytene["history"] and DOLE in zachytene["history"]

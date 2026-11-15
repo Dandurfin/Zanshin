@@ -43,14 +43,14 @@ class ControlsMixin:
     # ---------- command palette (Ctrl+K) ----------
 
     def open_command_palette(self):
-        """Builds the palette with the current list of actions anew on every
-        opening - so it never goes stale, not even after slots/profiles
-        change outside the full _build_ui (add_slot/switch_profile do not
-        call it)."""
+        """Builds the palette from scratch, with the current list of actions,
+        every time it opens - so it never goes stale, not even after
+        slots/profiles change outside the full _build_ui
+        (add_slot/switch_profile do not call it)."""
         # The previous palette has to be closed, otherwise it stays hanging on
         # top of everything (it is topmost) and nothing closes it anymore - the
-        # instance used to be thrown away into a local variable, so its own
-        # guard for a single instance had nothing to guard.
+        # instance used to be thrown away in a local variable, so its own
+        # single-instance safeguard had nothing to guard.
         previous = getattr(self, "_palette", None)
         if previous is not None:
             try:
@@ -90,9 +90,9 @@ class ControlsMixin:
              lambda: self.pregenerate(force=True)),
             # "Update voice" (0.3) - only with the natural voice, same as the
             # button (the Windows voice sends nothing, not even a test word).
-            # Goes to Settings → Sound, where the update status is and a
-            # possible link to a new release. While watching it does not go to
-            # the network (`aktualizuj_hlas`); it never starts by itself.
+            # Goes to Settings → Sound, which shows the update status and any
+            # link to a new release. While watching it does not go to the
+            # network (`aktualizuj_hlas`); it never starts by itself.
             *([(tr("edge.update.btn"), tr("palette.cat.sound"),
                 lambda: (self.sidebar._select("zvuk"), self.aktualizuj_hlas()))]
               if getattr(self, "engine", None) == ENGINE_EDGE else []),
@@ -126,14 +126,14 @@ class ControlsMixin:
 
         World and volume are pre-filled with the CURRENT values - whoever
         just clicks through the introduction stays where they were (e.g. in
-        Work, where cues do not speak out loud)."""
+        the Work world, where cues do not speak out loud)."""
         wizard = OnboardingWizard(self.root, choice=self.theme_key,
                                   volume=self.volume_value)
         self.root.wait_window(wizard.top)
         if not wizard.confirmed:
             return
         # Step 4 picks the main world (B3-worlds); the theme goes with it. The
-        # window is rebuilt whole below, so changing the state is enough -
+        # whole window is rebuilt below, so changing the state is enough -
         # history and insights are recomputed only at the end.
         novy_svet = theme_mod.theme_world(wizard.choice)
         svet_sa_zmenil = novy_svet != self.world
@@ -177,13 +177,13 @@ class ControlsMixin:
     # the dock; volume is set with the slider in Settings -> Sound.
 
     def _on_snooze_hotkey(self):
-        """The key press came in. This runs on the OWN thread of `hotkey.py`, so
-        everything has to be carried over to Tk through `ui_call` - same as
-        the callbacks from the watch."""
+        """A key press came in. This runs on `hotkey.py`'s OWN thread, so
+        everything has to be passed to Tk through `ui_call` - same as the
+        callbacks from the smartwatch."""
         self.ui_call(self._toggle_snooze_from_hotkey)
 
     def _toggle_snooze_from_hotkey(self):
-        """A toggle, not one-way: the second press quietly cancels it.
+        """A toggle, not a one-way switch: a second press quietly cancels it.
 
         In a game the player often cannot get to the keyboard quickly, and
         making them wait 30 minutes for something they turned on by mistake
@@ -207,7 +207,7 @@ class ControlsMixin:
     def _start_snooze(self, minutes):
         """"Not now": silences CUES for `minutes` minutes - and nothing more.
 
-        THE REQUESTER'S DECISION (24. 9.): listening and measuring CONTINUE.
+        THE AUTHOR'S DECISION (24. 9.): listening and measuring CONTINUE.
         The session stays open, heart rate is recorded, the questionnaire
         does not come; only the trigger is paused with the reason
         `A_SNOOZE` (that one does not count as a dropout) and it is lifted
@@ -223,8 +223,8 @@ class ControlsMixin:
             self._cancel_snooze()
         now = time.time()
         # "Not now" shortly after a cue is a signal for the cue ladder. The
-        # session keeps running after it, so `_close_hr_session` records the
-        # real time that was still played (`snooze_then_s`).
+        # session keeps running after it, so `_close_hr_session` records how
+        # long play actually went on (`snooze_then_s`).
         self._zapis_snooze_po_hlaske(now)
         # How much of the session "not now" was in effect for (`snoozed_s` in
         # the summary). The session now carries it itself and the trigger
@@ -242,7 +242,7 @@ class ControlsMixin:
             self._zapocitaj_snooze()
             self._snooze_job = None
             self._snooze_until = None
-            # Listening is NOT started here now - "not now" did not stop it.
+            # Listening is NO LONGER started here - "not now" did not stop it.
             self._resume_cue_trigger()
             self.log(tr("log.snooze_ended"))
             self._refresh_snooze_indicator()
@@ -458,8 +458,8 @@ class ControlsMixin:
         the player is not playing then. `measure.by_category` meanwhile
         filters only by `valid` and `arm` - it does not read `source` at
         all - so every click on Test was counted into the "which cue works"
-        chart, and its time took the refractory zone of a real cue that
-        could come a few seconds later.
+        chart, and its time took the refractory zone away from a real cue
+        that could come a few seconds later.
 
         The automatic cue is recorded by `_fire_somatic_cue` itself, via
         `hr_stats.note_trigger(..., source="auto")`. So nothing needs to go

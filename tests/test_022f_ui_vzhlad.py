@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Look after batch 4b of the UX audit (0.3): the Consistency grid, the
+"""Appearance after batch 4b of the UX audit (0.3): the Consistency grid, the
 "Voice source" row, the Today bar with a taken port, small red text and the
 dialog frame.
 
@@ -10,7 +10,7 @@ Guarded:
     source" row (above its divider line) and the empty state takes no space,
   * with a taken port the heart-rate panel has only the button (one
     message, not two) and the bar text has a dark backing over the photo,
-  * small red text is `danger_text` (>= 4,5:1), never `danger`,
+  * small red text is `danger_text` (>= 4.5:1), never `danger`,
   * every app dialog (DialogChrome) has a 1 px frame in `rule`.
 
 Synthetic data; real Tk only with a hidden window.
@@ -94,7 +94,7 @@ def test_vyska_mriezky_ide_s_velkostou_stvorceka():
 
 
 class _Platno:
-    """tk.Canvas fake: items with text and coordinates, bbox ~7 px/char."""
+    """tk.Canvas dummy: items with text and coordinates, bbox ~7 px/char."""
 
     def __init__(self, sirka):
         self.sirka = sirka
@@ -273,7 +273,7 @@ def test_emptystate_schova_len_vetu(tema):
         stav.ukaz_vetu(False)
         assert stav.label.winfo_manager() == ""
         assert stav.action.winfo_manager() == "pack", "tlacidlo ostava"
-        stav.ukaz_vetu(False)                      # twice breaks nothing
+        stav.ukaz_vetu(False)                      # calling it twice breaks nothing
         stav.ukaz_vetu(True)
         assert stav.pack_slaves() == [stav.label, stav.action], "veta zase nad tlacidlom"
         holy = ui_kit.EmptyState(root, theme.tokens(tema), "Len veta.")

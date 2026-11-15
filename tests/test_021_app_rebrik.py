@@ -82,7 +82,7 @@ def test_pokazene_cislo_nezhodi_rebrik():
 
 
 # --------------------------------------------------------------------------
-# app.py on a fake: delivery -> session summary -> ladder
+# app.py on a dummy: delivery -> session summary -> ladder
 # --------------------------------------------------------------------------
 
 def _nic(*_a, **_k):
@@ -185,9 +185,9 @@ def test_dorucene_aj_tiche_rameno_sa_rataju(monkeypatch, tmp_path):
 
 
 def test_rebrik_z_ulozenych_suhrnov_nestupa_z_ticha(monkeypatch, tmp_path):
-    """The whole path: after „rušila“ (it disrupted), three evenings in which
-    every cue failed on the picture - the ladder stays on picture. Before
-    0.2.1 it would have climbed to voice."""
+    """The whole path: after an "it disrupted" verdict, three evenings in which
+    every cue failed on the picture - the ladder stays on the picture rung.
+    Before 0.2.1 it would have climbed to voice."""
     relacie = [rel(0, cue_verdict="disruptive", cues_delivered=1)]
     for i in range(3):
         a = _appka(monkeypatch, tmp_path, [False])

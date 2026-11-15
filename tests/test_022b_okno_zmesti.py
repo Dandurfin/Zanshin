@@ -144,7 +144,7 @@ def test_lista_uloh_na_boku_posunie_stred():
     is not centred under the taskbar on the side."""
     mon = BOK_VPRAVO
     f = display.window_fit_factor(W, H, 1.0, mon.work_width, mon.work_height)
-    assert f < 1.0                    # 768 px of height minus the bottom bar - just short
+    assert f < 1.0                    # 768 px of height, no taskbar at the bottom - just short
     pw = _fyz(W, f)
     x, _y = display.center_in_work_area(mon, pw, _fyz(H, f))
     assert x == 1982 + (1304 - pw) // 2
@@ -154,7 +154,7 @@ def test_lista_uloh_na_boku_posunie_stred():
     pw = _fyz(W, 1.25)
     x, _y = display.center_in_work_area(mon, pw, _fyz(H, 1.25))
     assert x == -1920 + (1844 - pw) // 2
-    assert x + pw <= -1920 + 1844     # the bar on the right stays free
+    assert x + pw <= -1920 + 1844     # the taskbar on the right stays free
 
 
 def test_nikdy_pod_minimum_a_vtedy_hore():
@@ -334,8 +334,8 @@ def test_bez_dpi_v_ctk_sa_rata_len_mierka_appky(monkeypatch):
 
 def test_dpi_okna_sa_nastavi_na_cielovy_monitor(monkeypatch):
     """Root is created on the main monitor (150 %); when it goes to the
-    second one (100 %), the CTk scale switches right away - not only over
-    finished widgets."""
+    second one (100 %), the CTk scale switches right away - not only once
+    the widgets are built."""
     tracker, okno = _priprav(monkeypatch, dpi_okna=1.5)
     assert ui_kit.zosuladi_dpi_s_monitorom(okno, DESKTOP_1080_100) is True
     assert tracker.window_dpi_scaling_dict[okno] == 1.0

@@ -1,4 +1,4 @@
-"""Heart rate statistics - resting baseline, load index, session course.
+"""Heart rate statistics - resting baseline, load index, session progress.
 
 What "load" is and what it is NOT
 ---------------------------------
@@ -94,13 +94,13 @@ ZONE_MEDIAN_SAMPLES = 5
 # as before.
 #
 # Why: the app on the watch can write TWO different heart rates into one
-# source (for the requester ~2 messages per second, one series 5-10 BPM
+# source (on the author's setup ~2 messages per second, one stream 5-10 BPM
 # lower than the other), and the number then jumped up and down by those
 # 5-10 BPM within the same second.
 # Why 3 s: the sensor changes roughly once a second, so the window holds ~3
-# readings of one series - the median throws away one stray value. With two
-# series (~6 values in the window, half and half) it falls between them and
-# does not jump. Behind a real heart rate onset the number lags by roughly
+# readings of one stream - the median throws away one stray value. With two
+# streams (~6 values in the window, half and half) it falls between them and
+# does not jump. The number lags behind a real rise in heart rate by roughly
 # a second (two of three readings must be new), less than the zone word
 # (median of 5 samples, 5 to 15 s) - so the number and the colour do not
 # drift apart. A longer window would already show as a delay on a sharp
@@ -163,7 +163,7 @@ def kadencia_vzoriek(samples):
 
     WHY
     The cue trigger tells a sparser cadence apart from a dropout
-    (`trigger.DIERA_S`), and that limit rests on how often the watch really
+    (`trigger.DIERA_S`), and that boundary rests on how often the watch really
     sends. Until now this could only be estimated afterwards from other
     counters. With these three numbers in the session summary it can be
     verified after a few evenings by measurement, not by a model: the
@@ -222,7 +222,7 @@ DLHODOBA_PODLAHA = 40.0        # lower is not a resting heart rate but an error
 # does not scale with that. When this happens repeatedly, it is not the
 # body being measured but something else - on 19. 9. it was the parser,
 # which, after steps and speed were added to the message from the watch,
-# read the heart rate one time and the step count another time. The result
+# sometimes read the heart rate and sometimes the step count. The result
 # was a 52-minute session with an average of 124 and a maximum of 235.
 #
 # The 5 % limit is generously low: in 12 healthy sessions there were 0 % of
@@ -292,18 +292,18 @@ def ciste_relacie(sessions):
     exactly the calming down after the game) and they never got the
     questionnaire, so they know nothing about the alcohol or illness that
     `je_confounded` excludes. So thresholds are not learned from them (no
-    promotion either); in History and in the export they are like any other
+    graduation either); in History and in the export they are like any other
     session. This happens only rarely - shutting Windows down saves the
     session normally (`app._pri_vypinani_windows`).
 
-    SETTING UP THE APP (`setup`, 0.3) for the same reason as the 110 -> 80
-    drop during pairing: introduction, pairing and the tour easily take
-    more than 5 minutes, and they are minutes of calm at the desk, not
-    playing. Such a session would pull both the threshold and the limit
-    towards calm. The tag goes to the first saved session after the
-    introduction (`app._relacia_nastavovania`) and to any session for which
-    the player ticks "Just setting up the app" in the questionnaire
-    (`attach_context`). It stays in History.
+    APP SETUP (`setup`, 0.3) does not count either, for the same reason
+    as the 110 -> 80 drop during pairing: introduction, pairing and the
+    tour easily take more than 5 minutes, and they are minutes of calm at
+    the desk, not playing. Such a session would pull both the threshold
+    and the limit towards calm. The tag goes to the first saved session
+    after the introduction (`app._relacia_nastavovania`) and to any
+    session for which the player ticks "Just setting up the app" in the
+    questionnaire (`attach_context`). It stays in History.
     """
     return [x for x in (sessions or [])
             if isinstance(x, dict) and not x.get("imported")
@@ -312,7 +312,7 @@ def ciste_relacie(sessions):
 
 
 def pokrytie_signalu(session):
-    """Share of the session with a real heart rate: 0..1, or None when unknown.
+    """Share of the session that really had heart rate: 0..1, None if unknown.
 
     `sum(zone_seconds) / duration_s`, at most 1. Every stored summary has
     both fields, so it can be computed afterwards too - no new field is
@@ -322,8 +322,8 @@ def pokrytie_signalu(session):
     `HeartStats.add` credits to the zone the time since the previous
     sample, at most 5 s (`min(5.0, ...)`), and after a dropout `clear_live`
     throws away `_last_ts`, so the gap after a dropout adds nothing. A gap
-    of 5 to 12 s is counted as 5 s: coverage is rather slightly
-    overestimated than underestimated.
+    of 5 to 12 s is counted as 5 s: coverage is, if anything, slightly
+    overestimated rather than underestimated.
 
     `duration_s` is wall-clock time since the session was opened, including
     waiting for the first sample. A short session therefore has lower
@@ -410,7 +410,7 @@ def dynamicky_kriticky(sessions, baseline=None):
     WHAT IS COMPUTED
     The 90th percentile of the merged curves of the last `KRITICKY_Z_RELACII`
     CLEAN sessions at least `PRAH_MIN_TRVANIE_S` long - i.e. "the heart rate
-    you get above in the top tenth of your playing".
+    you go above in the top tenth of your playing".
     On the test data this gives e.g. 105 with a baseline of 77: headroom 28,
     and the critical zone covers 10 % of the time.
 
@@ -484,7 +484,7 @@ def je_dost_dlha(session):
     """True when the session lasts at least `PRAH_MIN_TRVANIE_S` (5 minutes).
 
     One rule for both the load threshold and the critical heart rate: no
-    own limit is learned from a shorter session. A broken or missing
+    personal limit is learned from a shorter session. A broken or missing
     `duration_s` behaves as zero - the session is not learned from, but it
     does not bring down the whole computation either (in
     `app._open_hr_session` an exception would also throw away the
@@ -504,7 +504,7 @@ def je_dost_dlha(session):
 
 
 def load_z_krivky(session, baseline, critical, krok_s=1.5):
-    """Replays a session's stored curve and returns its LOAD course.
+    """Replays a session's stored curve and returns the LOAD over time from it.
 
     A session stores heart rate, not load - here it is recomputed with the
     same code that runs live (`HeartStats`), so the result cannot drift
@@ -520,7 +520,7 @@ def load_z_krivky(session, baseline, critical, krok_s=1.5):
     # more than the others and had its time axis stretched. So only the time
     # when the heart rate really came in is replayed (`trvanie * p` is the
     # sum of the zones). The condition above stays on `duration_s` so that it
-    # does not change which sessions belong to the threshold, nor "computed
+    # does not change which sessions count towards the threshold, nor "computed
     # from n sessions" in the settings. Without coverage (old sessions, None)
     # the whole duration is replayed as before.
     p = pokrytie_signalu(session)
@@ -549,7 +549,7 @@ def load_z_krivky(session, baseline, critical, krok_s=1.5):
 
 
 def dynamicky_prah_zataze(sessions, baseline=None, critical=None):
-    """Load threshold at which the app starts winding up. Or None.
+    """Load threshold at which the app starts arming. Or None.
 
     WHY IT IS NOT A SETTING
     It was - as a "how often I speak up" option with three positions. But
@@ -640,7 +640,7 @@ ZEN_MIN_SPAN_DAYS = 10.0
 # the critical heart rate and the load threshold (`app.ALGORITMUS_SVET`).
 # A calm afternoon at work is not calm while playing; and the message
 # talks about "the next match". The world is decided by `session_world`
-# (answer in the questionnaire > world from the start > Play).
+# (answer in the questionnaire > world at start > Play).
 ZEN_SVET = "play"
 
 
@@ -827,7 +827,7 @@ def heart_rate_recovery(samples, recovery_s=60.0, min_prominence=15.0,
     for each peak that:
       * is the highest in the window +-peak_window_s (local maximum),
       * is at least `min_prominence` BPM above the minimum of the preceding
-        `lookback_s` (a short small tooth in a calm heart rate is not a
+        `lookback_s` (a short little blip in a calm heart rate is not a
         "peak"),
       * has a sample roughly recovery_s after it (tolerance tolerance_s) -
         otherwise the recovery cannot be measured and the event is skipped.
@@ -928,7 +928,7 @@ MIN_TREND_SPAN_S = 2 * 86400.0  # 2 days
 
 
 def baseline_trend(sessions, min_span_s=MIN_TREND_SPAN_S):
-    """Development of the resting baseline across sessions.
+    """Trend of the resting baseline across sessions.
 
     Returns {"points": [(started, baseline)], "first", "last", "delta",
     "slope_per_week", "insufficient_span"}; slope is a linear regression of
@@ -1185,7 +1185,7 @@ PERIOD_MONTH = "month"
 PERIOD_YEAR = "year"
 PERIODS = (PERIOD_DAY, PERIOD_WEEK, PERIOD_MONTH, PERIOD_YEAR)
 
-# Which buckets sessions are grouped into in the chart FOR THE given chosen
+# Which buckets sessions are grouped into in the chart FOR THE chosen
 # period - "month" shows daily averages, "year" monthly ones (exactly as in
 # the spec).
 CHART_BUCKET_FOR_PERIOD = {
@@ -1417,8 +1417,8 @@ class HeartStats:
         self._zdroj_krokov = _NEURCENY
         self._krok_naposledy = 0.0
         # [(time, 0..1)] share of time with input - filled by the app from
-        # `activity.ActivityTracker`. Used to estimate "when there was really
-        # playing".
+        # `activity.ActivityTracker`. Used to estimate "when the player was
+        # really playing".
         self._aktivita = []
         # the whole session (for HRR, HRPI, the session baseline) - 1 sample/s,
         # even a 4-hour session is only ~15k pairs
@@ -1469,7 +1469,7 @@ class HeartStats:
         DELIVERY RECORD (0.2, ladder + gate): `rung` is the session's
         ladder rung, `audible` whether something really sounded,
         `load_at` / `load_peak` the load at delivery and the highest since
-        winding up, `zone_at` the heart rate zone. They are stored only
+        arming, `zone_at` the heart rate zone. They are stored only
         when the caller sends them - older records do not have them and
         `measure.build_window` then does not write them into the window.
         """
@@ -1638,7 +1638,7 @@ class HeartStats:
         STEPS ARE TAKEN FROM ONE SOURCE ONLY.
         `zdroj` is the name of the OBS source the message came from. The
         app on the watch can write the same step count into several
-        sources at once (for the requester both `Steps` and `steps`). The
+        sources at once (on the author's setup both `Steps` and `steps`). The
         difference between two counters is not distance walked - it is
         their mutual delay. With a lag of 5 steps and four messages per
         second this came out as 595 steps per minute at a threshold of 15,
@@ -1699,8 +1699,8 @@ class HeartStats:
 
         Each point is the SHARE of activity in the given stretch (0..1),
         not the value at an instant - otherwise it would be random noise of
-        ones and zeros instead of what we care about: how densely there
-        was playing.
+        ones and zeros instead of what we care about: how dense the playing
+        was.
         """
         if not self._aktivita:
             return []
@@ -1884,7 +1884,7 @@ class HeartStats:
         samples arrive (depending on the watch cadence: at ~0.9 s per
         sample just under half a minute, at ~2.9 s roughly a minute and a
         half). While that holds, the HUD and the Today page write
-        "calibrating…" and the cue trigger does not wind up - the app does
+        "calibrating…" and the cue trigger does not arm - the app does
         not state a number it does not trust itself.
 
         After a dropout longer than `BASELINE_SECONDS` it does NOT
@@ -1912,8 +1912,8 @@ class HeartStats:
         calibration).
 
         It is only a patch for a false "Calm": for a few samples after that
-        the load may still show less than it really is for a while. The
-        error leans towards silence.
+        the load may still show less than it really is. The error leans
+        towards silence.
 
         Since C2 the zone word is heart rate relative to rest (`zone`), so
         on its own it would no longer say "Calm". It is still muted because
@@ -1953,7 +1953,7 @@ class HeartStats:
     def zone(self):
         """The zone RIGHT NOW - one word and one colour for the HUD, Today and
         the heart rate indicator. It is computed only here; drawing
-        functions get it ready-made and have no zone limit of their own.
+        functions get it ready-made and have no zone boundary of their own.
 
         It is HEART RATE relative to REST, not load: `zone_of_bpm` over the
         median of the last `ZONE_MEDIAN_SAMPLES` samples and over the same
@@ -1993,8 +1993,8 @@ class HeartStats:
         without heart rate, without a baseline, during calibration and
         right after the heart rate returns gives "calm" as a quiet fallback
         for the screen; but the gate must not take it as "not critical".
-        Where the HUD writes "…", here it is None - and the cue does not go
-        then.
+        Where the HUD writes "…", here it is None - and then no cue goes
+        out.
 
         NEVER the load zones (`zone_for`): those are about the bar, not
         about whether the heart rate is above the high heart rate limit.
@@ -2117,7 +2117,7 @@ class HeartStats:
 
     @property
     def hrr(self):
-        """Recovery after the top peak of the session (BPM), None until known."""
+        """Recovery after the session's highest peak (BPM), None if none yet."""
         return self._cached("hrr", lambda: hrr_headline(self.hrr_events()))
 
     @property
@@ -2185,8 +2185,8 @@ class HeartStats:
             # storing them again would be the same number twice.
             "curve": [int(round(b)) for b in self.trace()],
             # Activity curve next to the heart rate curve - from it one can
-            # find out afterwards when there was real playing and when
-            # someone sat in a menu. The threshold will be computed from it
+            # find out afterwards when the player was really playing and
+            # when they sat in a menu. The threshold will be computed from it
             # once there is enough data (see `PRAH_HRANIA`).
             "activity_curve": self.activity_trace(),
         }
@@ -2322,7 +2322,7 @@ def session_world(session):
 
 
 def sessions_in_world(sessions, world):
-    """Only the given world's sessions, in original order. Non-dicts drop.
+    """Only the given world's sessions, in original order, minus non-dicts.
 
     An unknown world is taken as Play (same as `session_world`)."""
     svet = normalize_activity(world) or WORLD_DEFAULT
@@ -2349,7 +2349,7 @@ def normalize_note(raw):
 # --------------------------------------------------------------------------
 # SUBJECTIVE LAYER (research of 2026-09-22): what the HEART RATE DOES NOT
 # SEE. Arousal (heart rate) and valence (good/bad) are two INDEPENDENT
-# axes. The main evaluation metric is the GAP measured x felt - that is why
+# axes. The main evaluation metric is the MISMATCH measured x felt - that is why
 # the subjective axes are kept as ordinal ids (like CONTEXT_IDS, they
 # survive all languages), not free text.
 # Everywhere None != "not chosen" - None = the player did not answer.
@@ -2544,10 +2544,11 @@ def _odloz_pokazeny(path):
     copying - a held file can be read (like
     `app_prefs.nacitaj_nastavenia`). When even the copy fails and the file
     is still there, it raises the move error: `path` is the ONLY copy and
-    the caller must not overwrite it. The write after setting it aside
-    retries too - a lock that is released only during its attempts would
-    otherwise overwrite the broken file without a copy (a bare
-    `os.replace` then failed on the same lock and the file stayed)."""
+    the caller must not overwrite it. The write that follows the set-aside
+    retries too - if the lock were released only during its retries, the
+    write would otherwise overwrite the broken file with no copy (back
+    then a bare `os.replace` failed on the same lock and the file
+    stayed)."""
     odlozene = "%s.corrupt-%d" % (path, int(time.time()))
     try:
         nahrad_subor(path, odlozene)
@@ -2659,9 +2660,10 @@ def _zarad_poslednu(data):
 # The same data as hr_sessions.json, the same folder - "Delete history"
 # deletes it too (`data_io.MAZATELNE`).
 ROZPRACOVANA_MENO = "hr_session_open.json"
-# A session start outside this range is not a real time - the same 2000
-# limit as on import (`data_io`). A session must not end in the future;
-# 5 minutes of tolerance for a shifted clock (time sync after start).
+# A session start outside this range is not a real time - the same
+# year-2000 limit as on import (`data_io`). A session must not end in the
+# future; 5 minutes of tolerance for a shifted clock (time sync after
+# start).
 ROZPRACOVANA_OD = 946684800.0
 ROZPRACOVANA_TOLERANCIA_S = 300.0
 
@@ -2874,7 +2876,7 @@ def zapis_cakajucu(sessions_path, summary, log=None):
 
 
 def obnov_cakajuce(sessions_path, now=None, log=None):
-    """Pending sessions into history. Returns a list of the summaries saved.
+    """Adds pending sessions to history. Returns the summaries really saved.
 
     Each one gets `recovered: True` (thresholds are not learned from it,
     like from the checkpoint). One that is already in the history (the
@@ -2982,9 +2984,9 @@ CSV_COLUMNS = ("date", "start", "duration_min", "avg_bpm", "min_bpm", "max_bpm",
                "activity", "hud_seen", "note",
                # Subjective layer (research of 2026-09-22): sleep, perceived
                # load 0-10, valence, body during the peak, verdict about the
-               # cue. Main evaluation = the GAP measured (heart rate) x felt
-               # (these). `confounded` = whether the session was NOT learned
-               # into the baseline (alcohol/illness/exertion).
+               # cue. Main evaluation = the MISMATCH measured (heart rate) x
+               # felt (these). `confounded` = whether the session was kept OUT
+               # of baseline learning (alcohol/illness/exertion).
                "sleep", "felt_load", "valence", "body_peak", "cue_verdict",
                "confounded",
                # Signal coverage (0.2): what share of the session the heart

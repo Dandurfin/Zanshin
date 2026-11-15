@@ -9,8 +9,8 @@ One small click-through window in a corner of the screen that shows:
     reading the number),
   * the heart-rate curve for the last ~3 minutes with the critical limit
     and the player's own resting baseline marked,
-  * the "Záťaž" (Load) bar (0-100) - a composite from hr_stats.py, not a
-    made-up "stress",
+  * the "Load" bar (0-100) - a composite from hr_stats.py, not a made-up
+    "stress",
   * the session row: length, number of cues fired, time above the limit.
 
 Why its own window and not part of the slot visuals
@@ -226,8 +226,8 @@ class StatsHud:
         stats = self.stats
         # Right after the heart rate returns (`HeartStats.is_settling`) the
         # load ramps up from zero - it takes the same path as calibration
-        # (empty bar, neutral colour), only instead of "kalibrujem"
-        # (calibrating) there is a quiet "…".
+        # (empty bar, neutral colour), only instead of "calibrating" there
+        # is a quiet "…".
         labels = self.labels
         settling = self.connected and stats.is_settling
         if settling:
@@ -237,8 +237,8 @@ class StatsHud:
         # `render_hud` only draws it; calibration, settling and disconnection
         # take precedence.
         # The number is `display_bpm` (median of a few seconds), not the last
-        # raw sample - two heart-rate series in one source would otherwise make
-        # it jump. The curve, load and zone stay on raw samples.
+        # raw sample - two heart-rate streams in one source would otherwise
+        # make it jump. The curve, load and zone stay on raw samples.
         image = hud_paint.render_hud(
             self.style,
             bpm=stats.display_bpm if self.connected else None,

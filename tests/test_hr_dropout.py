@@ -3,7 +3,7 @@
 
 Heart rate the app was hearing stops coming (12 s of silence or the watch
 drops the connection). Until now it looked exactly like "the watch has
-never come": Today dropped the live block and the session trace and
+never connected": Today dropped the live block and the session trace and
 showed "Pair your watch", and nowhere was it recorded how often and for
 how long the app was blind. After heart rate came back it also claimed
 "Calm" for a few seconds, although heart rate was up - the load was
@@ -577,7 +577,8 @@ def test_zmenene_vety_nenechali_stary_preklad():
 
 def test_postreh_o_vypadkoch_netvrdi_malo_hlasok():
     """`hr_insights` lets the dropout insight through by the average of
-    cancelled countings, regardless of how many cues fell on those evenings.
+    cancelled counting runs, regardless of how many cues fired on those
+    evenings.
     So the sentence must not claim „preto je hlášok málo" (that is why
     there are few cues) as a fact - only that there may be fewer."""
     postreh = i18n.STRINGS["insight.cue_dropouts"]

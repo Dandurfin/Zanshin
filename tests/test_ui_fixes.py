@@ -453,7 +453,7 @@ def test_enso_ikonu_customtkinter_neprepise():
         app_mod.DandurfApp._apply_window_icon(a)
         assert a._window_icon_ref is not None, "enso sa nenastavilo"
         # First start: CTk has already put its icon on the window (the timer
-        # fired during the guide). The default icon (True) would not override
+        # fired during onboarding). The default icon (True) would not override
         # it - the window itself must get the enso too (False).
         assert False in fotky, "enso len ako predvolena ikona - vlastnu ikonu CTk neprebije"
         # Normal start: the CTk timer fires only after us and must not

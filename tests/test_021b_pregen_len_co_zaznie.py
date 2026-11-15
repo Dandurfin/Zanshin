@@ -68,7 +68,7 @@ class _Root:
 
 
 def _atrapa(monkeypatch, slots, pocuva=False, styl="voice", svet="play"):
-    """A fake with the real preparation (`pregenerate`,
+    """A dummy with the real preparation (`pregenerate`,
     `schedule_pregenerate`, `pregen_jobs`, `on_engine_change`...). The
     thread is not started, only recorded (`a.vlakna`); the cache remembers
     what was "sent" (`a.posielane`)."""
@@ -146,8 +146,8 @@ def test_pripravuju_sa_len_hlasky_ktore_edge_v_hre_povie(monkeypatch, tmp_path):
         _slot(4, "Stary spustac z 0.1"),                      # extra slot
         _slot(5, "Druhy z 0.1", MODE_COMBO, enabled=False),
     ])
-    # A recording whose file has disappeared is not played (`_slot_voice_clip`)
-    # - TTS says the cue, so it must be prepared.
+    # A recording whose file has disappeared is not played
+    # (`_slot_voice_clip`) - TTS says the cue, so it must be prepared.
     assert a.pregen_jobs() == [("Breathe", HLAS), ("Ground", HLAS)]
 
     a.pregenerate()
@@ -313,7 +313,7 @@ def test_hlaska_cakajuca_na_zamku_sa_po_prepnuti_vzda(monkeypatch):
 
 
 def test_prepnutie_na_windows_so_skutocnou_cache_a_vlaknom(monkeypatch, tmp_path):
-    """Real `EdgeTTSCache` and a real thread; instead of Microsoft a fake
+    """Real `EdgeTTSCache` and a real thread; instead of Microsoft a dummy
     `edge_tts.Communicate`. A cue in flight finishes - the next one does
     not start."""
     import asyncio

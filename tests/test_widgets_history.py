@@ -98,7 +98,7 @@ def test_kazda_nova_karta_ma_vsetky_texty_vo_vsetkych_jazykoch():
 
 
 def test_vysvetlenie_hovori_aj_co_karta_nemeria(sk):
-    """Every `more` line: the metric's limit, not only what it measures."""
+    """`more` lines must state a metric's limits, not just what it measures."""
     from i18n import tr
     nie = ("nie ", "nie je", "neznamená", "nezaráta", "nemusia")
     for sid in NOVE:
@@ -111,7 +111,7 @@ def test_felt_vs_measured_nehovori_kto_ma_pravdu(sk):
     more = tr("metric.felt_vs_measured.more")
     assert "ani jedno nie je" in more
     assert "vydelená desiatimi" in more, "musi povedat, co je merane cislo"
-    # the short line too (visible unexpanded) says measured is the peak
+    # the short line too (seen without expanding) says "measured" is the peak
     assert "špičky" in tr("metric.felt_vs_measured.short")
 
 
@@ -135,7 +135,7 @@ def test_cas_v_pokoji_z_pasiem_alebo_none():
     assert hr_stats.cas_v_pokoji_s(_relacia(zone_seconds=None)) is None
     assert hr_stats.cas_v_pokoji_s(
         _relacia(zone_seconds={"calm": "x", "raised": 1})) is None
-    # there are bands, calm is zero: that is a statement, not "we don't know"
+    # there are zones, calm is zero: that is a statement, not "we don't know"
     assert hr_stats.cas_v_pokoji_s(
         _relacia(zone_seconds={"calm": 0.0, "raised": 60.0})) == 0.0
 

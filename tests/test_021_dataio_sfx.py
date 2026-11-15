@@ -19,7 +19,7 @@ import sfx_assets  # noqa: E402
 
 
 class _Server:
-    """Stub `urlopen` response. `data=None` = the server sends forever."""
+    """Dummy `urlopen` response. `data=None` = the server sends forever."""
 
     def __init__(self, data=None):
         self.data = data

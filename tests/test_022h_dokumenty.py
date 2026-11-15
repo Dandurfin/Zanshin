@@ -423,7 +423,7 @@ def test_poctive_vety_o_tlacidle_drzia_vo_vsetkych_dokumentoch():
     """Every sentence here is a promise about when the button goes to the
     network, what it keeps and what it does not protect against. Without
     this test it could be dropped or reversed (e.g. "keeps it only if that
-    worked" -> "keeps it") and all the document tests passed."""
+    worked" -> "keeps it") and all the document tests would still pass."""
     over = _funkcia("_vyskusaj_a_aktivuj")
     # only what the test word confirmed is kept (the manifest only after it)
     assert over.index("skusobne_slovo(") < over.index("_zapis_manifest(")

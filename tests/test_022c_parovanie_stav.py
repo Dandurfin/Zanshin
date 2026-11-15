@@ -5,13 +5,13 @@ cannot come", "IP field 0.0.0.0").
 
   * both the bar and the centre of Today have their own "The phone didn't
     connect" state with advice,
-  * the text on the right of the "Heart rate and load" header speaks by
+  * the text on the right of the "Heart rate and load" header follows
     the receiving state,
-  * the "Watch and heart rate" card: receiving -> state -> guide -> only
-    then the network fields; the address field is "advanced" and "Show
-    IP" is not shown at 0.0.0.0,
-  * the QR descriptions and the hint under the field point to the guide,
-    not to "IP of this PC".
+  * the "Watch and heart rate" card: receiving -> state -> pairing guide
+    -> only then the network fields; the address field is "advanced" and
+    "Show IP" is not shown at 0.0.0.0,
+  * the QR descriptions and the hint under the field point to the pairing
+    guide, not to "IP of this PC".
 
 The tests run without Tk: the real `DandurfApp` methods are called on a
 dummy.
@@ -90,7 +90,8 @@ def test_bez_prijmu_posiela_na_ikonu_nie_na_prepinac():
 
 def test_ikona_hodiniek_vlavo_naozaj_existuje_a_otvara_navod():
     """The sentences point to "the watch icon on the left" - the side panel
-    must have it, and a click must turn receiving on and open the guide."""
+    must have it, and a click must turn receiving on and open the pairing
+    guide."""
     src = zdroj_appky()
     assert "on_pair_watch=self.open_watch_pairing" in src
     shell = zdroj_suboru("ui_shell.py")

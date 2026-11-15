@@ -124,7 +124,7 @@ def sketch_or_image(parent, pal, card_id, size=SKETCH_SIZE):
     Order of sources:
       1. THE REAL PICTOGRAM from the in-game overlay
          (hud_paint.render_slot_icon) - for cards that match a slot's visual
-         (centre of gravity/jaw/breath). This is what the player really sees in
+         (grounding/jaw/breath). This is what the player really sees in
          the game, so the Guide shows exactly that picture, not an illustrative
          sketch (user's request).
       2. PNG from assets/guides/<id>.png if it exists (a hand-supplied
@@ -148,19 +148,19 @@ def sketch_or_image(parent, pal, card_id, size=SKETCH_SIZE):
         except Exception:
             pass
 
-    # 1b. APP BADGE for the philosophy card
+    # 1b. APP MARK for the philosophy card
     #
     # A vector sketch of a raft, a river and a moon with an arrow ("a finger
     # pointing at the moon") used to be drawn here. Next to the brush
     # pictograms of the other cards it looked like a picture from another app:
     # thin lines on a Canvas, a different raster, a different language. The
-    # badge (enso + 残) says the same thing more directly - the app is the
+    # mark (enso + 残) says the same thing more directly - the app is the
     # finger, not the moon - and is drawn the same way as the rest of the icons
     # (`hud_paint`, the same `Style`, the same brush).
     #
     # `color=style.accent`: the enso in the sidebar is a SWITCH and reports the
     # state by colour (green running / red stopped). Here it is a logo, it does
-    # not watch any state - a red badge in the handbook would read as an error.
+    # not track any state - a red mark in the handbook would read as an error.
     if card_id == "philosophy":
         try:
             import hud_paint
@@ -291,7 +291,7 @@ def populate_card_body(body, card, pal, wraplength=380, sketch_side="right",
 
     `sketch_side` is here because the cue card is as wide as the whole window.
     A sketch at the right edge would fly half a metre away from the text and
-    stop forming one thing with it; in the narrow Guide panel it sits right on
+    stop forming one thing with it; in the narrow Guide panel it sits well on
     the right.
     """
     row = ctk.CTkFrame(body, fg_color="transparent")
@@ -426,10 +426,10 @@ class GuidePanel:
                                min_width=560, min_height=420)
         self.top.transient(app.root)
 
-        # Own title bar instead of the OS frame - the main app window has no OS
-        # frame, so "Sprievodca" (Guide) should not have a Windows title on top
-        # either (that was one of the reported bugs). The content goes into
-        # chrome.body.
+        # A custom title bar instead of the OS frame - the main app window has
+        # no OS frame, so "Sprievodca" (Guide) should not have a Windows title
+        # on top either (that was one of the reported bugs). The content goes
+        # into chrome.body.
         chrome = ui_kit.DialogChrome(self.top, pal, tr("guide.window_title"),
                                      on_close=self.top.destroy)
         root = chrome.body

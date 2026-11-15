@@ -78,7 +78,7 @@ def test_rychle_odmaskovanie_dava_to_iste_co_povodne():
 
 
 def test_odmaskovanie_zachova_uvodne_nuly():
-    """Via a whole integer, leading zero bytes could easily get lost."""
+    """Through one whole integer, leading zero bytes could easily get lost."""
     mask = b"\x01\x02\x03\x04"
     payload = b"\x01\x02\x03\x04" * 3 + b"AB"      # the first bytes come out as zero
     von = obs_websocket._odmaskuj(payload, mask)
@@ -115,7 +115,7 @@ def test_ticho_medzi_ramcami_nie_je_koniec_spojenia():
 
 
 def test_limit_uprostred_ramca_ukonci_spojenie_bez_vynimky():
-    """Before, an exception mid-frame flew all the way up to `heart_rate`."""
+    """Until now an exception mid-frame would fly up into `heart_rate`."""
     server, druhy = socket.socketpair()
     try:
         druhy.sendall(_ramec(b"x" * 50)[:10])        # header + a piece of the body

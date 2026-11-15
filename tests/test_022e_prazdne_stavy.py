@@ -6,7 +6,7 @@ measurement.
 Guarded:
   * `ui_kit.EmptyState` (sentence + optional action, colours from the
     palette),
-  * Today without heart rate: "Pair your watch" opens the pairing how-to,
+  * Today without heart rate: "Pair your watch" opens the pairing guide,
   * History, "One session up close" without a session: only a sentence,
     after the first session the trace, legend and grid come back in the
     original order,
@@ -92,7 +92,7 @@ def test_dnes_bez_tepu_ponuka_parovanie(sk):
     assert ('self.dnes_empty = ui_kit.EmptyState(\n'
             '            hr_panel.body, pal, tr("dnes.empty_body"), action=tr("dnes.empty_btn"),\n'
             '            command=self.open_watch_pairing)') in stavba
-    # pairing how-to turns HR reception on (player need not find the toggle)
+    # pairing guide turns HR reception on (player need not find the toggle)
     assert "self._enable_hr_monitoring()" in zdroj_metody("open_watch_pairing")
     assert "self.hr_monitoring_enabled = True" in zdroj_metody("_enable_hr_monitoring")
     assert i18n.tr("dnes.empty_btn") == "Spárovať hodinky"

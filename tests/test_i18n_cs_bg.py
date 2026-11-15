@@ -237,7 +237,7 @@ def test_instalator_hovori_jedenastimi_jazykmi():
         for jazyk, veta in preklady.items():
             if sprava == "KeepDataHint":
                 assert "%1" in veta, (jazyk, veta)
-    # MsgBox buttons are the system's Ano/Nie - the text must name them so
+    # MsgBox buttons are the system's Ano/Nie - the text must call them that
     assert "Ano" in hlasky["KeepDataHint"]["czech"]
     assert "„Да“" in hlasky["KeepDataHint"]["bulgarian"]
 

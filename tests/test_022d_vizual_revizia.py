@@ -9,7 +9,7 @@
     before the person answers - not even when `grab_set` itself fails,
   * the cue card stands on the same left edge as the panels around it.
 
-No real window - the Tk classes are fakes.
+No real window - the Tk classes are dummies.
 """
 import os
 import sys
@@ -25,7 +25,7 @@ from _zdroj_appky import zdroj_suboru  # noqa: E402
 
 
 class _Ram:
-    """CTkFrame fake: remembers fill and background like CTk (`_fg_color`)."""
+    """CTkFrame dummy: remembers fill and background like CTk (`_fg_color`)."""
 
     def __init__(self, master=None, **kw):
         self.kw = dict(kw)
@@ -64,7 +64,7 @@ def test_linka_po_zmene_temy_neprevezme_pozadie_rodica(monkeypatch):
 
 
 def test_linka_bez_configure_nespadne(monkeypatch):
-    """No `configure` on the fake (old test in test_022d_vizual): no crash."""
+    """A dummy without `configure` (old test_022d_vizual) must not crash."""
 
     class _Holy:
         def __init__(self, *a, **kw):
@@ -76,7 +76,7 @@ def test_linka_bez_configure_nespadne(monkeypatch):
 
 
 class _Kus:
-    """CTkFrame/CTkLabel/button fake: pack only."""
+    """CTkFrame/CTkLabel/button dummy: pack only."""
 
     def __init__(self, *a, **kw):
         pass

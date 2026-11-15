@@ -7,7 +7,7 @@ easy to measure it badly: a cue fires exactly when the heart rate is up, and
 the heart rate also comes back down on its own. So when "before" and "after"
 are compared without a control, the result is "it works" every time - even
 if the app stayed silent. That is why every window is written with an arm
-(`arm`), so the silent arm can be compared with the voiced one. The silent
+(`arm`), so the silent arm can be compared with the voice arm. The silent
 arm is already LIVE (drawn by `trigger.CueTrigger`): some armings are
 deliberately not delivered by voice, only visually, and are measured the
 same way - otherwise "it works" would always come out.
@@ -66,9 +66,9 @@ REFRACTORY_AFTER_S = 180.0
 #
 # It used to be 5 s here (like `hr_stats.MAX_SAMPLE_GAP_S`, which however
 # is the cap of CREDIT for one gap, not a dropout limit). Since 20. 9. the
-# watch sends the heart rate every ~2,9 s and one lost packet is a gap of
-# ~5,6 s - so almost every measurement window got `diera_v_datach`,
-# although neither the app nor the trigger considered it a dropout and the
+# watch sends the heart rate every ~2.9 s and one lost packet is a gap of
+# ~5.6 s - so almost every measurement window got `diera_v_datach`,
+# although neither the app nor the trigger consider it a dropout and the
 # HUD showed the heart rate the whole time.
 MAX_GAP_S = 12.0
 
@@ -143,7 +143,7 @@ def category_for_slot(index):
 # effective cue, while it measures nothing but the fact that the person sat
 # down.
 #
-# 0,25 is deliberately low: a micro-pause at the desk barely changes the
+# 0.25 is deliberately low: a micro-pause at the desk barely changes the
 # share (the windows are 60 s before and 180 s after), while leaving the PC
 # drops it to zero.
 MIN_AKTIVITA = 0.25
@@ -195,7 +195,7 @@ def gaps(series, t0, t1):
     things:
 
       * a gap at the START of the pre-window = the session began only
-        during it, i.e. the window is SHORTENED (the cue came earlier than
+        during it, i.e. the window is SHORTENED (the cue came less than
         60 s after switching on),
       * a gap at the END of the post-window = the session ended early,
         also shortened,
@@ -311,8 +311,8 @@ def build_window(cue, samples, all_cue_ts, activity=None,
     # that the raised heart rate did not come from playing; low activity AFTER
     # it means that the drop does not measure the cue's effect, but the fact
     # that the person came back and sat down.
-    # The window is not thrown away - it is written with a reason and drops out
-    # of the effectiveness.
+    # The window is not thrown away - it is written with a reason and is left
+    # out of the effectiveness.
     pre_act = active_share(activity or [], pre_a, pre_b)
     post_act = active_share(activity or [], post_a, post_b)
     # `None` means "we do not know" (an old session, or activity was not
@@ -392,7 +392,7 @@ def build_windows(cues, samples, load=None, activity=None,
 
 # With a cap of 5 cues per hour and three hours of play a day that is ~15
 # windows a day, i.e. a year of daily play. One window is ~300 B of JSON,
-# so 5000 windows are ~1,5 MB.
+# so 5000 windows are ~1.5 MB.
 MAX_WINDOWS = 5000
 
 
@@ -451,7 +451,7 @@ def save_windows(path, windows, log=None):
 # Critical values of Student's t for a two-sided 95% interval, df = n-1.
 # A table and not `scipy`: `measure.py` is a purely data module and must be
 # importable without heavy dependencies (spec 2.1b, B2: "no scipy").
-# Above 30 degrees of freedom the difference from 1,96 is already under 4 %.
+# Above 30 degrees of freedom the difference from 1.96 is already under 4 %.
 _T95 = {
     1: 12.706, 2: 4.303, 3: 3.182, 4: 2.776, 5: 2.571, 6: 2.447, 7: 2.365,
     8: 2.306, 9: 2.262, 10: 2.228, 11: 2.201, 12: 2.179, 13: 2.160,
@@ -495,7 +495,7 @@ def by_category(windows, only_valid=True, arm="voice"):
     them works". This is the input for phase 8 - and for now mainly for
     the chart in the app, so the player sees where they stand.
 
-    Computed only from the VOICED arm: silent windows are the reference
+    Computed only from the VOICE arm: silent windows are the reference
     for whether a cue works AT ALL, not for comparing categories with each
     other. Mixing them would mean comparing a category with silence.
 
@@ -512,7 +512,7 @@ def by_category(windows, only_valid=True, arm="voice"):
     silent picture after `max_wait_s` is not a voiced cue) that really
     SOUNDED (`audible` False = the "picture" rung, a style without sound,
     a slot without sound; a missing field = an older window, back then
-    the voiced arm at a pause did sound), and not from WORK (there a cue
+    the voice arm at a pause did sound), and not from WORK (there a cue
     is only a picture). And once a window with the gate exists
     (`params.brana`), ONLY those count - since 0.2 a cue comes only when
     the load is not rising, so older windows would measure something

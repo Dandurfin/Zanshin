@@ -2,7 +2,7 @@
 """Two worlds, one body (0.2, B3-worlds).
 
 Play and work have separate history, insights and look (Sumi / Aizome).
-The product owner's decisions that these tests guard:
+The author's decisions that these tests guard:
 
   (a) at WORK a cue is only a picture - no voice and no sound,
   (b) the critical heart rate and the load threshold are computed ONLY
@@ -13,7 +13,7 @@ The product owner's decisions that these tests guard:
       only the player's answer,
   (d) Play = Sumi, Work = Aizome; an old theme without a world -> Play.
 
-Most tests run without Tk - real `DandurfApp` methods on a small fake (the
+Most tests run without Tk - real `DandurfApp` methods on a small dummy (the
 same as test_widgets_history.py). The only Tk test (title bar) is skipped
 when the window cannot be created.
 """
@@ -171,7 +171,7 @@ def _doruc(voice):
             return self.t
     h = Hodiny()
     t = trigger.CueTrigger(rng=random.Random(1), clock=h)
-    t.open_session(silent_share=0.0, voice=voice)   # always the voiced arm
+    t.open_session(silent_share=0.0, voice=voice)   # always the voice arm
     for _ in range(400):
         ev = t.note_load(80.0, h.t, zona="high")   # the gate (0.2) lets it through
         h.t += 1.0

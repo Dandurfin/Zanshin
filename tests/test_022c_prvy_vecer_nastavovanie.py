@@ -2,13 +2,13 @@
 """Setting up at the desk is not learned as playing (0.3).
 
 Audit: the introduction, pairing and the tour easily take more than 5
-minutes. The first session was thus calm at the desk saved as "play", and
-it calibrated the high heart-rate limit and the load threshold - the same
+minutes. So the first session, calm time at the desk, was saved as "play"
+and calibrated the high heart-rate limit and the load threshold - the same
 bug as the 110 -> 80 drop from KNOWN_ISSUES. The smallest honest fix:
 
   * the first SAVED session after the introduction gets `setup: True` (a
-    short one that is not saved does not use up the mark); after a restart
-    no more,
+    short one that is not saved does not use up the mark); not after a
+    restart,
   * `hr_stats.ciste_relacie` leaves it out like a recovered one
     (`recovered`) - neither the threshold, the limit, the long-term baseline
     nor graduation learn from it, History keeps showing it,

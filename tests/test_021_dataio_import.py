@@ -199,7 +199,7 @@ def test_neznamy_obycajny_udaj_sa_prenesie(tmp_path):
 def test_nekonecny_alebo_nezmyselny_cas_zaznam_zahodi(tmp_path, zle):
     """`json.loads` accepts NaN and Infinity, and `1e999` is infinity. A time
     outside 2000-2100 would crash the History chart on Windows (OSError) on
-    every open - beyond 2100 and also at 1970. An integer with 400 digits
+    every open - beyond 2100 and also in 1970. An integer with 400 digits
     must not end in OverflowError on `float()`."""
     text = bundle_text(
         sessions=['{"started": %s, "duration_s": 60}' % zle,
@@ -385,7 +385,7 @@ def test_cislo_s_tisickami_cifier_je_slusna_chyba(tmp_path):
 # --------------------------------------------------------------------------
 
 def test_privelky_subor_sa_odmietne_pred_citanim(tmp_path, monkeypatch):
-    """Above the cap the file is not even opened: even valid content is
+    """Above the cap the file is not even opened: even invalid content is
     "foreign", not "not JSON" - nobody looked at the content."""
     monkeypatch.setattr(data_io, "MAX_IMPORT_BAJTOV", 200)
     cesta = str(tmp_path / "velky.json")

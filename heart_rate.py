@@ -15,7 +15,7 @@ fall into two camps:
 
 Whatever comes first counts - the heart-rate indicator is shared.
 
-Two things that are done differently here on purpose than one would expect:
+Two things here are deliberately done differently from what one would expect:
 
 1) `stop()` NEVER waits for the threads (no join). Callbacks get from them
    into the GUI through `root.after`, and that blocks when called from
@@ -97,9 +97,9 @@ def _err_no(exc):
 
 # TWO DIFFERENT HEART RATES IN ONE SOURCE (0.3).
 #
-# Measured at the requester's: the watch app wrote two series of heart
-# rate interleaved into ONE source ("Tep") - in the same second a value
-# from the higher series and right after from the lower one, one series
+# Measured at the author's: the watch app wrote two heart-rate streams
+# interleaved into ONE source ("Tep") - in the same second a value from
+# the higher stream and right after from the lower one, one stream
 # 5-10 BPM below the other; at a calm heart rate they merged. For the
 # measurement this is one heart rate jumping up and down, and the player
 # will not find out on their own. So the app recognises it and says so
@@ -108,16 +108,16 @@ def _err_no(exc):
 #
 # The pattern is looked for in the last DVA_TEPY_OKNO_S seconds of ONE
 # source and ALL four things must hold at once - each one cuts off a
-# different false alarm. The numbers are verified on synthetic series
-# (tests/test_022_dva_tepy.py) and in a simulation: neither a noisy series
+# different false alarm. The numbers are verified on synthetic streams
+# (tests/test_022_dva_tepy.py) and in a simulation: neither a noisy stream
 # at 1-3 Hz, nor duplicates, nor one-off spikes, nor batches after a stuck
-# Wi-Fi raised an alarm, two series 5-10 BPM apart did - at 1 Hz within
+# Wi-Fi raised an alarm, two streams 5-10 BPM apart did - at 1 Hz within
 # ~15 s, with pairs of messages every 2-4 s within ~35 s.
 DVA_TEPY_OKNO_S = 60.0
 # 1) MORE MESSAGES THAN ONE SENSOR CAN MANAGE: at least 30 % of the gaps
 #    between messages are shorter than 0.65 s. The sensor changes ~1x per
-#    second, so one series has such gaps only now and then (Wi-Fi jitter);
-#    two series have them on every reading (at the requester's the median
+#    second, so one stream has such gaps only now and then (Wi-Fi jitter);
+#    two streams have them on every reading (at the author's the median
 #    gap was 0.51 s).
 DVA_TEPY_BLIZKO_S = 0.65
 DVA_TEPY_MIN_PODIEL_BLIZKYCH = 0.30
@@ -129,15 +129,15 @@ DVA_TEPY_MIN_PODIEL_BLIZKYCH = 0.30
 DVA_TEPY_SKOK_BPM = 4
 DVA_TEPY_MIN_CIKCAKOV = 8
 # 3) NOT ONE BATCH: the zigzags are spread over at least 10 s. After a
-#    stuck Wi-Fi a heap of old messages of one series arrives at once -
+#    stuck Wi-Fi a heap of old messages of one stream arrives at once -
 #    that must not be enough.
 DVA_TEPY_MIN_ROZPATIE_S = 10.0
 # 4) EVERY OTHER VALUE BELONGS TOGETHER: neighbouring samples differ in
-#    total at least 2x more than samples one apart. With two series every
-#    step jumps by the difference of the series, one apart it is the same
-#    series; with one series (even a noisy one, even with duplicates) it
-#    is the other way round or the same. This is the main safeguard
-#    against noise - without it a very noisy series at 2 Hz in the
+#    total at least 2x more than samples one apart. With two streams every
+#    step jumps by the difference between the streams, one apart it is the
+#    same stream; with one stream (even a noisy one, even with duplicates)
+#    it is the other way round or the same. This is the main safeguard
+#    against noise - without it a very noisy stream at 2 Hz in the
 #    simulation sometimes produced an alarm.
 DVA_TEPY_POMER = 2.0
 # Below this many samples in the window the ratio (4) is just chance.
@@ -153,7 +153,7 @@ MENO_ZDROJA_MAX = 80
 
 
 def dva_rady_v_okne(vzorky):
-    """True when [(cas, bpm)] (old -> new) has two interleaved HR series.
+    """True when [(cas, bpm)] (old -> new) has two interleaved HR streams.
 
     Pure rules 1-4 above, no state - tested directly.
     """
@@ -191,7 +191,7 @@ class DvaRadyTepu:
         self._vzorky = deque(maxlen=DVA_TEPY_MAX_VZORIEK)
 
     def pridaj(self, bpm, cas):
-        """Adds a sample; returns True when the window now has two series."""
+        """Adds a sample; returns True when the window now has two streams."""
         self._vzorky.append((float(cas), float(bpm)))
         hranica = float(cas) - DVA_TEPY_OKNO_S
         while self._vzorky and self._vzorky[0][0] < hranica:
@@ -239,7 +239,7 @@ class _Run:
         # right now - "client_gone" is reported only when the LAST one leaves
         # (see `_websocket_client`).
         self.klienti = 0
-        # Two heart-rate series in one source: a window for each source
+        # Two heart-rate streams in one source: a window for each source
         # separately and a flag that it has already been reported in this run
         # (ONCE per run, see `note_bpm`).
         self.dva_tepy = {}
@@ -283,8 +283,8 @@ class _Run:
 
         The answer only depends on whether there are AT LEAST TWO sources -
         so there is no need to remember more names. Until now every name
-        the client sent was added, until the sensor restarted: ever new
-        names from the LAN = memory without a cap (the client picks the
+        the client sent was added, until the sensor restarted: constantly
+        new names from the LAN = memory without a cap (the client picks the
         name)."""
         with self._lock:
             if len(self.zdroje) < 2:
@@ -298,7 +298,7 @@ class _Run:
 
     def note_bpm(self, zdroj, bpm, cas=None):
         """Heart rate from a named source into the `DvaRadyTepu` window.
-        Returns True EXACTLY ONCE per run - when the two-series pattern first
+        Returns True EXACTLY ONCE per run - when the two-stream pattern first
         shows up in some source.
 
         The key is only the source name, not the connection: two
@@ -334,7 +334,7 @@ class HeartRateMonitor:
     "two_series". "udp_busy"/"udp_error" mean "UDP did not open, TCP keeps
     running" - the run does not end. "two_series" (payload = source name
     for the journal) comes at most once per run: two different heart-rate
-    series are arriving into one source. Both callbacks come from a
+    streams are arriving into one source. Both callbacks come from a
     background thread, the caller has to reschedule them into the GUI
     thread itself (see DandurfApp.ui_call) and should throw away those
     whose `generation` is no longer current."""
@@ -364,11 +364,11 @@ class HeartRateMonitor:
     #
     # The asymmetry is clear: a false "disconnected" kills the feature, slow
     # detection of a real disconnect only means that the window shows the
-    # last heart rate for 12 seconds. So rather longer.
+    # last heart rate for 12 seconds. So longer is better.
     #
     # A longer dropout is STILL caught correctly and `resume()` starts the
     # countdown over - that is intended, not a bug: after half a minute
-    # without data we really do not know whether the body stayed up.
+    # without data we really do not know whether the body stayed elevated.
     STALE_AFTER_S = 12.0
     # A buffer big enough even for chatty JSON from the watch (RR intervals,
     # device ID, timestamp). A smaller buffer on Windows would not cause
@@ -396,7 +396,7 @@ class HeartRateMonitor:
 
     @property
     def running(self):
-        """Is receiving running right now? The caller avoids a needless
+        """Is receiving running right now? It lets the caller avoid a needless
         restart.
 
         A socket restart means a short disconnect of the watch - and short
@@ -407,7 +407,7 @@ class HeartRateMonitor:
         return self._run is not None
 
     def stop(self):
-        """Ends the running receiving immediately (without blocking).
+        """Stops the running receiver immediately (without blocking).
 
         It deliberately does NOT wait for the threads to finish - see note
         1) in the module header. Closing the sockets unblocks each of them
@@ -472,7 +472,7 @@ class HeartRateMonitor:
             log.info("z hodiniek prislo [%s]: %r -> %s",
                      (zdroj or "bez mena")[:80], ukazka, metriky)
         self._emit_bpm(metriky["bpm"], run)
-        # Two heart-rate series in one source: once per run a line to app.log
+        # Two heart-rate streams in one source: once per run a line to app.log
         # and a state for the app. The heart rate goes out above unchanged -
         # this does not fix the measurement.
         if run.note_bpm(zdroj, metriky["bpm"]):
@@ -870,10 +870,10 @@ _HOLE_CISLO = re.compile(r"^[\s]*([-+]?\d+(?:[.,]\d+)?)[\s]*$")
 _HOLY_POCET = re.compile(
     r"^[\s]*([-+]?\d{1,3}(?:[ .,\u00a0]\d{3})+|[-+]?\d+)[\s]*$")
 
-# Steps are cumulative for the day, speed is walking up to running. Values
-# outside that are a transfer error, not data - and wrong data is worse than
-# none, because the app uses it to judge whether the player was sitting at
-# the keyboard.
+# Steps are cumulative for the day, speed ranges from walking to running.
+# Values outside that are a transfer error, not data - and wrong data is
+# worse than none, because the app uses it to judge whether the player was
+# sitting at the keyboard.
 MAX_KROKOV = 200000
 MAX_RYCHLOST_KMH = 50.0
 

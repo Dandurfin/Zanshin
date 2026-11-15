@@ -207,7 +207,7 @@ def test_zaznamy_hlasok_sa_zmazu(tmp_path):
 
 
 def test_zalohy_a_docasne_subory_sa_zmazu(tmp_path):
-    """Pre-recompute backup and .bak/.tmp must not survive — they copy data."""
+    """Pre-recompute backup and .bak/.tmp must not survive — copies of data."""
     (tmp_path / "hr_sessions.json").write_text("[]", encoding="utf-8")
     zalohy = [
         tmp_path / "hr_windows.json.pred-prepoctom-20260919-145129",

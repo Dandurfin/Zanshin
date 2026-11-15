@@ -15,9 +15,9 @@ Four sections moved from app.py unchanged:
   * settings - loading and saving dandurf_settings.json, volume,
     SFX/voice balance and the "Edge TTS missing" banner.
 
-WARNING in tests: `load_settings` / `save_settings` read SETTINGS_PATH from
+WARNING for tests: `load_settings` / `save_settings` read SETTINGS_PATH from
 this module - the test must redirect it here (`app_prefs.SETTINGS_PATH`),
-not on the app module.
+not in the app module.
 """
 
 import json
@@ -94,7 +94,7 @@ def zaloha_nastaveni(cesta):
     with open(tmp, "wb") as fh:
         fh.write(obsah)
     # .bak may be held briefly by an antivirus or indexing (WinError 5 in the
-    # log of the trial copy) - `nahrad_subor` retries. If even that fails, the
+    # log of a test copy) - `nahrad_subor` retries. If even that fails, the
     # error goes to the caller as before, just without a forgotten .bak.tmp
     # next to the settings.
     nahrad_subor(tmp, bak, uprac_zdroj=True)
@@ -102,7 +102,7 @@ def zaloha_nastaveni(cesta):
 
 
 def nacitaj_nastavenia(cesta, teraz=None):
-    """Loads the settings. Returns (dict or None, restore or None).
+    """Loads the settings. Returns (dict or None, obnova or None).
 
     File does not exist -> (None, None): first start, defaults. File cannot
     be read -> the broken one is MOVED ASIDE as
@@ -204,17 +204,17 @@ class PrefsMixin:
         finally:
             self.root.update_idletasks()
             ui_kit.freeze_repaint(self.root, False)
-        # Edge TTS pregeneration is not UI - only after the window is unfrozen.
+        # Edge TTS preparation is not UI - only after the window is unfrozen.
         if self.engine == ENGINE_EDGE:
             self.pregenerate()
 
     def _hlas_k_hlaskam(self, slots):
-        """Default Edge voice -> voice of the app language, if `slots` cues use it.
+        """Default Edge voice -> app language voice if `slots` cues are in it.
 
         VOICE_HINTS is here for cues whose built-in words are not English
         (ja/zh/ru/bg, since 0.3 also es/de/fr/pt): an English voice would
-        not pronounce them or would garble them. Up to 0.2.1d the voice
-        changed by the INTERFACE language - but switching the language does
+        not pronounce them or would garble them. Until 0.2.1d the voice
+        followed the INTERFACE language - but switching the language does
         not translate the texts of existing profiles (built-in words are
         taken when the profile is created, English for sk/cs). So after
         switching to Japanese a Japanese voice read the English "Grounded"
@@ -286,7 +286,7 @@ class PrefsMixin:
             self.save_settings()
         self._sync_world_switches()
         # "In-game" is called "Screen" in the Work world (0.3 batch 4,
-        # `app_today._sync_world_nazvy`; the test fakes do not have it).
+        # `app_today._sync_world_nazvy`; the test dummies do not have it).
         nazvy = getattr(self, "_sync_world_nazvy", None)
         if callable(nazvy):
             nazvy()
@@ -308,7 +308,7 @@ class PrefsMixin:
         self._refresh_dnes_stats()
         self.run_hr_analysis()
         # In Work a cue does not speak, so nothing is prepared for it
-        # (`_hlasky_hovoria`); after returning to Play the cues get prepared.
+        # (`_hlasky_hovoria`); after returning to Play the rest get prepared.
         self.schedule_pregenerate(200)
 
     def _sync_world_switches(self):
@@ -335,8 +335,8 @@ class PrefsMixin:
     def on_theme_switch(self, label):
         """Switches the theme by RECOLOURING the built window, not rebuilding it.
 
-        Before, `_build_ui()` was called, which destroyed and rebuilt
-        everything: measured 1374 widgets, 101 878 Tk calls and **2,97 s**
+        Previously this called `_build_ui()`, which destroyed and rebuilt
+        everything: measured 1374 widgets, 101 878 Tk calls and **2.97 s**
         of blocking, during which the window assembled piece by piece in
         front of the player (29 different intermediate states). There was
         no single slow spot - it is sheer volume, every CustomTkinter
@@ -711,7 +711,7 @@ class PrefsMixin:
                 # at EVERY start, although the log promised they could be
                 # turned off. After the first load `visuals_repaired` is
                 # written to the settings and from then on turning them off is
-                # the player's decision, which the app does not get around.
+                # the player's decision, which the app does not override.
                 if (not loaded.get("visuals_repaired")
                         and all(not cfg["enabled"] for cfg in data["overlay_configs"])):
                     for cfg in data["overlay_configs"]:
@@ -737,8 +737,8 @@ class PrefsMixin:
                 # settings from an older version have no world, even when the
                 # player had Aizome selected. The world is NOT DERIVED from the
                 # theme - otherwise their gaming would start counting as work;
-                # it goes to Play and the theme follows the world (the product
-                # owner's decision).
+                # it goes to Play and the theme follows the world (the author's
+                # decision).
                 data["world"] = (hr_stats.normalize_activity(loaded.get("world"))
                                  or hr_stats.WORLD_DEFAULT)
                 data["cue_style"] = rebrik.normalize_cue_style(loaded.get("cue_style"))
@@ -830,8 +830,8 @@ class PrefsMixin:
             # the app already uses in sfx_assets._save_wav()/_try_download().
             # Without this a crash/power cut DURING the write (and it saves on
             # every slider change!) could leave an empty/truncated JSON and with
-            # it the loss of all profiles at the next start. A short file lock
-            # (antivirus, indexing) is survived thanks to `nahrad_subor`.
+            # it the loss of all profiles at the next start. `nahrad_subor`
+            # survives a short file lock (antivirus, indexing).
             tmp_path = f"{SETTINGS_PATH}.tmp"
             with open(tmp_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)

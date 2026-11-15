@@ -372,7 +372,8 @@ def test_rozpinanie_panela_pasiem_nenasobi_okraje_a_drzi_poradie():
             assert bool(int(panel.pack_info()["expand"])) is rozpinaj
             assert panel.pack_info()["pady"] == okraj
             assert rodic.pack_slaves() == [prvy, panel, posledny]
-            # CTk keeps the new call (DPI changes too) with an unscaled margin
+            # CTk remembers the new call (also for DPI changes) with an unscaled
+            # margin
             assert panel._last_geometry_manager_call["kwargs"]["pady"] == (12, 0)
     finally:
         root.destroy()

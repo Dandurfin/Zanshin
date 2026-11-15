@@ -117,7 +117,7 @@ def test_changelog_davka_4_menuje_ovladace_ako_appka():
         assert "*%s*" % _en(kluc) in d4, kluc
     assert "*%s*" % _en("dnes.learning", n=1, celkom=hr_stats.KRITICKY_MIN_RELACII) in d4
     assert "*%s*" % _en("kamae.port_busy", port=heart_rate.DEFAULT_PORT) in d4
-    # dock.start is the same words as in the tray, just with the mark
+    # dock.start uses the same words as the tray, just with the marker
     assert _en("dock.start") == "▶ " + _en("tray.start")
     assert _en("dock.stop") == "■ " + _en("tray.stop")
 
@@ -211,8 +211,8 @@ def test_known_issues_otvorene_texty_su_v_appke():
     assert not [k for k in i18n.STRINGS if k.startswith("history.empty_w")]
     assert 'tr("history.empty", page=' in zdroj_suboru("app_history.py")
     assert "History without sessions still asks you to play" in o
-    # the session trace in History: only the gaming sentence (only the
-    # questionnaire has Work)
+    # the session trace in History: only the play sentence (only the
+    # questionnaire has a Work variant)
     historia = zdroj_suboru("app_history.py")
     assert 'tr("session.end.trace_hint")' in historia
     assert "trace_hint_work" not in historia
@@ -401,9 +401,9 @@ def _funkcia_zo_skriptu(meno, **globaly):
 
 
 def test_demo_data_pocet_pripomienok_sedi_s_trojuholnikmi(tmp_path):
-    """Audit: the number of cues and the ▼ in the curve were drawn separately
-    ("HLÁŠKY 0" with three ▼) and the sessions started in the morning, even
-    though the chart talks about the evening."""
+    """Audit: the number of cues and the ▼ in the curve were randomised
+    separately ("HLÁŠKY 0" with three ▼) and the sessions started in the
+    morning, even though the chart talks about the evening."""
     for semienko in (7, 1, 23):
         app = types.SimpleNamespace()
         historia = _funkcia_zo_skriptu(

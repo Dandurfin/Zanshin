@@ -8,7 +8,7 @@ that the code did not keep:
   * the sentence about starting with a game names exactly the games from the
     map; "bootstrapper.exe" (a generic launcher name) is not in the map,
   * the list of Edge voices is not downloaded from Microsoft (Edge is the
-    default, so before, on every start),
+    default, so before this it happened on every start),
   * cue texts are not sent for synthesis when the cue does not speak (style
     "zvuk"/"obrázok", the Work world), and not at all while listening - a
     missing cue is prepared after the game,
@@ -53,7 +53,7 @@ def _app():
 def _profily():
     """The module from which `_start_game_watcher` reads `GameProcessWatcher`
     and `PSUTIL_AVAILABLE`. The method lives in the app_profiles mixin
-    (ProfilesMixin), not in app.py - the fake watcher must be slipped in
+    (ProfilesMixin), not in app.py - the fake watcher must be patched in
     there."""
     _app()
     import app_profiles
@@ -323,7 +323,7 @@ def test_stop_pocuvania_dopripravi_hlasky():
 # --------------------------------------------------------------------------
 
 def _atrapa_pripravy(app_mod, monkeypatch, pocuva):
-    """A stub with the real `pregenerate` / `schedule_pregenerate` /
+    """A dummy with the real `pregenerate` / `schedule_pregenerate` /
     `_dopriprav_hlasky_po_hre`; the thread is not started, only recorded."""
     import audio_engine
     monkeypatch.setattr(audio_engine, "EDGE_AVAILABLE", True)
@@ -365,7 +365,7 @@ def test_priprava_pocas_pocuvania_sa_odlozi_na_po_hre(monkeypatch):
 
 
 def test_hotove_hlasky_pocas_pocuvania_su_len_hotove(monkeypatch):
-    """When all is in the cache, nothing to send - no need to postpone."""
+    """When everything is in the cache there is nothing to send or postpone."""
     app_mod = _app()
     a = _atrapa_pripravy(app_mod, monkeypatch, pocuva=True)
     a.edge_cache.has = lambda *_: True
@@ -433,7 +433,7 @@ def test_rozbehnuta_priprava_prestane_ked_sa_zapne_pocuvanie(monkeypatch):
 
 
 def _falosny_edge(monkeypatch, tmp_path, pri_odoslani=None):
-    """The real `EdgeTTSCache` with a real lock; instead of Microsoft a stub
+    """The real `EdgeTTSCache` with a real lock; instead of Microsoft a dummy
     `edge_tts.Communicate` that records every request."""
     import asyncio
     import audio_engine

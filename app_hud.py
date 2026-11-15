@@ -284,7 +284,8 @@ class HudMixin:
         The code is KEPT on purpose, not by oversight: the length choice is a
         natural candidate for one of the five simple controls from spec §3.1,
         which have not been decided yet. When the decision is made, it is
-        enough to call it from there; if it is decided otherwise, it should go.
+        enough to call it from there; if it is decided otherwise, it should
+        be removed.
 
         It takes its anchor from `quick_dock`, which no longer exists, so the
         method ends right at `anchor is None` - it does not crash, it just does
@@ -507,10 +508,10 @@ class HudMixin:
         return True, False, self._watch_zone, stats.beat_phase()
 
     def open_watch_pairing(self, on_close=None):
-        """The watch icon SWITCHES ON and opens the panel. It cannot switch off
-        (§1.10).
+        """The watch icon SWITCHES ON and opens the panel. It cannot switch the
+        sensor off (§1.10).
 
-        `on_close` is called once after the instructions are closed - the first
+        `on_close` is called once after the pairing guide is closed - the first
         start then runs the app tour, and the tour continues from it with the
         next step.
 
@@ -667,7 +668,7 @@ class HudMixin:
         self._refresh_test_button(index, False)
 
     def pick_overlay_color(self, index):
-        """Opens the own (Zanshin) pictogram colour picker for the given
+        """Opens Zanshin's own pictogram colour picker for the given
         visual.
 
         Returns a hex colour, DEFAULT (go back to the theme colour =

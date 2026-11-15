@@ -36,7 +36,7 @@ pygame_datas, pygame_binaries, pygame_hidden = collect_all('pygame')
 psutil_datas, psutil_binaries, psutil_hidden = collect_all('psutil')
 
 # --------------------------------------------------------------------------
-# Safety net for edge-tts downloaded by the app (button "Update voice")
+# Safety net for edge-tts downloaded by the app (the "Update voice" button)
 # --------------------------------------------------------------------------
 # hlas_kniznica.py can load a newer edge-tts from PyPI at runtime - it
 # downloads ONLY its own code (edge_tts/*.py), nothing else. But that code is
@@ -58,7 +58,7 @@ psutil_datas, psutil_binaries, psutil_hidden = collect_all('psutil')
 #    in the PYZ is enough. Without __main__ (those are `python -m ...`
 #    commands, the app does not run them) and, from aiohttp, without the
 #    test modules: pytest_plugin would pull all of pytest into the build,
-#    worker gunicorn, and test_utils unittest.
+#    worker would pull gunicorn and test_utils unittest.
 #    A package that is not here (an older aiohttp, e.g., had no propcache)
 #    is skipped - the build does not fail because of it.
 _EDGE_ZAVISLOSTI = ('aiohttp', 'aiohappyeyeballs', 'aiosignal', 'attr', 'attrs',

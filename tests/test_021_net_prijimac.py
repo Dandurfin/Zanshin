@@ -13,7 +13,7 @@ way to switch heart rate reception off:
 And fix 2 must not disconnect a live, just quiet watch, nor report
 "disconnected" when the watch keeps writing over a new connection.
 
-The port is taken free and only on 127.0.0.1 - the firewall does not ask
+A free port is taken, only on 127.0.0.1 - the firewall does not ask
 and a possibly running app on 4455 is not affected. The limits are
 shortened in the tests to tenths of a second, so the test does not wait a
 minute.
@@ -160,7 +160,7 @@ class _Prijimac:
         self.mon.start(HOST, self.port)
         assert _cakaj(lambda: "connecting" in self.stavy), self.stavy
         # UDP registers in its own thread - we wait for it, so that the number
-        # of occupied places does not change under the test's hands
+        # of occupied places does not change underneath the test
         _cakaj(lambda: self.obsadene() >= 2, limit=2.0)
 
     def obsadene(self):

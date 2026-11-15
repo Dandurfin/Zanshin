@@ -126,7 +126,7 @@ def _relacia(sekundy):
 
 
 def test_readme_minima_kalibracie_sedia_s_kodom():
-    """HOW-IT-WORKS (until 0.3d the README): "three of about ten minutes are
+    """HOW-IT-WORKS (before 0.3d the README): "three of about ten minutes are
     enough, three of five are not" and "roughly half an hour of heart
     rate" - recomputed by the code. The README in short: limits only from
     play sessions of five minutes and more."""
@@ -219,7 +219,7 @@ def test_ziadny_dokument_netvrdi_ze_appka_uz_porovnava():
 
 def test_gui_skripty_su_spomenute_a_build_ich_nebali():
     # Since 0.3d the developer scripts are in DEVELOPMENT.md (the README
-    # links to it); SAFETY keeps their name, because they move the real
+    # links to it); SAFETY keeps their names, because they move the real
     # mouse.
     for meno in GUI_SKRIPTY:
         assert os.path.isfile(os.path.join(ROOT, meno)), meno
@@ -363,7 +363,7 @@ def test_readme_tabulka_modulov_pokryva_build():
 
 def test_readme_opisuje_vyvojarske_skripty_a_zavislosti():
     """Every .py in the root that the app does not pull in is a developer
-    script - DEVELOPMENT.md (until 0.3d the README) must name it. The
+    script - DEVELOPMENT.md (before 0.3d the README) must name it. The
     tests need requirements-dev.txt."""
     readme = _read(VYVOJ)
     skripty = sorted(_lokalne_moduly() - _moduly_z_main())
@@ -404,7 +404,7 @@ def test_readme_build_hovori_co_skript_robi():
 
 def test_readme_svet_relacie_urci_dotaznik():
     """The answer in the questionnaire moves the session to another world
-    (hr_stats) - HOW-IT-WORKS (until 0.3d the README) no longer claims
+    (hr_stats) - HOW-IT-WORKS (before 0.3d the README) no longer claims
     only that a session stays in the world where it started."""
     import i18n
     otazka = i18n.STRINGS["session.context.activity_question"]["en"]

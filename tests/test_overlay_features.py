@@ -195,7 +195,7 @@ def test_guide_uses_real_overlay_icons():
 def test_karta_hlasky_uz_nenastavuje_casovanie():
     """Six timing fields have disappeared from the cue card.
 
-    The own cooldown, delay, "every Nth", repetition, pause between
+    The slot's own cooldown, delay, "every Nth", repetition, pause between
     repetitions and spread were read ONLY in `fire_slot`, i.e. for the Test
     button and a click in the HUD preview. The automatic cue is fired by
     `_fire_somatic_cue` via `_emit`. So these were controls that did nothing

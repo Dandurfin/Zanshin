@@ -8,7 +8,7 @@ later. Now the shortcut thread reports the result itself (`on_result`), the
 app carries it into Tk (`ui_call` = `root.after(0)`) and only then writes
 the line and refreshes Settings.
 
-No real registration: the Windows API is a stub that answers only when the
+No real registration: the Windows API is a dummy that answers only when the
 test tells it to.
 """
 import threading
@@ -28,7 +28,7 @@ from i18n import tr
 
 class _PomalyUser32:
     """RegisterHotKey answers only when the test releases `pust`; GetMessageW
-    waits until `stop()` sends WM_QUIT (the stub's PostThreadMessageW)."""
+    waits until `stop()` sends WM_QUIT (the dummy's PostThreadMessageW)."""
 
     def __init__(self, uspech=True):
         self.pust = threading.Event()
@@ -102,7 +102,7 @@ def test_rychla_registracia_vrati_vysledok_hned(monkeypatch):
     try:
         assert h.start() is True
         assert h.caka is False
-        # `on_result` comes here too (once) - the app drops it; already said
+        # `on_result` comes here too (once) - the app drops it, already said
         assert prislo.wait(5.0) and vysledky == [True]
     finally:
         h.stop()
@@ -138,7 +138,7 @@ def test_vynimka_v_on_result_nezabije_vlakno(monkeypatch):
 # --------------------------------------------------------------------------
 
 class _CakajucaSkratka:
-    """GlobalHotkey stub: `start()` timed out (`caka`); the test answers."""
+    """GlobalHotkey dummy: `start()` timed out (`caka`); the test answers."""
     instancie = []
 
     def __init__(self, combo, on_press, log=None, on_result=None):

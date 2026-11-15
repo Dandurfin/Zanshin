@@ -6,7 +6,7 @@ translating" if any of the NON-LATIN-SCRIPT languages (ja/zh/ru/bg) stayed
 literally the same as `en` - that really cannot be a translation, only the
 English fallback.
 
-WATCH OUT FOR COMPARING WITH `de`: that was the original criterion, and after
+BEWARE OF COMPARING WITH `de`: that was the original criterion, and after
 the translations were finished it reported three strings forever, because
 the German "Timing" and "normal" happen to be the same words as the English
 ones. Latin-script languages legitimately coincide with English; Japanese,

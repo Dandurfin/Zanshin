@@ -5,17 +5,16 @@ Microsoft refused the old edge-tts and the fix was a change in the library's
 code. The player downloads a newer edge-tts themselves: Settings → Sound, the
 "Voice source" row, or Ctrl+K. The core (network, verification, test word,
 module swap) is `hlas_kniznica.aktualizuj` - it is tested by
-test_022h_hlas_kniznica.py. Here the GUI is
-guarded:
+test_022h_hlas_kniznica.py. This file guards the GUI:
   * the button is in the "Voice source" row, only with the natural voice,
-    and is disabled while running; Ctrl+K has the same item,
+    and is disabled while the update runs; Ctrl+K has the same item,
   * while watching, nothing goes to the network even on a click (the core
     is not called at all) and the status says it will run after watching;
     it never starts by itself,
   * the core runs in a helper thread and Tk is touched only via `ui_call`,
   * every result has its own status (colour by theme), one journal line and
-    a link to the official releases only when only a new Zanshin fixes the
-    voice,
+    a link to the official releases only when it takes a new Zanshin to
+    fix the voice,
   * after success the cues that lack a voice are prepared
     (`pregenerate(force=True)`),
   * texts in 11 languages with the app's dictionary and the same
@@ -306,7 +305,8 @@ def test_klik_spusti_jadro_v_pomocnom_vlakne(monkeypatch):
     a.aktualizuj_hlas()
     assert a.jadro == [], "jadro blokuje - na GUI vlakne sa nevola"
     assert len(a.vlakna) == 1 and a.vlakna[0]["daemon"] is True
-    # button disabled, the status says what is going on, a running prep waits
+    # button disabled, the status says what is going on, a preparation that
+    # is already running waits
     assert a._aktualizacia_hlasu_bezi
     assert a.edge_update_btn.cfg["state"] == "disabled"
     assert a.stavy[-1] == (tr("edge.update.running"), PAL["warn"])
@@ -535,7 +535,7 @@ def test_po_neuspechu_sa_nic_nepripravuje(monkeypatch, stav):
 def test_priprava_pocas_aktualizacie_caka(monkeypatch):
     """`pregenerate` in the middle of an update does not go to the network
     and does not overwrite the "updating the voice" status - the result
-    starts it by itself."""
+    starts the preparation by itself."""
     a = pregen._atrapa(monkeypatch, pregen._tri())
     a._aktualizacia_hlasu_bezi = True
     a._pregen_po_aktualizacii = False

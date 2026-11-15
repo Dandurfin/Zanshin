@@ -1,8 +1,8 @@
 """Player data - part of the main app (DandurfApp from app.py).
 
 DataMixin is a mixin of DandurfApp: app.py inherits it and the whole state
-(file paths, session, profiles, slots, widgets) lives on DandurfApp. Here
-there are only methods that work with it through `self` - the mixin has no
+(file paths, session, profiles, slots, widgets) lives on DandurfApp. This
+file holds only methods that work with it through `self` - the mixin has no
 __init__ and no attributes of its own.
 
 Two sections moved from app.py unchanged:
@@ -59,7 +59,7 @@ ROZPRACOVANA_KAZDYCH_MS = 5 * 60 * 1000
 # the Windows shutdown was cancelled (`_po_zrusenom_vypnuti`). A normal
 # shutdown ends the process sooner.
 VYPNUTIE_ZRUSENE_MS = 20 * 1000
-# Warning about an installed 0.2 only once the window stands and start is done.
+# Warn about an installed 0.2 only once the window is up and start-up is done.
 STARA_INSTALACIA_MS = 1500
 
 
@@ -298,8 +298,8 @@ class DataMixin:
     def import_all_json(self):
         """The only place where a foreign file comes in.
 
-        The strict parser is in `data_io`; here it only asks merge/replace
-        (own dialog `ImportDataDialog`) and the result is written.
+        The strict parser is in `data_io`; here it only asks merge or replace
+        (a custom dialog, `ImportDataDialog`) and writes the result.
         """
         cesta = filedialog.askopenfilename(filetypes=[("JSON", "*.json")])
         if not cesta:
@@ -319,10 +319,10 @@ class DataMixin:
             sprava += "\n" + tr("data.import.dropped", n=zahodene)
         sprava += "\n\n" + tr("data.import.flagged")
         sprava += "\n\n" + tr("data.import.question")
-        # Own dialog, not the system askyesnocancel: that one had Yes/No
+        # A custom dialog, not the system askyesnocancel: that one had Yes/No
         # buttons in the Windows language and the choices hard-coded in the
         # text ("= Ano"), so in another language they did not match. Replace
-        # goes only after a second confirmation.
+        # happens only after a second confirmation.
         ImportDataDialog(self, sprava, lambda volba: self._zapis_import(
             sessions, windows, nahradit=(volba == "replace")))
 
@@ -448,7 +448,7 @@ class DataMixin:
         (the baseline, the limit and the threshold are taken from the
         history at the next session) and the page is redrawn. The session
         being recorded right now is not in the history yet - and if its
-        `started` were there, the app does not offer to delete it."""
+        `started` were there, the app would not offer to delete it."""
         if not isinstance(session, dict) or session.get("started") is None:
             return False
         if self._je_nahravana_relacia(session):
@@ -568,7 +568,7 @@ class DataMixin:
 
     def _dokonci_dotaznik(self, dotaznik):
         """Finishes a questionnaire that quitting the app or a Windows shutdown
-        would otherwise throw away (0.3, the requester's decision; batch 4b
+        would otherwise throw away (0.3, the author's decision; batch 4b
         extended it).
 
         Did the player touch at least one answer -> it is saved as "Ulozit"
@@ -796,7 +796,7 @@ class DataMixin:
         off again is not a session.
 
         `pri_vypnuti=True` (Windows shutting down, `_pri_vypinani_windows`):
-        save and nothing more. Windows waits for an answer only a few
+        save and nothing more. Windows waits for an answer for only a few
         seconds, so no questionnaire (it would be thrown away with the
         process), no graduation (a one-off message would never be shown to
         the player - it is evaluated after the next session) and no redraw
@@ -818,7 +818,7 @@ class DataMixin:
             app_log.exception("spustac hlasky: close_session zlyhal")
         # `close_session` writes to the log directly, not through
         # `_on_cue_event`, so the ring has to be dropped by hand. The sensor
-        # can be turned off without listening stopping - so `set_live` will not
+        # can be turned off while listening goes on - so `set_live` will not
         # catch it.
         self._set_enso_armed(False)
         self._save_measure_windows()
@@ -935,10 +935,10 @@ class DataMixin:
         # `hr_stats.session_world`.
         summary["world"] = getattr(self, "_session_world", hr_stats.WORLD_DEFAULT)
         # APP SETUP (0.3): until the first session after the introduction is
-        # saved, it is a sitting at the desk (pairing, tour), not playing -
-        # thresholds are not learned from it (`hr_stats.ciste_relacie`). Into
-        # the checkpoint too, so it still holds after a recovery. The player
-        # can cancel it in the questionnaire.
+        # saved, it is time spent at the desk (pairing, tour), not playing -
+        # thresholds are not learned from it (`hr_stats.ciste_relacie`). It
+        # goes into the checkpoint too, so it still holds after a recovery.
+        # The player can cancel it in the questionnaire.
         if getattr(self, "_relacia_nastavovania", False):
             summary["setup"] = True
         # EXCLUSIVE FULLSCREEN (0.3 batch 4): the app noticed it in this
@@ -1099,7 +1099,7 @@ class DataMixin:
             self._vypnutie_bezi = False
 
     def _po_zrusenom_vypnuti(self):
-        """Windows did not shut down after all - measuring in a new session."""
+        """Windows stayed on after all - measuring goes on in a new session."""
         self._vypnutie_job = None
         if getattr(self, "_quit_bezi", False) or getattr(self, "_zatvara_sa", False):
             return
@@ -1294,8 +1294,8 @@ class DataMixin:
         self.log(text)
 
         def _ukaz():
-            # Remembered only after it was shown: when the app ends earlier, it
-            # is said on the next start.
+            # Remembered only after it is shown: if the app ends before that,
+            # the warning comes at the next start.
             try:
                 ui_kit.notify(getattr(self, "root", None), getattr(self, "pal", None),
                               APP_NAME, text)

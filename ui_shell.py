@@ -969,9 +969,9 @@ class _StateDot(ctk.CTkFrame):
     another circle - and the colour `danger_text`: the audit reserved it
     for lost watches (theme.py), and on `bg` it has >= 4.5:1 in both
     themes. It also takes precedence over snooze: the player turned "not
-    now" on themselves and knows about it, not so the dropout. It is not
-    shown for a stopped app (it is not watching, nothing can drop out).
-    The app sends the state via `set_lost`
+    now" on themselves and knows about it, but not about the dropout. It
+    is not shown for a stopped app (it is not watching, nothing can drop
+    out). The app sends the state via `set_lost`
     (`app_today._refresh_state_dot`).
 
     It is not a button. There is one switch, and it is in the breathing
@@ -1057,7 +1057,7 @@ class _StateDot(ctk.CTkFrame):
     def _redraw(self):
         c, pal = getattr(self, "canvas", None), getattr(self, "_pal", None)
         if c is None or pal is None:
-            return          # `_set_scaling` even before the canvas is built
+            return          # `_set_scaling` called before the canvas is built
         try:
             c.delete("all")
         except Exception:
@@ -1203,8 +1203,8 @@ class _EnsoButton(ctk.CTkFrame):
         if not live:
             # When the app stops listening, the arming no longer holds - the
             # trigger drops it too (`CueTrigger.suspend`). If it stayed here,
-            # the ring would be lit from the very first second on the next
-            # start.
+            # the ring would be lit from the very first second the next time
+            # listening is turned on.
             self._armed = False
         self._show()
 
