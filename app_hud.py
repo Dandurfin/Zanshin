@@ -617,7 +617,28 @@ class HudMixin:
             self.high_hr_ring = bool(enabled)
         if bpm is not None:
             self.high_hr_ring_bpm = normalize_high_hr_ring_bpm(bpm)
+        # The quick row on Today shows the same setting: its switch follows
+        # the one in the dialog (`.set()` does not call the CTkSwitch's
+        # command, so it does not recurse) and its label the limit.
+        var = getattr(self, "high_hr_ring_quick_var", None)
+        if var is not None and enabled is not None:
+            try:
+                var.set(bool(self.high_hr_ring))
+            except Exception:
+                pass
+        label = getattr(self, "high_hr_ring_quick_label", None)
+        if label is not None and bpm is not None:
+            try:
+                label.configure(text=self._high_hr_ring_quick_text())
+            except Exception:
+                pass
         self.save_settings()
+
+    def _high_hr_ring_quick_text(self):
+        """Label of the quick row on Today - the limit in it, upper case like
+        the HUD row above it."""
+        bpm = normalize_high_hr_ring_bpm(getattr(self, "high_hr_ring_bpm", None))
+        return tr("dnes.high_hr_ring_quick", bpm=bpm).upper()
 
     def _overlay_color(self, index):
         """Slot pictogram colour for the UI - custom, or the theme accent."""

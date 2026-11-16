@@ -1192,13 +1192,16 @@ def test_karta_dychu_ukaze_ulozene_nastavenie(monkeypatch, zapnute, hranica):
         i18n.set_lang(povodny)
 
 
-_KLUCE = ("overlay.high_hr_ring", "overlay.high_hr_ring_bpm", "overlay.high_hr_ring_hint")
+_KLUCE = ("overlay.high_hr_ring", "overlay.high_hr_ring_bpm", "overlay.high_hr_ring_hint",
+         "dnes.high_hr_ring_quick")
 
 
 def test_texty_vo_vsetkych_jazykoch():
     S = i18n.STRINGS
-    assert S["overlay.high_hr_ring"]["sk"] == "Kruh aj pri vysokom tepe (pokus)"
-    assert S["overlay.high_hr_ring"]["en"] == "Ring at high heart rate too (experiment)"
+    assert S["overlay.high_hr_ring"]["sk"] == "Kruh aj pri vysokom tepe"
+    assert S["overlay.high_hr_ring"]["en"] == "Ring at high heart rate too"
+    assert S["dnes.high_hr_ring_quick"]["sk"] == "Dychový kruh nad {bpm} BPM"
+    assert S["dnes.high_hr_ring_quick"]["en"] == "Breath ring above {bpm} BPM"
     assert S["overlay.high_hr_ring_bpm"]["sk"] == "Nad {bpm} BPM"
     assert S["overlay.high_hr_ring_bpm"]["en"] == "Above {bpm} BPM"
     assert S["overlay.high_hr_ring_hint"]["sk"] == (
@@ -1211,9 +1214,10 @@ def test_texty_vo_vsetkych_jazykoch():
             if jazyk != "en":
                 assert zaznam[jazyk] != zaznam["en"], (kluc, jazyk, "anglicky")
         assert len(set(zaznam.values())) >= 10, (kluc, "preklady sa opakuju")
-    for jazyk in i18n.LANGUAGES:
-        text = i18n.tr_lang(jazyk, "overlay.high_hr_ring_bpm", bpm=145)
-        assert text.count("145") == 1 and "BPM" in text, (jazyk, text)
+    for kluc in ("overlay.high_hr_ring_bpm", "dnes.high_hr_ring_quick"):
+        for jazyk in i18n.LANGUAGES:
+            text = i18n.tr_lang(jazyk, kluc, bpm=145)
+            assert text.count("145") == 1 and "BPM" in text, (kluc, jazyk, text)
     # Czech on its own, not the Slovak text
     for kluc in ("overlay.high_hr_ring", "overlay.high_hr_ring_hint"):
         assert S[kluc]["cs"] != S[kluc]["sk"], kluc
@@ -1233,3 +1237,89 @@ def test_v_hre_ziadny_novy_text():
     assert "high_hr" not in zdroj_suboru("hud_paint.py")
     zdroj = zdroj_suboru("overlay.py")
     assert not re.search(r"\btr\(", zdroj) and "i18n" not in zdroj
+
+
+def test_texty_uz_nehovoria_pokus():
+    """The author tested the ring and keeps it (16. 11. 2026) - the switches
+    do not call it an experiment any more, in no language."""
+    znacky = ("pokus", "experiment", "эксперимент", "експеримент", "essai",
+              "試験", "试验")
+    zle = [(kluc, jazyk) for kluc in _KLUCE for jazyk in i18n.LANGUAGES
+           if any(z in i18n.STRINGS[kluc][jazyk].lower() for z in znacky)]
+    assert not zle, zle
+
+
+# --------------------------------------------------------------------------
+# the quick row on Today (under "On-screen HR panel")
+# --------------------------------------------------------------------------
+
+def _stavba_dnes():
+    return zdroj_metody("_build_dnes_page")
+
+
+def test_rychly_riadok_na_dnes_je_medzi_panelom_a_statistikami():
+    zdroj = _stavba_dnes()
+    hud = zdroj.index('tr("hud.quick_label")')
+    kruh = zdroj.index("self._high_hr_ring_quick_text()")
+    stat = zdroj.index('tr("dashboard.stats_title")')
+    assert hud < kruh < stat, "riadok kruhu ma byt medzi panelom tepu a Moje statistiky"
+    plochy = re.sub(r"\s+", "", zdroj)
+    for kus in ("tk.BooleanVar(value=bool(self.high_hr_ring))",
+                "self.on_high_hr_ring_change(enabled=self.high_hr_ring_quick_var.get())",
+                "command=self.open_overlay_settings"):
+        assert kus in plochy, kus
+
+
+class _Text:
+    def __init__(self):
+        self.text = None
+
+    def configure(self, **k):
+        self.text = k.get("text", self.text)
+
+
+def _appka_dnes(zapnute=False, hranica=110):
+    a = types.SimpleNamespace(high_hr_ring=zapnute, high_hr_ring_bpm=hranica, ulozene=0,
+                              high_hr_ring_quick_var=_Premenna(zapnute),
+                              high_hr_ring_quick_label=_Text())
+    a.save_settings = lambda: setattr(a, "ulozene", a.ulozene + 1)
+    a._high_hr_ring_quick_text = lambda: D._high_hr_ring_quick_text(a)
+    return a
+
+
+def test_prepinac_v_dialogu_pohne_prepinacom_na_dnes():
+    a = _appka_dnes(zapnute=False)
+    D.on_high_hr_ring_change(a, enabled=True)
+    assert a.high_hr_ring_quick_var.get() is True, "prepinac na Dnes neprebral zapnutie"
+    D.on_high_hr_ring_change(a, enabled=False)
+    assert a.high_hr_ring_quick_var.get() is False, "prepinac na Dnes neprebral vypnutie"
+    # a change of the limit alone does not touch the switch
+    a.high_hr_ring_quick_var.set("netknute")
+    D.on_high_hr_ring_change(a, bpm=130)
+    assert a.high_hr_ring_quick_var.get() == "netknute"
+    assert a.ulozene == 3
+
+
+def test_hranica_sa_ukaze_v_riadku_na_dnes():
+    povodny = i18n._lang["code"]
+    i18n.set_lang("sk")
+    try:
+        a = _appka_dnes(hranica=110)
+        assert D._high_hr_ring_quick_text(a) == "DYCHOVÝ KRUH NAD 110 BPM"
+        D.on_high_hr_ring_change(a, bpm=135)
+        assert a.high_hr_ring_quick_label.text == "DYCHOVÝ KRUH NAD 135 BPM"
+        D.on_high_hr_ring_change(a, bpm=999)
+        assert a.high_hr_ring_quick_label.text == "DYCHOVÝ KRUH NAD 200 BPM"
+        a.high_hr_ring_quick_label.text = "netknute"
+        D.on_high_hr_ring_change(a, enabled=True)
+        assert a.high_hr_ring_quick_label.text == "netknute",             "zapnutie samo popis nema prepisovat"
+    finally:
+        i18n.set_lang(povodny)
+
+
+def test_zmena_bez_riadku_na_dnes_nespadne():
+    """Before the Today page is built (or in a dummy) the row does not exist."""
+    a = types.SimpleNamespace(high_hr_ring=False, high_hr_ring_bpm=110, ulozene=0)
+    a.save_settings = lambda: setattr(a, "ulozene", a.ulozene + 1)
+    D.on_high_hr_ring_change(a, enabled=True, bpm=120)
+    assert a.high_hr_ring is True and a.high_hr_ring_bpm == 120 and a.ulozene == 1

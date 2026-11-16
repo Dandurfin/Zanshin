@@ -5341,14 +5341,18 @@ STRINGS.update({
     # --- the ring at high heart rate (experiment, Breath card, below the
     # inhale/exhale lengths). Settings texts only - in the game the ring
     # shows the usual inhale/exhale captions. ---
-    'overlay.high_hr_ring': _sk_en('Kruh aj pri vysokom tepe (pokus)',
-                                   'Ring at high heart rate too (experiment)'),
+    'overlay.high_hr_ring': _sk_en('Kruh aj pri vysokom tepe',
+                                   'Ring at high heart rate too'),
     'overlay.high_hr_ring_bpm': _sk_en('Nad {bpm} BPM', 'Above {bpm} BPM'),
     'overlay.high_hr_ring_hint': _sk_en(
         'Dychový kruh dýcha dokola, kým je tep nad touto hranicou, a keď klesne, '
         'skončí po výdychu. Medzitým nepríde iná pripomienka.',
         'The breath ring keeps breathing while your heart rate is above this limit, '
         'and ends after an exhale once it drops. No other cue comes meanwhile.'),
+    # The same switch as a quick row on Today, under the HUD one (upper case
+    # there). The limit is set in In-game pictures, ⚙ next to it.
+    'dnes.high_hr_ring_quick': _sk_en('Dychový kruh nad {bpm} BPM',
+                                      'Breath ring above {bpm} BPM'),
 
     # NOTE: the whole 'minimalist mode' section was here -
     # 'settings.minimal_mode', 'settings.minimal_mode_sub', 'minimal.expand_tip'
@@ -5893,7 +5897,8 @@ _tr7('overlay.color_title', '画像の色', '图片颜色', 'Цвет карти
 _tr7('overlay.breath_seconds', '呼吸のサイクル（秒）', '呼吸周期（秒）', 'Цикл дыхания (в секундах)', 'Ciclo de respiración (en segundos)', 'Atemzyklus (in Sekunden)', 'Cycle de respiration (en secondes)', 'Ciclo de respiração (em segundos)')
 _tr7('overlay.breath_inhale', '吸う長さ（秒）', '吸气时长（秒）', 'Длина вдоха (с)', 'Duración de la inspiración (s)', 'Länge des Einatmens (s)', 'Durée de l’inspiration (s)', 'Duração da inspiração (s)')
 _tr7('overlay.breath_exhale', '吐く長さ（秒）', '呼气时长（秒）', 'Длина выдоха (с)', 'Duración de la espiración (s)', 'Länge des Ausatmens (s)', 'Durée de l’expiration (s)', 'Duração da expiração (s)')
-_tr7('overlay.high_hr_ring', '心拍が高いときも呼吸の輪（試験的）', '心率高时也显示呼吸环（试验）', 'Кольцо и при высоком пульсе (эксперимент)', 'Anillo también con el pulso alto (experimento)', 'Ring auch bei hohem Puls (Experiment)', 'Anneau aussi quand le pouls est élevé (essai)', 'Anel também com o pulso alto (experimento)')
+_tr7('overlay.high_hr_ring', '心拍が高いときも呼吸の輪', '心率高时也显示呼吸环', 'Кольцо и при высоком пульсе', 'Anillo también con el pulso alto', 'Ring auch bei hohem Puls', 'Anneau aussi quand le pouls est élevé', 'Anel também com o pulso alto')
+_tr7('dnes.high_hr_ring_quick', '{bpm} BPM超で呼吸の輪', '心率高于 {bpm} BPM 时显示呼吸环', 'Дыхательное кольцо выше {bpm} BPM', 'Anillo de respiración sobre {bpm} BPM', 'Atemring über {bpm} BPM', 'Anneau de respiration au-dessus de {bpm} BPM', 'Anel de respiração acima de {bpm} BPM')
 _tr7('overlay.high_hr_ring_bpm', '{bpm} BPM を超えたら', '高于 {bpm} BPM', 'Выше {bpm} BPM', 'Por encima de {bpm} BPM', 'Über {bpm} BPM', 'Au-dessus de {bpm} BPM', 'Acima de {bpm} BPM')
 _tr7('overlay.high_hr_ring_hint', '心拍がこの上限を超えている間、呼吸の輪はくり返し呼吸し、下がったら吐き終えてから消えます。その間、ほかの合図は出ません。', '心率高于这个上限时，呼吸环会一直循环呼吸；心率降下来后，它在一次呼气后结束。在此期间不会出现其他提示。', 'Пока пульс выше этой границы, дыхательное кольцо дышит по кругу, а когда он опустится, заканчивается после выдоха. Других подсказок в это время не будет.', 'Mientras tu pulso esté por encima de este límite, el anillo de respiración sigue respirando, y cuando baje, termina tras una espiración. Mientras tanto no llega ningún otro aviso.', 'Solange dein Puls über dieser Grenze liegt, atmet der Atemring immer weiter; sinkt er, endet der Ring nach einem Ausatmen. In der Zeit kommt kein anderer Hinweis.', 'Tant que ton pouls dépasse cette limite, l’anneau de respiration continue de respirer ; quand il redescend, l’anneau s’arrête après une expiration. Aucun autre rappel ne vient pendant ce temps.', 'Enquanto o seu pulso estiver acima deste limite, o anel de respiração continua respirando; quando ele baixar, o anel termina depois de uma expiração. Nesse meio-tempo não vem nenhum outro aviso.')
 _tr7('hr.pair_button', '時計のつなぎ方…', '如何连接手表…', 'Как подключить часы…', 'Cómo vincular tu reloj…', 'Uhr verbinden…', 'Comment connecter ta montre…', 'Como parear o seu relógio…')

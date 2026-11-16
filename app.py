@@ -1346,6 +1346,29 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
             command=lambda: self.on_hud_config_change(
                 enabled=self.hud_quick_var.get())).pack(side="right", padx=(0, 8))
 
+        # --- quick toggle of the ring at high heart rate (experiment) ---
+        # The same row as the HUD one above, so the experiment is switched on
+        # where the player looks anyway, not three levels deep in a dialog.
+        # The label carries the limit; ⚙ opens In-game pictures, where the
+        # limit is set (the Breath card). The switch in that dialog and this
+        # one are one setting - `on_high_hr_ring_change` keeps them in sync.
+        kruh_row = ctk.CTkFrame(stats_wrap, fg_color="transparent")
+        kruh_row.pack(fill="x", pady=(0, 12))
+        self.high_hr_ring_quick_label = ctk.CTkLabel(
+            kruh_row, text=self._high_hr_ring_quick_text(),
+            font=ui_kit.ui(11, "bold"), text_color=pal["text_faint"], anchor="w")
+        self.high_hr_ring_quick_label.pack(side="left")
+        ctk.CTkButton(
+            kruh_row, text="⚙︎", width=26, height=26, corner_radius=ui_kit.RADIUS_CONTROL,
+            fg_color="transparent", hover_color=pal["surface_alt"],
+            text_color=pal["text_dim"], font=ui_kit.ui(13),
+            command=self.open_overlay_settings).pack(side="right")
+        self.high_hr_ring_quick_var = tk.BooleanVar(value=bool(self.high_hr_ring))
+        ui_kit.switch(
+            kruh_row, pal, variable=self.high_hr_ring_quick_var,
+            command=lambda: self.on_high_hr_ring_change(
+                enabled=self.high_hr_ring_quick_var.get())).pack(side="right", padx=(0, 8))
+
         # The header and the card grid are hidden before the first session with
         # heart rate - four cards with dashes say nothing
         # (`_sync_dnes_prazdny_stav`).
