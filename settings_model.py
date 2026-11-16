@@ -270,7 +270,7 @@ def normalize_breath_seconds(inhale_raw, exhale_raw):
 
 
 # --------------------------------------------------------------------------
-# The ring at high heart rate (experiment, off by default)
+# The ring at high heart rate (off by default)
 # --------------------------------------------------------------------------
 
 # While the smoothed heart rate (`HeartStats.display_bpm`) is ABOVE this

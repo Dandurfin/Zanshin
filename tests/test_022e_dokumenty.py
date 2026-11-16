@@ -42,6 +42,7 @@ import heart_rate  # noqa: E402
 import hotkey  # noqa: E402
 import hr_stats  # noqa: E402
 import i18n  # noqa: E402
+import overlay  # noqa: E402
 from _zdroj_appky import zdroj_metody, zdroj_suboru  # noqa: E402
 
 ZMENY = "CHANGELOG.md"
@@ -244,9 +245,12 @@ def test_known_issues_skratka_sa_riadi_odpovedou_windowsu():
 def test_known_issues_watch_tabulka_a_poziadavky_cakaju_na_autora():
     """The author filled in the watch model (2026-11-15: Samsung Galaxy
     Watch7) and measured the system requirements again on the 0.3 build
-    (2026-11-15), so the KNOWN_ISSUES item about old numbers is gone. 0.3.1
+    (2026-11-15), so the KNOWN_ISSUES item about old numbers is gone. 0.3.2
     names its own ZIP for the size, while RAM and CPU say they were measured
-    on 0.3 (0.3.1 was not measured again)."""
+    on 0.3 (neither 0.3.1 nor 0.3.2 was measured again), and the sentence
+    names what 0.3.2 adds that can cost more: the breath ring at high heart
+    rate, redrawn about 25 times a second while it shows
+    (`overlay._SlotOverlay.TICK_MS`)."""
     o = _otvorene()
     readme = _read("README.md")
     tabulka = _sekcia(readme, "Getting your heart rate in")
@@ -255,21 +259,26 @@ def test_known_issues_watch_tabulka_a_poziadavky_cakaju_na_autora():
     assert "tested: a Samsung Galaxy Watch7 with an Android phone" in _plain_text(readme)
     assert "doesn't name my watch" not in o
     poziadavky = _plain_text(_sekcia(readme, "System requirements"))
-    assert "the 0.3.1 ZIP is about 60 MB" in poziadavky
+    assert "the 0.3.2 ZIP is about 60 MB" in poziadavky
     # The download size is written twice (Install and System requirements).
     # When a new build changes it, both places must change together, and the
     # unpacked size must stay next to it.
     instalacia = _plain_text(_sekcia(readme, "Install"))
     v_instalacii = re.search(
-        r"`Zanshin-0\.3\.1-windows\.zip`, about (\d+) MB\)", instalacia)
+        r"`Zanshin-0\.3\.2-windows\.zip`, about (\d+) MB\)", instalacia)
     v_poziadavkach = re.search(
-        r"the 0\.3\.1 ZIP is about (\d+) MB to download and about (\d+) MB "
+        r"the 0\.3\.2 ZIP is about (\d+) MB to download and about (\d+) MB "
         r"unpacked", poziadavky)
     assert v_instalacii and v_poziadavkach, (v_instalacii, v_poziadavkach)
     assert v_instalacii.group(1) == v_poziadavkach.group(1)
     assert "while watching with heart rate coming in" in poziadavky
     assert "Zanshin 0.3 used about 170 MB of RAM" in poziadavky
-    assert "I haven't measured 0.3.1 again" in poziadavky
+    assert "I haven't measured 0.3.1 or 0.3.2 again:" in poziadavky
+    # what 0.3.2 adds that runs while it shows, and that it wasn't measured
+    assert 1000 // overlay._SlotOverlay.TICK_MS == 25
+    assert ("0.3.2 adds the breath ring at high heart rate (off by default), "
+            "which is redrawn about 25 times a second for as long as it shows; "
+            "what that costs I haven't measured.") in poziadavky
     assert "The system requirements are from 0.2.1." not in o
 
 
@@ -293,8 +302,8 @@ def test_readme_odkazuje_na_changelog_a_nove_veci():
     readme = _read("README.md")
     hore = readme[:readme.index("\n## Quick start")]
     assert "[Changelog](CHANGELOG.md)" in hore
-    assert "](CHANGELOG.md#what-031-changes)" in hore
-    assert "\n## What 0.3.1 changes\n" in _read("CHANGELOG.md")   # that anchor
+    assert "](CHANGELOG.md#what-032-changes)" in hore
+    assert "\n## What 0.3.2 changes\n" in _read("CHANGELOG.md")   # that anchor
     assert "](CHANGELOG.md)" in _sekcia(readme, "Known issues")
     assert "KNOWN_ISSUES.md#" not in readme
     r = _plain_text(readme)

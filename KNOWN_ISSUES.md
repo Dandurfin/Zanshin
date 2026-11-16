@@ -1,4 +1,4 @@
-# Known issues — Zanshin alpha 0.3.1
+# Known issues — Zanshin alpha 0.3.2
 
 What doesn't work yet, or works only partly. What each version changed is in
 [CHANGELOG.md](CHANGELOG.md).
@@ -73,6 +73,18 @@ about, and a few will stay.
   silent on purpose to collect it (about one in four in the first 15 sessions,
   then one in ten). When it comes, it will compare voice plus picture with
   picture only, not a cue with no cue.
+- **The breath ring at high heart rate** (new in 0.3.2, off by default):
+  while it shows, no cue comes, and a cue's measurement window it reaches
+  into isn't counted in History's cue chart, so with the ring on that chart
+  fills more slowly. The line after a session that says why no cue came
+  names the ring only when it held back every cue that was ready and no
+  reason the line checks first applies, such as your "not now", heart-rate
+  dropouts, or a cue held back in the Peak zone, which with the default
+  limit starts where the ring does. Otherwise it gives one of those
+  reasons, or the general one (a picture already on screen, steps, all
+  pictures off), which doesn't say which of the three it was. It's redrawn
+  about 25 times a second while it shows, and I haven't measured what that
+  costs. It isn't an alarm: it follows the number you set, not your health.
 - **Numbers and labels:** the cue chart colours a pulse drop as good, some notes
   are simpler than the math or name the wrong time span or unit, and the CSV
   export is half-translated. A cue whose picture failed to draw (rare; the log
@@ -107,7 +119,7 @@ data, and logs can name your devices and files. Describe what you saw instead.
 
 ## What changed in each version
 
-What 0.3.1 and 0.3 change, what 0.2.1 fixed and what 0.1 got wrong:
+What 0.3.2, 0.3.1 and 0.3 change, what 0.2.1 fixed and what 0.1 got wrong:
 [CHANGELOG.md](CHANGELOG.md).
 
 — **Dandurfin** · GPLv3

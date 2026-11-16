@@ -614,7 +614,7 @@ class PrefsMixin:
             "dashboard_stats": list(DEFAULT_DASHBOARD_STATS),
             "breath_inhale_s": DEFAULT_BREATH_INHALE_S,
             "breath_exhale_s": DEFAULT_BREATH_EXHALE_S,
-            # The ring at high heart rate (experiment): off, limit 110 BPM.
+            # The ring at high heart rate: off by default, limit 110 BPM.
             # A setting of the app, not of a game profile - it is in neither
             # the profiles nor the profile codes.
             "high_hr_ring": False,
@@ -714,8 +714,8 @@ class PrefsMixin:
                 data["dashboard_stats"] = normalize_dashboard_stats(loaded.get("dashboard_stats"))
                 data["breath_inhale_s"], data["breath_exhale_s"] = normalize_breath_seconds(
                     loaded.get("breath_inhale_s"), loaded.get("breath_exhale_s"))
-                # An experiment is on only by a real `true` - a hand-edited
-                # "yes" or 1 does not switch it on.
+                # Off by default, so only a real `true` switches the ring on -
+                # a hand-edited "yes" or 1 does not.
                 data["high_hr_ring"] = loaded.get("high_hr_ring") is True
                 data["high_hr_ring_bpm"] = normalize_high_hr_ring_bpm(
                     loaded.get("high_hr_ring_bpm"))

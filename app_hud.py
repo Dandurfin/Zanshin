@@ -609,10 +609,11 @@ class HudMixin:
         self.save_settings()
 
     def on_high_hr_ring_change(self, enabled=None, bpm=None):
-        """The ring at high heart rate (experiment) - the switch and the
-        limit on the Breath card in "In-game pictures". Applies at once:
-        the next tick (`_tick_high_hr_ring`, within a quarter of a second)
-        starts the ring, or lets a running one finish breathed out."""
+        """The ring at high heart rate (off by default) - the switch and the
+        limit on the Breath card in "In-game pictures" (the switch also on
+        Today's quick row). Applies at once: the next tick
+        (`_tick_high_hr_ring`, within a quarter of a second) starts the
+        ring, or lets a running one finish breathed out."""
         if enabled is not None:
             self.high_hr_ring = bool(enabled)
         if bpm is not None:

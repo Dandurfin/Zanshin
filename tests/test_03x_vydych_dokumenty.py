@@ -11,10 +11,14 @@ untouched grounding position are changed once on load, and the old words
 also when a profile code from before 0.3.1 is imported; the player's own
 words and moved pictures stay.
 
-0.3.1 is the release: CHANGELOG.md's top section "What 0.3.1 changes" sits
-above 0.3 with no "(not released yet)" marker, the documents mark the new
-behaviour "from 0.3.1", and the version metadata, the KNOWN_ISSUES title and
-the README's ZIP name say 0.3.1.
+0.3.1 brought it and stays in CHANGELOG.md as history: its section "What
+0.3.1 changes" sits right under the top section of the current release,
+0.3.2, and the documents keep marking the exhale "from 0.3.1". The release
+itself is pinned here too, as it was for 0.3.1: CHANGELOG.md's top section
+"What 0.3.2 changes" has no "(not released yet)" marker, and the version
+metadata, the KNOWN_ISSUES title and the README's ZIP name say 0.3.2. What
+the 0.3.2 section says about the breath ring at high heart rate is tied to
+the code in tests/test_03x_kruh_dokumenty.py.
 
 This test ties those sentences to the words in i18n, the numbers in
 overlay.py and settings_model.py, the one-time flags in app_prefs.py (and
@@ -42,8 +46,9 @@ from _zdroj_appky import zdroj_appky, zdroj_metody, zdroj_suboru  # noqa: E402
 ZMENY = "CHANGELOG.md"
 AKO = "docs/HOW-IT-WORKS.md"
 VYVOJ = "DEVELOPMENT.md"
-VYDANA = "0.3.1"          # the release these documents describe
-PREDOSLA = "0.3"          # the release before it, kept in CHANGELOG as history
+VYDANA = "0.3.2"          # the release these documents describe
+PREDOSLA = "0.3.1"        # the release before it, kept in CHANGELOG as history
+VYDYCH = "0.3.1"          # the release that brought the exhale (this file's topic)
 KATEGORIE = ("grounding", "jaw", "release", "breath")
 _VERZIA = r"\d+(?:\.\d+){1,3}"
 
@@ -73,7 +78,7 @@ def _sekcia(text, nadpis, uroven="## "):
 
 def _zmeny_031():
     """The 0.3.1 section of CHANGELOG, without line breaks."""
-    return _plain_text(_sekcia(_read(ZMENY), "What %s changes" % VYDANA))
+    return _plain_text(_sekcia(_read(ZMENY), "What %s changes" % VYDYCH))
 
 
 def _slovo(kategoria, jazyk="en"):
@@ -93,7 +98,8 @@ def _dych(rezim):
 
 
 # --------------------------------------------------------------------------
-# CHANGELOG: 0.3.1 on top and released; 0.3 below it as history
+# CHANGELOG: 0.3.2 on top and released; 0.3.1 (the exhale) below it as
+# history
 # --------------------------------------------------------------------------
 
 # Every document that could still call a version unreleased.
@@ -101,28 +107,37 @@ _DOKUMENTY = (ZMENY, "KNOWN_ISSUES.md", "README.md", AKO, VYVOJ, "PRIVACY.md",
               "SAFETY.md")
 
 
-def test_changelog_031_je_navrchu_a_vydana():
+def _kotva(verzia):
+    """The anchor GitHub makes from "## What <verzia> changes"."""
+    return "](CHANGELOG.md#what-%s-changes)" % verzia.replace(".", "")
+
+
+def test_changelog_032_je_navrchu_a_vydana():
     c = _read(ZMENY)
     nadpisy = re.findall(r"^## What (%s) " % _VERZIA, c, re.M)
-    assert nadpisy[:3] == [VYDANA, PREDOSLA, "0.2.1"], nadpisy
-    # the released 0.3.1: its heading has no marker, and the sentence that
-    # the ZIP doesn't have it is gone
+    assert nadpisy[:4] == [VYDANA, PREDOSLA, "0.3", "0.2.1"], nadpisy
+    # the released 0.3.2: its heading has no marker, and no sentence says
+    # the ZIP doesn't have it
     assert "\n## What %s changes\n" % VYDANA in c
     assert "(not released yet)" not in c
-    zmeny = _zmeny_031()
+    zmeny = _plain_text(_sekcia(c, "What %s changes" % VYDANA))
     assert "not in a release yet" not in zmeny
     assert "ZIP doesn't have them" not in zmeny
-    # the release before it keeps its heading as history
+    # the release before it (the exhale) keeps its heading as history
     assert "\n## What %s changes\n" % PREDOSLA in c
+    assert PREDOSLA == VYDYCH
+    assert "**%s:** by default every cue comes with it." % VYDYCH in _zmeny_031()
     uvod = _plain(ZMENY)[:600]
-    assert ("What each version changed, newest first: 0.3.1, 0.3, 0.2.1, and "
-            "what 0.1 got wrong.") in uvod
-    # the README's "what changed" under the picture leads to the 0.3.1
-    # section (the anchor GitHub makes from "## What 0.3.1 changes")
+    assert ("What each version changed, newest first: 0.3.2, 0.3.1, 0.3, 0.2.1, "
+            "and what 0.1 got wrong.") in uvod
+    # the README's "what changed" under the picture leads to the 0.3.2
+    # section, and no longer to the older ones
     readme = _read("README.md")
     hore = readme[:readme.index("\n## Quick start")]
     assert "This page describes %s;" % VYDANA in _plain_text(hore)
-    assert "](CHANGELOG.md#what-031-changes)" in hore
+    assert _kotva(VYDANA) == "](CHANGELOG.md#what-032-changes)"
+    assert _kotva(VYDANA) in hore
+    assert _kotva(PREDOSLA) not in readme
     assert "](CHANGELOG.md#what-03-changes)" not in readme
     # no document still calls a version unreleased
     for meno in _DOKUMENTY:
@@ -132,13 +147,13 @@ def test_changelog_031_je_navrchu_a_vydana():
             assert znacka not in text, (meno, znacka)
 
 
-def test_vydana_verzia_je_031():
+def test_vydana_verzia_je_032():
     """The same rule as `_vydana_verzia` in test_version_sync.py and
     test_dokumenty_02.py: the released version is the app version, unless
     CHANGELOG's first section is that version "(not released yet)" - then
-    it is the next heading. With 0.3.1 released the marker is gone, so the
+    it is the next heading. With 0.3.2 released there is no marker, so the
     app version is the release, and the top CHANGELOG section, the
-    KNOWN_ISSUES title and the README's ZIP name must all name 0.3.1."""
+    KNOWN_ISSUES title and the README's ZIP name must all name 0.3.2."""
     verzia = re.search(_VERZIA, i18n.STRINGS["app.version_short"]["en"]).group(0)
     assert verzia == VYDANA
     c = _read(ZMENY)
@@ -393,8 +408,9 @@ def test_hlas_privacy_a_znacka_031():
             "example a line still waiting when you quit, or, from 0.3.1, the new "
             "built-in words with the exhale), after you change a") in _plain("PRIVACY.md")
     assert ("Where something is new in 0.3, it says *from 0.3*; where it is new "
-            "in 0.3.1, it says *from 0.3.1*.") in _plain(AKO)
-    # KNOWN_ISSUES is the list for the released 0.3.1
+            "in 0.3.1, it says *from 0.3.1*; where it is new in 0.3.2, it says "
+            "*from 0.3.2*.") in _plain(AKO)
+    # KNOWN_ISSUES is the list for the released 0.3.2
     assert "not released yet" not in _read("KNOWN_ISSUES.md")
 
 

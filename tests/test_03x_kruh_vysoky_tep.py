@@ -1218,7 +1218,7 @@ def test_kazda_hlaska_relacie_sa_meria_zvlast():
 
 
 # The windows `measure.build_windows` built from the input of
-# `test_bez_kruhu_su_okna_bajt_po_bajte_rovnake` BEFORE the experiment
+# `test_bez_kruhu_su_okna_bajt_po_bajte_rovnake` BEFORE the ring existed
 # (d6a5124, alpha 0.3.1) - the fixed point the "switch off = nothing
 # changes" promise is checked against.
 _OKNA_PRED_POKUSOM = [
@@ -1238,7 +1238,7 @@ _OKNA_PRED_POKUSOM = [
 
 
 def test_bez_kruhu_su_okna_bajt_po_bajte_rovnake():
-    """Pinned against the windows from before the experiment, not against
+    """Pinned against the windows from before the ring (0.3.1), not against
     themselves: a new key, a changed value or another key order with the
     switch off shows up here."""
     hlasky = [_hlaska(CUE), _hlaska(CUE + 120.0)]

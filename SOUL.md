@@ -25,7 +25,7 @@ Zanshin is a subtle companion against both. It's meant to keep you from burning 
 
 ## What it is
 
-A **local-first heart-rate companion for gamers.** It runs on your own machine. It listens to your heartbeat, shows a quiet heads-up readout, and offers gentle cues — *take a breath, unclench your jaw, feel the ground*. The voice waits for a **short pause in your input** — about 2.5 seconds with no key, mouse or controller — once your load has stopped climbing, and never while your pulse is in the Peak zone (at or above your high heart-rate limit — 110 BPM until the app has learned yours). The app can't see the game, so a still moment in the middle of a fight can count as a pause too. If no pause comes, at most a small silent picture appears, under the same rules.
+A **local-first heart-rate companion for gamers.** It runs on your own machine. It listens to your heartbeat, shows a quiet heads-up readout, and offers gentle cues — *take a breath, unclench your jaw, feel the ground*. The voice waits for a **short pause in your input** — about 2.5 seconds with no key, mouse or controller — once your load has stopped climbing, and never while your pulse is in the Peak zone (at or above your high heart-rate limit — 110 BPM until the app has learned yours). The app can't see the game, so a still moment in the middle of a fight can count as a pause too. If no pause comes, at most a small silent picture appears, under the same rules. The one exception is yours to switch on: a breath ring that breathes silently with you while your heart rate is above a limit you set, in the Peak zone too.
 
 The heart is the honest signal. The cue is just a door, delivered at the right moment.
 

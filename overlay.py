@@ -26,9 +26,9 @@ What changed since alpha 0.4, and why
    with the exhale and ends breathed out (exhale -> inhale -> exhale).
    See `SomaticOverlayManager.trigger` and `_SlotOverlay.breath_phases`.
 
-5. THE RING AT HIGH HEART RATE (experiment, off by default). While the
-   player's heart rate is above a limit, slot 3's ring breathes in a loop
-   (BREATH_LOOP) and ends breathed out once it drops. The app decides when
+5. THE RING AT HIGH HEART RATE (off by default). While the player's heart
+   rate is above a limit, slot 3's ring breathes in a loop (BREATH_LOOP)
+   and ends breathed out once it drops. The app decides when
    (`app_session._tick_high_hr_ring`); here are only the loop and
    `SomaticOverlayManager.start_high_hr_ring` & co.
 
@@ -91,8 +91,8 @@ class _SlotOverlay:
     #                   inhale -> exhale.
     #   BREATH_EXHALE - the companion of grounding / jaw / release
     #                   (`trigger_exhale`): one exhale, full -> empty.
-    #   BREATH_LOOP   - the ring at high heart rate (experiment, off by
-    #                   default, `start_loop`): exhale -> inhale -> exhale
+    #   BREATH_LOOP   - the ring at high heart rate (off by default,
+    #                   `start_loop`): exhale -> inhale -> exhale
     #                   ... with no end of its own. `finish_loop` lets it end
     #                   breathed out - it finishes the running exhale, or the
     #                   running inhale and one more exhale - then the usual
@@ -846,7 +846,7 @@ class SomaticOverlayManager:
                 except Exception:
                     log.exception("sprievodny vydych sa nepodarilo ani zastavit")
 
-    # ---------- the ring at high heart rate (experiment) ----------
+    # ---------- the ring at high heart rate (off by default) ----------
     #
     # Slot 3's own ring (its position, size, colour and inhale/exhale
     # lengths) breathing in a loop while the player's heart rate is above

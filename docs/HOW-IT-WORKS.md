@@ -3,7 +3,8 @@
 The [README](../README.md) says what Zanshin does in a few lines. This page has
 the exact rules: when a cue comes, when Zanshin goes quieter, what it learns
 from, and when the natural voice talks to Microsoft. Where something is new in
-0.3, it says *from 0.3*; where it is new in 0.3.1, it says *from 0.3.1*.
+0.3, it says *from 0.3*; where it is new in 0.3.1, it says *from 0.3.1*;
+where it is new in 0.3.2, it says *from 0.3.2*.
 
 ## When a cue comes
 
@@ -16,7 +17,10 @@ voice comes only in such a pause, once your load has stopped climbing, and
 never while your pulse is in the Peak zone (at or above your high heart-rate
 limit). Zanshin can't see the game itself, so a still moment mid-fight can
 count as a pause too. If no such pause comes within 90 s, it shows a silent
-picture instead, under the same rules; otherwise it stays quiet.
+picture instead, under the same rules; otherwise it stays quiet. The one
+picture that does show in the Peak zone is the breath ring at high heart
+rate, from 0.3.2 and only if you switch it on (see
+[The breath ring at high heart rate](#the-breath-ring-at-high-heart-rate)).
 
 Some cues stay silent on purpose: about one in four in your first 15 sessions
 (every session of a minute or more counts, Work too), one in ten after that.
@@ -35,6 +39,9 @@ least two more minutes, unless you then answer that it landed. The next
 session in the same world (Play or Work) then drops one step: voice → picture
 only → no cues for three sessions of five minutes or more (sooner if you
 answer after a session that it should have spoken up), then the picture again.
+From 0.3.2, "not now" pressed while the breath ring at high heart rate is on
+screen doesn't count (see
+[The breath ring at high heart rate](#the-breath-ring-at-high-heart-rate)).
 It climbs back slowly, after three sessions with a cue that was actually shown
 and none of those signals (a cue whose picture failed to draw doesn't count).
 When it has gone quieter, History says so in one quiet line: why, and how many
@@ -393,6 +400,94 @@ default the grounding picture now sits on the left, halfway down, mirroring
 grip & gaze on the right; one still at its old default place (bottom
 centre, under the ring) moves there the first time 0.3.1 loads your
 settings, and one you moved stays where you put it.
+
+## The breath ring at high heart rate
+
+From 0.3.2 the breath ring can also breathe with you while your heart rate
+is high. It's off by default. Switch it on on *Today* (*Breath ring above
+110 BPM*, under *On-screen HR panel*; ⚙ next to it opens *In-game
+pictures*) or in *In-game pictures* on the breath picture's card (*Ring at
+high heart rate too*), where you also set the limit: 80 to 200 BPM, 110 by
+default. The two switches are one setting, and the label on *Today* shows
+your limit. The limit is yours: it doesn't follow the high heart-rate limit
+Zanshin learns, although both start at 110 BPM.
+
+**When it shows.** While Zanshin is watching, heart rate is coming in,
+"not now" isn't on, and the heart rate on screen (the 3-second median, see
+[The heart-rate number on screen](#the-heart-rate-number-on-screen)) is
+above your limit, so a single spike doesn't start it. It waits for a cue
+already on screen (its picture, or its exhale ring) to end, and it doesn't
+start while you drag a picture into place with *▶ Show*. It's the breath
+picture's ring, where you put it, at its size and colour, and it breathes
+with its *Inhale length* and *Exhale length*: out, in, out, in, round and
+round, starting with the exhale, with the captions *EXHALE* and *INHALE*.
+It shows even with the breath picture switched off, because it has its own
+switch, and it's silent. Windows doesn't draw it over exclusive fullscreen.
+
+**When it ends.** Once it breathes, it keeps breathing until the heart rate
+on screen drops at least 3 BPM below your limit: with 110, it shows above
+110, keeps breathing at 108 to 110 and ends at 107 or below, so a heart rate
+that hovers right at the limit doesn't make it come and go every few
+seconds. When the heart rate drops that far, heart rate drops out (nothing
+for 12 seconds, or the phone disconnects), you switch the ring off or you
+start dragging a picture into place, it finishes breathed out: a running
+exhale is finished, a running inhale is finished and followed by one more
+exhale, then the ring fades. If the heart rate climbs back over that mark
+while it finishes, it keeps breathing without starting over. Once it has
+faded, it starts again only when the heart rate is above the limit itself;
+there's no minimum time between showings. "Not now", stopping watching, the
+end of a session and quitting remove it at once, and while "not now" holds
+it doesn't come back. "Not now" pressed while the ring is on screen,
+breathing or finishing, doesn't count against the last cue, even within a
+minute of it, so it can't make the next session go a step quieter (see
+[When it goes quieter](#when-it-goes-quieter)); `app.log` notes it instead.
+Switching the ring off on *Today* ends it breathed out and tells the cues
+nothing either. The breath picture's own *▶ Show* replaces it at once.
+Moving or resizing the breath picture, or choosing another monitor, applies
+to a ring that is breathing right away.
+
+**What it does to the cues.** While it shows, no cue comes, voice or
+picture: a cue armed meanwhile waits, as it does for any picture on screen,
+and is dropped if it still can't come 90 s after it was armed. If no cue
+came in a session, the line after it that says why names the ring only when
+the ring held back every cue that was ready: *A cue was ready, but the
+breath ring for high heart rate was breathing on screen, so I held it
+back.* Even then, the reasons that line checks first win: your "not now",
+repeated heart-rate dropouts, not a single pause in your input in a session
+of five minutes or more, and a cue held back because your load was still
+climbing or your pulse was in the Peak zone. With the default limit that
+last one can come first, because the ring then starts just where the Peak
+zone does (see below). When none of those
+applies and a ready cue couldn't come for another reason, or the ring held
+back only some of them, the line says a picture was already on screen (the
+ring is one), your watch was reporting steps, or all pictures were off.
+Before 0.3.2, a session like that could be told that your load's longest
+stretch was too short. The cue rules don't apply to the ring itself. It
+doesn't wait for a pause in your input, isn't one of the five cues an hour
+and doesn't go quieter with the cues: it shows in Work, while your watch
+reports steps, and when Zanshin has gone quiet for a few sessions. It's
+also the one picture that shows in the Peak zone: with the default limit it
+shows from just where the Peak zone starts until Zanshin has learned your
+high heart-rate limit from your sessions, because 110 BPM is also the
+average-player limit it uses until then. It isn't an alarm: it follows the
+number you set, not your health.
+
+**What it does to the measurement.** When the ring was on screen anywhere
+from a minute before a cue to three minutes after it, that cue's
+measurement window is marked `kruh_pri_vysokom_tepe` in `hr_windows.json`
+and isn't counted in History's *How your pulse moved after a cue*: with two
+things on screen, there's no telling which one moved your pulse. With the
+switch off, the windows are as they were in 0.3.1. `app.log` gets one line
+when the ring starts (the heart rate and the limit) and one when it ends
+(how long it showed). While it shows, it's redrawn about 25 times a second,
+like the breath cue.
+
+**What your sessions keep.** A saved session in which the ring showed has
+two more numbers in `hr_sessions.json`: `high_hr_ring_s`, how many seconds
+the ring was on screen, and `cues_withheld_ring`, how many ready cues it
+held back. Each is there only when it's above zero, so a session without
+the ring is saved exactly as before. The data export and import carry them;
+the CSV export has no column for them.
 
 ## The Guide
 

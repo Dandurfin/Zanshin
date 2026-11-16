@@ -476,9 +476,9 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         self.dashboard_stats = list(settings["dashboard_stats"])[:DASHBOARD_MAX_CARDS]
         self.breath_inhale_s = float(settings["breath_inhale_s"])
         self.breath_exhale_s = float(settings["breath_exhale_s"])
-        # The ring at high heart rate (experiment, `_tick_high_hr_ring`): the
-        # switch, the limit, and the showings of the ring in the open session
-        # as (start, end) - the measurement windows need them
+        # The ring at high heart rate (off by default, `_tick_high_hr_ring`):
+        # the switch, the limit, and the showings of the ring in the open
+        # session as (start, end) - the measurement windows need them
         # (`_save_measure_windows`).
         self.high_hr_ring = settings.get("high_hr_ring") is True
         self.high_hr_ring_bpm = normalize_high_hr_ring_bpm(
@@ -1349,8 +1349,8 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
             command=lambda: self.on_hud_config_change(
                 enabled=self.hud_quick_var.get())).pack(side="right", padx=(0, 8))
 
-        # --- quick toggle of the ring at high heart rate (experiment) ---
-        # The same row as the HUD one above, so the experiment is switched on
+        # --- quick toggle of the ring at high heart rate (off by default) ---
+        # The same row as the HUD one above, so the ring is switched on
         # where the player looks anyway, not three levels deep in a dialog.
         # The label carries the limit; ⚙ opens In-game pictures, where the
         # limit is set (the Breath card). The switch in that dialog and this

@@ -25,7 +25,7 @@ WHAT INVALIDATES A WINDOW
 -------------------------
   * refractory zone - if another cue sounded within -60/+180 s, it is
     impossible to say which of them caused what; the same for the ring at
-    high heart rate (an experiment) on screen within -60/+180 s
+    high heart rate on screen within -60/+180 s
   * a gap in the data - the sensor dropped out; `HeartStats.clear_live()`
     clears only the live curve, `_all` keeps growing, so the gap is NOT
     marked by anything and can only be found from timestamp differences
@@ -158,10 +158,10 @@ R_NO_DATA = "ziadne_data"
 # The visual was not drawn (the only stimulus of the silent arm). The window
 # would measure the cue against nothing, so we exclude it (bug B17).
 R_NEDORUCENE = "nedorucene"
-# The ring at high heart rate (experiment, `app_session._tick_high_hr_ring`)
-# was on screen within the cue's refractory span: a second stimulus, so it
-# is impossible to say which of them did what - the same reason as
-# `R_REFRACTORY`, only the other stimulus is not a cue.
+# The ring at high heart rate (`app_session._tick_high_hr_ring`, off by
+# default) was on screen within the cue's refractory span: a second
+# stimulus, so it is impossible to say which of them did what - the same
+# reason as `R_REFRACTORY`, only the other stimulus is not a cue.
 R_KRUH_TEP = "kruh_pri_vysokom_tepe"
 
 
@@ -287,7 +287,7 @@ def build_window(cue, samples, all_cue_ts, activity=None,
     `samples` is [(timestamp, bpm)], `activity` is [(timestamp, idle_ms)].
     `ring_spans` are the showings of the ring at high heart rate as
     [(start, end)] - None or empty when it was not shown (the window is
-    then exactly what it was without the experiment).
+    then exactly what it was before the ring existed).
     Always returns a dict - even when the window is invalid, so that it is
     possible to count how many windows dropped out and why.
     """

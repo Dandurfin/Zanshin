@@ -1,6 +1,6 @@
 # 残 Zanshin
 
-*Alpha 0.3.1 · Windows · code under GPLv3*
+*Alpha 0.3.2 · Windows · code under GPLv3*
 
 **A free, open-source Windows app for gamers. When your heart rate shows
 you've been under strain for a while, Zanshin waits for a short lull in your
@@ -19,9 +19,9 @@ for OBS*, free) · the phone and the PC on the same home network (Wi‑Fi).
 
 ![Zanshin's Today page in the Sumi theme: the main switch, the ensō, today's numbers and where the session went](docs/img/today.webp)
 
-*Today, with synthetic data. This page describes 0.3.1; the 0.2.1 ZIP still
+*Today, with synthetic data. This page describes 0.3.2; the 0.2.1 ZIP still
 uses some older names and lacks some controls
-([what changed](CHANGELOG.md#what-031-changes)).*
+([what changed](CHANGELOG.md#what-032-changes)).*
 
 **Local-first.** Your heart rate, sessions and insights never leave your PC.
 No account, no telemetry, no analytics. One exception is on by default: the
@@ -91,12 +91,12 @@ unchanged; it doesn't make the warning go away.
 1. On the GitHub page open
    [**Releases**](https://github.com/Dandurfin/Zanshin/releases/latest) and
    download `Zanshin-<version>-windows.zip` (for this version
-   `Zanshin-0.3.1-windows.zip`, about 60 MB). The release lists the file's
+   `Zanshin-0.3.2-windows.zip`, about 60 MB). The release lists the file's
    **SHA-256** fingerprint.
 2. Check it. In File Explorer open the folder with the ZIP, click the address
    bar, type `powershell` and press Enter. In the window that opens, run this
    with the fingerprint from the release pasted in:
-   `(Get-FileHash .\Zanshin-0.3.1-windows.zip).Hash -eq 'PASTE-THE-HASH-HERE'`.
+   `(Get-FileHash .\Zanshin-0.3.2-windows.zip).Hash -eq 'PASTE-THE-HASH-HERE'`.
    It must print **True** (upper or lower case doesn't matter). If it prints
    **False**, delete the file.
 3. Unpack it (right-click → **Extract All…**) into a folder OneDrive doesn't
@@ -150,7 +150,7 @@ included.
    `build.bat` in step 3. Unblock only a ZIP you got from the page above. Then
    right-click the ZIP → **Extract All…** and choose a folder that OneDrive
    doesn't back up, for example `C:\Games` (Desktop and Documents often are in
-   OneDrive). You get a folder like `Zanshin-0.3.1`; if there's another folder
+   OneDrive). You get a folder like `Zanshin-0.3.2`; if there's another folder
    of the same name inside it, open that one too, until you see `build.bat`.
 3. **Build it.** Double-click **`build.bat`** (with file extensions hidden, it
    shows as `build`). The first time, it fetches Python through the install
@@ -297,11 +297,14 @@ public Wi-Fi (details in [PRIVACY.md](PRIVACY.md)).
 
 - **Windows 11, 64-bit.** It's the only version I've tested. Windows 10 64-bit
   may work, but it's untested.
-- **Disk and memory:** the 0.3.1 ZIP is about 60 MB to download and about
+- **Disk and memory:** the 0.3.2 ZIP is about 60 MB to download and about
   126 MB unpacked. On my PC, while watching with heart rate coming in,
   Zanshin 0.3 used about 170 MB of RAM and about 0.7 % of a 20-thread CPU,
-  roughly a seventh of one core. I haven't measured 0.3.1 again: it changes
-  the cue words and pictures, not what Zanshin does between cues.
+  roughly a seventh of one core. I haven't measured 0.3.1 or 0.3.2 again:
+  0.3.1 changes the cue words and pictures, not what Zanshin does between
+  cues. 0.3.2 adds the breath ring at high heart rate (off by default),
+  which is redrawn about 25 times a second for as long as it shows; what
+  that costs I haven't measured.
 - **A smartwatch and a companion app** that sends heart rate to this PC, with
   the phone and the PC on the same home network (see the table above).
 - **Internet:** while you use Zanshin, only for the natural voice (optional)
@@ -319,6 +322,8 @@ public Wi-Fi (details in [PRIVACY.md](PRIVACY.md)).
   the cue. It can't see the game, so a still moment mid-fight can count as a
   pause too. If no such pause comes within 90 s, it shows only the picture.
   Never in the Peak zone; at most 5 cues an hour, at least 4 minutes apart.
+  (Only the optional breath ring at high heart rate, below, shows in the
+  Peak zone.)
 - **It backs off when it gets in the way.** Tell it after a session that a
   cue disrupted you, or press "not now" right after one, and it goes a step
   quieter: voice → picture only → a few sessions without cues. It never gets
@@ -334,6 +339,21 @@ public Wi-Fi (details in [PRIVACY.md](PRIVACY.md)).
   the Windows voice (offline), eight built-in sounds, or your own recording.
 - **In-game pictures and an optional heart-rate panel.** Click-through and
   scaled to your screen. Not over exclusive fullscreen.
+- **A breath ring at high heart rate, if you want it** (from 0.3.2, off by
+  default). Switch it on on *Today* (*Breath ring above 110 BPM*) or in
+  *In-game pictures* (⚙ next to that switch, or *Fine-tune picture size and
+  position…* on the *In-game* page) on the breath picture's card, where you
+  also set its limit (80–200 BPM; it doesn't follow the high heart-rate limit
+  Zanshin learns). While Zanshin is watching
+  and your heart rate is above that limit, the breath ring breathes out and
+  in, silently, until the rate drops at least 3 BPM below the limit, then
+  ends after an exhale; no cue comes meanwhile. "Not now" removes it at
+  once and, pressed while the ring shows, doesn't make the cues go a step
+  quieter. The cue rules above don't apply to it: it needs no pause, isn't
+  one of the 5 an hour, doesn't go quieter with the cues, and it shows in the
+  Peak zone too (110 BPM is also where the Peak zone starts until Zanshin has
+  learned your high heart-rate limit from your sessions). It's a picture to
+  breathe with, not an alarm.
 - **History.** Your sessions, and slow trends such as your resting baseline,
   heart rate recovery and time over your heart-rate limit: rough trends from a
   consumer watch, not a diagnosis.
@@ -451,7 +471,9 @@ The tools I found show your heart rate, alert you when it crosses a number you
 set, or remind you at set or random times. Zanshin is the only one I could find
 that reads your heart rate while you play and holds its voice for a short pause
 in your input — on your own PC, and only after your strain has spent a while
-above your threshold. The projects I compared it with, and what Zanshin
+above your threshold. (If you switch it on, its breath ring at high heart
+rate does show, silently, while your pulse is above a number you set.) The
+projects I compared it with, and what Zanshin
 deliberately isn't: [docs/PRIOR_ART.md](docs/PRIOR_ART.md).
 
 ## License
