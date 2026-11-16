@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
-"""The ring at high heart rate (experiment, off by default).
+"""The ring at high heart rate (off by default).
 
-While the smoothed heart rate (`HeartStats.display_bpm`) is above the
+When the smoothed heart rate (`HeartStats.display_bpm`) goes above the
 player's limit (default 110 BPM), slot 3's breath ring breathes in a loop;
-once it drops, the ring finishes breathed out and fades. Guarded here:
+it keeps breathing while the heart rate stays above the limit minus a
+margin (`app_session.KRUH_TEP_REZERVA_BPM`, 3 BPM), and once it drops to
+that or below, the ring finishes breathed out and fades. Guarded here:
 
   * the loop (overlay.py): it starts with the exhale, loops and never ends
     by itself; a finish asked for in an exhale / an inhale ends breathed out
@@ -12,10 +14,19 @@ once it drops, the ring finishes breathed out and fades. Guarded here:
     start leaves no window; new inhale/exhale lengths while it loops; a new
     size / position / monitor applies to the running loop at once,
   * the app tick (`_tick_high_hr_ring`): every condition that starts,
-    keeps, finishes or stops it, waiting for a cue that is on screen, one
-    app.log line at the start and one at the end, the showings as
-    (start, end) - also on "not now", stop and session close,
+    keeps, finishes or stops it, the margin below the limit, waiting for a
+    cue that is on screen, one app.log line at the start and one at the
+    end, the showings as (start, end) - also on "not now", stop and
+    session close,
   * cues wait while it is on screen (`_cue_can_fire`),
+  * "not now" pressed while it is on screen does not count against the
+    last cue (the cue ladder),
+  * the session summary carries how long it showed (`high_hr_ring_s`,
+    only when it did) and how many ready cues it held back, counted at the
+    cancellation itself (`cues_withheld_ring`, only when above zero); the
+    questionnaire says the ring held the cue back only when it held back
+    every such cue (`SessionEndDialog._preco_ticho`); import, export and
+    History take both fields,
   * the settings: default, clamp, roundtrip, not in profiles,
   * the measurement windows: the new reason, the edges of the overlap, a
     ring still on screen when the session closes,
@@ -29,6 +40,7 @@ driven by hand.
 """
 import ast
 import json
+import random
 import re
 import time as _time
 import types
@@ -37,21 +49,26 @@ import pytest
 
 import app as app_mod
 import app_session
+import data_io
 import display
+import hr_stats
 import hud_paint
 import i18n
 import measure
 import overlay
+import rebrik
 import settings_model as sm
 import test_022b_data_nastavenia as nastavenia
 import test_022b_data_vypnutie as vypnutie
 import test_03x_vydych_vizual as vv
 import test_cue_words as slova
 import test_teraz_nie as teraz_nie
+import trigger
 from _zdroj_appky import uzol_metody, zdroj_metody, zdroj_suboru
 
 OUT, IN = vv.OUT, vv.IN
 D = app_mod.DandurfApp
+REZERVA = app_session.KRUH_TEP_REZERVA_BPM
 FADE = (overlay._SlotOverlay.FADE_MS // overlay._SlotOverlay.TICK_MS) \
     * overlay._SlotOverlay.TICK_MS / 1000.0
 
@@ -640,12 +657,13 @@ def _bezi(hra, sekund=FADE + 2.0):
 
 
 @pytest.mark.parametrize("zmena", [
-    {"bpm": 110}, {"bpm": 95}, {"bpm": None}, {"high_hr_ring": False},
+    {"bpm": 110 - REZERVA}, {"bpm": 95}, {"bpm": None}, {"high_hr_ring": False},
     {"_hr_state": "linked"}, {"_hr_last_bpm": None}, {"_hr_lost": True},
 ])
 def test_bez_dovodu_kruh_dokonci_vydych(hra, zmena):
-    """The heart rate dropped (or is gone, or the switch is off): no cut-off -
-    the running exhale is finished, then the fade-out."""
+    """The heart rate dropped to the limit minus the margin or below (or is
+    gone, or the switch is off): no cut-off - the running exhale is
+    finished, then the fade-out."""
     od = _bezi(hra)
     zmena = dict(zmena)
     if "bpm" in zmena:
@@ -677,6 +695,153 @@ def test_tep_znova_hore_pocas_dokoncenia_kruh_dycha_dalej(hra):
     hra.tik(40.0)
     assert hra.m.high_hr_ring_showing() and len(hra.root.plochy) == 1
     assert len(hra.log.kruh()) == 1 and not hra.a._high_hr_ring_spans
+
+
+# --------------------------------------------------------------------------
+# the margin below the limit (hysteresis, `KRUH_TEP_REZERVA_BPM`)
+#
+# A heart rate hovering at 110-111 with the limit 110 made the ring come and
+# go every few seconds. It starts above the limit (unchanged), but once it
+# breathes it keeps breathing while the heart rate is above the limit minus
+# the margin, and finishes at or below that.
+# --------------------------------------------------------------------------
+
+def test_rezerva_su_tri_bpm():
+    assert REZERVA == 3 and isinstance(REZERVA, int)
+    zdroj = zdroj_suboru("app_session.py")
+    assert zdroj.index("KRUH_TEP_ZNOVA_S = ") < zdroj.index("KRUH_TEP_REZERVA_BPM = "), \
+        "konstanta ma byt vedla KRUH_TEP_ZNOVA_S"
+
+
+@pytest.mark.parametrize("bpm", [110 - i for i in range(REZERVA)])      # 110, 109, 108
+def test_v_rezerve_pod_hranicou_kruh_dycha_dalej(hra, bpm):
+    _bezi(hra)
+    hra.a.hr_stats.display_bpm = bpm
+    hra.tik(60.0)
+    assert hra.m.high_hr_ring_showing(), bpm
+    assert not hra.m.high_hr_ring_finishing(), "v rezerve pod hranicou nema dokoncit"
+    assert len(hra.root.plochy) == 1 and not hra.a._high_hr_ring_spans
+    assert len(hra.log.kruh()) == 1, "ziadne nove zobrazenie ani koniec"
+
+
+@pytest.mark.parametrize("bpm", [110 - REZERVA, 110 - REZERVA - 1, 90])  # 107, 106, 90
+def test_na_rezerve_alebo_pod_nou_kruh_dokonci(hra, bpm):
+    od = _bezi(hra)
+    hra.a.hr_stats.display_bpm = bpm
+    hra.tik()
+    assert hra.m.high_hr_ring_finishing() and hra.m.is_active(3), bpm
+    hra.tik(10.0)
+    assert not hra.m.is_active(3)
+    assert _dych(hra)[-1][:2] == (False, 1.0), "konci vydychnuty"
+    [(zaciatok, _koniec)] = hra.a._high_hr_ring_spans
+    assert zaciatok == od and len(hra.log.kruh()) == 2
+
+
+@pytest.mark.parametrize("bpm", [110 - i for i in range(REZERVA + 1)])  # 110 .. 107
+def test_rezerva_neplati_pre_novy_kruh(hra, bpm):
+    """A ring that is not on screen needs more than the limit itself."""
+    hra.a.hr_stats.display_bpm = bpm
+    hra.tik(10.0)
+    assert not hra.root.plochy and not hra.log.kruh(), bpm
+
+
+def test_tep_nad_rezervou_zrusi_dokoncenie(hra):
+    _bezi(hra)
+    hra.a.hr_stats.display_bpm = 110 - REZERVA                 # 107: finishes
+    hra.tik()
+    assert hra.m.high_hr_ring_finishing()
+    plocha = _kruh(hra).surface
+    hra.a.hr_stats.display_bpm = 110 - REZERVA + 1             # 108: back in the margin
+    hra.tik()
+    assert not hra.m.high_hr_ring_finishing() and hra.m.high_hr_ring_showing()
+    assert _kruh(hra).surface is plocha and len(hra.root.plochy) == 1, "ziadny restart ani fade"
+    hra.tik(40.0)
+    assert hra.m.high_hr_ring_showing() and not hra.a._high_hr_ring_spans
+    assert len(hra.log.kruh()) == 1
+
+
+def test_po_zmiznuti_treba_znova_nad_hranicu(hra):
+    _bezi(hra)
+    hra.a.hr_stats.display_bpm = 110 - REZERVA
+    while hra.m.high_hr_ring_showing():
+        hra.tik()
+    # breathed out, the fade-out is running: the margin no longer holds it
+    assert hra.m.is_active(3)
+    hra.a.hr_stats.display_bpm = 110
+    hra.tik()
+    assert not hra.m.high_hr_ring_showing() and not hra.m.high_hr_ring_finishing()
+    hra.tik(2.0)
+    assert not hra.m.is_active(3) and len(hra.a._high_hr_ring_spans) == 1
+    for bpm in (110 - REZERVA + 1, 109, 110):
+        hra.a.hr_stats.display_bpm = bpm
+        hra.tik(5.0)
+        assert not hra.m.is_active(3), bpm
+    assert len(hra.log.kruh()) == 2
+    hra.a.hr_stats.display_bpm = 111
+    hra.tik()
+    assert hra.m.high_hr_ring_showing(), "nad hranicou znova"
+    assert hra.log.kruh()[-1] == "kruh pri vysokom tepe: zobrazeny (tep 111, hranica 110)"
+
+
+@pytest.mark.parametrize("hranica", [80, 125, 140, 200])
+def test_rezerva_plati_pod_vlastnou_hranicou(hra, hranica):
+    hra.a.high_hr_ring_bpm = hranica
+    hra.a.hr_stats.display_bpm = hranica
+    hra.tik(3.0)
+    assert not hra.root.plochy, "na hranici sa neukaze"
+    hra.a.hr_stats.display_bpm = hranica + 1
+    _bezi(hra)
+    hra.a.hr_stats.display_bpm = hranica - REZERVA + 1
+    hra.tik(30.0)
+    assert hra.m.high_hr_ring_showing() and not hra.m.high_hr_ring_finishing(), hranica
+    hra.a.hr_stats.display_bpm = hranica - REZERVA
+    hra.tik()
+    assert hra.m.high_hr_ring_finishing(), hranica
+    hra.tik(12.0)
+    assert not hra.m.is_active(3) and len(hra.a._high_hr_ring_spans) == 1
+
+
+@pytest.mark.parametrize("zmena", [
+    {"bpm": None}, {"high_hr_ring": False}, {"_hr_state": "linked"},
+    {"_hr_last_bpm": None}, {"_hr_lost": True}, "drag_test",
+])
+def test_bez_tepu_kruh_dokonci_aj_v_rezerve(hra, zmena):
+    """No heart rate, the switch off or a drag test finish it whatever the
+    number - the margin is only about the heart rate."""
+    _bezi(hra)
+    hra.a.hr_stats.display_bpm = 109                           # in the margin
+    hra.tik()
+    assert not hra.m.high_hr_ring_finishing()
+    if zmena == "drag_test":
+        hra.m.test(1)
+    else:
+        zmena = dict(zmena)
+        if "bpm" in zmena:
+            hra.a.hr_stats.display_bpm = zmena.pop("bpm")
+        hra.a.__dict__.update(zmena)
+    hra.tik()
+    assert hra.m.high_hr_ring_finishing() and hra.m.is_active(3), zmena
+    hra.tik(10.0)
+    assert not hra.m.high_hr_ring_showing() and len(hra.a._high_hr_ring_spans) == 1
+
+
+@pytest.mark.parametrize("zmena", [
+    {"_snooze_job": "after#9"}, {"listening": False}, {"_hr_session_open": False},
+])
+def test_v_rezerve_teraz_nie_stop_a_koniec_relacie_kruh_hned_zrusia(hra, zmena):
+    od = _bezi(hra)
+    hra.a.hr_stats.display_bpm = 108
+    hra.tik()
+    hra.a.__dict__.update(zmena)
+    hra.tik()
+    assert not hra.m.is_active(3), "ide hned, nedokoncuje"
+    assert hra.a._high_hr_ring_spans == [(od, hra.hodiny.t)]
+
+
+def test_tik_cita_rezervu_z_konstanty():
+    zdroj = ast.unparse(uzol_metody("_tick_high_hr_ring"))
+    assert "prah - KRUH_TEP_REZERVA_BPM if showing else prah" in zdroj
+    assert "bpm > hranica" in zdroj and "bpm > prah" not in zdroj
 
 
 @pytest.mark.parametrize("zmena", [
@@ -817,6 +982,118 @@ def test_teraz_nie_kruh_hned_zrusi(svet, monkeypatch):
     assert zaciatok == od and koniec - zaciatok == pytest.approx(5.0, abs=2.0)
 
 
+# "Not now" while the ring is on screen dismisses the ring, not the last cue:
+# it must not count for the cue ladder (`_zapis_snooze_po_hlaske`), or the
+# cues would go a step quieter for something they did not do.
+
+_RIADOK_REBRIKA = ("rebrik hlasky: teraz nie pocas kruhu pri vysokom tepe - "
+                   "do rebrika sa nepocita")
+
+
+def _teraz_nie_po_hlaske(svet, monkeypatch, kruh):
+    """A delivered automatic cue, 20 s later "not now" - with the ring
+    breathing, finishing, or not on screen (`kruh` None)."""
+    import app_controls
+    h = teraz_nie._Hodiny(2_000_000.0)
+    a = teraz_nie._appka(monkeypatch, h)
+    log = _Log()
+    monkeypatch.setattr(app_controls, "app_log", log)
+    monkeypatch.setattr(app_session, "app_log", log)
+    a.overlay_manager = svet.m
+    a._high_hr_ring_since = None
+    a._high_hr_ring_spans = []
+    a.hr_stats.note_trigger(ts=h.t, auto=True, source="auto", delivered=True)
+    h.t += 20.0
+    if kruh is not None:
+        assert svet.m.start_high_hr_ring()
+        a._high_hr_ring_since = h.t - 5.0
+        if kruh == "dokoncuje":
+            assert svet.m.finish_high_hr_ring() and svet.m.high_hr_ring_finishing()
+    a._start_snooze(30)
+    return a, h, log
+
+
+@pytest.mark.parametrize("kruh", ["dycha", "dokoncuje"])
+def test_teraz_nie_pri_kruhu_sa_do_rebrika_nepocita(svet, monkeypatch, tmp_path, kruh):
+    a, h, log = _teraz_nie_po_hlaske(svet, monkeypatch, kruh)
+    assert a._snooze_po_hlaske is None, "teraz nie pri kruhu sa zapisalo do rebrika"
+    assert "snooze_after_s" not in a.hr_stats.cues[-1]
+    assert log.riadky.count(_RIADOK_REBRIKA) == 1
+    # everything else about "not now" as before
+    assert not svet.m.is_active(3) and a._high_hr_ring_since is None, "kruh ostal"
+    assert a._high_hr_ring_spans == [(h.t - 5.0, h.t)]
+    assert a._snooze_rel_od == h.t, "cas stisenia sa nerata"
+    assert a.cue_trigger._suspended_by == trigger.A_SNOOZE
+    assert a.root.ulohy[a._snooze_job][0] == 30 * 60 * 1000
+    assert a.denn[-1] == i18n.tr("log.snooze_started", minutes=30)
+    h.t += 600.0                                    # play goes on
+    s = teraz_nie._zavri(monkeypatch, a, tmp_path)
+    assert "snooze_after_cue_s" not in s and "snooze_then_s" not in s
+    assert rebrik.signal_dole(s) is None, "pripomienky stichli kvoli kruhu"
+    assert s["snoozed_s"] == 600.0
+    assert s["high_hr_ring_s"] == 5.0
+
+
+def test_teraz_nie_bez_kruhu_sa_do_rebrika_pocita_ako_predtym(svet, monkeypatch, tmp_path):
+    a, h, log = _teraz_nie_po_hlaske(svet, monkeypatch, None)
+    assert a._snooze_po_hlaske == (20.0, h.t)
+    assert a.hr_stats.cues[-1]["snooze_after_s"] == 20.0
+    assert _RIADOK_REBRIKA not in log.riadky
+    h.t += 600.0
+    s = teraz_nie._zavri(monkeypatch, a, tmp_path)
+    assert (s["snooze_after_cue_s"], s["snooze_then_s"]) == (20.0, 600.0)
+    assert rebrik.signal_dole(s) == rebrik.D_SNOOZE
+    assert "high_hr_ring_s" not in s
+
+
+def test_teraz_nie_po_zmiznutom_kruhu_sa_pocita(svet, monkeypatch):
+    """The ring breathed out and the tick closed its showing: "not now" now
+    counts again, as with no ring at all."""
+    import app_controls
+    h = teraz_nie._Hodiny(2_000_000.0)
+    a = teraz_nie._appka(monkeypatch, h)
+    monkeypatch.setattr(app_controls, "app_log", _Log())
+    a.overlay_manager = svet.m
+    a._high_hr_ring_since = None
+    a._high_hr_ring_spans = [(h.t - 50.0, h.t - 10.0)]
+    a.hr_stats.note_trigger(ts=h.t - 30.0, auto=True, source="auto", delivered=True)
+    a._start_snooze(30)
+    assert a._snooze_po_hlaske == (30.0, h.t)
+
+
+def test_kruh_na_obrazovke_zisti_aj_stary_manazer():
+    a = D.__new__(D)
+    a._high_hr_ring_since = None
+    for om in (None, types.SimpleNamespace(is_active=lambda i: False),
+               types.SimpleNamespace(high_hr_ring_showing=lambda: False)):
+        a.overlay_manager = om
+        assert a._high_hr_ring_on_screen() is False, om
+
+    def _zlyhaj():
+        raise RuntimeError("zlyhanie")
+    a.overlay_manager = types.SimpleNamespace(high_hr_ring_showing=_zlyhaj)
+    assert a._high_hr_ring_on_screen() is False
+    a.overlay_manager = types.SimpleNamespace(high_hr_ring_showing=lambda: True)
+    assert a._high_hr_ring_on_screen() is True
+    a.overlay_manager = None
+    a._high_hr_ring_since = 123.0
+    assert a._high_hr_ring_on_screen() is True
+    del a.__dict__["_high_hr_ring_since"]           # a dummy without the state
+    assert a._high_hr_ring_on_screen() is False
+
+
+def test_teraz_nie_sa_pyta_na_kruh_pred_jeho_zastavenim():
+    uzol = uzol_metody("_start_snooze")
+    [vetva] = [u for u in ast.walk(uzol) if isinstance(u, ast.If)
+               and ast.unparse(u.test) == "self._high_hr_ring_on_screen()"]
+    assert "app_log.info(" in ast.unparse(vetva.body[0])
+    assert [ast.unparse(u) for u in vetva.orelse] == ["self._zapis_snooze_po_hlaske(now)"]
+    telo = ast.unparse(uzol)
+    assert telo.index("self._high_hr_ring_on_screen()") < telo.index(
+        "self._stop_high_hr_ring()"), "na kruh sa treba spytat skor, nez zmizne"
+    assert telo.count("self._zapis_snooze_po_hlaske(") == 1
+
+
 def test_stop_pocuvania_kruh_hned_zrusi(svet, monkeypatch):
     monkeypatch.setattr(app_session, "app_log", _Log())
     monkeypatch.setattr(app_session, "time", svet.hodiny)
@@ -867,16 +1144,21 @@ def test_nova_relacia_zacina_bez_zobrazeni():
     zdroj = ast.unparse(uzol_metody("_open_hr_session"))
     assert "self._high_hr_ring_spans = []" in zdroj
     assert "self._high_hr_ring_since = None" in zdroj
+    # the cues it held back belong to the session too
+    assert "self._cues_withheld_ring = 0" in zdroj
     # ... after the previous session was closed (with its ring)
     assert zdroj.index("self._close_hr_session()") < zdroj.index(
         "self._high_hr_ring_spans = []")
+    assert zdroj.index("self._close_hr_session()") < zdroj.index(
+        "self._cues_withheld_ring = 0")
 
 
 def test_appka_ma_stav_kruhu_od_startu():
     init = ast.unparse(uzol_metody("__init__"))
     for riadok in ("self.high_hr_ring = settings.get('high_hr_ring') is True",
                    "self.high_hr_ring_bpm = normalize_high_hr_ring_bpm(",
-                   "self._high_hr_ring_since = None", "self._high_hr_ring_spans = []"):
+                   "self._high_hr_ring_since = None", "self._high_hr_ring_spans = []",
+                   "self._cues_withheld_ring = 0"):
         assert riadok in init, riadok
 
 
@@ -1121,7 +1403,8 @@ def test_karta_dychu_ma_prepinac_hranicu_a_vysvetlivku():
                 "ui_kit.slider(", "from_=HIGH_HR_RING_BPM_MIN", "to=HIGH_HR_RING_BPM_MAX",
                 "tr('overlay.high_hr_ring_bpm', bpm=bpm)",
                 "self.app.on_high_hr_ring_change(bpm=bpm)",
-                "tr('overlay.high_hr_ring_hint')", "pal['text_faint']"):
+                "tr('overlay.high_hr_ring_hint', margin=KRUH_TEP_REZERVA_BPM)",
+                "pal['text_faint']"):
         assert kus in kruh, kus
 
 
@@ -1181,6 +1464,11 @@ def test_karta_dychu_ukaze_ulozene_nastavenie(monkeypatch, zapnute, hranica):
         assert posuvnik.k["variable"].get() == hranica, "posuvnik neukazuje ulozenu hranicu"
         assert any(p.k.get("text") == "Above %d BPM" % hranica for p in prvky), \
             "popis neukazuje ulozenu hranicu"
+        [vysvetlivka] = [p for p in prvky
+                         if "No other cue comes meanwhile" in str(p.k.get("text"))]
+        assert "at least %d BPM below it" % REZERVA in vysvetlivka.k["text"], \
+            "vysvetlivka neuvadza skutocnu rezervu pod hranicou"
+        assert "{" not in vysvetlivka.k["text"]
 
         prepinac.k["variable"].set(not zapnute)
         prepinac.k["command"]()
@@ -1205,8 +1493,13 @@ def test_texty_vo_vsetkych_jazykoch():
     assert S["overlay.high_hr_ring_bpm"]["sk"] == "Nad {bpm} BPM"
     assert S["overlay.high_hr_ring_bpm"]["en"] == "Above {bpm} BPM"
     assert S["overlay.high_hr_ring_hint"]["sk"] == (
-        "Dychový kruh dýcha dokola, kým je tep nad touto hranicou, a keď klesne, "
-        "skončí po výdychu. Medzitým nepríde iná pripomienka.")
+        "Dychový kruh sa ukáže, keď tep prekročí túto hranicu, a dýcha dokola, "
+        "kým neklesne aspoň o {margin} BPM pod ňu; potom skončí po výdychu. "
+        "Medzitým nepríde iná pripomienka.")
+    assert S["overlay.high_hr_ring_hint"]["en"] == (
+        "The breath ring shows when your heart rate goes above this limit and keeps "
+        "breathing until it drops at least {margin} BPM below it; then it ends after "
+        "an exhale. No other cue comes meanwhile.")
     for kluc in _KLUCE:
         zaznam = S[kluc]
         assert set(zaznam) == set(i18n.LANGUAGES), kluc
@@ -1323,3 +1616,573 @@ def test_zmena_bez_riadku_na_dnes_nespadne():
     a.save_settings = lambda: setattr(a, "ulozene", a.ulozene + 1)
     D.on_high_hr_ring_change(a, enabled=True, bpm=120)
     assert a.high_hr_ring is True and a.high_hr_ring_bpm == 120 and a.ulozene == 1
+
+
+# --------------------------------------------------------------------------
+# the session summary: how long the ring showed (`high_hr_ring_s`)
+# --------------------------------------------------------------------------
+
+def test_suhrn_nesie_cas_kruhu_len_ked_sa_ukazal(tmp_path):
+    """Only a session in which the ring showed gets the field - every other
+    one stays the same as before, byte for byte."""
+    a = vypnutie._appka(tmp_path)
+    teraz = _time.time()
+    pred = a._suhrn_relacie(koniec=teraz)          # a dummy without the ring's state
+    assert "high_hr_ring_s" not in pred
+    a._high_hr_ring_spans = []
+    a._high_hr_ring_since = None
+    assert json.dumps(a._suhrn_relacie(koniec=teraz)) == json.dumps(pred)
+    a._high_hr_ring_spans = [(teraz - 50.0, teraz - 50.0)]   # zero length
+    assert json.dumps(a._suhrn_relacie(koniec=teraz)) == json.dumps(pred)
+
+    spans = [(teraz - 300.0, teraz - 240.0), (teraz - 100.0, teraz - 99.5)]
+    a._high_hr_ring_spans = list(spans)
+    a._high_hr_ring_since = teraz - 10.0            # still on screen
+    s = a._suhrn_relacie(koniec=teraz)
+    assert s["high_hr_ring_s"] == 70.5
+    assert {k: v for k, v in s.items() if k != "high_hr_ring_s"} == pred
+    # no side effects - the checkpoint asks in the middle of a session
+    assert a._high_hr_ring_spans == spans and a._high_hr_ring_since == teraz - 10.0
+    assert a._suhrn_relacie(koniec=teraz) == s
+
+
+def test_kruh_na_obrazovke_pri_zatvoreni_je_v_ulozenom_suhrne(svet, monkeypatch, tmp_path):
+    monkeypatch.setattr(app_session, "app_log", _Log())
+    a = vypnutie._appka(tmp_path)
+    a.overlay_manager = svet.m
+    svet.m.start_high_hr_ring()
+    teraz = _time.time()
+    a._high_hr_ring_since = teraz - 40.0
+    a._high_hr_ring_spans = [(teraz - 900.0, teraz - 800.0)]
+    a._close_hr_session()
+    [ulozena] = vypnutie._historia(a)
+    assert ulozena["high_hr_ring_s"] == pytest.approx(140.0, abs=2.0)
+    [dotaznik] = a.dotazniky
+    assert dotaznik["high_hr_ring_s"] == ulozena["high_hr_ring_s"]
+    assert not svet.m.is_active(3)
+
+
+def test_relacia_bez_kruhu_pole_nema(tmp_path):
+    a = vypnutie._appka(tmp_path)
+    a._cues_withheld_ring = 0
+    a._close_hr_session()
+    [ulozena] = vypnutie._historia(a)
+    [dotaznik] = a.dotazniky
+    for pole in ("high_hr_ring_s", "cues_withheld_ring"):
+        assert pole not in ulozena, pole
+        assert pole not in dotaznik, pole
+
+
+def test_suhrn_nesie_podrzane_hlasky_len_ked_nejake_boli(tmp_path):
+    """`cues_withheld_ring` only when the ring held back at least one ready
+    cue - every other session stays the same as before, byte for byte. Only
+    a whole count (the app's own counter), never a bool or a text."""
+    a = vypnutie._appka(tmp_path)
+    teraz = _time.time()
+    pred = a._suhrn_relacie(koniec=teraz)          # a dummy without the counter
+    assert "cues_withheld_ring" not in pred
+    for nic in (0, -1, None, True, "2", 2.5):
+        a._cues_withheld_ring = nic
+        assert json.dumps(a._suhrn_relacie(koniec=teraz)) == json.dumps(pred), nic
+    a._cues_withheld_ring = 2
+    s = a._suhrn_relacie(koniec=teraz)
+    assert s["cues_withheld_ring"] == 2
+    assert {k: v for k, v in s.items() if k != "cues_withheld_ring"} == pred
+    # no side effects - the checkpoint asks in the middle of a session
+    assert a._cues_withheld_ring == 2 and a._suhrn_relacie(koniec=teraz) == s
+
+
+def test_podrzane_hlasky_su_v_ulozenom_suhrne(tmp_path):
+    a = vypnutie._appka(tmp_path)
+    a.cue_trigger.zadrzane[trigger.A_NEDALO_SA] = 3
+    a._cues_withheld_ring = 3
+    a._close_hr_session()
+    [ulozena] = vypnutie._historia(a)
+    assert ulozena["cues_withheld_ring"] == 3
+    assert ulozena["cues_withheld"][trigger.A_NEDALO_SA] == 3
+    [dotaznik] = a.dotazniky
+    assert dotaznik["cues_withheld_ring"] == 3
+
+
+def test_suhrn_rata_cas_kruhu_cez_metodu_kruhu():
+    zdroj = ast.unparse(uzol_metody("_suhrn_relacie"))
+    assert "getattr(self, '_high_hr_ring_seconds', None)" in zdroj
+    assert "round(sekundy(teraz), 1)" in zdroj
+    assert "if kruh_s > 0.0:" in zdroj
+
+
+def test_suhrn_bez_metod_kruhu_nespadne(tmp_path, monkeypatch):
+    """A dummy that borrows only `_suhrn_relacie` (tests/test_022_ukoncenie_
+    dennik.py) has no ring at all - no field, no error in app.log."""
+    import app_data
+    log = _Log()
+    monkeypatch.setattr(app_data, "app_log", log)
+    a = vypnutie._appka(tmp_path)
+    a._high_hr_ring_seconds = None
+    assert "high_hr_ring_s" not in a._suhrn_relacie()
+    assert not log.riadky
+
+
+def test_import_a_export_preberu_cas_kruhu(tmp_path):
+    relacia = {"started": 1789000000.0, "duration_s": 3600.0, "high_hr_ring_s": 412.5,
+               "cues_withheld_ring": 2,
+               "cues_withheld": {"bez_pauzy": 0, "nevhodna_chvila": 0, "nedalo_sa": 2}}
+    cesta = data_io.write_bundle(str(tmp_path / "e.json"),
+                                 data_io.build_bundle([relacia], []))
+    sessions, _okna, zahodene = data_io.parse_bundle(cesta)
+    assert zahodene == 0 and sessions == [dict(relacia, imported=True)]
+    for pole in ("high_hr_ring_s", "cues_withheld_ring"):
+        assert data_io._TYPY_RELACIE[pole] is data_io._konecne, pole
+        for zle in ("412", True, [1.0], {"a": 1}, float("nan"), float("inf")):
+            cista = data_io.clean_session(dict(relacia, **{pole: zle}))
+            assert cista is not None, (pole, zle)
+            assert pole not in cista, (pole, zle)
+            assert cista["cues_withheld"] == relacia["cues_withheld"]
+
+
+def test_historia_znesie_cas_kruhu(tmp_path):
+    import hr_insights
+    relacie = [{"started": 1789000000.0 + i * 86400.0, "duration_s": 2400.0,
+                "samples": 900, "avg_bpm": 95, "max_bpm": 131, "baseline_bpm": 70,
+                "auto_triggers": 0, "above_runs": 3, "longest_above_s": 30.0,
+                "runs_cancelled_gap": 0, "stress_hold_s": 45.0,
+                "cues_withheld": {"bez_pauzy": 0, "nevhodna_chvila": 0, "nedalo_sa": 1}}
+               for i in range(4)]
+    s_kruhom = [dict(r, high_hr_ring_s=300.0 + i, cues_withheld_ring=1)
+                for i, r in enumerate(relacie)]
+    cesta = str(tmp_path / "r.csv")
+    assert hr_stats.export_sessions_csv(s_kruhom, cesta) == 4
+    with open(cesta, encoding="utf-8-sig") as fh:
+        riadky = [r for r in fh.read().splitlines() if r]
+    assert len(riadky) == 5
+    assert all(len(r.split(";")) == len(hr_stats.CSV_COLUMNS) for r in riadky)
+    a = D.__new__(D)
+    assert D._history_detail_values(a, s_kruhom[-1]) == D._history_detail_values(a, relacie[-1])
+
+    def kluce(rel):
+        return sorted(i["key"] for i in hr_insights.analyze(rel, now=1789500000.0))
+    assert kluce(s_kruhom) == kluce(relacie)
+
+
+# --------------------------------------------------------------------------
+# the cues the ring held back (`cues_withheld_ring`), counted at the
+# cancellation itself - not "the ring showed some time in the session"
+# --------------------------------------------------------------------------
+
+_RIADOK_PODRZAL = "natiahnutie zrusene: hlasku podrzal kruh pri vysokom tepe"
+
+
+def _zrusenie(dovod=trigger.A_NEDALO_SA):
+    return {"typ": trigger.E_ABORT, "ts": 1.0, "reason": dovod, "arm": None,
+            "waited_s": 90.0}
+
+
+def _vsetky_obrazky_vypnute():
+    return [dict(c, enabled=False) for c in sm.default_overlay_configs()]
+
+
+def _appka_zrusenia(monkeypatch, **navyse):
+    """DandurfApp without Tk with what `_on_cue_event` and `_cue_held_by_ring`
+    read: listening, no "not now", the default pictures (on), the ring on
+    screen (an open showing)."""
+    import app_today
+    log = _Log()
+    monkeypatch.setattr(app_today, "app_log", log)
+    a = D.__new__(D)
+    a.listening = True
+    a._snooze_job = None
+    a.overlay_configs = sm.default_overlay_configs()
+    a._high_hr_ring_since = 100.0
+    a.overlay_manager = None
+    a._cue_log = []
+    a._cues_withheld_ring = 0
+    a._set_enso_armed = lambda _armed: None
+    a.__dict__.update(navyse)
+    return a, log
+
+
+def test_zrusenie_pri_kruhu_sa_zrata(monkeypatch):
+    a, log = _appka_zrusenia(monkeypatch)
+    a._on_cue_event(_zrusenie())
+    a._on_cue_event(_zrusenie())
+    assert a._cues_withheld_ring == 2
+    assert log.riadky.count(_RIADOK_PODRZAL) == 2
+    assert len(a._cue_log) == 2, "zrusenie sa zapisuje ako predtym"
+    # the ring found through the overlay's own state, with no open showing
+    a, _log = _appka_zrusenia(monkeypatch, _high_hr_ring_since=None,
+                              overlay_manager=types.SimpleNamespace(
+                                  high_hr_ring_showing=lambda: True))
+    a._on_cue_event(_zrusenie())
+    assert a._cues_withheld_ring == 1
+    # a dummy without the counter
+    a, _log = _appka_zrusenia(monkeypatch)
+    del a.__dict__["_cues_withheld_ring"]
+    a._on_cue_event(_zrusenie())
+    assert a._cues_withheld_ring == 1
+
+
+@pytest.mark.parametrize("zmena", [
+    {"_high_hr_ring_since": None},              # the ring is not on screen
+    # all pictures off: `_cue_can_fire` stops there BEFORE it looks at the
+    # ring - no cue could come even without it
+    {"overlay_configs": _vsetky_obrazky_vypnute()},
+    {"overlay_configs": None},
+    {"listening": False},
+    {"_snooze_job": "uloha"},
+])
+def test_zrusenie_bez_kruhu_ako_dovodu_sa_nezrata(monkeypatch, zmena):
+    a, log = _appka_zrusenia(monkeypatch, **zmena)
+    a._on_cue_event(_zrusenie())
+    assert a._cues_withheld_ring == 0, zmena
+    assert _RIADOK_PODRZAL not in log.riadky
+    assert len(a._cue_log) == 1
+
+
+@pytest.mark.parametrize("dovod", [
+    trigger.A_BEZ_PAUZY, trigger.A_NEVHODNA_CHVILA, trigger.A_SNOOZE,
+    trigger.A_ODISIEL, trigger.A_TEP_VYPADOL, trigger.A_ZATAZ_KLESLA,
+    trigger.A_KONIEC_RELACIE, None,
+])
+def test_ine_zrusenie_pri_kruhu_sa_nezrata(monkeypatch, dovod):
+    a, log = _appka_zrusenia(monkeypatch)
+    a._on_cue_event(_zrusenie(dovod))
+    assert a._cues_withheld_ring == 0, dovod
+    assert _RIADOK_PODRZAL not in log.riadky
+
+
+def test_kruh_ako_dovod_nikdy_nespadne(monkeypatch):
+    a, _log = _appka_zrusenia(monkeypatch)
+    del a.__dict__["overlay_configs"]
+    assert a._cue_held_by_ring() is False
+
+    def _zlyhaj():
+        raise RuntimeError("zlyhanie")
+    a, _log = _appka_zrusenia(monkeypatch, _high_hr_ring_on_screen=_zlyhaj)
+    assert a._cue_held_by_ring() is False
+    a, _log = _appka_zrusenia(monkeypatch)
+    assert a._cue_held_by_ring() is True
+
+
+def test_kruh_ako_dovod_ide_v_poradi_cue_can_fire():
+    """`_cue_held_by_ring` follows `_cue_can_fire`: listening, "not now" and
+    all pictures off come before the check for a running visual (the order
+    itself is guarded in `test_vseobecna_veta_hovori_len_dovody_z_cue_can_fire`)."""
+    zdroj = ast.unparse(uzol_metody("_cue_held_by_ring"))
+    assert (zdroj.index("'listening'") < zdroj.index("'_snooze_job'")
+            < zdroj.index("self._hr_overlay_available()")
+            < zdroj.index("'_high_hr_ring_on_screen'"))
+    moze = ast.unparse(uzol_metody("_cue_can_fire"))
+    assert moze.index("self._hr_overlay_available()") < moze.index(
+        "self.overlay_manager.is_active(i)")
+
+
+def _natiahni(a, hodiny):
+    """Arms a cue in the real state machine: load 90 above the threshold
+    (55) for the hold, zone high, steady (not rising)."""
+    for _ in range(300):
+        a.cue_trigger.note_load(90.0, hodiny.t, zona="high")
+        if a.cue_trigger.is_armed:
+            return
+        hodiny.t += 1.0
+    raise AssertionError("hlaska sa nenatiahla")
+
+
+@pytest.fixture
+def hra_s_hlaskou(hra, monkeypatch):
+    """`hra` + the real cue state machine and `_tick_cue_trigger` on the same
+    clock; no pause in the input, so an armed cue waits `max_wait_s` and is
+    then delivered silently - or cancelled `nedalo_sa` when it may not."""
+    import app_today
+    log = _Log()
+    monkeypatch.setattr(app_today, "app_log", log)
+    monkeypatch.setattr(app_today, "time", hra.hodiny)
+    a = hra.a
+    a.cue_trigger = trigger.CueTrigger(rng=random.Random(1), clock=hra.hodiny.time)
+    a.cue_trigger.open_session(silent_share=0.0)
+    a.activity = types.SimpleNamespace(pause_s=lambda now: 0.0)
+    a.hud_config = {"enabled": False}
+    a._hud_tick_t = None
+    a._hud_active_s = 0.0
+    a._hud_vis_s = 0.0
+    a._cue_log = []
+    a._cues_withheld_ring = 0
+    a._set_enso_armed = lambda _armed: None
+
+    def tik(sekund):
+        """The ring's tick and the cue's tick, 4x per second, in the order
+        of `_tick_activity`."""
+        koniec = hra.hodiny.t + sekund
+        while hra.hodiny.t < koniec - 1e-9:
+            hra.fronta.bez(0.25)
+            D._tick_high_hr_ring(a, now=hra.hodiny.t)
+            D._tick_cue_trigger(a)
+
+    return types.SimpleNamespace(hra=hra, a=a, log=log, tik=tik)
+
+
+def _suhrn_hry(a, teraz):
+    """What `_suhrn_relacie` writes for the cue and the ring."""
+    suhrn = dict(ZAKLAD, cues_withheld=dict(a.cue_trigger.zadrzane))
+    kruh_s = round(a._high_hr_ring_seconds(teraz), 1)
+    if kruh_s > 0.0:
+        suhrn["high_hr_ring_s"] = kruh_s
+    if a._cues_withheld_ring > 0:
+        suhrn["cues_withheld_ring"] = a._cues_withheld_ring
+    return suhrn
+
+
+def test_kruh_v_hre_podrzi_hlasku_a_zrata_sa(hra_s_hlaskou):
+    h = hra_s_hlaskou
+    _natiahni(h.a, h.hra.hodiny)
+    h.tik(1.0)
+    assert h.hra.m.high_hr_ring_showing()
+    h.tik(trigger.default_params()["max_wait_s"] + 1.0)
+    assert h.a.cue_trigger.zadrzane[trigger.A_NEDALO_SA] == 1
+    assert h.a._cues_withheld_ring == 1
+    assert h.log.riadky.count(_RIADOK_PODRZAL) == 1
+    assert _preco(**_suhrn_hry(h.a, h.hra.hodiny.t)) == i18n.tr("session.end.none_ring")
+
+
+def test_vsetky_obrazky_vypnute_kruh_neobvinia(hra_s_hlaskou):
+    """The ring does not look at the in-game pictures, so it breathes even
+    with all of them off - but then no cue could come anyway: the cue is
+    held back by "all pictures off", and the questionnaire says the general
+    sentence that names it, not the ring one."""
+    h = hra_s_hlaskou
+    h.a.overlay_configs = _vsetky_obrazky_vypnute()
+    h.a._hr_overlay_warned = True
+    _natiahni(h.a, h.hra.hodiny)
+    h.tik(1.0)
+    assert h.hra.m.high_hr_ring_showing(), "kruh dycha aj bez obrazkov"
+    h.tik(trigger.default_params()["max_wait_s"] + 1.0)
+    assert h.hra.m.high_hr_ring_showing()
+    assert h.a.cue_trigger.zadrzane[trigger.A_NEDALO_SA] == 1
+    assert h.a._cues_withheld_ring == 0
+    assert _RIADOK_PODRZAL not in h.log.riadky
+    assert _preco(**_suhrn_hry(h.a, h.hra.hodiny.t)) == i18n.tr("session.end.none_blocked")
+
+
+def test_skorsi_kruh_neobvinia_za_neskorsie_kroky(hra_s_hlaskou):
+    """The ring breathed for a while early in the session and is gone; later
+    a ready cue is held back by steps from the watch. The session has
+    `high_hr_ring_s`, but the ring was not on screen then - the general
+    sentence, not the ring one."""
+    h = hra_s_hlaskou
+    h.tik(20.0)
+    assert h.hra.m.high_hr_ring_showing()
+    h.a.hr_stats.display_bpm = 100
+    h.tik(20.0)
+    assert not h.hra.m.is_active(3) and h.a._high_hr_ring_spans, "kruh dodychal"
+    h.a.hr_stats.steps_per_min = lambda: 120.0
+    _natiahni(h.a, h.hra.hodiny)
+    h.tik(trigger.default_params()["max_wait_s"] + 1.0)
+    assert h.a.cue_trigger.zadrzane[trigger.A_NEDALO_SA] == 1
+    assert h.a._cues_withheld_ring == 0
+    suhrn = _suhrn_hry(h.a, h.hra.hodiny.t)
+    assert suhrn["high_hr_ring_s"] > 0 and "cues_withheld_ring" not in suhrn
+    assert _preco(**suhrn) == i18n.tr("session.end.none_blocked")
+
+
+def test_bez_kruhu_sa_hlaska_v_hre_dalej_dorucuje(hra_s_hlaskou, monkeypatch):
+    """No ring (heart rate below the limit): the armed cue comes after its
+    wait as before - nothing held back, nothing counted."""
+    h = hra_s_hlaskou
+    dorucene = []
+    monkeypatch.setattr(D, "_fire_somatic_cue",
+                        lambda self, ev: dorucene.append(ev) or True)
+    h.a.hr_stats.display_bpm = 95
+    _natiahni(h.a, h.hra.hodiny)
+    h.tik(trigger.default_params()["max_wait_s"] + 1.0)
+    assert len(dorucene) == 1 and not h.hra.m.is_active(3)
+    assert sum(h.a.cue_trigger.zadrzane.values()) == 0
+    assert h.a._cues_withheld_ring == 0
+
+
+# --------------------------------------------------------------------------
+# the questionnaire: a cue was ready, but could not come (`nedalo_sa`)
+# --------------------------------------------------------------------------
+
+def _preco(**summary):
+    import ui_dialogs
+    return ui_dialogs.SessionEndDialog._preco_ticho(summary)
+
+
+ZAKLAD = dict(above_runs=4, runs_cancelled_gap=0, runs_cancelled_dip=4,
+              longest_above_s=30.0, stress_hold_s=45.0, duration_s=1800.0,
+              pause_episodes=12)
+
+
+def _zadrzane(nedalo_sa=0, brana=0):
+    return {trigger.A_BEZ_PAUZY: 0, trigger.A_NEVHODNA_CHVILA: brana,
+            trigger.A_NEDALO_SA: nedalo_sa}
+
+
+@pytest.mark.parametrize("nedalo_sa", [1, 4, 2.0, "3"])
+def test_kruh_podrzal_hlasku(nedalo_sa):
+    """The ring held back every ready cue that could not come: the line says
+    so, not "your load's longest stretch was 30 s, I need 45 s"."""
+    veta = _preco(**ZAKLAD, cues_withheld=_zadrzane(nedalo_sa), high_hr_ring_s=340.5,
+                  cues_withheld_ring=int(float(nedalo_sa)))
+    assert veta == i18n.tr("session.end.none_ring")
+    assert veta != i18n.tr("session.end.none_short", najdlhsie=30, treba=45)
+
+
+@pytest.mark.parametrize("kruh", [None, 0, 0.0, -5.0, "x", float("nan"), [], "chyba"])
+def test_bez_kruhu_vseobecna_veta(kruh):
+    suhrn = dict(ZAKLAD, cues_withheld=_zadrzane(2), high_hr_ring_s=300.0)
+    if kruh != "chyba":
+        suhrn["cues_withheld_ring"] = kruh
+    assert _preco(**suhrn) == i18n.tr("session.end.none_blocked"), kruh
+
+
+def test_kruh_v_relacii_bez_podrzanych_hlasok_vseobecna_veta():
+    """The ring showed in the session (`high_hr_ring_s`), but it held back
+    none of the cues that could not come - steps, all pictures off, another
+    picture: the general sentence. Showing some time is not enough."""
+    for kruh_s in (20.0, 340.5, 3600.0):
+        assert _preco(**ZAKLAD, cues_withheld=_zadrzane(1), high_hr_ring_s=kruh_s) == \
+            i18n.tr("session.end.none_blocked"), kruh_s
+
+
+@pytest.mark.parametrize("kruhom,nedalo_sa", [(1, 3), (2, 3), (1, 2)])
+def test_kruh_len_pri_niektorych_hlaskach_vseobecna_veta(kruhom, nedalo_sa):
+    """Only some of the held-back cues were the ring's: the general sentence
+    (the ring is one of the pictures on screen) is true for all of them, the
+    ring one would not be."""
+    assert _preco(**ZAKLAD, cues_withheld=_zadrzane(nedalo_sa), high_hr_ring_s=300.0,
+                  cues_withheld_ring=kruhom) == i18n.tr("session.end.none_blocked")
+
+
+@pytest.mark.parametrize("zadrzane", [
+    _zadrzane(0), None, "zle", ["a"], {}, {trigger.A_NEDALO_SA: "x"},
+    {trigger.A_NEDALO_SA: None},
+])
+def test_bez_nedalo_sa_sa_veta_nemeni(zadrzane):
+    kratko = i18n.tr("session.end.none_short", najdlhsie=30, treba=45)
+    for kruh in ({}, {"high_hr_ring_s": 300.0},
+                 {"high_hr_ring_s": 300.0, "cues_withheld_ring": 2}):
+        assert _preco(**ZAKLAD, cues_withheld=zadrzane, **kruh) == kratko, (zadrzane, kruh)
+        assert _preco(**dict(ZAKLAD, above_runs=0), cues_withheld=zadrzane,
+                      **kruh) == i18n.tr("session.end.none_never"), (zadrzane, kruh)
+
+
+def test_poradie_kontrol_ostava():
+    """The new line comes after the gate and before the sentences about the
+    load - the checks before it keep their order."""
+    zadrzane = _zadrzane(3)
+    kruh = {"high_hr_ring_s": 300.0, "cues_withheld_ring": 3}
+    assert _preco(**ZAKLAD, cues_withheld=_zadrzane(3, brana=1), **kruh) == \
+        i18n.tr("session.end.none_withheld")
+    assert _preco(**dict(ZAKLAD, runs_cancelled_gap=5, runs_cancelled_dip=1),
+                  cues_withheld=zadrzane, **kruh) == i18n.tr("session.end.none_dropouts", n=5)
+    assert _preco(**ZAKLAD, cues_withheld=zadrzane, snoozed_s=600.0, **kruh) == \
+        i18n.tr("session.end.none_snoozed", min=10)
+    assert _preco(**dict(ZAKLAD, pause_episodes=0), cues_withheld=zadrzane, **kruh) == \
+        i18n.tr("session.end.none_nopause")
+    assert _preco(**ZAKLAD, cues_withheld=zadrzane, cue_rung=rebrik.PAUZA, **kruh) == \
+        i18n.tr("session.end.none_paused")
+    stara = {k: v for k, v in ZAKLAD.items() if k != "above_runs"}
+    assert _preco(**stara, cues_withheld=zadrzane, **kruh) == ""
+    zdroj = ast.unparse(next(
+        f for f in ast.walk(ast.parse(zdroj_suboru("ui_dialogs.py")))
+        if isinstance(f, ast.FunctionDef) and f.name == "_preco_ticho"))
+    assert (zdroj.index("tr('session.end.none_withheld')")
+            < zdroj.index("trigger.A_NEDALO_SA")
+            < zdroj.index("tr('session.end.none_ring')")
+            < zdroj.index("tr('session.end.none_blocked')")
+            < zdroj.index("tr('session.end.none_never')")
+            < zdroj.index("tr('session.end.none_short'"))
+
+
+def test_vseobecna_veta_hovori_len_dovody_z_cue_can_fire():
+    """`nedalo_sa` = the gate let the cue through, but `_cue_can_fire` said
+    no. Of its conditions only three can make that happen while a cue is
+    armed in a game: a picture on screen, steps from the watch, all
+    pictures off - the sentence names exactly these. Listening off closes
+    the session and "not now" suspends the state machine, so neither gets
+    here; the 5 s gap after a manual Test click is left out (it would take
+    a Test click right when a cue's wait runs out). A new condition there
+    means a new look at the sentence."""
+    uzol = uzol_metody("_cue_can_fire")
+    podmienky = [ast.unparse(u.test) for u in ast.walk(uzol) if isinstance(u, ast.If)]
+    assert podmienky == [
+        "not self.listening",
+        "getattr(self, '_snooze_job', None) is not None",
+        "not self._hr_overlay_available()",
+        "any((self.overlay_manager.is_active(i) for i in range(4)))",
+        "kroky is not None and kroky >= self.KROKY_PRAH_ZA_MIN",
+        "now - self.last_global_trigger_time < self.cooldown_value",
+    ], "nova podmienka v _cue_can_fire - over vetu session.end.none_blocked"
+    assert sm.DEFAULT_COOLDOWN <= 5.0
+    S = i18n.STRINGS["session.end.none_blocked"]
+    for kus in ("na obrazovke už bol obrázok", "hodinky hlásili kroky",
+                "všetky obrázky vypnuté"):
+        assert kus in S["sk"], kus
+    for kus in ("a picture was already on screen", "your watch was reporting steps",
+                "all pictures were off"):
+        assert kus in S["en"], kus
+    for jazyk in i18n.LANGUAGES:
+        assert "teraz nie" not in S[jazyk].lower() and "not now" not in S[jazyk].lower()
+
+
+_KLUCE_KONCA = ("session.end.none_ring", "session.end.none_blocked")
+
+
+def test_vety_na_konci_relacie_vo_vsetkych_jazykoch():
+    S = i18n.STRINGS
+    assert S["session.end.none_ring"]["sk"] == (
+        "Pripomienka bola pripravená, ale na obrazovke práve dýchal dychový kruh "
+        "pri vysokom tepe, tak som ju podržala.")
+    assert S["session.end.none_ring"]["en"] == (
+        "A cue was ready, but the breath ring for high heart rate was breathing on "
+        "screen, so I held it back.")
+    assert S["session.end.none_blocked"]["sk"] == (
+        "Pripomienka bola pripravená, ale v tej chvíli nemohla prísť — na obrazovke "
+        "už bol obrázok, hodinky hlásili kroky alebo boli všetky obrázky vypnuté.")
+    assert S["session.end.none_blocked"]["en"] == (
+        "A cue was ready, but it could not come at that moment — a picture was already "
+        "on screen, your watch was reporting steps, or all pictures were off.")
+    # the app speaks about itself in the feminine, Czech is Czech
+    assert "som ju podržala" in S["session.end.none_ring"]["sk"]
+    assert "jsem ji podržela" in S["session.end.none_ring"]["cs"]
+    assert "nemohla přijít" in S["session.end.none_blocked"]["cs"]
+    for kluc in _KLUCE_KONCA:
+        zaznam = S[kluc]
+        assert set(zaznam) == set(i18n.LANGUAGES), kluc
+        for jazyk in i18n.LANGUAGES:
+            if jazyk != "en":
+                assert zaznam[jazyk] != zaznam["en"], (kluc, jazyk, "anglicky")
+            assert "{" not in zaznam[jazyk], (kluc, jazyk)
+        assert len(set(zaznam.values())) == len(i18n.LANGUAGES), (kluc, "preklady sa opakuju")
+        assert zaznam["cs"] != zaznam["sk"], kluc
+        assert not kluc.startswith(slova._PREFIXY_V_HRE), kluc
+    zle = [(kluc, jazyk, najdene) for kluc in _KLUCE_KONCA for jazyk in i18n.LANGUAGES
+           for najdene in [slova._zakazane(S[kluc][jazyk])] if najdene]
+    assert not zle, zle
+    zdroj = zdroj_suboru("ui_dialogs.py")
+    for kluc in _KLUCE_KONCA:
+        assert zdroj.count('tr("%s")' % kluc) == 1, kluc
+
+
+# --------------------------------------------------------------------------
+# the hint on the Breath card quotes the real margin
+# --------------------------------------------------------------------------
+
+def test_vysvetlivka_uvadza_rezervu_z_konstanty():
+    """The number in the hint is the app's constant in every language - a
+    placeholder, so changing the margin cannot leave the text behind."""
+    import ui_dialogs
+    assert ui_dialogs.KRUH_TEP_REZERVA_BPM is app_session.KRUH_TEP_REZERVA_BPM
+    zaznam = i18n.STRINGS["overlay.high_hr_ring_hint"]
+    for jazyk in i18n.LANGUAGES:
+        surovy = zaznam[jazyk]
+        assert surovy.count("{margin}") == 1, jazyk
+        assert not re.search(r"\d", surovy.replace("{margin}", "")), \
+            (jazyk, "ine cislo v texte")
+        text = i18n.tr_lang(jazyk, "overlay.high_hr_ring_hint", margin=REZERVA)
+        assert re.findall(r"\d+", text) == [str(REZERVA)], (jazyk, text)
+        assert "%d BPM" % REZERVA in text, (jazyk, text)
+    assert "aspoň o 3 BPM pod ňu" in i18n.tr_lang("sk", "overlay.high_hr_ring_hint",
+                                                  margin=REZERVA)
+    assert "at least 3 BPM below it" in i18n.tr_lang("en", "overlay.high_hr_ring_hint",
+                                                     margin=REZERVA)

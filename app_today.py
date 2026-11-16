@@ -336,6 +336,33 @@ class TodayMixin:
             return False
         return True
 
+    def _cue_held_by_ring(self):
+        """Is it the ring at high heart rate that keeps a ready cue back
+        right now? Asked when a cue's wait ran out because `_cue_can_fire`
+        said no (`trigger.A_NEDALO_SA`, `_on_cue_event`), so that the
+        questionnaire blames the ring only for the cues it really held back
+        (`cues_withheld_ring`, `SessionEndDialog._preco_ticho`).
+
+        It follows the order of `_cue_can_fire`: listening off, "not now"
+        and all pictures switched off come BEFORE the check for a picture on
+        screen - with all pictures off no cue could come even without the
+        ring, so the ring is not the reason then. After those the ring on
+        screen (breathing or finishing, `_high_hr_ring_on_screen`) is what
+        stops the cue: it is slot 3's ring, a running visual. Via getattr
+        and never raising: it runs in the middle of the cue path, also on
+        dummies without the ring."""
+        try:
+            if not getattr(self, "listening", False):
+                return False
+            if getattr(self, "_snooze_job", None) is not None:
+                return False
+            if not self._hr_overlay_available():
+                return False
+            na_obrazovke = getattr(self, "_high_hr_ring_on_screen", None)
+            return bool(callable(na_obrazovke) and na_obrazovke())
+        except Exception:
+            return False
+
     def _tick_cue_trigger(self):
         """4x per second. The only caller is `_tick_activity`, i.e. the Tk
         thread - and that is necessary: it touches `hr_stats` and
@@ -397,6 +424,13 @@ class TodayMixin:
         else:
             self._set_enso_armed(False)
             app_log.info("natiahnutie zrusene: %s", ev.get("reason"))
+            # A ready cue that could not come: was it the ring at high heart
+            # rate that held it back AT THIS MOMENT? Counted per
+            # cancellation - "the ring showed some time in the session" is
+            # not enough for the questionnaire to blame it.
+            if ev.get("reason") == trigger.A_NEDALO_SA and self._cue_held_by_ring():
+                self._cues_withheld_ring = getattr(self, "_cues_withheld_ring", 0) + 1
+                app_log.info("natiahnutie zrusene: hlasku podrzal kruh pri vysokom tepe")
 
     def _dalsi_cue_slot(self):
         """Which category sounds now. They rotate round-robin.

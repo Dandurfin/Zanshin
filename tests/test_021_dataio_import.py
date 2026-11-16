@@ -99,6 +99,10 @@ def _plna_relacia_a_okna(tmp_path):
     summary["snoozed_s"] = round(95.5, 1)
     summary["hud_visible_s"] = round(1200.0, 1)
     summary["hud_visible_frac"] = round(max(0.0, min(1.0, 0.5)), 3)
+    # the ring at high heart rate showed (`_high_hr_ring_seconds`, only > 0)
+    summary["high_hr_ring_s"] = round(412.25, 1)
+    # ... and held back ready cues (`_cue_held_by_ring`, only > 0)
+    summary["cues_withheld_ring"] = 2
     # `_maybe_graduate`; hrr_bpm via the real `hrr_headline` (the artificial
     # data above have no recovery)
     summary["zen_graduation"] = True

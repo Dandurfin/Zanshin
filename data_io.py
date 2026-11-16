@@ -439,7 +439,7 @@ _TYPY_RELACIE = {
         "runs_cancelled_gap", "stress_hold_s", "stress_threshold",
         "pause_episodes", "snooze_after_cue_s", "snooze_then_s",
         "long_baseline_bpm", "snoozed_s", "hud_visible_s", "hud_visible_frac",
-        "felt_load", "valence"), _konecne),
+        "high_hr_ring_s", "cues_withheld_ring", "felt_load", "valence"), _konecne),
     **dict.fromkeys(("world", "activity", "note", "sleep", "cue_verdict",
                      "cue_rung", "cue_style"), _je_text),
     **dict.fromkeys(("curve", "activity_curve", "trigger_offsets_s"), _je_cisla),

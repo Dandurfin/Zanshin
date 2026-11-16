@@ -76,6 +76,15 @@ MEDZERA_SPANKU_S = 120.0
 # next attempt only after this many seconds, not at every tick.
 KRUH_TEP_ZNOVA_S = 30.0
 
+# The margin below the limit of the ring at high heart rate (hysteresis,
+# `_tick_high_hr_ring`). The ring STARTS only above the limit, but once it
+# breathes it keeps breathing while the heart rate stays above the limit
+# minus this margin, and finishes at or below it (limit 110: shows above
+# 110, finishes at 107 or below, 108-110 keeps it). Without it a heart rate
+# hovering around the limit made the ring come and go every few seconds.
+# The switch hint in In-game pictures quotes it (`overlay.high_hr_ring_hint`).
+KRUH_TEP_REZERVA_BPM = 3
+
 
 def je_medzera_spanku(posledny, teraz, limit=MEDZERA_SPANKU_S):
     """Did the PC sleep in a gap between two session ticks? Pure function.
@@ -225,6 +234,9 @@ class SessionMixin:
         # closed above together with its ring.
         self._high_hr_ring_spans = []
         self._high_hr_ring_since = None
+        # ... and so do the cues it held back (`cues_withheld_ring`), like
+        # the state machine's own counters (`cues_withheld`).
+        self._cues_withheld_ring = 0
         # A PENDING BINDING ATTEMPT IS NOT DISCARDED HERE (0.3). Until now
         # this had `_hr_retry_job = None` and `_hr_bind_retries = 0`: the
         # timer in Tk lived on without a reference, so neither switching the
@@ -1107,12 +1119,20 @@ class SessionMixin:
             self._dnes_nonstop_text = text
             self._refresh_dnes_backdrop(force=False)
 
-    # ---------- the ring at high heart rate (experiment, off by default) ----------
+    # ---------- the ring at high heart rate (off by default) ----------
 
     def _tick_high_hr_ring(self, now=None):
         """4x per second (`_tick_activity`): the breath ring breathes in a loop
-        while the heart rate is above the player's limit
-        (`high_hr_ring_bpm`), and ends breathed out once it is not.
+        while the heart rate is high, and ends breathed out once it is not.
+
+        With a margin below the limit (hysteresis): the ring STARTS only when
+        the heart rate is above the player's limit (`high_hr_ring_bpm`).
+        Once it breathes - looping, or finishing towards its end - it keeps
+        breathing while the heart rate stays above the limit minus
+        `KRUH_TEP_REZERVA_BPM`, and finishes at or below that (limit 110:
+        shows above 110, finishes at 107 or below). A heart rate hovering
+        around the limit therefore no longer makes it come and go every few
+        seconds. After it has faded it needs more than the limit again.
 
         The number is the smoothed one the HUD shows
         (`HeartStats.display_bpm`), not a raw sample - one spike after a
@@ -1124,11 +1144,12 @@ class SessionMixin:
           * wanted, not showing: when any visual is on screen (a cue's
             picture, its exhale ring, the breath cue), the ring waits for it
             - it never cuts a cue off; otherwise it starts,
-          * wanted, finishing: it keeps breathing (the finish is cancelled),
-          * not wanted - heart rate at or below the limit, no number, a
-            dropout, the switch off, a drag test - a graceful finish:
-            the running exhale, or the inhale and one more exhale, then the
-            fade-out,
+          * wanted, finishing: it keeps breathing (the finish is cancelled,
+            no fade, no restart),
+          * not wanted - heart rate at or below the limit minus the margin,
+            no number, a dropout, the switch off, a drag test - a graceful
+            finish: the running exhale, or the inhale and one more exhale,
+            then the fade-out,
           * "not now", listening off, no session: it goes at once
             (`_stop_high_hr_ring`).
 
@@ -1158,8 +1179,12 @@ class SessionMixin:
                 and getattr(self, "_hr_last_bpm", None) is not None
                 and not getattr(self, "_hr_lost", False)):
             bpm = getattr(getattr(self, "hr_stats", None), "display_bpm", None)
+        # The margin applies only to a ring that is breathing (looping or
+        # finishing): a new one, or one that is already breathed out and
+        # fading, needs more than the limit itself.
+        hranica = prah - KRUH_TEP_REZERVA_BPM if showing else prah
         chce = bool(getattr(self, "high_hr_ring", False)
-                    and bpm is not None and bpm > prah
+                    and bpm is not None and bpm > hranica
                     and not any(om.is_testing(i) for i in range(4)))
         if chce:
             if showing:
@@ -1212,3 +1237,30 @@ class SessionMixin:
             self._high_hr_ring_ended(koniec)
         except Exception:
             app_log.exception("kruh pri vysokom tepe: zastavenie zlyhalo")
+
+    def _high_hr_ring_on_screen(self):
+        """Is the ring at high heart rate on screen right now - breathing in
+        its loop or finishing towards its end? An open showing
+        (`_high_hr_ring_since`) or the overlay's own state. "Not now" asks
+        this before it stops the ring (`_start_snooze`). Never raises."""
+        if getattr(self, "_high_hr_ring_since", None) is not None:
+            return True
+        showing = getattr(getattr(self, "overlay_manager", None),
+                          "high_hr_ring_showing", None)
+        try:
+            return bool(callable(showing) and showing())
+        except Exception:
+            return False
+
+    def _high_hr_ring_seconds(self, teraz):
+        """How many seconds the ring at high heart rate was on screen in the
+        open session up to `teraz`: the closed showings plus the one still
+        running. Only reads - the checkpoint asks too, in the middle of a
+        session (`_suhrn_relacie`)."""
+        spolu = 0.0
+        for od, do in getattr(self, "_high_hr_ring_spans", None) or ():
+            spolu += max(0.0, float(do) - float(od))
+        od = getattr(self, "_high_hr_ring_since", None)
+        if od is not None:
+            spolu += max(0.0, float(teraz) - float(od))
+        return spolu

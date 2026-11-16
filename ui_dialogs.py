@@ -34,6 +34,9 @@ import hud_paint          # the onboarding draws real pictograms and the HUD
 import netinfo            # hidden IP in the pairing window (mask_ip)
 import sfx_assets
 import theme as theme_mod
+# the margin below the limit of the ring at high heart rate - the Breath
+# card's hint quotes the number the app really uses
+from app_session import KRUH_TEP_REZERVA_BPM
 # speak_sapi_isolated: voice preview in the introduction - ALWAYS the
 # Windows voice, never Edge
 from audio_engine import MicRecorder, play_audio_file, speak_sapi_isolated
@@ -949,7 +952,10 @@ class SessionEndDialog:
         without a dead zone) - the player needs to be told, not blamed for
         it. And when the app decided by itself to stay silent (the load was
         still rising or the heart rate was in the critical zone), it must
-        not sound like "the load was not up long enough".
+        not sound like "the load was not up long enough". The same holds when
+        a cue was ready but could not be shown (`nedalo_sa`): the ring at
+        high heart rate, another picture on screen, steps, all pictures off
+        - said after the gate and before the sentences about the load.
 
         At the very start the LADDER PAUSE (0.2): the app had cues switched
         off, so any other sentence would explain a silence it chose itself.
@@ -992,10 +998,42 @@ class SessionEndDialog:
         except (TypeError, ValueError):
             branou = 0
         if branou > 0:
-            # Only the gate (body), not `nedalo_sa` (gap, snooze,
-            # walking) - the sentence talks about the heart rate and would
-            # not be true then.
+            # Only the gate (body), not `nedalo_sa` - the sentence talks
+            # about the heart rate and would not be true then.
             return tr("session.end.none_withheld")
+        # THE CUE WAS READY BUT COULD NOT COME (`trigger.A_NEDALO_SA`): the
+        # gate let it through, but the app was not allowed to show it
+        # (`TodayMixin._cue_can_fire`). In a session what makes that False
+        # is a picture already on screen (a cue's picture, its exhale ring,
+        # the ring at high heart rate, a drag test), steps from the watch,
+        # or all pictures switched off - "not now" and listening off do not
+        # get here (the state machine is not armed then), and the 5 s gap
+        # after a manual Test click is left out (it would take a click right
+        # when the cue's wait runs out). Without this the
+        # line fell through to "the longest stretch was N s" - false when
+        # the cue was ready.
+        #
+        # The ring sentence only when the ring at high heart rate held back
+        # EVERY such cue (`cues_withheld_ring`, counted at the cancellation
+        # itself, `TodayMixin._cue_held_by_ring`). That the ring showed some
+        # time in the session (`high_hr_ring_s`) is not enough: a cue held
+        # back later by steps or by all pictures switched off would be
+        # blamed on a ring that was not on screen then. With only some of
+        # them held by the ring, the general sentence stays true for all
+        # (the ring is one of the pictures on screen).
+        try:
+            nedalo_sa = (float(zadrzane.get(trigger.A_NEDALO_SA) or 0)
+                         if isinstance(zadrzane, dict) else 0.0)
+        except (TypeError, ValueError):
+            nedalo_sa = 0.0
+        if nedalo_sa > 0:
+            try:
+                kruhom = float(summary.get("cues_withheld_ring") or 0)
+            except (TypeError, ValueError):
+                kruhom = 0.0
+            if kruhom > 0 and kruhom >= nedalo_sa:
+                return tr("session.end.none_ring")
+            return tr("session.end.none_blocked")
         if not behov:
             return tr("session.end.none_never")
         return tr("session.end.none_short",
@@ -1534,9 +1572,10 @@ class OverlaySettingsDialog:
         self._build_high_hr_ring_rows(row, pal)
 
     def _build_high_hr_ring_rows(self, parent, pal):
-        """The ring at high heart rate (experiment) - right below the
+        """The ring at high heart rate (off by default) - right below the
         inhale/exhale lengths, because it is the same ring breathing them:
-        the switch, the limit in BPM and one faint line on what it does.
+        the switch, the limit in BPM and one faint line on what it does (the
+        margin below the limit in it comes from `KRUH_TEP_REZERVA_BPM`).
         Every change applies at once (`on_high_hr_ring_change`)."""
         enabled_var = tk.BooleanVar(value=bool(getattr(self.app, "high_hr_ring", False)))
         ui_kit.switch(parent, pal, text=tr("overlay.high_hr_ring"), variable=enabled_var,
@@ -1564,7 +1603,8 @@ class OverlaySettingsDialog:
             number_of_steps=HIGH_HR_RING_BPM_MAX - HIGH_HR_RING_BPM_MIN,
             command=handler).pack(side="left", fill="x", expand=True, padx=(8, 8))
 
-        ctk.CTkLabel(parent, text=tr("overlay.high_hr_ring_hint"), text_color=pal["text_faint"],
+        ctk.CTkLabel(parent, text=tr("overlay.high_hr_ring_hint", margin=KRUH_TEP_REZERVA_BPM),
+                     text_color=pal["text_faint"],
                      font=ui_kit.ui(11), wraplength=400, justify="left",
                      anchor="w").pack(anchor="w", fill="x", pady=(4, 0))
 

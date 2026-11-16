@@ -503,11 +503,15 @@ def test_zadrzane_branou_povie_ze_mlcala_sama():
 
 
 def test_nedalo_sa_samo_vetu_o_tepe_netvrdi():
-    """`nedalo_sa` = gap/snooze/walking, not HR; an HR line would lie."""
+    """`nedalo_sa` = the cue was ready but could not be shown (a picture on
+    screen, walking, all pictures off), not HR; an HR line would lie - and
+    so would "the longest stretch was too short" (0.3.2: its own sentence,
+    tests/test_03x_kruh_vysoky_tep.py)."""
     veta = _preco(**ZAKLAD, pause_episodes=12,
                   cues_withheld={"bez_pauzy": 0, "nevhodna_chvila": 0,
                                  "nedalo_sa": 3})
     assert veta != i18n.tr("session.end.none_withheld")
+    assert veta == i18n.tr("session.end.none_blocked")
 
 
 def test_rozbity_suhrn_nezhodi_dotaznik():

@@ -1018,6 +1018,25 @@ class DataMixin:
             stisene += max(0.0, teraz - od)
         if stisene > 0.0:
             summary["snoozed_s"] = round(stisene, 1)
+        # How long the ring at high heart rate was on screen (off by default,
+        # `_tick_high_hr_ring`), and how many ready cues it held back while
+        # it breathed (`_cue_held_by_ring`, counted per cancellation). The
+        # questionnaire uses the second one to say the ring held the cue
+        # back instead of blaming the load (`SessionEndDialog._preco_ticho`)
+        # - only for cues it really held back, not for every session in
+        # which it showed some time. Each only when it is above zero - a
+        # session without the ring is the same as before, key for key. Via
+        # getattr: the summary is also built on dummies without the ring.
+        try:
+            sekundy = getattr(self, "_high_hr_ring_seconds", None)
+            kruh_s = round(sekundy(teraz), 1) if callable(sekundy) else 0.0
+            if kruh_s > 0.0:
+                summary["high_hr_ring_s"] = kruh_s
+            podrzane = getattr(self, "_cues_withheld_ring", 0)
+            if isinstance(podrzane, int) and not isinstance(podrzane, bool) and podrzane > 0:
+                summary["cues_withheld_ring"] = podrzane
+        except Exception:
+            app_log.exception("suhrn: udaje kruhu pri vysokom tepe sa nepodarilo pridat")
         # How much of the session the player actually saw their heart rate
         # (HUD). The last stretch from the last tick to now is added - into
         # local variables, not into `_hud_*` (otherwise the checkpoint would

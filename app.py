@@ -486,6 +486,9 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         self._high_hr_ring_since = None
         self._high_hr_ring_spans = []
         self._high_hr_ring_retry_at = 0.0
+        # How many ready cues of the open session the ring held back
+        # (`_cue_held_by_ring`) - the summary's `cues_withheld_ring`.
+        self._cues_withheld_ring = 0
         # The app computes the load threshold itself for every session from its
         # own data (`hr_stats.dynamicky_prah_zataze`). None = nothing to
         # compute it from yet.

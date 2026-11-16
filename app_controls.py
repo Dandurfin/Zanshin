@@ -225,7 +225,16 @@ class ControlsMixin:
         # "Not now" shortly after a cue is a signal for the cue ladder. The
         # session keeps running after it, so `_close_hr_session` records how
         # long play actually went on (`snooze_then_s`).
-        self._zapis_snooze_po_hlaske(now)
+        #
+        # Except while the ring at high heart rate is on screen (breathing or
+        # finishing): then "not now" dismisses the ring, not the last cue -
+        # counting it would make the cues a step quieter for something they
+        # did not do. Asked BEFORE the ring is stopped below.
+        if self._high_hr_ring_on_screen():
+            app_log.info("rebrik hlasky: teraz nie pocas kruhu pri vysokom tepe - "
+                         "do rebrika sa nepocita")
+        else:
+            self._zapis_snooze_po_hlaske(now)
         # How much of the session "not now" was in effect for (`snoozed_s` in
         # the summary). The session now carries it itself and the trigger
         # counters do not see it - otherwise the questionnaire would quietly
