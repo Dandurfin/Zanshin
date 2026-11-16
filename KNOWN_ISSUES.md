@@ -1,4 +1,4 @@
-# Known issues — Zanshin alpha 0.3
+# Known issues — Zanshin alpha 0.3.1
 
 What doesn't work yet, or works only partly. What each version changed is in
 [CHANGELOG.md](CHANGELOG.md).
@@ -79,9 +79,8 @@ about, and a few will stay.
   says so) is counted two ways: History, the CSV "breathing" column, insights
   and the cue card on *Today* count it, while the questionnaire, the cue
   ladder and "not now" treat it as not shown, even if its voice played.
-  0.3.1 (in the code here, not in a release yet) adds an exhale to the cues,
-  and the cue chart puts cues from before and after that change together,
-  so a category's number mixes the two.
+  0.3.1 adds an exhale to the cues, and the cue chart puts cues from before
+  and after that change together, so a category's number mixes the two.
 - **Texts and controls:** a few explanations and settings texts may still
   claim a bit more than the code does (0.3 rewrote many of them). The
   pairing guide's boxes *Watch won’t connect at all?* and *Watch connects
@@ -108,7 +107,7 @@ data, and logs can name your devices and files. Describe what you saw instead.
 
 ## What changed in each version
 
-What 0.3 changes, what 0.2.1 fixed and what 0.1 got wrong:
+What 0.3.1 and 0.3 change, what 0.2.1 fixed and what 0.1 got wrong:
 [CHANGELOG.md](CHANGELOG.md).
 
 — **Dandurfin** · GPLv3

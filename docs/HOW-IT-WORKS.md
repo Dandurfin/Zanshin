@@ -3,8 +3,7 @@
 The [README](../README.md) says what Zanshin does in a few lines. This page has
 the exact rules: when a cue comes, when Zanshin goes quieter, what it learns
 from, and when the natural voice talks to Microsoft. Where something is new in
-0.3, it says *from 0.3*; where it is in the code here but not in a release
-yet, it says *from 0.3.1*.
+0.3, it says *from 0.3*; where it is new in 0.3.1, it says *from 0.3.1*.
 
 ## When a cue comes
 

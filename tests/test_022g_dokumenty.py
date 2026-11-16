@@ -204,12 +204,12 @@ def test_changelog_hlas_menuje_minimum_a_co_build_robi():
 def test_known_issues_hlas_v_zipe_021():
     """The 0.2.1 ZIP has edge-tts 7.2.8, which Microsoft refuses. While 0.2.1
     was the released version, KNOWN_ISSUES had an item about it. 0.3 is
-    released (it needs a newer edge-tts and has Update voice), so the item
-    is gone: CHANGELOG covers the fix, and the README has one line for
-    whoever is still on the 0.2.1 ZIP
+    released (it needs a newer edge-tts and has Update voice), and so is
+    0.3.1, so the item is gone: CHANGELOG covers the fix, and the README has
+    one line for whoever is still on the 0.2.1 ZIP
     (test_readme_build_a_troubleshooting_hlasu)."""
     k = _read("KNOWN_ISSUES.md")
-    assert k.splitlines()[0].endswith("alpha 0.3")
+    assert k.splitlines()[0].endswith("alpha 0.3.1")
     assert "The natural voice no longer works in the 0.2.1 ZIP." not in k
     assert "not released yet" not in k
     # the fix is in CHANGELOG: the refused 7.2.8 and the new minimum
@@ -260,7 +260,9 @@ def test_readme_build_a_troubleshooting_hlasu():
     assert "Since about November 2026" in _plain(ZMENY)
     assert "every new line plays in the Windows voice" in bod
     assert "it has no **%s** button." % _en("edge.update.btn") in bod
-    assert "Update to 0.3 (see [Install](#install)); your data stays." in bod
+    # 0.3 was the first with the fix; Install offers the newest release
+    # (0.3.1 now), so the line doesn't send anyone looking for the 0.3 ZIP
+    assert "Update to 0.3 or newer (see [Install](#install)); your data stays." in bod
     assert "your data stays" in _plain_text(_sekcia(readme, "Install"))
     assert "0.3's won't either" not in readme
     assert "There is no update checker" not in readme

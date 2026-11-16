@@ -31,7 +31,7 @@
 ; section must be on one line.
 
 #define MyAppName "Zanshin"
-#define MyAppVersion "0.3"
+#define MyAppVersion "0.3.1"
 #define MyAppPublisher "Dandurfin"
 #define MyAppExeName "Zanshin.exe"
 ; Where to take the onedir build from; it can be overridden on the command line
@@ -47,8 +47,8 @@ AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppVerName={#MyAppName} {#MyAppVersion}
 ; The version in the Details of setup.exe itself - without it Inno Setup
-; writes 0.0.0.0 there. It pads missing numbers with zeros, so "0.3" gives
-; 0.3.0.0 (the same as filevers in version_info.txt) and the version isn't kept
+; writes 0.0.0.0 there. It pads missing numbers with zeros, so "0.3.1" gives
+; 0.3.1.0 (the same as filevers in version_info.txt) and the version isn't kept
 ; in two places. Inno gives VersionInfoProductVersion the same value by default.
 VersionInfoVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}

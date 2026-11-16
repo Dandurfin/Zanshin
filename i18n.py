@@ -3495,15 +3495,15 @@ STRINGS.update({
         # "alfa 0.2", not "2.1": the 2.x numbering was from the days when
         # the app was aimed at Steam as a sequel to its predecessor. It goes
         # to GitHub as what it really is - the first public alpha.
-        'sk': 'alfa 0.3',
-        'en': 'alpha 0.3',
-        'ja': 'alpha 0.3',
-        'zh': 'alpha 0.3',
-        'ru': 'alpha 0.3',
-        'es': 'alpha 0.3',
-        'de': 'alpha 0.3',
-        'fr': 'alpha 0.3',
-        'pt': 'alpha 0.3',
+        'sk': 'alfa 0.3.1',
+        'en': 'alpha 0.3.1',
+        'ja': 'alpha 0.3.1',
+        'zh': 'alpha 0.3.1',
+        'ru': 'alpha 0.3.1',
+        'es': 'alpha 0.3.1',
+        'de': 'alpha 0.3.1',
+        'fr': 'alpha 0.3.1',
+        'pt': 'alpha 0.3.1',
     },
     'nav.dnes': {
         'sk': 'Dnes',
@@ -5710,7 +5710,7 @@ def _tr7(key, ja, zh, ru, es, de, fr, pt):
 # --- batch 1: navigation, dock, onboarding, triggers ----------------------
 # "alpha" is kept in its English form in the other languages too - it is
 # an established label for a stage, not a word to translate.
-_tr7('app.version_short', 'alpha 0.3', 'alpha 0.3', 'alpha 0.3', 'alpha 0.3', 'Alpha 0.3', 'alpha 0.3', 'alpha 0.3')
+_tr7('app.version_short', 'alpha 0.3.1', 'alpha 0.3.1', 'alpha 0.3.1', 'alpha 0.3.1', 'Alpha 0.3.1', 'alpha 0.3.1', 'alpha 0.3.1')
 _tr7('common.open', '開く', '打开', 'Открыть', 'Abrir', 'Öffnen', 'Ouvrir', 'Abrir')
 _tr7('dock.pulse_live_tip', '心拍を受信中', '正在接收心率', 'Пульс поступает', 'Pulso en directo', 'Puls kommt an', 'Le pouls arrive', 'Pulso ao vivo')
 _tr7('dock.start', '▶ 見守りを開始', '▶ 开始关注', '▶ Начать наблюдение', '▶ Empezar a observar', '▶ Beobachtung starten', '▶ Lancer l’observation', '▶ Começar a observar')
@@ -6905,8 +6905,8 @@ for _k, _langs in _DOPLNENE_PREKLADY.items():
     STRINGS.setdefault(_k, {}).update(_langs)
 
 STRINGS.setdefault("app.version_short", {}).update({
-    "ja": "アルファ 0.3", "zh": "Alpha 0.3", "ru": "альфа 0.3",
-    "es": "alfa 0.3", "pt": "alfa 0.3",
+    "ja": "アルファ 0.3.1", "zh": "Alpha 0.3.1", "ru": "альфа 0.3.1",
+    "es": "alfa 0.3.1", "pt": "alfa 0.3.1",
 })
 
 # --- 0.2 B3-worlds: two worlds, one body -------------------------------------

@@ -434,13 +434,14 @@ def test_readme_a_known_issues_hovoria_to_iste_co_kod():
     assert hr_stats.ZOBRAZ_OKNO_S == 3.0
     assert "measuring still uses every reading" in ako
     assert "still use every reading" in known
-    # 0.3 is the released version - the documents say which version brought it
+    # 0.3 is released (0.3.1 is the current release) - the documents say
+    # which version brought it
     riadok = readme[readme.index("*%s*" % stitok):][:200]
     assert "(from 0.3)" in riadok
     assert "From 0.3" in ako
     with open(os.path.join(ROOT, "KNOWN_ISSUES.md"), encoding="utf-8-sig") as fh:
         k = fh.read()
-    assert k.splitlines()[0].endswith("alpha 0.3")
+    assert k.splitlines()[0].endswith("alpha 0.3.1")
     with open(os.path.join(ROOT, "CHANGELOG.md"), encoding="utf-8-sig") as fh:
         c = fh.read()
     assert (c.index("\n## What 0.3 changes\n")

@@ -1,6 +1,6 @@
 # 残 Zanshin
 
-*Alpha 0.3 · Windows · code under GPLv3*
+*Alpha 0.3.1 · Windows · code under GPLv3*
 
 **A free, open-source Windows app for gamers. When your heart rate shows
 you've been under strain for a while, Zanshin waits for a short lull in your
@@ -19,9 +19,9 @@ for OBS*, free) · the phone and the PC on the same home network (Wi‑Fi).
 
 ![Zanshin's Today page in the Sumi theme: the main switch, the ensō, today's numbers and where the session went](docs/img/today.webp)
 
-*Today, with synthetic data. This page describes 0.3; the 0.2.1 ZIP still
+*Today, with synthetic data. This page describes 0.3.1; the 0.2.1 ZIP still
 uses some older names and lacks some controls
-([what changed](CHANGELOG.md#what-03-changes)).*
+([what changed](CHANGELOG.md#what-031-changes)).*
 
 **Local-first.** Your heart rate, sessions and insights never leave your PC.
 No account, no telemetry, no analytics. One exception is on by default: the
@@ -91,12 +91,12 @@ unchanged; it doesn't make the warning go away.
 1. On the GitHub page open
    [**Releases**](https://github.com/Dandurfin/Zanshin/releases/latest) and
    download `Zanshin-<version>-windows.zip` (for this version
-   `Zanshin-0.3-windows.zip`, about 60 MB). The release lists the file's
+   `Zanshin-0.3.1-windows.zip`, about 60 MB). The release lists the file's
    **SHA-256** fingerprint.
 2. Check it. In File Explorer open the folder with the ZIP, click the address
    bar, type `powershell` and press Enter. In the window that opens, run this
    with the fingerprint from the release pasted in:
-   `(Get-FileHash .\Zanshin-0.3-windows.zip).Hash -eq 'PASTE-THE-HASH-HERE'`.
+   `(Get-FileHash .\Zanshin-0.3.1-windows.zip).Hash -eq 'PASTE-THE-HASH-HERE'`.
    It must print **True** (upper or lower case doesn't matter). If it prints
    **False**, delete the file.
 3. Unpack it (right-click → **Extract All…**) into a folder OneDrive doesn't
@@ -150,7 +150,7 @@ included.
    `build.bat` in step 3. Unblock only a ZIP you got from the page above. Then
    right-click the ZIP → **Extract All…** and choose a folder that OneDrive
    doesn't back up, for example `C:\Games` (Desktop and Documents often are in
-   OneDrive). You get a folder like `Zanshin-0.3`; if there's another folder
+   OneDrive). You get a folder like `Zanshin-0.3.1`; if there's another folder
    of the same name inside it, open that one too, until you see `build.bat`.
 3. **Build it.** Double-click **`build.bat`** (with file extensions hidden, it
    shows as `build`). The first time, it fetches Python through the install
@@ -297,10 +297,11 @@ public Wi-Fi (details in [PRIVACY.md](PRIVACY.md)).
 
 - **Windows 11, 64-bit.** It's the only version I've tested. Windows 10 64-bit
   may work, but it's untested.
-- **Disk and memory:** the 0.3 ZIP is about 60 MB to download and about
+- **Disk and memory:** the 0.3.1 ZIP is about 60 MB to download and about
   126 MB unpacked. On my PC, while watching with heart rate coming in,
-  Zanshin used about 170 MB of RAM and about 0.7 % of a 20-thread CPU,
-  roughly a seventh of one core.
+  Zanshin 0.3 used about 170 MB of RAM and about 0.7 % of a 20-thread CPU,
+  roughly a seventh of one core. I haven't measured 0.3.1 again: it changes
+  the cue words and pictures, not what Zanshin does between cues.
 - **A smartwatch and a companion app** that sends heart rate to this PC, with
   the phone and the PC on the same home network (see the table above).
 - **Internet:** while you use Zanshin, only for the natural voice (optional)
@@ -405,8 +406,8 @@ The short version is at the top of this page. In detail:
   then the Windows voice speaks the cues whose natural voice is missing.
 - **Still on the 0.2.1 ZIP?** Since about November 2026 Microsoft refuses
   the natural voice's library inside it, so every new line plays in the
-  Windows voice, and it has no **Update voice** button. Update to 0.3 (see
-  [Install](#install)); your data stays.
+  Windows voice, and it has no **Update voice** button. Update to 0.3 or
+  newer (see [Install](#install)); your data stays.
 - **A game's Ctrl+Alt+Z does nothing.** Zanshin reserves it for "not now".
   From 0.3, pick another shortcut or *Off* in Settings → General →
   *Keyboard shortcut*. "Not now" stays in the tray icon's menu.

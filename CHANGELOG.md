@@ -1,16 +1,13 @@
 # Changelog — Zanshin
 
-What each version changed, newest first: 0.3.1 (in the code here, not
-released yet), 0.3, 0.2.1, and what 0.1 got wrong. What doesn't work yet, or
-works only partly, is in [KNOWN_ISSUES.md](KNOWN_ISSUES.md).
+What each version changed, newest first: 0.3.1, 0.3, 0.2.1, and what 0.1
+got wrong. What doesn't work yet, or works only partly, is in
+[KNOWN_ISSUES.md](KNOWN_ISSUES.md).
 
 **0.2, partly** means only part was fixed. Where something stayed as it was,
 such as the online voice being the default, I say so.
 
-## What 0.3.1 changes (not released yet)
-
-These are in the code here, not in a release yet: the 0.3 ZIP doesn't
-have them.
+## What 0.3.1 changes
 
 - **Only the breath cue was about breathing, and its ring began with a breath
   in.** A long exhale is the one thing that fits any moment, mid-fight too.
