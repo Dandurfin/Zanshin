@@ -814,17 +814,6 @@ STRINGS = {
         'fr': '▶ Afficher',
         'pt': '▶ Mostrar',
     },
-    'overlay.visual.jaw_label': {
-        'sk': 'UVOĽNI ČEĽUSŤ',
-        'en': 'RELAX JAW',
-        'ja': '顎の力を抜く',
-        'zh': '放松下颌',
-        'ru': 'РАССЛАБЬ ЧЕЛЮСТЬ',
-        'es': 'RELAJA LA MANDÍBULA',
-        'de': 'KIEFER ENTSPANNEN',
-        'fr': 'RELÂCHE LA MÂCHOIRE',
-        'pt': 'RELAXE A MANDÍBULA',
-    },
     'log.auto_profile_created': {
         'sk': 'Spoznala som hru „{name}“ — založila som pre ňu nový profil s predvolenými pripomienkami.',
         'en': 'I recognised the game “{name}” — created a new profile for it with the default cues.',

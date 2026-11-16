@@ -21,9 +21,15 @@ Decisions these tests guard:
     and the 0.1 ones) of a slot becomes the new word of the same slot in
     the same language - also where several languages shared it (ja/zh
     呼吸, es/pt Mandíbula and Respira, ru/bg Опора).
+  * no dead in-game text waits in the catalogue: `overlay.visual.jaw_label`
+    ("RELAX JAW", never shown, outside the reach of the forbidden-word
+    check) is gone, and every `overlay.*` key is read by the app's code.
 """
+import ast
+import glob
 import json
 import os
+import re
 import sys
 import types
 
@@ -32,7 +38,9 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import i18n  # noqa: E402
+import i18n_cs_bg  # noqa: E402
 import settings_model  # noqa: E402
+from _zdroj_appky import KOREN, zdroj_suboru  # noqa: E402
 
 # Keys that get INTO THE GAME: the slot's voice word and the caption under
 # the visual.
@@ -136,6 +144,113 @@ def test_novy_profil_hovori_jaw(jazyk):
     finally:
         i18n.set_lang(povodny)
     assert sloty[1]["text"] == "Exhale, jaw"
+
+
+# --------------------------------------------------------------------------
+# No dead in-game text in the catalogue (after 0.3)
+# --------------------------------------------------------------------------
+
+# The old label under the jaw picture: "RELAX JAW", ru РАССЛАБЬ, zh 放松,
+# es RELAJA, de ENTSPANNEN, pt RELAXE (its cs/bg text was the same as
+# today's caption). Nothing ever showed it (the caption the player
+# sees is `overlay.caption.jaw`), so the forbidden-word check above, which
+# reads only `_PREFIXY_V_HRE`, did not read it either - a relax command
+# waiting for the first line of code that would use it.
+_STARY_POPISOK_CELUSTE = "overlay.visual.jaw_label"
+
+# The `overlay.*` keys the code BUILDS, and for exactly which names. The
+# name of the category above a slot, f"overlay.slot.{index}": slots 0-3
+# (app.py and ui_dialogs.py go through range(4), the slot card asks
+# `je_kategoria`); a slot from index 4 on has no category, nor a name. A new
+# family the code starts to build has to be added here, with its names.
+_RODINY_OVERLAY = {
+    "overlay.slot.": tuple(str(i) for i in range(settings_model.CUE_CATEGORY_COUNT)),
+}
+
+# The start of a key: what a built key begins with up to its first `%` / `{`.
+_ZACIATOK_KLUCA = re.compile(r"overlay\.[A-Za-z0-9_.]*")
+
+
+def _subory_produkcie():
+    """The app's code: every *.py in the project root except the catalogue
+    itself and the GUI harnesses (gui_*.py) - those drive the windows the
+    way a test does, and a key only they read is never seen by the player."""
+    mena = (os.path.basename(p) for p in glob.glob(os.path.join(KOREN, "*.py")))
+    return sorted(m for m in mena
+                  if m not in ("i18n.py", "i18n_cs_bg.py") and not m.startswith("gui_"))
+
+
+def _je_text(uzol):
+    return isinstance(uzol, ast.Constant) and isinstance(uzol.value, str)
+
+
+def _kluce_overlay_v_kode():
+    """(whole keys, families) of `overlay.*` in the app's code.
+
+    A whole key is a string that is exactly "overlay.x.y". A family is the
+    fixed start of a key the code builds - f"overlay.slot.{index}" (the only
+    one in 0.3), "overlay.slot.%d" % i, "overlay.slot." + x and
+    "overlay.slot.{}".format(i) all give "overlay.slot.". Read via ast, so a
+    key mentioned in a comment or inside a docstring sentence does not count
+    as read. Families: {start: ["file:line", ...]}."""
+    cele, rodiny = set(), {}
+    for meno in _subory_produkcie():
+        for uzol in ast.walk(ast.parse(zdroj_suboru(meno))):
+            zaciatok = None
+            if _je_text(uzol):
+                cele.add(uzol.value)
+            elif (isinstance(uzol, ast.JoinedStr) and len(uzol.values) > 1
+                  and _je_text(uzol.values[0])):
+                zaciatok = uzol.values[0].value
+            elif (isinstance(uzol, ast.BinOp) and isinstance(uzol.op, (ast.Mod, ast.Add))
+                  and _je_text(uzol.left)):
+                zaciatok = uzol.left.value.split("%")[0]
+            elif (isinstance(uzol, ast.Call) and isinstance(uzol.func, ast.Attribute)
+                  and uzol.func.attr == "format" and _je_text(uzol.func.value)):
+                zaciatok = uzol.func.value.value.split("{")[0]
+            if zaciatok and _ZACIATOK_KLUCA.fullmatch(zaciatok):
+                rodiny.setdefault(zaciatok, []).append(f"{meno}:{uzol.lineno}")
+    return cele, rodiny
+
+
+def _katalog_overlay():
+    """`overlay.*` keys from i18n.py and from both cs/bg dicts."""
+    return {k for k in (*i18n.STRINGS, *i18n_cs_bg.CS, *i18n_cs_bg.BG)
+            if k.startswith("overlay.")}
+
+
+def test_stary_popisok_celuste_nie_je_v_katalogu():
+    """Neither in i18n.py nor in the Czech or Bulgarian dict - the merge in
+    i18n.py takes cs/bg only for a key i18n.py has, so a leftover there
+    would just wait for the key to come back."""
+    kde = [meno for meno, slovnik in (("i18n.py", i18n.STRINGS),
+                                      ("i18n_cs_bg.CS", i18n_cs_bg.CS),
+                                      ("i18n_cs_bg.BG", i18n_cs_bg.BG))
+           if _STARY_POPISOK_CELUSTE in slovnik]
+    assert not kde, f"{_STARY_POPISOK_CELUSTE} je znova v: {', '.join(kde)}"
+
+
+def test_kazdy_text_obrazka_appka_naozaj_cita():
+    """Every `overlay.*` key (the in-game picture and its settings) is read
+    by the app's code, word for word or through a family in
+    `_RODINY_OVERLAY`. A text nobody reads is checked by nobody either -
+    that is how "RELAX JAW" outlived the caption the player really sees."""
+    cele, rodiny = _kluce_overlay_v_kode()
+    # safeguard against a vacuous pass: the scan really finds whole keys and
+    # the slot family
+    assert {"overlay.caption.jaw", "overlay.test", "overlay.monitor.auto"} <= cele
+    assert "overlay.slot." in rodiny
+    assert set(rodiny) == set(_RODINY_OVERLAY), (
+        "kod sklada kluce overlay.*, ktore _RODINY_OVERLAY nepozna (alebo uz nesklada):\n  "
+        + "\n  ".join(f"{z}  ({', '.join(miesta)})" for z, miesta in sorted(rodiny.items())))
+    clenovia = {zaciatok + meno for zaciatok, mena in _RODINY_OVERLAY.items()
+                for meno in mena}
+    chybaju = sorted(clenovia - set(i18n.STRINGS))
+    assert not chybaju, f"kod sklada kluce, ktore v i18n nie su: {chybaju}"
+    nikto_necita = sorted(k for k in _katalog_overlay()
+                          if k not in cele and k not in clenovia)
+    assert not nikto_necita, ("texty obrazka, ktore appka necita (zmaz ich, alebo ich "
+                              "pouzi):\n  " + "\n  ".join(nikto_necita))
 
 
 # --------------------------------------------------------------------------
