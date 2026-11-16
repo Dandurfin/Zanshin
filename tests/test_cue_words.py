@@ -538,8 +538,9 @@ def test_jazyky_hlasok_pozna_nove_slova(jazyk):
 
 @pytest.mark.parametrize("jazyk", sorted(STARE_SLOVA))
 def test_jazyky_hlasok_po_migracii_rovnake(jazyk):
-    """A profile in the old words (a profile code shared from 0.3) still
-    has its language, and after the migration the same one."""
+    """A profile in the old words (typed back by the player, or kept by a
+    profile code from 0.3.1) still has its language, and after the
+    migration the same one."""
     stary = _profil(slova[0] for slova in STARE_SLOVA[jazyk])
     assert jazyk in settings_model.jazyky_hlasok(stary)
     settings_model.migrate_profile_texts(stary)
@@ -577,7 +578,8 @@ def test_normalize_slot_slovo_nemeni():
     """The slot card normalises on every rebuild - if it also changed the
     word, it would be rewritten under the player's hands in the middle of
     editing. It changes only when the settings are loaded
-    (`app.load_settings`)."""
+    (`app.load_settings`) and when a profile code from before 0.3.1 is
+    imported (`app.import_profile_from_code`)."""
     assert settings_model.normalize_slot({"text": "Teeth"})["text"] == "Teeth"
 
 

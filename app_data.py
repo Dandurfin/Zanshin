@@ -45,7 +45,8 @@ import trigger
 import ui_kit
 from i18n import tr
 from paths import APP_NAME, DATA_DIR, legacy_data_dirs, stara_instalacia
-from settings_model import (doplnit_kategorie, je_kategoria, mode_labels,
+from settings_model import (doplnit_kategorie, jazyk_hlasu, je_kategoria,
+                            migrate_profile_texts, mode_labels,
                             slot_na_zdielanie, slot_zo_zdielania)
 from ui_dialogs import ImportDataDialog, ImportProfileDialog, SessionEndDialog
 
@@ -1349,8 +1350,14 @@ class DataMixin:
             # Only what makes sense for another player (`slot_na_zdielanie`):
             # NO absolute paths to recordings (they carried the Windows account
             # name), no uid and no dead fields from the days of key triggers.
+            # `exhale_words` (from 0.3.1): the words in this code are already
+            # past the one-time change to the exhale words, so the import
+            # keeps them exactly - an old word here ("Jaw") is the player's
+            # own. Older versions read only `name` and `slots`, so they
+            # still import such a code.
             payload = {"name": profile["name"],
-                       "slots": [slot_na_zdielanie(s) for s in profile["slots"]]}
+                       "slots": [slot_na_zdielanie(s) for s in profile["slots"]],
+                       "exhale_words": True}
             raw = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
             code = base64.b64encode(raw).decode("ascii")
             self.root.clipboard_clear()
@@ -1387,6 +1394,17 @@ class DataMixin:
         # A code from 0.1 may carry fewer than four slots - the missing
         # categories are added at the end (disabled), nothing is overwritten.
         slots = doplnit_kategorie(slots)
+        # A code from before 0.3.1 (no `exhale_words` marker, see
+        # `export_profile_code`) still has the old default words - "Jaw",
+        # and from 0.1 even ja 脱力 / zh 放松, which mean "relax". They get
+        # the new words with the exhale, as on load (`load_settings`), with
+        # the same hints: the voice that reads them, then the app language.
+        # The player's own words stay; a marked code keeps every word. A hint
+        # the app does not have only drops out (the profile itself and the
+        # `LANGUAGES` order still decide) - it must not stop the import.
+        if not data.get("exhale_words"):
+            migrate_profile_texts(slots, (jazyk_hlasu(getattr(self, "edge_voice_id", None)),
+                                          getattr(self, "lang", None)))
         self._sync_active_profile_slots()
         self.profiles.append({"name": name, "slots": slots})
         self.active_profile_name = name

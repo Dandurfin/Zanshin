@@ -486,9 +486,10 @@ def jazyky_hlasok(slots):
     The language is NOT GUESSED from the text: it returns the set of
     languages whose built-in words (`slot.default.*`) at the same
     positions match ALL such texts. The old built-in words of the same
-    slot count too (`_STARE_PREDVOLENE_SLOVA` - a profile code shared
-    from 0.3 still has them; the settings file is migrated on load). A
-    set, because sk/en/cs share the English words (the old words also
+    slot count too (`_STARE_PREDVOLENE_SLOVA` - the settings file and a
+    profile code from before 0.3.1 are migrated, but a player may type
+    an old word back, and a code from 0.3.1 keeps it). A set, because
+    sk/en/cs share the English words (the old words also
     ja/zh 呼吸, es/pt Mandíbula and Respira, ru/bg Опора). The player's
     own word (even just one), mixed languages or no speaking cue -> an
     empty set and the app leaves the voice alone - better nothing than
@@ -566,7 +567,9 @@ def optional_cooldown(value):
 # card, and the word would change under the player's hands in the middle
 # of editing. And only ONCE per settings file (the `exhale_words` flag,
 # written by `save_settings`): a player who types an old word back
-# later ("Jaw") keeps it.
+# later ("Jaw") keeps it. The same change runs when a profile code from
+# before 0.3.1 is imported (`app.import_profile_from_code`); a code from
+# 0.3.1 on carries the same `exhale_words` marker and keeps its words.
 _STARE_PREDVOLENE_SLOVA = {
     # language: (grounding, jaw, release, breath) - old words of each slot
     "sk": (("Grounded",), ("Jaw", "Teeth"), ("Release",), ("Breathe",)),

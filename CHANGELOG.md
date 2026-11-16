@@ -32,13 +32,14 @@ have them.
   gaze on the right. The first time 0.3.1 loads your settings, a cue that
   still has its built-in word from an earlier version gets the new one, in
   the same language, and a grounding picture still at its old default place
-  moves to the new one. Words you wrote yourself stay exactly as they are, a
-  picture you moved stays where you put it, and a profile code from 0.3
-  imported later keeps its old words. With the natural voice the new words
-  are new lines: they are prepared, and sent to Microsoft, like any changed
-  wording, and until a line is ready that cue plays in the Windows voice.
-  History's *How your pulse moved after a cue* doesn't tell cues from before
-  and after this change apart, so a category's number mixes the two.
+  moves to the new one. Importing a profile code from an earlier version
+  changes its old built-in words the same way; a code from 0.3.1 keeps its
+  words exactly. Words you wrote yourself stay exactly as they are, and a
+  picture you moved stays where you put it. With the natural voice the new
+  words are new lines: they are prepared, and sent to Microsoft, like any
+  changed wording, and until a line is ready that cue plays in the Windows
+  voice. History's *How your pulse moved after a cue* doesn't tell cues from
+  before and after this change apart, so a category's number mixes the two.
 
 ## What 0.3 changes
 

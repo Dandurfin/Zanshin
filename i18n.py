@@ -3227,7 +3227,8 @@ STRINGS = {
     # settings_model). Each one is short enough to say in about a second
     # and a half and never commands a state ("relax", "calm down" -
     # tests/test_cue_words.py). An existing profile with the old word gets
-    # the new one when the settings are loaded
+    # the new one when the settings are loaded, and so does a profile code
+    # from before 0.3.1 when it is imported
     # (`settings_model.migrate_profile_texts`).
     'slot.default.grounding': {
         'sk': 'Exhale, grounded',

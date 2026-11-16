@@ -327,10 +327,11 @@ inherits. A few rules keep it that way:
   says; from 0.3.1 each asks for the exhale first. `tests/test_cue_words.py`
   keeps them free of "relax" and "calm down" commands in every language.
   Existing profiles get a changed word only if
-  `settings_model._STARE_PREDVOLENE_SLOVA` lists the old one, and that runs
+  `settings_model._STARE_PREDVOLENE_SLOVA` lists the old one. That runs
   once per settings file (`load_settings` checks the `exhale_words` flag
-  that `save_settings` writes), so changing the words again needs a new
-  flag as well.
+  that `save_settings` writes) and when a profile code without that flag is
+  imported (`export_profile_code` writes it into the code), so changing the
+  words again needs a new flag in both places.
 - **A text that sends the player to the *In-game* page names it with
   `{page}`**, filled from `app_spolocne.stranka_vhre(app)`: in the Work world
   that page is called *Screen*. Dates on screen and in the log go through

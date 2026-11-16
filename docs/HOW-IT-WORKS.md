@@ -348,7 +348,8 @@ exhale*. Those are the English words, which Slovak and Czech use too; the
 other languages say the same in their own words. The first time 0.3.1 loads
 your settings, a cue that still has its built-in word from an earlier version
 gets the new one in the same language; words you wrote yourself stay as they
-are.
+are. Importing a profile code from an earlier version changes its old built-in
+words the same way; a code from 0.3.1 keeps its words exactly.
 
 From 0.3 wrapped Japanese and Chinese text follows those languages'
 line-breaking rules, so a line doesn't start with 。 or ）, and dates follow

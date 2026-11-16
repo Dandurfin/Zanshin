@@ -7,7 +7,8 @@ ask for the exhale first ("Exhale, jaw", the breath cue "Long exhale"), the
 grounding / jaw / grip & gaze pictures bring the breath ring along for one
 exhale, the breath cue on its own breathes out -> in -> out, and the
 grounding picture moved to the left middle. Old built-in words and an
-untouched grounding position are changed once on load; the player's own
+untouched grounding position are changed once on load, and the old words
+also when a profile code from before 0.3.1 is imported; the player's own
 words and moved pictures stay.
 
 0.3.1 is not released yet: CHANGELOG.md has a new top section "(not
@@ -16,11 +17,13 @@ behaviour "from 0.3.1". The version metadata and the 0.3 release
 statements stay as they are until the release.
 
 This test ties those sentences to the words in i18n, the numbers in
-overlay.py and settings_model.py, the one-time flags in app_prefs.py and
-the measurement in measure.py, so that a sentence like "16 s by default" or
-"the chart puts cues from before and after together" does not stop being
-true silently. The behaviour itself is tested in tests/test_cue_words.py
-(words, migration) and tests/test_03x_vydych_vizual.py (pictures).
+overlay.py and settings_model.py, the one-time flags in app_prefs.py (and
+the profile-code marker in app_data.py) and the measurement in measure.py,
+so that a sentence like "16 s by default" or "the chart puts cues from
+before and after together" does not stop being true silently. The
+behaviour itself is tested in tests/test_cue_words.py (words, migration),
+tests/test_zdielanie_profilu.py (profile codes) and
+tests/test_03x_vydych_vizual.py (pictures).
 """
 import os
 import re
@@ -160,8 +163,10 @@ def test_slova_v_dokumentoch_su_z_i18n():
 def test_stare_slova_raz_pri_nacitani_vlastne_ostanu():
     """"The first time 0.3.1 loads your settings, a cue that still has its
     built-in word from an earlier version gets the new one, in the same
-    language ... Words you wrote yourself stay exactly as they are, ... and
-    a profile code from 0.3 imported later keeps its old words."""
+    language ... Importing a profile code from an earlier version changes
+    its old built-in words the same way; a code from 0.3.1 keeps its words
+    exactly. Words you wrote yourself stay exactly as they are". The import
+    itself is tested in tests/test_zdielanie_profilu.py."""
     sloty = [{"text": t} for t in ("Grounded", "Jaw", "my own words", "Breathe")]
     sm.migrate_profile_texts(sloty)
     assert [s["text"] for s in sloty] == [
@@ -174,18 +179,27 @@ def test_stare_slova_raz_pri_nacitani_vlastne_ostanu():
     nacitaj, uloz = zdroj_metody("load_settings"), zdroj_metody("save_settings")
     assert 'loaded.get("exhale_words")' in nacitaj
     assert '"exhale_words": True' in uloz
-    # only on load - importing a profile code does not change its words
-    assert zdroj_appky().count("migrate_profile_texts(") == 1
+    # on load and on importing a profile code - nowhere else; the import
+    # changes the words only in a code without the marker that exporting
+    # writes (every code made before 0.3.1)
+    assert zdroj_appky().count("migrate_profile_texts(") == 2
     assert "migrate_profile_texts(" in nacitaj
+    imp, exp = zdroj_metody("import_profile_from_code"), zdroj_metody("export_profile_code")
+    assert 'if not data.get("exhale_words"):\n            migrate_profile_texts(slots,' in imp
+    assert '"exhale_words": True' in exp
     zmeny = _zmeny_031()
     assert ("The first time 0.3.1 loads your settings, a cue that still has its "
             "built-in word from an earlier version gets the new one, in the same "
             "language,") in zmeny
+    dovoz = ("Importing a profile code from an earlier version changes its old "
+             "built-in words the same way; a code from 0.3.1 keeps its words exactly.")
+    assert dovoz in zmeny
     assert "Words you wrote yourself stay exactly as they are," in zmeny
-    assert "a profile code from 0.3 imported later keeps its old words." in zmeny
+    assert "imported later keeps its old words" not in zmeny
+    ako = _plain(AKO)
     assert ("The first time 0.3.1 loads your settings, a cue that still has its "
             "built-in word from an earlier version gets the new one in the same "
-            "language; words you wrote yourself stay as they are.") in _plain(AKO)
+            "language; words you wrote yourself stay as they are. " + dovoz) in ako
 
 
 # --------------------------------------------------------------------------
@@ -302,7 +316,7 @@ def test_ukotvenie_vlavo_v_strede():
             "ring, to the left middle, mirroring grip & gaze on the right.") in zmeny
     assert ("a grounding picture still at its old default place moves to the new "
             "one.") in zmeny
-    assert "a picture you moved stays where you put it," in zmeny
+    assert "and a picture you moved stays where you put it." in zmeny
     assert ("By default the grounding picture now sits on the left, halfway down, "
             "mirroring grip & gaze on the right; one still at its old default "
             "place (bottom centre, under the ring) moves there the first time "
@@ -369,5 +383,12 @@ def test_vyvoj_opisuje_jednorazovu_zmenu_slov():
     assert os.path.exists(os.path.join(ROOT, "tests", "test_cue_words.py"))
     assert "`settings_model._STARE_PREDVOLENE_SLOVA` lists the old one" in v
     assert hasattr(sm, "_STARE_PREDVOLENE_SLOVA")
-    assert ("(`load_settings` checks the `exhale_words` flag that `save_settings` "
-            "writes), so changing the words again needs a new flag as well.") in v
+    assert ("That runs once per settings file (`load_settings` checks the "
+            "`exhale_words` flag that `save_settings` writes) and when a profile "
+            "code without that flag is imported (`export_profile_code` writes it "
+            "into the code), so changing the words again needs a new flag in both "
+            "places.") in v
+    assert 'loaded.get("exhale_words")' in zdroj_metody("load_settings")
+    assert '"exhale_words": True' in zdroj_metody("save_settings")
+    assert '"exhale_words": True' in zdroj_metody("export_profile_code")
+    assert 'data.get("exhale_words")' in zdroj_metody("import_profile_from_code")

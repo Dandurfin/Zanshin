@@ -778,7 +778,8 @@ class PrefsMixin:
             profile["slots"] = doplnit_kategorie(profile["slots"])
             # Old default word ("Grounded", ja 重心, the 0.1 "Teeth"...) ->
             # the new one with the exhale, in the same language. Only on
-            # load, see `settings_model.migrate_profile_texts`.
+            # load and when a profile code from before 0.3.1 is imported,
+            # see `settings_model.migrate_profile_texts`.
             if prelozit_slova:
                 migrate_profile_texts(profile["slots"], jazyky_slov)
             for slot in profile["slots"]:
