@@ -32,11 +32,16 @@ KLUCE_SO_STRANKOU = (
     "hr.pair_status_gave_up", "kamae.port_busy_sub",
 )
 
+# Other spellings of the page name a text could still hard-code: the old tab
+# label 'nav.nastavenia_tabs.vhre' (deleted in 0.3.1, unused) differed from
+# `nav.vhre_short` only in English and Spanish.
+STARE_MENA_STRANKY = {"en": ("In game",), "es": ("En el juego",)}
+
 
 def _vzor_stranky(jazyk):
     """The Play world's page name in quotes or before an arrow (= a link to the
     page, not an adjective as in "In-game pictures" / 「ゲーム中の画像」)."""
-    mena = {S["nav.vhre_short"][jazyk], S["nav.nastavenia_tabs.vhre"][jazyk]}
+    mena = {S["nav.vhre_short"][jazyk], *STARE_MENA_STRANKY.get(jazyk, ())}
     kusy = []
     for meno in mena:
         m = re.escape(meno)

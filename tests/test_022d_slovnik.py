@@ -62,7 +62,32 @@ ZMAZANE = {"hr.qr_note", "log.listener_error", "settings.overlap", "settings.ove
            # the symptoms from the 0.1 introduction are not drawn
            "nav.guide", "dnes.stat_hrpi", "key.gamepad_prefix",
            "onboarding.hero.symptom.cramp", "onboarding.hero.symptom.jaw",
-           "onboarding.hero.symptom.breath"}
+           "onboarding.hero.symptom.breath",
+           # 0.3.1: 53 keys no module or test called any more (an AST audit,
+           # f-string families included) - the rest of the 0.1 introduction
+           # and diagnosis, the old Today stats and dashboard navigation, the
+           # "Timing" headings of the removed panel, the pace words by the
+           # sliders, the gamepad legend and the Effectiveness page that does
+           # not exist yet. Some were defined twice or three times (two dict
+           # literals, a duplicate _tr7 line, a "key": entry in
+           # _DOPLNENE_PREKLADY), so every copy went.
+           "onboarding.hero.title", "onboarding.diag.title", "onboarding.diag.item1",
+           "onboarding.diag.item2", "onboarding.diag.item3", "onboarding.diag.item4",
+           "onboarding.diag.continue", "onboarding.question", "onboarding.why.continue",
+           "ob.step3.later", "history.trend_baseline", "history.trend_avg",
+           "history.period.hour", "dnes.load_note", "dnes.session_title", "dnes.stat_min",
+           "dnes.stat_avg", "dnes.stat_max", "dnes.stat_over", "dnes.stat_hrr",
+           "slots.gamepad_hint", "metric.avg.short", "metric.max.short",
+           "metric.week.short", "metric.last_cue.short", "metric.bpm.title",
+           "metric.load.title", "session.context.tired", "nav.nastavenia_tabs.guide",
+           "nav.nastavenia_tabs.vhre", "nav.dashboard", "nav.profily", "status.stopped",
+           "status.running", "settings.overlay_button", "settings.title",
+           "settings.behaviour_title", "settings.pace_often", "settings.pace_balanced",
+           "settings.pace_rare", "dialog.timing_title", "settings.audio_timing_title",
+           "about.links", "assets.ready", "data.delete.confirm", "data.export.hint",
+           "efficacy.empty", "hud.trigger_row.title", "hud.trigger_row.color_theme",
+           "msgbox.edge_missing_title", "profile.label", "slot.summary_default",
+           "key.mouse_prefix"}
 MRTVE = frozenset()
 
 # "pocuvat" in the natural sense, not as the app's switch.
@@ -78,6 +103,34 @@ def _zive():
     return [(k, e) for k, e in S.items() if k not in MRTVE]
 
 
+def _definuje_kluc(kluc, zdroj):
+    """Whether the i18n source still defines `kluc`: a dict entry 'kluc': or
+    "kluc": (_DOPLNENE_PREKLADY uses double quotes), or a _tr7('kluc' /
+    _tr7("kluc" line. The closing quote has to follow the key, so a prefix
+    neighbour (ob.step3.later vs ob.step3.later_note) is no hit."""
+    k = re.escape(kluc)
+    return re.search(rf"""(['"]){k}\1\s*:|_tr7\(\s*(['"]){k}\2""", zdroj) is not None
+
+
+def test_kontrola_zmazanych_chyti_obe_uvodzovky():
+    i18n_zdroj = _read("i18n.py")
+    # live keys in the real source: a single-quoted entry with _tr7, and
+    # 'hud.quick_label', defined in i18n.py ONLY as a double-quoted entry in
+    # _DOPLNENE_PREKLADY
+    assert _definuje_kluc("ob.step3.later_note", i18n_zdroj)
+    assert "'hud.quick_label'" not in i18n_zdroj
+    assert '"hud.quick_label":' in i18n_zdroj
+    assert _definuje_kluc("hud.quick_label", i18n_zdroj)
+    for riadok in ("    'ob.step3.later': _sk_en(", '    "ob.step3.later": {"ja": "x"},',
+                   "_tr7('ob.step3.later', 'x')", '_tr7("ob.step3.later", "x")',
+                   "_tr7( 'ob.step3.later', 'x')"):
+        assert _definuje_kluc("ob.step3.later", riadok), riadok
+    for riadok in ("    'ob.step3.later_note': _sk_en(", '    "ob.step3.later_note": {',
+                   "_tr7('ob.step3.later_note', 'x')", "# 'ob.step3.later' was here",
+                   "'ob.step3.later\": {"):
+        assert not _definuje_kluc("ob.step3.later", riadok), riadok
+
+
 def test_mrtve_kluce_su_zmazane():
     """Dead keys of the old dictionary are gone from the dictionary, from Czech
     and Bulgarian and from the `_tr7` lines - and no app module calls them."""
@@ -88,8 +141,7 @@ def test_mrtve_kluce_su_zmazane():
     for kluc in ZMAZANE:
         assert kluc not in S, kluc
         assert kluc not in i18n_cs_bg.CS and kluc not in i18n_cs_bg.BG, kluc
-        assert f"_tr7('{kluc}'" not in i18n_zdroj, kluc
-        assert f"'{kluc}':" not in i18n_zdroj, kluc
+        assert not _definuje_kluc(kluc, i18n_zdroj), kluc
         assert f'"{kluc}"' not in zdroje and f"'{kluc}'" not in zdroje, kluc
 
 
@@ -104,8 +156,6 @@ def test_hlavny_vypinac_sa_vola_sledovat():
     assert not zle, zle
     zle_en = [k for k, e in _zive() if re.search(r"\blisten", e["en"], re.I)]
     assert not zle_en, zle_en
-    assert S["status.running"]["sk"].endswith("Sledujem")
-    assert S["status.running"]["en"].endswith("Watching")
     assert S["kamae.running"]["sk"] == "Sledujem" and S["kamae.running"]["en"] == "Watching"
     assert S["log.listening_on"]["sk"].startswith("Sledovanie")
     assert "watching" in S["dock.start_tip"]["en"].lower()
@@ -300,7 +350,7 @@ def test_hracske_texty_bez_zargonu():
             assert "SAPI" not in S[kluc][jazyk] and "TTS" not in S[kluc][jazyk], (kluc, jazyk)
         assert "TCP" not in S["settings.hr_status_udp_off"][jazyk], jazyk
         for kluc in ("metric.hrpi.title", "history.col_hrpi",
-                     "history.detail_hrpi", "metric.hrr.title", "dnes.stat_hrr", "history.col_hrr"):
+                     "history.detail_hrpi", "metric.hrr.title", "history.col_hrr"):
             assert "HRPI" not in S[kluc][jazyk] and "HRR" not in S[kluc][jazyk], (kluc, jazyk)
     assert S["common.log"]["sk"] == "Denník"
     assert "pasívne" not in S["log.safe_mode"]["sk"]
@@ -333,7 +383,6 @@ def test_obrazok_ma_jedno_meno_a_tlacidlo_sa_cituje_presne():
         tlacidlo = S["overlay.test"][jazyk].replace("▶", "").strip()
         for kluc in ("overlay.drag_hint", "overlay.dialog_hint", "ob.step2.body"):
             assert tlacidlo in S[kluc][jazyk], (kluc, jazyk)
-        assert "🎮" not in S["settings.overlay_button"][jazyk], jazyk
 
 
 def test_zvuky_maju_jedno_meno_a_sady_mena_tem():

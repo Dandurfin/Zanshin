@@ -642,12 +642,15 @@ def test_karty_filtrovane_svetom_to_hovoria():
     "posledna relacia" (last session) without a world) must not survive in
     any language."""
     src = _read("i18n.py")
-    for kluc in ("metric.week.short", "metric.week.more"):
-        assert _jeden_tr7(src, kluc), kluc
-        assert i18n.STRINGS[kluc]["ja"] != i18n.STRINGS[kluc]["en"], kluc
-    assert "odohral" not in i18n.STRINGS["metric.week.short"]["sk"]
-    assert "v tomto svete" in i18n.STRINGS["metric.week.short"]["sk"]
-    assert "Hra alebo Práca" in i18n.STRINGS["metric.week.more"]["sk"]
+    # 0.3.1: 'metric.week.short' was deleted (nothing drew it), so the world
+    # wording is checked on the explanation the card still shows.
+    kluc = "metric.week.more"
+    assert _jeden_tr7(src, kluc), kluc
+    assert i18n.STRINGS[kluc]["ja"] != i18n.STRINGS[kluc]["en"], kluc
+    assert "odohral" not in i18n.STRINGS[kluc]["sk"]
+    assert "relácie sveta, v ktorom práve si" in i18n.STRINGS[kluc]["sk"]
+    assert "sessions of the world you are in" in i18n.STRINGS[kluc]["en"]
+    assert "Hra alebo Práca" in i18n.STRINGS[kluc]["sk"]
     assert "tohto sveta" in i18n.STRINGS["metric.felt_vs_measured.more"]["sk"]
     assert "this world" in i18n.STRINGS["metric.felt_vs_measured.more"]["en"]
     # and the code really filters - otherwise the sentence would lie the other

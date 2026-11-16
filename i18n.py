@@ -184,28 +184,6 @@ def tr_lang(code, msg_key, **kwargs):
 
 
 STRINGS = {
-    'nav.dashboard': {
-        'sk': 'Prehľad',
-        'en': 'Dashboard',
-        'ja': 'ダッシュボード',
-        'zh': '仪表盘',
-        'ru': 'Панель',
-        'es': 'Panel',
-        'de': 'Übersicht',
-        'fr': 'Tableau de bord',
-        'pt': 'Painel',
-    },
-    'nav.profily': {
-        'sk': 'Profily',
-        'en': 'Profiles',
-        'ja': 'プロファイル',
-        'zh': '配置文件',
-        'ru': 'Профили',
-        'es': 'Perfiles',
-        'de': 'Profile',
-        'fr': 'Profils',
-        'pt': 'Perfis',
-    },
     'nav.zvuk': {
         'sk': 'Zvuk / Audio',
         'en': 'Sound / Audio',
@@ -239,39 +217,6 @@ STRINGS = {
         'fr': 'Bienvenue dans {app}',
         'pt': 'Boas-vindas ao {app}',
     },
-    'onboarding.hero.title': {
-        'sk': 'Telo v pokoji. Myseľ v prítomnosti.',
-        'en': 'Body at ease. Mind in the present.',
-        'ja': '体は安らぎ、心は今ここに。',
-        'zh': '身体放松，心在当下。',
-        'ru': 'Тело расслаблено. Разум в настоящем.',
-        'es': 'Cuerpo en calma. Mente en el presente.',
-        'de': 'Körper entspannt. Geist im Moment.',
-        'fr': 'Corps détendu. Esprit dans le présent.',
-        'pt': 'Corpo tranquilo. Mente no presente.',
-    },
-    'onboarding.why.continue': {
-        'sk': 'Ukáž mi ako →',
-        'en': 'Show me how →',
-        'ja': '使い方を見る →',
-        'zh': '看看怎么做 →',
-        'ru': 'Покажи как →',
-        'es': 'Muéstrame cómo →',
-        'de': 'Zeig mir wie →',
-        'fr': 'Montre-moi comment →',
-        'pt': 'Me mostra como →',
-    },
-    'onboarding.question': {
-        'sk': 'Ktoré prostredie ťa lepšie udrží v prítomnosti?',
-        'en': 'Which environment keeps you more present?',
-        'ja': 'どちらの空間が、あなたをより「今」に留めてくれますか？',
-        'zh': '哪种环境让你更能保持专注当下？',
-        'ru': 'Какая обстановка помогает тебе лучше оставаться в моменте?',
-        'es': '¿Qué ambiente te ayuda a mantenerte más presente?',
-        'de': 'Welche Umgebung hilft dir, präsenter zu bleiben?',
-        'fr': "Quel environnement t'aide à rester plus présent ?",
-        'pt': 'Qual ambiente te ajuda a ficar mais presente?',
-    },
     'onboarding.confirm': {
         'sk': 'Vstúpiť do hry (Aktivovať Zanshin)',
         'en': 'Enter the game (Activate Zanshin)',
@@ -283,72 +228,6 @@ STRINGS = {
         'fr': 'Entrer dans le jeu (activer Zanshin)',
         'pt': 'Entrar no jogo (ativar Zanshin)',
     },
-    'onboarding.diag.title': {
-        'sk': 'Diagnostika herného tieňa',
-        'en': 'Diagnose your gaming shadow',
-        'ja': 'ゲーム中の「影」を診断',
-        'zh': '诊断你的游戏阴影',
-        'ru': 'Диагностика твоей игровой тени',
-        'es': 'Diagnostica tu sombra de juego',
-        'de': 'Diagnostiziere deinen Gaming-Schatten',
-        'fr': 'Diagnostique ton ombre de jeu',
-        'pt': 'Diagnostique sua sombra no jogo',
-    },
-    'onboarding.diag.item1': {
-        'sk': '1. Trasenie rúk / kŕčovitý stisk myši pri mierení',
-        'en': '1. Shaky hands / a death-grip on the mouse while aiming',
-        'ja': '1. 手の震え／エイム中にマウスを握りしめる',
-        'zh': '1. 瞄准时手在发抖／死死握住鼠标',
-        'ru': '1. Дрожащие руки / мёртвая хватка на мышке при прицеливании',
-        'es': '1. Manos temblorosas / agarre mortal del ratón al apuntar',
-        'de': '1. Zittrige Hände / Todesgriff an der Maus beim Zielen',
-        'fr': '1. Mains tremblantes / prise mortelle sur la souris en visant',
-        'pt': '1. Mãos trêmulas / aperto mortal no mouse ao mirar',
-    },
-    'onboarding.diag.item2': {
-        'sk': '2. Zaťaté zuby a bolesť čeľuste/krku po hraní',
-        'en': '2. A clenched jaw and jaw/neck pain after playing',
-        'ja': '2. 食いしばりと、プレイ後の顎・首の痛み',
-        'zh': '2. 游戏后下颌紧咬、颈部或下颌疼痛',
-        'ru': '2. Стиснутая челюсть, боль в челюсти/шее после игры',
-        'es': '2. Mandíbula apretada y dolor de mandíbula/cuello tras jugar',
-        'de': '2. Zusammengebissener Kiefer und Kiefer-/Nackenschmerzen nach dem Spielen',
-        'fr': '2. Mâchoire serrée et douleurs à la mâchoire/au cou après avoir joué',
-        'pt': '2. Mandíbula travada e dor na mandíbula/pescoço após jogar',
-    },
-    'onboarding.diag.item3': {
-        'sk': '3. Predkláňanie sa k monitoru a strata stability',
-        'en': '3. Leaning into the monitor and losing your grounding',
-        'ja': '3. モニターに前のめりになり、安定を失う',
-        'zh': '3. 身体前倾贴近显示器，失去稳定感',
-        'ru': '3. Наклон к монитору и потеря устойчивости',
-        'es': '3. Inclinarte hacia el monitor y perder el equilibrio',
-        'de': '3. Nach vorne zum Monitor lehnen und die Bodenhaftung verlieren',
-        'fr': "3. Se pencher vers l'écran et perdre son ancrage",
-        'pt': '3. Inclinar-se para o monitor e perder o aterramento',
-    },
-    'onboarding.diag.item4': {
-        'sk': '4. Zadržiavanie dychu v prestrelkách a panika',
-        'en': '4. Holding your breath in firefights, then panic',
-        'ja': '4. 撃ち合い中に息を止め、パニックになる',
-        'zh': '4. 交火时屏住呼吸，随后陷入恐慌',
-        'ru': '4. Задержка дыхания в перестрелках, затем паника',
-        'es': '4. Contener la respiración en tiroteos, luego pánico',
-        'de': '4. Atem anhalten in Feuergefechten, dann Panik',
-        'fr': '4. Retenir sa respiration dans les échanges de tirs, puis paniquer',
-        'pt': '4. Prender a respiração em trocas de tiro, depois entrar em pânico',
-    },
-    'onboarding.diag.continue': {
-        'sk': 'Ďalej →',
-        'en': 'Next →',
-        'ja': '次へ →',
-        'zh': '下一步 →',
-        'ru': 'Далее →',
-        'es': 'Siguiente →',
-        'de': 'Weiter →',
-        'fr': 'Suivant →',
-        'pt': 'Próximo →',
-    },
     'assets.preparing': {
         'sk': 'Pripravujem zvuky…',
         'en': 'Preparing sounds…',
@@ -359,17 +238,6 @@ STRINGS = {
         'de': 'Klänge werden vorbereitet…',
         'fr': 'Préparation des sons…',
         'pt': 'Preparando os sons…',
-    },
-    'assets.ready': {
-        'sk': 'Audio balíčky pripravené ✓',
-        'en': 'Audio packages ready ✓',
-        'ja': 'オーディオパッケージ準備完了 ✓',
-        'zh': '音频素材包已就绪 ✓',
-        'ru': 'Звуковые пакеты готовы ✓',
-        'es': 'Paquetes de audio listos ✓',
-        'de': 'Audio-Pakete bereit ✓',
-        'fr': 'Packs audio prêts ✓',
-        'pt': 'Pacotes de áudio prontos ✓',
     },
     'theme.zen.label': {
         'sk': 'Sumi',
@@ -425,17 +293,6 @@ STRINGS = {
         'de': 'Standard',
         'fr': 'Par défaut',
         'pt': 'Padrão',
-    },
-    'profile.label': {
-        'sk': 'Profil hry:',
-        'en': 'Game profile:',
-        'ja': 'ゲームプロファイル:',
-        'zh': '游戏配置文件：',
-        'ru': 'Игровой профиль:',
-        'es': 'Perfil de juego:',
-        'de': 'Spielprofil:',
-        'fr': 'Profil de jeu :',
-        'pt': 'Perfil do jogo:',
     },
     'profile.new': {
         'sk': '+ Nový',
@@ -689,17 +546,6 @@ STRINGS = {
         'de': "Automatische Spielerkennung (Bibliothek 'psutil' fehlt)",
         'fr': "Détection automatique du jeu (bibliothèque 'psutil' manquante)",
         'pt': "Detecção automática de jogo (biblioteca 'psutil' ausente)",
-    },
-    'settings.overlay_button': {
-        'sk': 'Obrázky v hre…',
-        'en': 'In-game pictures…',
-        'ja': 'ゲーム中の画像…',
-        'zh': '游戏中的图片…',
-        'ru': 'Картинки в игре…',
-        'es': 'Imágenes en el juego…',
-        'de': 'Bilder im Spiel…',
-        'fr': 'Images en jeu…',
-        'pt': 'Imagens no jogo…',
     },
     'overlay.dialog_title': {
         'sk': 'Obrázky v hre',
@@ -1263,28 +1109,6 @@ STRINGS = {
         'fr': 'Ce que je dis (par ex. Grounded)…',
         'pt': 'O que eu digo (por ex., Grounded)…',
     },
-    'key.mouse_prefix': {
-        'sk': 'myš: {key}',
-        'en': 'mouse: {key}',
-        'ja': 'マウス: {key}',
-        'zh': '鼠标: {key}',
-        'ru': 'мышь: {key}',
-        'es': 'ratón: {key}',
-        'de': 'Maus: {key}',
-        'fr': 'souris : {key}',
-        'pt': 'mouse: {key}',
-    },
-    'slots.gamepad_hint': {
-        'sk': 'Gamepad (Xbox aj PlayStation): A=✕  B=○  X=□  Y=△  LB=L1  RB=R1  LT=L2  RT=R2.',
-        'en': 'Gamepad (Xbox and PlayStation): A=✕  B=○  X=□  Y=△  LB=L1  RB=R1  LT=L2  RT=R2.',
-        'ja': 'ゲームパッド（Xbox・PlayStation対応）: A=✕  B=○  X=□  Y=△  LB=L1  RB=R1  LT=L2  RT=R2。',
-        'zh': '手柄（Xbox 及 PlayStation）：A=✕  B=○  X=□  Y=△  LB=L1  RB=R1  LT=L2  RT=R2。',
-        'ru': 'Геймпад (Xbox и PlayStation): A=✕  B=○  X=□  Y=△  LB=L1  RB=R1  LT=L2  RT=R2.',
-        'es': 'Mando (Xbox y PlayStation): A=✕  B=○  X=□  Y=△  LB=L1  RB=R1  LT=L2  RT=R2.',
-        'de': 'Gamepad (Xbox und PlayStation): A=✕  B=○  X=□  Y=△  LB=L1  RB=R1  LT=L2  RT=R2.',
-        'fr': 'Manette (Xbox et PlayStation) : A=✕  B=○  X=□  Y=△  LB=L1  RB=R1  LT=L2  RT=R2.',
-        'pt': 'Controle (Xbox e PlayStation): A=✕  B=○  X=□  Y=△  LB=L1  RB=R1  LT=L2  RT=R2.',
-    },
     'log.gamepad_connected': {
         'sk': 'Gamepad pripojený: {name}',
         'en': 'Gamepad connected: {name}',
@@ -1350,17 +1174,6 @@ STRINGS = {
         'de': 'Aizome',
         'fr': 'Aizome',
         'pt': 'Aizome',
-    },
-    'slot.summary_default': {
-        'sk': 'predvolené nastavenie',
-        'en': 'default settings',
-        'ja': '初期設定のまま',
-        'zh': '默认设置',
-        'ru': 'стандартные настройки',
-        'es': 'configuración predeterminada',
-        'de': 'Standardeinstellungen',
-        'fr': 'réglages par défaut',
-        'pt': 'configurações padrão',
     },
     'dialog.slot_settings_title': {
         'sk': 'Pripomienka {n} — podrobnosti',
@@ -1784,17 +1597,6 @@ STRINGS = {
         'fr': '(voix globale)',
         'pt': '(voz global)',
     },
-    'dialog.timing_title': {
-        'sk': 'Časovanie',
-        'en': 'Timing',
-        'ja': 'タイミング',
-        'zh': '时间设置',
-        'ru': 'Тайминг',
-        'es': 'Tiempos',
-        'de': 'Timing',
-        'fr': 'Minutage',
-        'pt': 'Tempo',
-    },
     'dialog.choose_sfx_title': {
         'sk': 'Zvukový súbor pre pripomienku {n}',
         'en': 'Sound file for cue {n}',
@@ -1948,17 +1750,6 @@ STRINGS = {
         'de': 'Aufnahme konnte nicht gestartet werden:\n{err}\n\nÜberprüfe Mikrofon und Windows-Berechtigungen.',
         'fr': "Impossible de démarrer l'enregistrement :\n{err}\n\nVérifie le micro et les autorisations Windows.",
         'pt': 'Não foi possível iniciar a gravação:\n{err}\n\nVerifique o microfone e as permissões do Windows.',
-    },
-    'settings.title': {
-        'sk': 'Globálne nastavenia',
-        'en': 'Global settings',
-        'ja': '全体設定',
-        'zh': '全局设置',
-        'ru': 'Глобальные настройки',
-        'es': 'Configuración global',
-        'de': 'Globale Einstellungen',
-        'fr': 'Réglages globaux',
-        'pt': 'Configurações globais',
     },
     'settings.volume': {
         'sk': 'Hlasitosť:',
@@ -2146,28 +1937,6 @@ STRINGS = {
         'de': 'leere Ausgabe',
         'fr': 'sortie vide',
         'pt': 'saída vazia',
-    },
-    'status.stopped': {
-        'sk': '●  Zastavené',
-        'en': '●  Stopped',
-        'ja': '●  停止中',
-        'zh': '●  已停止',
-        'ru': '●  Остановлено',
-        'es': '●  Detenido',
-        'de': '●  Gestoppt',
-        'fr': '●  Arrêté',
-        'pt': '●  Parado',
-    },
-    'status.running': {
-        'sk': '●  Sledujem',
-        'en': '●  Watching',
-        'ja': '●  見守り中',
-        'zh': '●  关注中',
-        'ru': '●  Наблюдаю',
-        'es': '●  Observando',
-        'de': '●  Ich beobachte',
-        'fr': '●  J’observe',
-        'pt': '●  Observando',
     },
     'edge.ready': {
         'sk': '✓ hlas pripravený',
@@ -2556,17 +2325,6 @@ STRINGS = {
         'de': 'Zanshin läuft bereits — du findest es im Infobereich neben der Uhr (wenn du das Symbol nicht siehst, klicke auf den Pfeil ^).',
         'fr': 'Zanshin est déjà lancé — tu le trouveras dans la zone de notification, près de l’horloge (si tu ne vois pas l’icône, clique sur la flèche ^).',
         'pt': 'O Zanshin já está em execução — você o encontra na bandeja, perto do relógio (se não vir o ícone, clique na seta ^).',
-    },
-    'msgbox.edge_missing_title': {
-        'sk': 'Zanshin',
-        'en': 'Zanshin',
-        'ja': 'Zanshin',
-        'zh': 'Zanshin',
-        'ru': 'Zanshin',
-        'es': 'Zanshin',
-        'de': 'Zanshin',
-        'fr': 'Zanshin',
-        'pt': 'Zanshin',
     },
     'msgbox.edge_still_missing': {
         'sk': 'edge-tts sa stále nepodarilo načítať.\n\nChyba: {err}\n\nSpusti v príkazovom riadku:\n    pip install edge-tts\n\nAk máš viac inštalácií Pythonu, použi tú istú, ktorou spúšťaš túto appku:\n    python -m pip install edge-tts',
@@ -3998,17 +3756,6 @@ STRINGS.update({
         'fr': '© 2026 Dandurfin · GNU GPLv3 · Zanshin {version}\nCe programme est un logiciel libre. Son code source est librement disponible sur github.com/Dandurfin/Zanshin — tout le monde peut l’utiliser, l’étudier, le modifier et le diffuser sous la même licence. Le Zanshin officiel ne vient que de là ; une copie venant d’ailleurs n’est pas de l’auteur. L’icône et l’image du dojo appartiennent à l’auteur (LICENSE-DESIGN.md). Sans garantie.',
         'pt': '© 2026 Dandurfin · GNU GPLv3 · Zanshin {version}\nEste programa é software livre. O código-fonte está disponível livremente em github.com/Dandurfin/Zanshin — qualquer pessoa pode usá-lo, estudá-lo, modificá-lo e distribuí-lo sob a mesma licença. O Zanshin oficial vem só de lá; uma cópia de outro lugar não é do autor. O ícone e a imagem do dojo são do próprio autor (LICENSE-DESIGN.md). Sem garantia.',
     },
-    'about.links': {
-        'sk': 'Nájdeš ma tu',
-        'en': 'Find me here',
-        'ja': 'Find me here',
-        'zh': 'Find me here',
-        'ru': 'Find me here',
-        'es': 'Find me here',
-        'de': 'Find me here',
-        'fr': 'Find me here',
-        'pt': 'Find me here',
-    },
     'kamae.stopped_sub_auto': {
         'sk': 'Neukladám reláciu a neozvem sa. Spusti ma tlačidlom hore, alebo sa spustím sama, keď zapneš {games}.',
         'en': 'Not recording a session or speaking up. Start me with the button above, or I’ll start by myself when you launch {games}.',
@@ -4081,72 +3828,6 @@ STRINGS.update({
         'fr': 'beats per minute',
         'pt': 'beats per minute',
     },
-    'dnes.load_note': {
-        'sk': 'Počítané z tepu voči tvojej vlastnej pokojovej základni. Nie je to HRV — hodinky posielajú len tep, nie rozostupy medzi údermi.',
-        'en': 'Derived from heart rate against your own resting baseline. This is not HRV - the watch sends beats per minute, not the gaps between beats.',
-        'ja': 'Derived from heart rate against your own resting baseline. This is not HRV - the watch sends beats per minute, not the gaps between beats.',
-        'zh': 'Derived from heart rate against your own resting baseline. This is not HRV - the watch sends beats per minute, not the gaps between beats.',
-        'ru': 'Derived from heart rate against your own resting baseline. This is not HRV - the watch sends beats per minute, not the gaps between beats.',
-        'es': 'Derived from heart rate against your own resting baseline. This is not HRV - the watch sends beats per minute, not the gaps between beats.',
-        'de': 'Derived from heart rate against your own resting baseline. This is not HRV - the watch sends beats per minute, not the gaps between beats.',
-        'fr': 'Derived from heart rate against your own resting baseline. This is not HRV - the watch sends beats per minute, not the gaps between beats.',
-        'pt': 'Derived from heart rate against your own resting baseline. This is not HRV - the watch sends beats per minute, not the gaps between beats.',
-    },
-    'dnes.session_title': {
-        'sk': 'Táto relácia',
-        'en': 'This session',
-        'ja': 'This session',
-        'zh': 'This session',
-        'ru': 'This session',
-        'es': 'This session',
-        'de': 'This session',
-        'fr': 'This session',
-        'pt': 'This session',
-    },
-    'dnes.stat_min': {
-        'sk': 'Najnižší tep',
-        'en': 'Lowest',
-        'ja': 'Lowest',
-        'zh': 'Lowest',
-        'ru': 'Lowest',
-        'es': 'Lowest',
-        'de': 'Lowest',
-        'fr': 'Lowest',
-        'pt': 'Lowest',
-    },
-    'dnes.stat_avg': {
-        'sk': 'Priemer',
-        'en': 'Average',
-        'ja': 'Average',
-        'zh': 'Average',
-        'ru': 'Average',
-        'es': 'Average',
-        'de': 'Average',
-        'fr': 'Average',
-        'pt': 'Average',
-    },
-    'dnes.stat_max': {
-        'sk': 'Najvyšší',
-        'en': 'Highest',
-        'ja': 'Highest',
-        'zh': 'Highest',
-        'ru': 'Highest',
-        'es': 'Highest',
-        'de': 'Highest',
-        'fr': 'Highest',
-        'pt': 'Highest',
-    },
-    'dnes.stat_over': {
-        'sk': 'Nad hranicou',
-        'en': 'Over the limit',
-        'ja': 'Over the limit',
-        'zh': 'Over the limit',
-        'ru': 'Over the limit',
-        'es': 'Over the limit',
-        'de': 'Over the limit',
-        'fr': 'Over the limit',
-        'pt': 'Over the limit',
-    },
     'overlay.monitor.pick': {
         'sk': 'Obrazovka',
         'en': 'Screen',
@@ -4206,17 +3887,6 @@ STRINGS.update({
         'de': 'Hinweise, die du schon hast, behalten ihren Wortlaut.',
         'fr': 'Les rappels que tu as déjà gardent leur texte.',
         'pt': 'Os avisos que você já tem continuam com o mesmo texto.',
-    },
-    'settings.behaviour_title': {
-        'sk': 'Správanie',
-        'en': 'Behaviour',
-        'ja': 'Behaviour',
-        'zh': 'Behaviour',
-        'ru': 'Behaviour',
-        'es': 'Behaviour',
-        'de': 'Behaviour',
-        'fr': 'Behaviour',
-        'pt': 'Behaviour',
     },
     'settings.guide_title': {
         'sk': 'Sprievodca',
@@ -4860,17 +4530,6 @@ STRINGS.update({
         'fr': 'J’ouvrirai la connexion après l’intro',
         'pt': 'Abro o pareamento depois da introdução',
     },
-    'ob.step3.later': {
-        'sk': 'Preskočiť — spárujem neskôr',
-        'en': "Skip — I'll pair later",
-        'ja': "Skip — I'll pair later",
-        'zh': "Skip——I'll pair later",
-        'ru': "Skip — I'll pair later",
-        'es': "Skip — I'll pair later",
-        'de': "Skip — I'll pair later",
-        'fr': "Skip — I'll pair later",
-        'pt': "Skip — I'll pair later",
-    },
     'ob.step3.later_note': {
         'sk': 'Nechceš teraz? Klikni Ďalej — spárovať môžeš kedykoľvek cez „V hre → Ako spárovať hodinky…“.',
         'en': 'Later? Just hit Next — you can pair any time under “In-game → How to pair your watch…”.',
@@ -5127,10 +4786,6 @@ STRINGS.update({
     'history.analysis_stamp': _sk_en('Analýza z {when}', 'Analysis from {when}'),
     'history.recompute': _sk_en('Prepočítať', 'Recompute'),
     'history.trend_title': _sk_en('Vývoj naprieč reláciami', 'Trend across sessions'),
-    'history.trend_baseline': _sk_en('Pokojová základňa (BPM) po reláciách — staršie vľavo',
-                                     'Resting baseline (BPM) per session — oldest on the left'),
-    'history.trend_avg': _sk_en('Priemerný tep (BPM) po reláciách — staršie vľavo',
-                                'Average heart rate (BPM) per session — oldest on the left'),
     # {slope} is ready-made text from `i18n.cislo` (decimal comma by
     # language, minus sign U+2212), not the format {slope:+.1f} - that gave
     # "-2.0" in Slovak too (0.3, batch 4).
@@ -5141,7 +4796,6 @@ STRINGS.update({
         'Sessions are still too close together for a trend — check back in a few days.'),
     'history.trend_simple_delta': _sk_en('{first} → {last}', '{first} → {last}'),
     'history.empty_period': _sk_en('V tomto období zatiaľ nič.', 'Nothing in this period yet.'),
-    'history.period.hour': _sk_en('Hodina', 'Hour'),
     'history.period.day': _sk_en('Deň', 'Day'),
     'history.period.week': _sk_en('Týždeň', 'Week'),
     'history.period.month': _sk_en('Mesiac', 'Month'),
@@ -5191,7 +4845,6 @@ STRINGS.update({
 
     # --- metrics: a short text (the sentence next to the number) +
     # "what it means" (2-3 sentences) ---
-    'metric.bpm.title': _sk_en('Tep teraz', 'Heart rate now'),
     'metric.bpm.short': _sk_en('Koľko úderov za minútu ti bije srdce práve teraz.',
                                'How many times per minute your heart is beating right now.'),
     'metric.bpm.more': _sk_en(
@@ -5233,7 +4886,6 @@ STRINGS.update({
     'metric.baseline.more': _sk_en(
         'Počítam si ju z tvojich najpokojnejších chvíľ. Keď stúpa deň za dňom, telo môže byť unavené alebo v strese — nie nutne z hrania (spánok, kofeín, choroba). Preto ju sledujem v čase, nie ako jedno číslo.',
         'I derive it from your calmest moments. When it climbs day after day, your body may be tired or stressed — not necessarily from gaming (sleep, caffeine, illness). That is why I track it over time, not as a single number.'),
-    'metric.load.title': _sk_en('Záťaž', 'Load'),
     # C2 (0.2): the old sentence "how much the game loads you" promised more
     # than the app can do - the resting level is also taken from previous
     # evenings, so the bar shows coffee or tiredness too, not just the game.
@@ -5306,16 +4958,10 @@ STRINGS.update({
         'Pripomienka je jedna zo štyroch — ťažisko, čeľusť, ruka a pohľad alebo dych — a striedam tie, ktoré máš zapnuté. Počítajú sa len tie, ktoré som poslala sama, keď ti záťaž chvíľu držala hore; tvoje skúšanie tlačidlom „Test“ sa nezaráta. Patria sem aj pripomienky, ktoré prišli len ako obrázok, bez zvuku.',
         'A cue is one of four — grounding, jaw, grip & gaze or breath — and I rotate through the ones you have switched on. Only the ones I gave on my own, when your load held up for a while, count; your own tries with the “Test” button do not. Cues that came as just the picture, without sound, count too.'),
     'metric.avg.title': _sk_en('Priemerný tep dnes', 'Average heart rate today'),
-    'metric.avg.short': _sk_en(
-        'Priemer tepu za celú dnešnú reláciu.',
-        "Your average heart rate across today's whole session."),
     'metric.avg.more': _sk_en(
         'Jedno číslo za celú reláciu — na porovnanie deň za dňom je užitočnejšia pokojová základňa, tá počíta len tvoje najpokojnejšie chvíle.',
         'One number for the whole session — for day-to-day comparison the resting baseline is more useful, since it only counts your calmest moments.'),
     'metric.max.title': _sk_en('Najvyšší tep', 'Highest heart rate'),
-    'metric.max.short': _sk_en(
-        'Najvyšší tep, ktorý som dnes zachytila.',
-        'The highest heart rate I have recorded today.'),
     'metric.max.more': _sk_en(
         'Jedna špička sama o sebe nič nehovorí — dôležitejšie je, ako rýchlo sa tep po nej vrátil dole (zotavenie HRR).',
         'A single spike says little on its own — what matters more is how fast your heart rate came back down afterward (HRR).'),
@@ -5327,9 +4973,6 @@ STRINGS.update({
         'Záťaž skladá tri veci z tepu: o koľko si nad pokojom, ako rýchlo tep stúpa a ako dlho ostáva hore. Špička záťaže je najvyšší okamih tejto kombinácie.',
         'Load combines three things from your heart rate: how far above resting you are, how fast it is climbing, and how long it stays up. Peak load is the single highest moment of that combination.'),
     'metric.week.title': _sk_en('Relácie tento týždeň', 'Sessions this week'),
-    'metric.week.short': _sk_en(
-        'Koľko relácií bolo tento týždeň v tomto svete a koľko to bolo spolu času.',
-        'How many sessions you had this week in this world and how much time that was in total.'),
     'metric.week.more': _sk_en(
         'Týždeň sa počíta od pondelka a rátajú sa len relácie sveta, v ktorom práve si (Hra alebo Práca). Slúži len na prehľad, koľko som toho tento týždeň zaznamenala.',
         'The week counts from Monday, and only sessions of the world you are in (Play or Work) count. It is just an overview of how much I have logged this week.'),
@@ -5347,9 +4990,6 @@ STRINGS.update({
     'metric.last_cue.title': _sk_en(
         'Od poslednej pripomienky',
         'Since the last cue'),
-    'metric.last_cue.short': _sk_en(
-        'Koľko minút prešlo od poslednej pripomienky, ktorú som ti v tejto relácii poslala sama.',
-        'How many minutes have passed since the last cue I gave you on my own this session.'),
     'metric.last_cue.more': _sk_en(
         'Počíta sa len pripomienka, ktorú som poslala sama a naozaj sa ukázala — tvoje skúšanie tlačidlom „Test“ sa nezaráta. Kým v tejto relácii žiadna neprišla, karta ukáže „—“. Nie je to cieľ ani séria: dlhé ticho neznamená, že sa ti darí, a pripomienka neznamená, že robíš niečo zle. Je to len to, kedy som sa ozvala naposledy.',
         'Only a cue I gave on my own and that actually showed counts — your own tries with the “Test” button do not. Until one comes this session, the card shows “—”. It is not a goal or a streak: a long silence does not mean you are doing well, and a cue does not mean you are doing something wrong. It is just when I last spoke up.'),
@@ -5468,9 +5108,6 @@ STRINGS.update({
     'hr.pair_ip_note': _sk_en(
         'Toto je adresa počítača v tvojej sieti. V nastaveniach nechaj 0.0.0.0 — appka počúva na všetkých sieťach naraz, toto číslo sa píše len do telefónu.',
         'This is your PC’s address on your network. Keep 0.0.0.0 in settings — the app listens on every network at once; this number only goes into the phone.'),
-    'dnes.stat_hrr': _sk_en(
-        'Zotavenie tepu',
-        'Heart rate recovery'),
     'history.sessions_count': _sk_en('{n} relácií', '{n} sessions'),
     'history.minutes': _sk_en('{m} min', '{m} min'),
 })
@@ -5487,8 +5124,6 @@ STRINGS.update({
         'Pripomienky',
         'Cues'),
     'nav.nastavenia_tabs.zvuk': _sk_en('Zvuk', 'Sound'),
-    'nav.nastavenia_tabs.vhre': _sk_en('V hre', 'In game'),
-    'nav.nastavenia_tabs.guide': _sk_en('Sprievodca', 'Guide'),
     'nav.nastavenia_tabs.vseobecne': _sk_en('Všeobecné', 'General'),
     # NOTE: 'dock.mute_tip', 'dock.unmute_tip', 'dock.snooze_tip' and
     # 'dock.profile_tip' left with the quick dock (see app.py, `_build_ui`).
@@ -5533,7 +5168,6 @@ STRINGS.update({
     'dnes.empty_btn': _sk_en('Spárovať hodinky', 'Pair your watch'),
 
     # --- Sound and voice: no abbreviations (TTS, SFX, SAPI5) in labels ---
-    'settings.title': _sk_en('Zvuk a hlas', 'Sound and voice'),
     'settings.volume': _sk_en('Hlasitosť:', 'Volume:'),
     'settings.balance': _sk_en('Pomer zvuk ↔ hlas:', 'Sound ↔ voice mix:'),
     'settings.balance_center': _sk_en('napoly', 'even'),
@@ -5583,9 +5217,6 @@ STRINGS.update({
     'overlay.dialog_title': _sk_en(
         'Obrázky v hre',
         'In-game pictures'),
-    'settings.overlay_button': _sk_en(
-        'Obrázky v hre…',
-        'In-game pictures…'),
     'overlay.monitor.label': _sk_en('Na ktorej obrazovke kresliť', 'Which screen to draw on'),
     'hud.section_title': _sk_en('Panel s tepom v hre', 'Heart-rate panel in game'),
     'hud.enable': _sk_en('Ukázať panel v hre — pre stream',
@@ -5716,22 +5347,14 @@ STRINGS.update({
     # languages). The same function (BPM + 4 icons) is now part of the HUD
     # panel in game ("Show the panel in game" in the visuals), not a switch
     # of the whole app window. See 'hud.trigger_row.*' below.
-    # NOTE: 'hud.trigger_row.title' originally read "Ukázať panel v hre" -
-    # LITERALLY the same as 'hud.enable' a bit higher up on the same page.
-    # So on the screen there were three identical labels one under another
-    # and TWO different switches: one turned on the HUD with heart rate, the
-    # other the row of icons, and you could not tell which was which. That
-    # is why the card name says WHAT it is (feature icons), and the switch
-    # separately what it DOES.
-    'hud.trigger_row.title': _sk_en(
-        'Ikonky pripomienok v hre',
-        'Cue icons in-game'),
+    # The switch says WHAT it shows (the icons), not "the panel": 'hud.enable'
+    # a bit higher up starts with "Ukázať panel v hre", and two different
+    # switches with one label could not be told apart.
     'hud.trigger_row.toggle': _sk_en('Ukázať ikonky v hre', 'Show icons in-game'),
     'hud.trigger_row.sub': _sk_en(
         'Pod panelom s tepom sa ukážu ikonky tvojich štyroch pripomienok. Sú len na pohľad a obrázky v hre nenahrádzajú — pripomienka potrebuje aspoň jeden z nich zapnutý.',
         'Shows the icons of your four cues under the heart-rate panel. They are only for show and do not replace the in-game pictures — a cue needs at least one of those turned on.'),
     'hud.trigger_row.color': _sk_en('Farba ikoniek', 'Icon colour'),
-    'hud.trigger_row.color_theme': _sk_en('Farba témy', 'Theme colour'),
     # NOTE: 'hud.snooze.title' ("Stíšiť appku na…", Silence the app for…) was
     # here as the heading of the row with the cog wheel on the In game page.
     # The choice of length moved into the dock (the 😴 button), where no
@@ -5793,7 +5416,6 @@ STRINGS.update({
         'Hlas pripomienok',
         'Cue voice'),
     'settings.audio_volume_title': _sk_en('Hlasitosť', 'Loudness'),
-    'settings.audio_timing_title': _sk_en('Časovanie', 'Timing'),
     'settings.volume': _sk_en('Hlasitosť', 'Volume'),
     'settings.volume_sub': _sk_en(
         'Platí len pre pripomienky. Hlasitosť hry sa tým nemení.',
@@ -5833,11 +5455,8 @@ STRINGS.update({
         'Prehrá prvú pripomienku presne tak, ako zaznie v hre — s týmto hlasom, hlasitosťou aj pomerom.',
         'Plays the first cue exactly as it will sound in-game — with this voice, volume and mix.'),
     'settings.preview_btn': _sk_en('Vyskúšať', 'Try it'),
-    # Words by the sliders: "5.0 s" or "-4" alone do not say whether
+    # Words by the speech-rate slider: "-4" alone does not say whether
     # that is a lot.
-    'settings.pace_often': _sk_en('často', 'often'),
-    'settings.pace_balanced': _sk_en('vyvážene', 'balanced'),
-    'settings.pace_rare': _sk_en('zriedka', 'rarely'),
     'settings.speed_slow': _sk_en('pomaly', 'slow'),
     'settings.speed_normal': _sk_en('normálne', 'normal'),
     'settings.speed_fast': _sk_en('rýchlo', 'fast'),
@@ -6093,7 +5712,6 @@ def _tr7(key, ja, zh, ru, es, de, fr, pt):
 # an established label for a stage, not a word to translate.
 _tr7('app.version_short', 'alpha 0.3', 'alpha 0.3', 'alpha 0.3', 'alpha 0.3', 'Alpha 0.3', 'alpha 0.3', 'alpha 0.3')
 _tr7('common.open', '開く', '打开', 'Открыть', 'Abrir', 'Öffnen', 'Ouvrir', 'Abrir')
-_tr7('dialog.timing_title', 'タイミング', '时机', 'Тайминг', 'Tiempos', 'Timing', 'Rythme', 'Tempo')
 _tr7('dock.pulse_live_tip', '心拍を受信中', '正在接收心率', 'Пульс поступает', 'Pulso en directo', 'Puls kommt an', 'Le pouls arrive', 'Pulso ao vivo')
 _tr7('dock.start', '▶ 見守りを開始', '▶ 开始关注', '▶ Начать наблюдение', '▶ Empezar a observar', '▶ Beobachtung starten', '▶ Lancer l’observation', '▶ Começar a observar')
 _tr7('dock.stop', '■ 見守りを停止', '■ 停止关注', '■ Остановить наблюдение', '■ Dejar de observar', '■ Beobachtung stoppen', '■ Arrêter l’observation', '■ Parar de observar')
@@ -6114,9 +5732,7 @@ _tr7('mode.sfx', '効果音', '音效', 'Звук', 'Sonido', 'Ton', 'Son', 'Som
 _tr7('mode.tts', '音声', '语音', 'Голос', 'Voz', 'Stimme', 'Voix', 'Voz')
 _tr7('nav.dnes', '今日', '今天', 'Сегодня', 'Hoy', 'Heute', "Aujourd'hui", 'Hoje')
 _tr7('nav.historia', '履歴', '历史', 'История', 'Historial', 'Verlauf', 'Historique', 'Histórico')
-_tr7('nav.nastavenia_tabs.guide', 'ガイド', '指南', 'Справочник', 'Guía', 'Leitfaden', 'Guide', 'Guia')
 _tr7('nav.nastavenia_tabs.spustace', '合図', '提示', 'Подсказки', 'Avisos', 'Hinweise', 'Rappels', 'Avisos')
-_tr7('nav.nastavenia_tabs.vhre', 'ゲーム中', '游戏中', 'В игре', 'En el juego', 'Im Spiel', 'En jeu', 'No jogo')
 _tr7('nav.nastavenia_tabs.vseobecne', '全般', '通用', 'Общие', 'General', 'Allgemein', 'Général', 'Geral')
 _tr7('nav.nastavenia_tabs.zvuk', 'サウンド', '声音', 'Звук', 'Sonido', 'Ton', 'Son', 'Som')
 _tr7('nav.spustace', '合図', '提示', 'Подсказки', 'Avisos', 'Hinweise', 'Rappels', 'Avisos')
@@ -6134,7 +5750,6 @@ _tr7('ob.step2.title', '控えめに。画面の中央を避けて。', '低调�
 _tr7('ob.step2.body', '画像は画面の中央を避けて現れ、また消えます。クリックは画像を通り抜けてゲームに届きます。位置は「{page}」ページの「表示」で動かせます。', '图片会出现在避开屏幕中央的位置，然后再消失。点击会穿过它直达游戏。可以在“{page}”页面用“显示”来移动它。', 'Картинка появляется в стороне от центра экрана и снова исчезает. Клики проходят сквозь неё в игру. Переместить её можно на странице «{page}» кнопкой «Показать».', 'La imagen aparece lejos del centro de la pantalla y vuelve a desaparecer. Los clics la atraviesan y llegan al juego. La mueves en la página «{page}» con «Mostrar».', 'Das Bild erscheint abseits der Bildschirmmitte und verschwindet wieder. Klicks gehen durch es hindurch ins Spiel. Verschieben kannst du es auf der Seite „{page}“ mit „Zeigen“.', 'L’image apparaît loin du centre de l’écran, puis disparaît. Les clics la traversent jusqu’au jeu. Tu la déplaces sur la page « {page} » avec « Afficher ».', 'A imagem aparece longe do centro da tela e some de novo. Os cliques passam por ela até o jogo. Você a move na página “{page}” com “Mostrar”.')
 _tr7('ob.step2.tag_local', '心拍もセッションもこのPCに残る — いつでも表に書き出せる', '心率和记录都留在你的电脑里——随时可以导出成表格', 'Пульс и сессии остаются на твоём компьютере — и в любой момент их можно выгрузить в таблицу', 'El pulso y las sesiones se quedan en tu ordenador, y puedes exportarlos a una hoja de cálculo cuando quieras', 'Puls und Sitzungen bleiben auf deinem Rechner — und du kannst sie jederzeit als Tabelle exportieren', 'Le pouls et les séances restent sur ton ordinateur — et tu peux les exporter en tableur quand tu veux', 'O pulso e as sessões ficam no seu computador — e você pode exportá-los para uma planilha quando quiser')
 _tr7('ob.step3.pair_now', '今すぐ時計をつなぐ', '现在连接手表', 'Подключить часы сейчас', 'Vincular un reloj ahora', 'Jetzt eine Uhr verbinden', 'Connecter une montre maintenant', 'Parear um relógio agora')
-_tr7('ob.step3.later', 'スキップ — あとでつなぐ', '跳过——稍后再连', 'Пропустить — подключу позже', 'Saltar: lo vinculo después', 'Überspringen — ich verbinde später', 'Passer — je connecterai plus tard', 'Pular — pareio depois')
 _tr7('ob.step3.later_note', '今はやめておく？「次へ」を押して — 「{page} → 時計のつなぎ方…」からいつでもつなげます。', '现在不想？点“下一步”——随时可以在“{page} → 如何连接手表…”里连接。', 'Не сейчас? Нажми «Далее» — подключить часы можно в любой момент через «{page} → Как подключить часы…».', '¿Más tarde? Pulsa Siguiente: puedes vincularlo cuando quieras en «{page} → Cómo vincular tu reloj…».', 'Später? Klick einfach auf Weiter — verbinden kannst du jederzeit unter „{page} → Uhr verbinden…“.', 'Plus tard ? Clique sur Suivant — tu peux connecter ta montre à tout moment via « {page} → Comment connecter ta montre… ».', 'Depois? Clique em Próximo — você pode parear a qualquer momento em “{page} → Como parear o seu relógio…”.')
 _tr7('onboarding.confirm', '完了 — 開始', '完成——开始', 'Готово — запустить', 'Listo: empezar', 'Fertig — starten', 'Terminé — démarrer', 'Pronto — iniciar')
 _tr7('slot.file_short', 'ファイル', '文件', 'Файл', 'Archivo', 'Datei', 'Fichier', 'Arquivo')
@@ -6161,13 +5776,6 @@ _tr7('dnes.empty_btn', '時計をつなぐ', '连接手表', 'Подключит
 _tr7('dnes.trace_title', 'セッションの軌跡', '本次轨迹', 'След сессии', 'Rastro de la sesión', 'Spur der Sitzung', 'Trace de la séance', 'Rastro da sessão')
 _tr7('dnes.zones_title', 'セッションの内訳', '这次都在哪个区间', 'Где прошла сессия', 'Dónde fue la sesión', 'Wo die Sitzung lag', 'Où la séance s’est passée', 'Onde a sessão passou')
 _tr7('dnes.zones_hint', 'セッションのうち、どの帯にどれだけいたか。帯は自分の安静時ベースラインを基準に測る — 表の数値ではない。', '本次记录中你在各区间待了多久。区间以你自己的静息基线为准，而不是表格数值。', 'Сколько времени за сессию пульс был в каждой зоне. Зоны считаются от твоей собственной базовой линии покоя, а не от табличного значения.', 'Cuánto de la sesión pasaste en cada zona. Las zonas se miden frente a tu propia línea base en reposo, no frente a un valor de tabla.', 'Wie viel der Sitzung du in welcher Zone verbracht hast. Die Zonen messen gegen deine eigene Ruhebasislinie, nicht gegen einen Tabellenwert.', 'Combien de la séance tu as passé dans chaque zone. Les zones se mesurent par rapport à ta propre ligne de base au repos, pas à une valeur de table.', 'Quanto da sessão você passou em cada zona. As zonas são medidas em relação à sua própria linha de base em repouso, não a um valor de tabela.')
-_tr7('dnes.session_title', 'このセッション', '本次记录', 'Эта сессия', 'Esta sesión', 'Diese Sitzung', 'Cette séance', 'Esta sessão')
-_tr7('dnes.stat_min', '最低', '最低', 'Минимум', 'Mínimo', 'Tiefstwert', 'Minimum', 'Mínimo')
-_tr7('dnes.stat_avg', '平均', '平均', 'Среднее', 'Media', 'Durchschnitt', 'Moyenne', 'Média')
-_tr7('dnes.stat_max', '最高', '最高', 'Максимум', 'Máximo', 'Höchstwert', 'Maximum', 'Máximo')
-_tr7('dnes.stat_over', 'しきい値超え', '超过阈值', 'Выше порога', 'Por encima del límite', 'Über der Grenze', 'Au-dessus du seuil', 'Acima do limite')
-_tr7('dnes.stat_hrr', '心拍回復', '心率恢复', 'Восстановление пульса', 'Recuperación del pulso', 'Herzfrequenz-Erholung', 'Récupération cardiaque', 'Recuperação do pulso')
-_tr7('dnes.load_note', '心拍から、自分の安静時ベースラインを基準に算出。これは HRV ではない — 時計が送るのは1分あたりの拍数であって、拍と拍の間隔ではない。', '由心率相对你自己的静息基线推算而来。这不是 HRV——手表发送的是每分钟心跳数，而不是心跳间隔。', 'Выводится из пульса относительно твоей собственной базовой линии покоя. Это не HRV — часы присылают удары в минуту, а не промежутки между ударами.', 'Se deriva del pulso frente a tu propia línea base en reposo. Esto no es HRV: el reloj envía latidos por minuto, no los intervalos entre latidos.', 'Abgeleitet aus dem Puls gegenüber deiner eigenen Ruhebasislinie. Das ist kein HRV — die Uhr sendet Schläge pro Minute, nicht die Abstände dazwischen.', 'Dérivé du pouls par rapport à ta propre ligne de base au repos. Ce n’est pas la VFC — la montre envoie des battements par minute, pas les intervalles entre eux.', 'Derivado do pulso em relação à sua própria linha de base em repouso. Isto não é HRV — o relógio envia batimentos por minuto, não os intervalos entre eles.')
 _tr7('dnes.why_line', 'ゲーム中、気づく前に体はこわばる — Zanshin はそこに短いリセットを結びつける。', '游戏中身体在你察觉前就绷紧了——Zanshin 把一次短暂的重置绑在那一刻。', 'В игре тело напрягается раньше, чем ты заметишь, — Zanshin привязывает к этому короткий сброс.', 'En plena partida el cuerpo se tensa antes de que lo notes: Zanshin ata un reinicio corto a ese momento.', 'Mitten im Spiel verspannt sich der Körper, bevor du es merkst — Zanshin knüpft daran einen kurzen Reset.', 'En pleine partie, le corps se crispe avant que tu le remarques — Zanshin y attache une remise à zéro courte.', 'No meio do jogo, o corpo trava antes de você perceber — o Zanshin associa a isso um reset curto.')
 _tr7('tour.next', '次へ', '下一步', 'Далее', 'Siguiente', 'Weiter', 'Suivant', 'Próximo')
 _tr7('tour.skip', 'スキップ', '跳过', 'Пропустить', 'Saltar', 'Überspringen', 'Passer', 'Pular')
@@ -6183,7 +5791,6 @@ _tr7('tour.dock.title', '円相（ensō）— アプリの状態', '圆相（ens
 _tr7('tour.done.title', 'これで終わり', '就这些', 'Вот и всё', 'Eso es todo', 'Das war’s', 'C’est tout', 'É tudo')
 _tr7('tour.dock.body', 'これは円相（ensō）、アプリの印です。見守っている間はゆっくり呼吸し、止まっているときは動きません。内側のゆっくりした環は、いい頃合いを待っている合図です。クリックすると開始・停止できます。状態は左上の点でもわかります。', '这是圆相（ensō），应用的标志。我在关注时，它会缓慢呼吸；停下时，它静止不动。内部缓慢的环表示我在等待合适的时机。点击它即可开始或停止。左上角的圆点也会显示状态。', 'Это энсо, знак приложения. Пока я слежу, оно медленно дышит; когда я остановлена, оно неподвижно. Медленное кольцо внутри значит, что я жду подходящего момента. Щёлкни по нему, чтобы запустить или остановить меня. Состояние показывает и точка слева вверху.', 'Esto es el ensō, la marca de la app. Mientras observo, respira despacio; cuando estoy detenida, se queda quieto. Un anillo lento por dentro significa que espero un buen momento. Haz clic en él para iniciarme o detenerme. El punto de arriba a la izquierda también muestra el estado.', 'Das ist das Ensō, das Zeichen der App. Solange ich aufpasse, atmet es langsam; wenn ich gestoppt bin, steht es still. Ein langsamer Ring darin heißt, dass ich auf einen guten Moment warte. Klick darauf, um mich zu starten oder zu stoppen. Den Zustand zeigt auch der Punkt oben links.', 'Voici l’ensō, la marque de l’app. Quand je veille, il respire lentement ; quand je suis arrêtée, il reste immobile. Un anneau lent à l’intérieur signifie que j’attends le bon moment. Clique dessus pour me démarrer ou m’arrêter. Le point en haut à gauche montre aussi l’état.', 'Este é o ensō, a marca do app. Enquanto estou de olho, ele respira devagar; quando estou parada, fica imóvel. Um anel lento por dentro quer dizer que estou esperando um bom momento. Clique nele para me iniciar ou parar. O ponto no canto superior esquerdo também mostra o estado.')
 _tr7('tour.done.body', 'このツアーは設定からいつでもやり直せる。よいゲームを。', '这个导览随时可以在设置里重看。玩得开心。', 'Эту экскурсию можно повторить в настройках когда угодно. Хорошей игры.', 'Puedes repetir este recorrido cuando quieras en Ajustes. Que disfrutes la partida.', 'Diese Tour kannst du jederzeit in den Einstellungen wiederholen. Viel Spaß beim Spielen.', 'Tu peux rejouer cette visite à tout moment dans les réglages. Bon jeu.', 'Você pode repetir esta visita quando quiser em Configurações. Bom jogo.')
-_tr7('metric.bpm.title', '現在の心拍', '当前心率', 'Пульс сейчас', 'Pulso ahora', 'Puls jetzt', 'Pouls actuel', 'Pulso agora')
 _tr7('metric.bpm.short', '今、心臓が1分間に何回打っているか。', '你的心脏此刻每分钟跳多少下。', 'Сколько раз в минуту сейчас бьётся твоё сердце.', 'Cuántas veces por minuto late ahora tu corazón.', 'Wie oft dein Herz gerade pro Minute schlägt.', 'Combien de fois par minute ton cœur bat en ce moment.', 'Quantas vezes por minuto o seu coração bate agora.')
 _tr7('metric.bpm.more', '基本の数字。それ自体はあまり語らない — 大事なのは安静時の水準からどれだけ動くか、そして落ち着いたときにどれだけ速く下がるか。', '最基础的数字。单看它意义不大——重要的是它相对你的静息水平怎么动，以及你平静下来时下降得多快。', 'Базовое число. Само по себе оно мало что говорит — важно, как оно движется относительно твоего уровня покоя и как быстро падает, когда ты успокаиваешься.', 'El número base. Por sí solo dice poco: lo que importa es cómo se mueve frente a tu nivel de reposo y con qué rapidez baja cuando te calmas.', 'Die Grundzahl. Für sich allein sagt sie wenig — entscheidend ist, wie sie sich gegenüber deinem Ruheniveau bewegt und wie schnell sie fällt, wenn du runterkommst.', 'Le chiffre de base. Seul, il dit peu — ce qui compte, c’est comment il bouge par rapport à ton niveau de repos et à quelle vitesse il redescend quand tu te calmes.', 'O número básico. Sozinho diz pouco — o que importa é como ele se move em relação ao seu nível de repouso e com que rapidez desce quando você se acalma.')
 _tr7('metric.baseline.tag', '安静時心拍', '静息心率', 'пульс в покое', 'pulso en reposo', 'Ruhepuls', 'pouls au repos', 'pulso em repouso')
@@ -6196,7 +5803,6 @@ _tr7('metric.week.tag', '今週', '本周', 'за неделю', 'esta semana', 
 _tr7('metric.baseline.title', '安静時ベースライン', '静息基线', 'Базовая линия покоя', 'Línea base en reposo', 'Ruhebasislinie', 'Ligne de base au repos', 'Linha de base em repouso')
 _tr7('metric.baseline.short', '安静時の心拍 — 何にも追われていないとき。', '静息时的心率——没有任何事催着你的时候。', 'Твой пульс в покое — когда тебя ничто не гонит.', 'Tu pulso en reposo: cuando nada te está exigiendo.', 'Dein Puls in Ruhe — wenn dich nichts antreibt.', 'Ton pouls au repos — quand rien ne te pousse.', 'O seu pulso em repouso — quando nada te pressiona.')
 _tr7('metric.baseline.more', '私は最も落ち着いた瞬間から算出する。日ごとに上がっていくなら、体が疲れているかストレスがあるのかもしれない — 必ずしもゲームのせいではない（睡眠、カフェイン、体調）。だから一つの数字ではなく、時間の流れで追う。', '我从你最平静的时刻推算。如果它一天天升高，可能是身体疲惫或压力大——不一定是游戏造成的（睡眠、咖啡因、生病）。所以我看的是长期走势，而不是单个数字。', 'Я вывожу её из твоих самых спокойных моментов. Если она растёт день за днём, тело может быть уставшим или в стрессе — не обязательно из-за игры (сон, кофеин, болезнь). Поэтому я слежу за ней во времени, а не по одному числу.', 'La deduzco de tus momentos más tranquilos. Si sube día tras día, tu cuerpo puede estar cansado o estresado, no necesariamente por jugar (sueño, cafeína, enfermedad). Por eso la sigo en el tiempo y no como un número suelto.', 'Ich leite sie aus deinen ruhigsten Momenten ab. Steigt sie Tag für Tag, ist dein Körper vielleicht müde oder gestresst — nicht zwangsläufig vom Spielen (Schlaf, Koffein, Krankheit). Deshalb verfolge ich sie über die Zeit, nicht als Einzelwert.', 'Je la déduis de tes moments les plus calmes. Si elle monte jour après jour, ton corps est peut-être fatigué ou stressé — pas forcément à cause du jeu (sommeil, caféine, maladie). C’est pourquoi je la suis dans le temps, pas comme un chiffre isolé.', 'Eu a deduzo dos seus momentos mais calmos. Se ela sobe dia após dia, o corpo pode estar cansado ou estressado — não necessariamente por causa do jogo (sono, cafeína, doença). Por isso eu a acompanho ao longo do tempo, não como um número isolado.')
-_tr7('metric.load.title', '負荷', '负荷', 'Нагрузка', 'Carga', 'Last', 'Charge', 'Carga')
 _tr7('metric.hrr.title', '心拍回復', '心率恢复', 'Восстановление пульса', 'Recuperación del pulso', 'Herzfrequenz-Erholung', 'Récupération cardiaque', 'Recuperação do pulso')
 _tr7('metric.hrr.short', '心拍が跳ね上がったあと、1分でどれだけ下がったか。', '心率飙升之后，一分钟内下降了多少。', 'На сколько упал пульс за минуту после скачка.', 'Cuánto bajó tu pulso en el minuto siguiente a un pico.', 'Um wie viel dein Puls in der Minute nach einem Ausschlag gefallen ist.', 'De combien ton pouls est redescendu dans la minute suivant un pic.', 'Quanto o seu pulso desceu no minuto seguinte a um pico.')
 _tr7('metric.zones.title', '心拍上限超えと帯ごとの時間', '超过心率上限的时间与各区间时间', 'Время выше границы пульса и по зонам', 'Tiempo sobre el límite de pulso y por zonas', 'Zeit über der Pulsgrenze und in Zonen', 'Temps au-dessus de la limite cardiaque et par zones', 'Tempo acima do limite de pulso e por zonas')
@@ -6210,10 +5816,8 @@ _tr7('metric.hrpi.short', '心拍がどれだけ高く、どれだけ長く続�
 _tr7('metric.hrpi.more', '例：101 = 心拍が毎分 101 拍以上だった時間が、合計で 101 秒以上あったということ。高さと長さを一つにまとめるので、二つのセッションを一目で比べられます。', '例如 101 = 心率达到每分钟 101 次以上的时间累计至少 101 秒。它把高度和时长合为一体，让你一眼就能比较两次记录。', 'Например, 101 = пульс был не ниже 101 удара в минуту в сумме не меньше 101 секунды. Число соединяет высоту и длительность, так что две сессии можно сравнить одним взглядом.', 'Por ejemplo, 101 = tu pulso estuvo al menos a 101 latidos por minuto durante al menos 101 segundos en total. Une altura y duración, así que puedes comparar dos sesiones de un vistazo.', 'Z. B. 101 = dein Puls lag insgesamt mindestens 101 Sekunden lang bei mindestens 101 Schlägen pro Minute. Er verbindet Höhe und Dauer, sodass du zwei Sitzungen auf einen Blick vergleichen kannst.', 'Par ex. 101 = ton pouls a été d’au moins 101 battements par minute pendant au moins 101 secondes au total. Ce chiffre joint hauteur et durée, si bien que tu compares deux séances d’un coup d’œil.', 'Ex.: 101 = o seu pulso ficou em pelo menos 101 batimentos por minuto durante pelo menos 101 segundos no total. Junta altura e duração, por isso você compara duas sessões num relance.')
 _tr7('metric.over.title', '心拍上限を超えた時間', '超过心率上限的时间', 'Время выше границы пульса', 'Tiempo sobre el límite de pulso', 'Zeit über der Pulsgrenze', 'Temps au-dessus de la limite cardiaque', 'Tempo acima do limite de pulso')
 _tr7('metric.avg.title', '今日の平均心拍', '今日平均心率', 'Средний пульс сегодня', 'Pulso medio de hoy', 'Durchschnittspuls heute', 'Pouls moyen aujourd’hui', 'Pulso médio hoje')
-_tr7('metric.avg.short', '今日のセッション全体の平均心拍。', '今天整场记录的平均心率。', 'Твой средний пульс за всю сегодняшнюю сессию.', 'Tu pulso medio en toda la sesión de hoy.', 'Dein Durchschnittspuls über die gesamte heutige Sitzung.', 'Ton pouls moyen sur toute la séance du jour.', 'O seu pulso médio em toda a sessão de hoje.')
 _tr7('metric.avg.more', 'セッション全体を一つの数字にしたもの — 日々の比較には安静時ベースラインのほうが役に立つ。あちらは最も落ち着いた瞬間だけを数えるから。', '把整场记录压成一个数字——但要做日常比较，静息基线更有用，因为它只统计你最平静的时刻。', 'Одно число на всю сессию — для сравнения день ко дню полезнее базовая линия покоя: она считает только самые спокойные моменты.', 'Un número para toda la sesión: para comparar día a día es más útil la línea base en reposo, porque solo cuenta tus momentos más tranquilos.', 'Eine Zahl für die ganze Sitzung — für den Vergleich von Tag zu Tag ist die Ruhebasislinie nützlicher, denn sie zählt nur deine ruhigsten Momente.', 'Un chiffre pour toute la séance — pour comparer d’un jour à l’autre, la ligne de base au repos est plus utile : elle ne compte que tes moments les plus calmes.', 'Um número para toda a sessão — para comparar dia a dia, a linha de base em repouso é mais útil, porque só conta os seus momentos mais calmos.')
 _tr7('metric.max.title', '最高心拍', '最高心率', 'Самый высокий пульс', 'Pulso más alto', 'Höchster Puls', 'Pouls le plus haut', 'Pulso mais alto')
-_tr7('metric.max.short', '今日私が記録した最も高い心拍。', '我今天记录到的最高心率。', 'Самый высокий пульс, который я записала сегодня.', 'El pulso más alto que he registrado hoy.', 'Der höchste Puls, den ich heute aufgezeichnet habe.', 'Le pouls le plus haut que j’ai enregistré aujourd’hui.', 'O pulso mais alto que registrei hoje.')
 _tr7('metric.max.more', '単発のピークはそれ自体ではあまり語らない — もっと大事なのは、そのあとどれだけ速く心拍が戻ったか（HRR）。', '单个峰值本身说明不了什么——更重要的是之后心率回落得多快（HRR）。', 'Один скачок сам по себе мало что говорит — важнее, как быстро пульс потом вернулся вниз (HRR).', 'Un pico aislado dice poco por sí solo: importa más lo rápido que bajó el pulso después (HRR).', 'Ein einzelner Ausschlag sagt für sich wenig — wichtiger ist, wie schnell der Puls danach wieder gefallen ist (HRR).', 'Un pic isolé dit peu en soi — ce qui compte davantage, c’est la vitesse à laquelle le pouls est redescendu ensuite (HRR).', 'Um pico isolado diz pouco por si — importa mais a rapidez com que o pulso desceu depois (HRR).')
 _tr7('metric.peak.title', '負荷のピーク', '负荷峰值', 'Пик нагрузки', 'Pico de carga', 'Last-Spitze', 'Pic de charge', 'Pico de carga')
 _tr7('metric.peak.short', '今日のセッション中の最高の負荷値（0〜100）。', '今天记录中的最高负荷值（0–100）。', 'Самое высокое значение нагрузки (0–100) за сегодняшнюю сессию.', 'El valor de carga más alto (0–100) durante la sesión de hoy.', 'Der höchste Lastwert (0–100) in der heutigen Sitzung.', 'La valeur de charge la plus haute (0–100) pendant la séance du jour.', 'O valor de carga mais alto (0–100) durante a sessão de hoje.')
@@ -6252,10 +5856,8 @@ _tr7('hud.zone.high', '高い', '偏高', 'Высокая', 'Alta', 'Hoch', 'Hau
 _tr7('hud.zone.critical', 'ピーク', '高峰', 'Пик', 'Pico', 'Spitze', 'Pic', 'Pico')
 _tr7('hud.session.triggers', '合図 {n}', '提示 {n}', 'ПОДСКАЗКИ {n}', 'AVISOS {n}', 'HINWEISE {n}', 'RAPPELS {n}', 'AVISOS {n}')
 _tr7('hud.session.over', '上限超え {time}', '超过上限 {time}', 'ВЫШЕ ГРАНИЦЫ {time}', 'SOBRE EL LÍMITE {time}', 'ÜBER DER GRENZE {time}', 'AU-DESSUS DE LA LIMITE {time}', 'ACIMA DO LIMITE {time}')
-_tr7('hud.trigger_row.title', 'ゲーム中の合図アイコン', '游戏中的提示图标', 'Значки подсказок в игре', 'Iconos de avisos en el juego', 'Hinweis-Symbole im Spiel', 'Icônes des rappels en jeu', 'Ícones dos avisos no jogo')
 _tr7('hud.trigger_row.toggle', 'ゲーム中にアイコンを表示', '在游戏中显示图标', 'Показывать значки в игре', 'Mostrar iconos en el juego', 'Symbole im Spiel zeigen', 'Afficher les icônes en jeu', 'Mostrar ícones no jogo')
 _tr7('hud.trigger_row.color', 'アイコンの色', '图标颜色', 'Цвет значков', 'Color de los iconos', 'Symbolfarbe', 'Couleur des icônes', 'Cor dos ícones')
-_tr7('hud.trigger_row.color_theme', 'テーマの色', '主题色', 'Цвет темы', 'Color del tema', 'Themenfarbe', 'Couleur du thème', 'Cor do tema')
 _tr7('hud.snooze.5min', '5 分', '5 分钟', '5 минут', '5 minutos', '5 Minuten', '5 minutes', '5 minutos')
 _tr7('hud.snooze.20min', '20 分', '20 分钟', '20 минут', '20 minutos', '20 Minuten', '20 minutes', '20 minutos')
 _tr7('hud.snooze.40min', '40 分', '40 分钟', '40 минут', '40 minutos', '40 Minuten', '40 minutes', '40 minutos')
@@ -6304,9 +5906,7 @@ _tr7('hr.trouble_body', '電話側でシーン「Zanshin」とソース「Tep」
 _tr7('hr.qr_show', '電話で読み取る', '用手机扫描', 'Отсканировать телефоном', 'Escanear con el móvil', 'Mit dem Handy scannen', 'Scanner avec le téléphone', 'Ler com o celular')
 _tr7('hr.qr_hide', 'コードを隠す', '隐藏二维码', 'Скрыть коды', 'Ocultar los códigos', 'Codes ausblenden', 'Masquer les codes', 'Esconder os códigos')
 _tr7('hr.qr_android', 'Android / Wear OS\n「HeartRateOnStream for OBS」（無料）。\nアドレスとポートは「時計のつなぎ方…」にある。', 'Android / Wear OS\n“HeartRateOnStream for OBS”（免费）。\n地址和端口在“如何连接手表…”里。', 'Android / Wear OS\n«HeartRateOnStream for OBS» (бесплатно).\nАдрес и порт — в «Как подключить часы…».', 'Android / Wear OS\n«HeartRateOnStream for OBS» (gratis).\nLa dirección y el puerto están en «Cómo vincular tu reloj…».', 'Android / Wear OS\n„HeartRateOnStream for OBS“ (kostenlos).\nAdresse und Port findest du unter „Uhr verbinden…“.', 'Android / Wear OS\n« HeartRateOnStream for OBS » (gratuit).\nL’adresse et le port sont dans « Comment connecter ta montre… ».', 'Android / Wear OS\n“HeartRateOnStream for OBS” (grátis).\nO endereço e a porta estão em “Como parear o seu relógio…”.')
-_tr7('settings.title', 'サウンドと音声', '声音与语音', 'Звук и голос', 'Sonido y voz', 'Ton und Stimme', 'Son et voix', 'Som e voz')
 _tr7('settings.auto_profile_unavailable', 'ゲームによる自動切り替えは今は使えない（psutil ライブラリがない）', '目前无法按游戏自动切换（缺少 psutil 库）', 'Автопереключение по игре сейчас недоступно (нет библиотеки psutil)', 'El cambio automático por juego no está disponible ahora (falta la librería psutil)', 'Automatischer Wechsel nach Spiel ist gerade nicht verfügbar (Bibliothek psutil fehlt)', 'Le changement automatique par jeu n’est pas disponible (bibliothèque psutil manquante)', 'A troca automática por jogo não está disponível agora (falta a biblioteca psutil)')
-_tr7('settings.overlay_button', 'ゲーム中の画像…', '游戏中的图片…', 'Картинки в игре…', 'Imágenes en el juego…', 'Bilder im Spiel…', 'Images en jeu…', 'Imagens no jogo…')
 _tr7('settings.hr_section_title', '時計と心拍', '手表与心率', 'Часы и пульс', 'Reloj y pulso', 'Uhr und Puls', 'Montre et pouls', 'Relógio e pulso')
 _tr7('settings.hr_ip_hint', '0.0.0.0 のままに。この番号は電話に入れない — 正しいアドレスは「時計のつなぎ方…」にある。', '保持 0.0.0.0。不要把这个号码填进手机——正确的地址在“如何连接手表…”里。', 'Оставь 0.0.0.0. В телефон это число не вводи — правильный адрес есть в «Как подключить часы…».', 'Deja 0.0.0.0. No escribas este número en el móvil: la dirección correcta está en «Cómo vincular tu reloj…».', 'Lass 0.0.0.0. Diese Zahl nicht ins Handy eintippen — die richtige Adresse steht unter „Uhr verbinden…“.', 'Laisse 0.0.0.0. Ne tape pas ce numéro dans le téléphone — la bonne adresse est dans « Comment connecter ta montre… ».', 'Deixe 0.0.0.0. Não digite este número no celular — o endereço certo está em “Como parear o seu relógio…”.')
 _tr7('settings.hr_port_hint', '4455 のままで — 同じ番号を電話のアプリに入力します。', '保留 4455——在手机应用里输入同样的号码。', 'Оставь 4455 — то же число ты введёшь в приложении на телефоне.', 'Deja 4455: el mismo número lo pones en la app del móvil.', 'Lass 4455 stehen — dieselbe Zahl gibst du in der Handy-App ein.', 'Laisse 4455 — tu saisis le même numéro dans l’app du téléphone.', 'Deixe 4455 — o mesmo número você coloca no app do celular.')
@@ -6329,10 +5929,6 @@ _tr7('settings.preview_sub', '最初の合図を、ゲーム中とまったく�
 _tr7('settings.preview_btn', '試す', '试听', 'Попробовать', 'Probar', 'Ausprobieren', 'Essayer', 'Experimentar')
 _tr7('settings.audio_voice_title', '合図の音声', '提示语音', 'Голос подсказок', 'Voz de los avisos', 'Stimme der Hinweise', 'Voix des rappels', 'Voz dos avisos')
 _tr7('settings.audio_volume_title', '音の大きさ', '响度', 'Громкость', 'Volumen', 'Lautstärke', 'Volume sonore', 'Volume')
-_tr7('settings.audio_timing_title', 'タイミング', '时机', 'Тайминг', 'Tiempos', 'Timing', 'Rythme', 'Tempo')
-_tr7('settings.pace_often', '頻繁', '频繁', 'часто', 'a menudo', 'oft', 'souvent', 'muitas vezes')
-_tr7('settings.pace_balanced', 'ほどよく', '均衡', 'сбалансированно', 'equilibrado', 'ausgewogen', 'équilibré', 'equilibrado')
-_tr7('settings.pace_rare', 'まれに', '较少', 'редко', 'rara vez', 'selten', 'rarement', 'raramente')
 _tr7('settings.speed_slow', 'ゆっくり', '慢', 'медленно', 'lento', 'langsam', 'lent', 'lento')
 _tr7('settings.speed_normal', 'ふつう', '正常', 'нормально', 'normal', 'normal', 'normal', 'normal')
 _tr7('settings.speed_fast', '速く', '快', 'быстро', 'rápido', 'schnell', 'rapide', 'rápido')
@@ -6341,7 +5937,6 @@ _tr7('settings.audio_reset_btn', '戻す', '恢复', 'Вернуть', 'Restaura
 _tr7('settings.look_title', '見た目と言語', '外观与语言', 'Вид и язык', 'Aspecto e idioma', 'Aussehen und Sprache', 'Apparence et langue', 'Aparência e idioma')
 _tr7('settings.language', '言語', '语言', 'Язык', 'Idioma', 'Sprache', 'Langue', 'Idioma')
 _tr7('settings.language_sub', 'すでにある合図の文言は変わりません。', '已有提示的文字不会改变。', 'Уже созданные подсказки сохранят свой текст.', 'Los avisos que ya tienes conservan su texto.', 'Hinweise, die du schon hast, behalten ihren Wortlaut.', 'Les rappels que tu as déjà gardent leur texte.', 'Os avisos que você já tem continuam com o mesmo texto.')
-_tr7('settings.behaviour_title', 'ふるまい', '行为', 'Поведение', 'Comportamiento', 'Verhalten', 'Comportement', 'Comportamento')
 _tr7('settings.guide_title', 'ガイド', '指南', 'Справочник', 'Guía', 'Leitfaden', 'Guide', 'Guia')
 _tr7('settings.guide_row', 'なぜ顎、重心、呼吸なのか', '为什么是下巴、重心和呼吸', 'Почему челюсть, центр тяжести и дыхание', 'Por qué mandíbula, centro y respiración', 'Warum Kiefer, Schwerpunkt und Atem', 'Pourquoi mâchoire, ancrage et souffle', 'Por que mandíbula, centro e respiração')
 _tr7('settings.tour_row', 'アプリのツアー', '应用导览', 'Экскурсия по приложению', 'Recorrido por la app', 'App-Tour', 'Visite de l’app', 'Visita ao app')
@@ -6349,8 +5944,6 @@ _tr7('settings.tour_row_at', 'アプリのツアー — ステップ {n} / {tota
 _tr7('settings.tour_sub', 'どこに何があるかの短い案内。', '简短介绍东西都在哪儿。', 'Короткая экскурсия по тому, где что находится.', 'Un recorrido breve por dónde está cada cosa.', 'Eine kurze Tour, wo was ist.', 'Une brève visite de l’endroit où se trouve quoi.', 'Uma visita curta a onde está o quê.')
 _tr7('settings.tour_btn', 'ツアーを始める', '开始导览', 'Начать экскурсию', 'Empezar el recorrido', 'Tour starten', 'Démarrer la visite', 'Iniciar a visita')
 _tr7('settings.tour_resume', '続ける', '继续', 'Продолжить', 'Continuar', 'Fortsetzen', 'Continuer', 'Continuar')
-_tr7('dialog.timing_title', 'タイミング', '时机', 'Тайминг', 'Tiempos', 'Timing', 'Rythme', 'Tempo')
-_tr7('settings.audio_timing_title', 'タイミング', '时机', 'Тайминг', 'Tiempos', 'Timing', 'Rythme', 'Tempo')
 _tr7('settings.speed_normal', 'ふつう', '正常', 'нормально', 'normal', 'normal', 'normal', 'normal')
 _tr7('history.title', 'セッション履歴', '记录历史', 'История сессий', 'Historial de sesiones', 'Sitzungsverlauf', 'Historique des séances', 'Histórico de sessões')
 _tr7('history.subtitle', '心拍が1分以上あるセッションがここに保存されます（直近 400 件）。', '这里保存至少有一分钟心率的记录（最近 400 次）。', 'Здесь сохраняются сессии, где пульс шёл хотя бы минуту (последние 400).', 'Aquí se guardan las sesiones con al menos un minuto de pulso (las últimas 400).', 'Hier landen Sitzungen mit mindestens einer Minute Puls (die letzten 400).', 'Les séances avec au moins une minute de pouls sont enregistrées ici (les 400 dernières).', 'Aqui ficam as sessões com pelo menos um minuto de pulso (as últimas 400).')
@@ -6359,12 +5952,9 @@ _tr7('history.analysis_running', '履歴を分析中…', '正在分析历史…
 _tr7('history.analysis_stamp', '{when} の分析', '{when} 的分析', 'Анализ от {when}', 'Análisis de {when}', 'Analyse vom {when}', 'Analyse du {when}', 'Análise de {when}')
 _tr7('history.recompute', '再計算', '重新计算', 'Пересчитать', 'Recalcular', 'Neu berechnen', 'Recalculer', 'Recalcular')
 _tr7('history.trend_title', 'セッションをまたいだ推移', '跨记录的趋势', 'Динамика по сессиям', 'Evolución entre sesiones', 'Verlauf über die Sitzungen', 'Évolution entre séances', 'Evolução entre sessões')
-_tr7('history.trend_baseline', 'セッションごとの安静時ベースライン（BPM） — 古いものが左', '每次记录的静息基线（BPM）——越旧越靠左', 'Базовая линия покоя (уд/мин) по сессиям — старые слева', 'Línea base en reposo (ppm) por sesión: las más antiguas a la izquierda', 'Ruhebasislinie (S/min) pro Sitzung — die ältesten links', 'Ligne de base au repos (bpm) par séance — les plus anciennes à gauche', 'Linha de base em repouso (bpm) por sessão — as mais antigas à esquerda')
-_tr7('history.trend_avg', 'セッションごとの平均心拍（BPM） — 古いものが左', '每次记录的平均心率（BPM）——越旧越靠左', 'Средний пульс (уд/мин) по сессиям — старые слева', 'Pulso medio (ppm) por sesión: las más antiguas a la izquierda', 'Durchschnittspuls (S/min) pro Sitzung — die ältesten links', 'Pouls moyen (bpm) par séance — les plus anciennes à gauche', 'Pulso médio (bpm) por sessão — as mais antigas à esquerda')
 _tr7('history.trend_delta', '{first} → {last} BPM、推移 {slope} BPM/週', '{first} → {last} BPM，趋势 {slope} BPM/周', '{first} → {last} уд/мин, тренд {slope} уд/мин в неделю', '{first} → {last} ppm, tendencia {slope} ppm/semana', '{first} → {last} S/min, Trend {slope} S/min pro Woche', '{first} → {last} bpm, tendance {slope} bpm/semaine', '{first} → {last} bpm, tendência {slope} bpm/semana')
 _tr7('history.trend_need_more', 'セッションがまだ近すぎて推移が出せない — 数日たってからまた見て。', '记录之间还太密集，看不出趋势——过几天再来看。', 'Сессии пока слишком близко друг к другу для тренда — загляни через несколько дней.', 'Las sesiones están aún demasiado juntas para una tendencia: vuelve dentro de unos días.', 'Die Sitzungen liegen für einen Trend noch zu dicht beieinander — schau in ein paar Tagen wieder rein.', 'Les séances sont encore trop rapprochées pour une tendance — reviens dans quelques jours.', 'As sessões ainda estão muito próximas para uma tendência — volte daqui a alguns dias.')
 _tr7('history.empty_period', 'この期間にはまだ何もない。', '这个时间段还没有内容。', 'В этом периоде пока ничего.', 'Todavía no hay nada en este periodo.', 'In diesem Zeitraum noch nichts.', 'Rien dans cette période pour l’instant.', 'Ainda nada neste período.')
-_tr7('history.period.hour', '時間', '小时', 'Час', 'Hora', 'Stunde', 'Heure', 'Hora')
 _tr7('history.period.day', '日', '天', 'День', 'Día', 'Tag', 'Jour', 'Dia')
 _tr7('history.period.week', '週', '周', 'Неделя', 'Semana', 'Woche', 'Semaine', 'Semana')
 _tr7('history.period.month', '月', '月', 'Месяц', 'Mes', 'Monat', 'Mois', 'Mês')
@@ -6443,24 +6033,17 @@ _tr7('settings.game_lang', 'ゲーム中の言語', '游戏中的语言', 'Яз�
 _tr7('settings.game_lang_same', 'アプリと同じ', '与应用相同', 'Как в приложении', 'El mismo que la app', 'Wie die App', 'Comme l’app', 'O mesmo do app')
 _tr7('settings.game_lang_sub', '私がゲーム中に描く文字の言語 — 心拍パネルと画像の下の説明。これはストリームの視聴者にも見えるので、アプリ自体が別の言語でも既定は英語。', '我绘制到游戏里的文字语言——心率面板和图片下方的说明。直播观众也会看到，所以即使应用本身不是英文，默认也用英文。', 'Язык текста, который я рисую в игре, — панель пульса и подписи под картинками. Это видят и зрители на стриме, поэтому по умолчанию английский, даже если само приложение на другом языке.', 'El idioma del texto que dibujo dentro del juego: el panel de pulso y los rótulos bajo las imágenes. Tus espectadores también lo ven, por eso el inglés es el valor por defecto aunque la app no lo esté.', 'Die Sprache des Textes, den ich ins Spiel zeichne — das Puls-Panel und die Beschriftungen unter den Bildern. Das sehen auch deine Stream-Zuschauer, deshalb ist Englisch die Vorgabe, selbst wenn die App es nicht ist.', 'La langue du texte que je dessine dans le jeu — le panneau de pouls et les légendes sous les images. Tes spectateurs le voient aussi, c’est pourquoi l’anglais est la valeur par défaut même si l’app ne l’est pas.', 'O idioma do texto que eu desenho dentro do jogo — o painel de pulso e as legendas embaixo das imagens. Os seus espectadores também o veem, por isso o inglês é o padrão mesmo quando o app em si não está em inglês.')
 
-# --- the Effectiveness page ---------------------------------------------
-# WARNING: the Effectiveness page does NOT EXIST yet - it is a new screen
-# from phase 5. This single string lies here in advance on purpose: it is
-# a decided wording, and decided wordings get lost between sessions more
-# easily than code.
-#
-# It belongs on the empty state of that page, which will be the NORMAL
-# state for the first weeks, not an error. The empty states the app
-# already has ("Zatiaľ žiadna relácia. Zapni senzor tepu...", No session
-# yet. Turn on the heart rate sensor...) are more specific and do not
-# change - this one is a different case: sessions already exist, there
-# are just not enough of them yet for a comparison. That is why it does
-# not point to any button; the only answer is to keep playing.
+# --- effectiveness measurement --------------------------------------------
+# NOTE: 'efficacy.empty' was here - the empty state of the Effectiveness
+# page, a new screen from phase 5 that does not exist yet. Nothing called
+# it, so the key was deleted with the other unused ones. The decided
+# wording, for when the page is built: "Zatiaľ nič. Nazbiera sa to hraním,
+# nie čakaním." (Nothing yet. This builds up by playing, not by waiting.) -
+# sessions already exist, there are just not enough of them yet for a
+# comparison, so it points to no button; the only answer is to keep playing.
+# Its other nine languages are in git history (commit 3414450, i18n.py and
+# i18n_cs_bg.py).
 STRINGS.update({
-    'efficacy.empty': _sk_en(
-        'Zatiaľ nič. Nazbiera sa to hraním, nie čakaním.',
-        'Nothing yet. This builds up by playing, not by waiting.'),
-
     # Log line after a delivered cue. The SAME in both arms - in the voice
     # arm and in the silent one. The player hears anyway whether something
     # sounded, so it cannot be blinded anyway, but the log should not be yet
@@ -6560,7 +6143,6 @@ STRINGS.update({
     'session.context.caffeine': _sk_en('kofeín / energeťák', 'caffeine / energy drink'),
     'session.context.alcohol': _sk_en('alkohol', 'alcohol'),
     'session.context.nicotine': _sk_en('nikotín', 'nicotine'),
-    'session.context.tired': _sk_en('málo spánku', 'short on sleep'),
     'session.context.question': _sk_en('Dialo sa niečo z tohto?',
                                        'Did any of this happen?'),
     'session.context.why': _sk_en(
@@ -6605,15 +6187,11 @@ STRINGS.update({
     # (the path carries the account name).
     'data.delete.legacy': _sk_en('kópie zo staršej verzie appky (priečinok „{folder}“)',
                                  'copies left by an older version of the app (folder “{folder}”)'),
-    'data.delete.confirm': _sk_en('Zmazať', 'Delete'),
     'data.delete.done': _sk_en('Zmazané ({n} položiek).', 'Deleted ({n} items).'),
     # 0.2: the bundle carries sessions, measurement windows and insights -
     # not settings, profiles, recordings or cue records. "Everything"
     # promised a move to another PC in which the rest would be lost.
     'data.export.btn': _sk_en('Exportovať históriu (JSON)', 'Export history (JSON)'),
-    'data.export.hint': _sk_en(
-        'Celá história aj meracie okná v jednom súbore — na prenos na iný počítač.',
-        'The whole history and the measurement windows in one file — to move to another computer.'),
     'data.export.done': _sk_en('Uložené: {path}', 'Saved: {path}'),
     'data.import.btn': _sk_en('Importovať zo súboru', 'Import from a file'),
     'data.import.title': _sk_en('Importovať dáta', 'Import data'),
@@ -6714,7 +6292,6 @@ _tr7('session.context.body_question', '体に入っていたものはありま�
 _tr7('session.context.caffeine', 'カフェイン / エナジードリンク', '咖啡因 / 能量饮料', 'кофеин / энергетик', 'cafeína / bebida energética', 'Koffein / Energydrink', 'caféine / boisson énergisante', 'cafeína / bebida energética')
 _tr7('session.context.alcohol', 'アルコール', '酒精', 'алкоголь', 'alcohol', 'Alkohol', 'alcool', 'álcool')
 _tr7('session.context.nicotine', 'ニコチン', '尼古丁', 'никотин', 'nicotina', 'Nikotin', 'nicotine', 'nicotina')
-_tr7('session.context.tired', '睡眠不足', '睡眠不足', 'мало сна', 'poco sueño', 'wenig Schlaf', 'peu de sommeil', 'pouco sono')
 _tr7('session.context.question', 'こういうことはあった？', '有发生这些情况吗？', 'Что-то из этого было?', '¿Pasó algo de esto?', 'Ist etwas davon passiert?', 'Est-ce que quelque chose de tout ça est arrivé ?', 'Aconteceu alguma destas coisas?')
 _tr7('session.context.why', '話すと呼吸が変わって心拍が上がる。これがないと、そういう夜は「合図が効かない」ように見えてしまう — 実際は関係ないのに。', '说话时呼吸会变、心率会升高。没有这一项，这样的夜晚看起来就像提示没用——其实毫无关系。', 'Когда говоришь, меняется дыхание и пульс растёт. Без этого такой вечер выглядел бы так, будто подсказки не работают — хотя дело вообще не в них.', 'Cuando hablas cambia tu respiración y sube el pulso. Sin esto, esa noche parecería que los avisos no sirven, cuando no tienen nada que ver.', 'Beim Sprechen ändert sich die Atmung und der Puls steigt. Ohne das sähe so ein Abend aus, als würden die Hinweise nichts bringen — obwohl es gar nicht an ihnen liegt.', 'Quand tu parles, ta respiration change et ton pouls monte. Sans ça, une telle soirée donnerait l’impression que les rappels ne servent à rien — alors qu’ils n’y sont pour rien.', 'Quando você fala, a respiração muda e o pulso sobe. Sem isto, uma noite dessas pareceria que os avisos não funcionam — quando não têm nada a ver.')
 _tr7('session.context.call', '誰かと通話した', '在语音通话', 'созвон с кем-то', 'estuve en una llamada', 'war im Call', 'j’étais en vocal', 'estive numa chamada')
@@ -6733,9 +6310,7 @@ _tr7('data.delete.insights', '分析の所見', '分析结论', 'наблюде�
 _tr7('data.delete.logs', 'ログ', '日志', 'логи', 'registros', 'Logs', 'journaux', 'registros')
 _tr7('data.delete.open_session', '進行中のセッション', '进行中的记录', 'текущая сессия', 'sesión en curso', 'laufende Sitzung', 'séance en cours', 'sessão em andamento')
 _tr7('data.delete.empty', '（空）', '（空）', '(пусто)', '(vacío)', '(leer)', '(vide)', '(vazio)')
-_tr7('data.delete.confirm', '削除', '删除', 'Удалить', 'Borrar', 'Löschen', 'Supprimer', 'Apagar')
 _tr7('data.delete.done', '削除した（{n} 件）。', '已删除（{n} 项）。', 'Удалено ({n}).', 'Borrado ({n} elementos).', 'Gelöscht ({n} Einträge).', 'Supprimé ({n} éléments).', 'Apagado ({n} itens).')
-_tr7('data.export.hint', '履歴と測定ウィンドウをまとめて一つのファイルに — 別のパソコンへ移すため。', '把全部历史和测量窗口放进一个文件——便于转移到另一台电脑。', 'Вся история и измерительные окна в одном файле — чтобы перенести на другой компьютер.', 'Todo el historial y las ventanas de medición en un archivo, para pasarlo a otro ordenador.', 'Der ganze Verlauf und die Messfenster in einer Datei — zum Umzug auf einen anderen Rechner.', 'Tout l’historique et les fenêtres de mesure dans un fichier — pour passer sur un autre ordinateur.', 'Todo o histórico e as janelas de medição num arquivo — para levar para outro computador.')
 _tr7('data.export.done', '保存した：{path}', '已保存：{path}', 'Сохранено: {path}', 'Guardado: {path}', 'Gespeichert: {path}', 'Enregistré : {path}', 'Salvo: {path}')
 _tr7('data.import.btn', 'ファイルから読み込む', '从文件导入', 'Импортировать из файла', 'Importar desde un archivo', 'Aus Datei importieren', 'Importer depuis un fichier', 'Importar de um arquivo')
 _tr7('data.import.title', 'データを読み込む', '导入数据', 'Импорт данных', 'Importar datos', 'Daten importieren', 'Importer des données', 'Importar dados')
@@ -6749,7 +6324,6 @@ _tr7('data.import.unreadable', 'ファイルを読めない。', '无法读取�
 _tr7('data.import.foreign', 'このファイルは Zanshin の書き出しではない。', '这个文件不是 Zanshin 的导出文件。', 'Этот файл не является экспортом из Zanshin.', 'Este archivo no es una exportación de Zanshin.', 'Diese Datei ist kein Export aus Zanshin.', 'Ce fichier n’est pas un export de Zanshin.', 'Este arquivo não é uma exportação do Zanshin.')
 _tr7('data.import.newer', 'ファイルは新しいバージョンのもの。アプリを更新して。', '文件来自更新的版本，请更新应用。', 'Файл из более новой версии приложения. Обнови приложение.', 'El archivo es de una versión más nueva. Actualiza la app.', 'Die Datei stammt aus einer neueren Version. Aktualisiere die App.', 'Le fichier vient d’une version plus récente. Mets l’app à jour.', 'O arquivo é de uma versão mais recente. Atualize o app.')
 _tr7('data.import.empty', 'ファイルに使える記録がない。', '文件中没有可用的记录。', 'В файле нет пригодных записей.', 'El archivo no contiene registros utilizables.', 'Die Datei enthält keine brauchbaren Einträge.', 'Le fichier ne contient aucun enregistrement utilisable.', 'O arquivo não contém registros utilizáveis.')
-_tr7('efficacy.empty', 'まだ何もありません。これは待つのではなく、プレイすることで貯まります。', '还没有数据。这是靠玩累积的，不是靠等。', 'Пока ничего. Это накапливается игрой, а не ожиданием.', 'Todavía nada. Esto se acumula jugando, no esperando.', 'Noch nichts. Das sammelt sich beim Spielen an, nicht beim Warten.', 'Rien pour l’instant. Cela s’accumule en jouant, pas en attendant.', 'Ainda nada. Isto se acumula jogando, não esperando.')
 _tr7('log.cue_delivered', '合図を出しました：{label}', '我提醒了你：{label}', 'Я подала знак: {label}', 'He avisado: {label}', 'Ich habe mich gemeldet: {label}', 'Je me suis manifestée : {label}', 'Eu avisei: {label}')
 _tr7('log.game_lang', 'ゲーム中の言語：{lang}', '游戏中的语言：{lang}', 'Язык в игре: {lang}', 'Idioma en el juego: {lang}', 'Sprache im Spiel: {lang}', 'Langue en jeu : {lang}', 'Idioma no jogo: {lang}')
 
@@ -7123,7 +6697,6 @@ _DOPLNENE_PREKLADY = {
         'fr': "Pourquoi Zanshin a-t-il vu le jour, au juste ? En tant que personne qui passe une grande partie de sa journée devant le PC — à streamer et à jouer — j'ai fini par remarquer un schéma qui revient. En jouant, on bascule souvent en mode « pilote automatique » total. Soit on est tellement absorbé qu'on perd complètement la notion du temps et de son propre corps, soit, à l'inverse, on attrape un tilt inutile et on s'agace dès que ça ne va pas.\n\nJe cherchais un moyen de garder la tête froide et de rester dans le « flow » même en pleine action ou dans des parties classées bien sweaty. C'est là que je suis tombé sur le concept de zanshin — qui, dans les arts martiaux, désigne un état de concentration totale, de détente et d'esprit clair, prêt à tout.\n\nJ'ai codé cette appli par simple besoin personnel. Je voulais un assistant discret, en arrière-plan, qui m'empêche de m'épuiser, qui me rappelle de respirer profondément de temps en temps et qui me garde les pieds sur terre. Rien à voir avec des exercices ésotériques compliqués — il s'agit simplement de prendre plus de plaisir à jouer, de mieux jouer et, surtout, de ne pas s'énerver pour un rien.\n\nJ'ai grandi avec les jeux vidéo, comme beaucoup de ma génération. Derrière les yeux, il se passe plus de choses que ce que l'on voit. Zanshin, c'est ma tentative d'essayer en paix : quelque chose qui remarque, ne demande rien et ne vend rien.\n\nEt soyons clairs : je ne suis ni programmeur ni graphiste. J'ai codé cette appli en vibe coding — avec l'IA, ligne par ligne, en apprenant au fur et à mesure. Ce que j'y ai apporté, moi, c'est l'idée et les années passées devant le PC.\n\nJe me tiens sur les épaules de géants. Rien de ce que fait cette appli n'a été inventé par moi — la respiration, la concentration, la mâchoire détendue, les recherches sur le rythme cardiaque et le stress, les outils dans lesquels elle est écrite. Quelqu'un a fait tout ça avant moi et l'a laissé en libre accès. C'est pour ça que Zanshin est gratuit et ouvert sous la licence GPLv3 : n'importe qui peut lire le code, le modifier et le transmettre — il ne peut simplement pas le refermer. Celui qui le transmet doit remettre avec lui le code source et cette même licence. J'en ai hérité ainsi, et je veux le transmettre de la même façon.\n\nSi cet état d'esprit te parle, ou si tu veux juste jouer et passer un bon moment, passe faire un tour dans notre communauté :",
         'pt': 'Por que, afinal, o Zanshin surgiu? Como alguém que passa boa parte do dia no PC — fazendo stream e jogando —, com o tempo percebi um padrão. Jogando, muitas vezes entramos no modo “piloto automático” total. Ou ficamos tão absorvidos que perdemos completamente a noção do tempo e do próprio corpo, ou, ao contrário, entramos num tilt desnecessário e ficamos frustrados quando as coisas dão errado.\n\nEu estava procurando um jeito de manter a cabeça fria e ficar no “flow” mesmo no meio da ação intensa ou de partidas sweaty de ranked. Foi aí que dei de cara com o conceito de zanshin — que, nas artes marciais, designa um estado de concentração total, descontração e mente limpa, pronta para tudo.\n\nEscrevi este app por uma simples necessidade pessoal. Eu queria um ajudante discreto em segundo plano que não me deixasse esgotar, que de vez em quando me lembrasse de respirar fundo e que me mantivesse com os pés no chão. Não são exercícios esotéricos complicados — é simplesmente para a gente se divertir mais com os jogos, jogar melhor e, acima de tudo, não entrar em tilt à toa.\n\nCresci com os jogos, como muita gente da minha geração. Por trás dos olhos acontece mais do que se vê. O Zanshin é a minha tentativa de tentar isso em paz: algo que percebe, não quer nada e não vende nada.\n\nE agora sem rodeios: não sou programador nem artista. Fiz este app com vibe coding — ou seja, junto com a IA, linha por linha, aprendendo pelo caminho. O que eu trouxe foi a ideia e os anos passados no PC.\n\nEstou apoiado nos ombros de gigantes. Nada do que este app faz foi inventado por mim — a respiração, a concentração, a mandíbula solta, a pesquisa sobre frequência cardíaca e estresse, e as ferramentas em que ele foi escrito. Alguém fez tudo isso antes de mim e deixou livremente disponível. É por isso que o Zanshin é gratuito e aberto sob a licença GPLv3: qualquer pessoa pode ver o código, alterá-lo e passá-lo adiante — só não pode fechá-lo. Quem o passa adiante tem de entregar junto também o código-fonte e a mesma licença. Eu o herdei assim e assim quero passá-lo adiante.\n\nSe essa atitude tem a ver com você, ou se você só quer jogar um pouco e bater papo, passe com certeza na nossa comunidade:',
     },
-    "about.links": {"ja": "僕はここにいます", "zh": "在这里找到我", "ru": "Найдёшь меня здесь", "es": "Me encuentras aquí", "de": "Hier findest du mich", "fr": "Retrouve-moi ici", "pt": "Me encontre aqui"},
     "about.between_lines": {"ja": "行間を読む人へ：\n\nこのアプリはストレスを測らない。測るのは、すきま——心拍が告げるものと、あなたが実際に感じるものとの間の。数字は表面、あなたは深み。\n\nそのすきまを自分の中で聞けるようになれば、ほかの場所でも聞こえてくる——人が書くことと思っていること、求めることと必要としていることの間に。\n\n何も失われない。ただ姿を変えるだけ——注意もまた。手のひらは開いたままで。", "zh": "给读得懂字里行间的人：\n\n这个应用不测量压力。它测量的是那道缝隙——你的心率所说的，与你真正所感受的之间。数字是表面；你是深处。\n\n当你学会在自己心里听见那道缝隙，你也会开始在别处听见它——在人们所写的与所想的、所求的与所需的之间。\n\n没有什么会失去。只是转化——注意力也是。把手掌摊开。", "ru": "Для того, кто читает между строк:\n\nЭто приложение не измеряет стресс. Оно измеряет зазор — между тем, что говорит твой пульс, и тем, что ты на самом деле чувствуешь. Число — это поверхность; ты — глубина.\n\nИ когда ты научишься слышать этот зазор в себе, ты начнёшь слышать его и в другом — в том, что люди пишут и что думают, чего просят и что им нужно.\n\nНичто не теряется. Оно лишь преображается — и внимание тоже. Держи ладонь открытой.", "es": "Para quien lee entre líneas:\n\nEsta app no mide el estrés. Mide la brecha — entre lo que dice tu pulso y lo que de verdad sientes. El número es la superficie; tú eres la profundidad.\n\nY cuando aprendas a oír esa brecha en ti, empezarás a oírla también en otras partes — en lo que la gente escribe y lo que piensa, en lo que pide y lo que necesita.\n\nNada se pierde. Solo se transforma — también la atención. Mantén la palma abierta.", "de": "Für den, der zwischen den Zeilen liest:\n\nDiese App misst nicht den Stress. Sie misst die Lücke — zwischen dem, was dein Puls sagt, und dem, was du wirklich fühlst. Die Zahl ist die Oberfläche; du bist die Tiefe.\n\nUnd wenn du lernst, diese Lücke in dir zu hören, wirst du sie auch anderswo hören — in dem, was Menschen schreiben und was sie meinen, worum sie bitten und was sie brauchen.\n\nNichts geht verloren. Es wandelt sich nur — auch die Aufmerksamkeit. Halte die Handfläche offen.", "fr": "Pour celui qui lit entre les lignes :\n\nCette appli ne mesure pas le stress. Elle mesure l'écart — entre ce que dit ton pouls et ce que tu ressens vraiment. Le chiffre est la surface ; toi, tu es la profondeur.\n\nEt quand tu apprendras à entendre cet écart en toi, tu commenceras à l'entendre ailleurs aussi — dans ce que les gens écrivent et ce qu'ils pensent, ce qu'ils demandent et ce dont ils ont besoin.\n\nRien ne se perd. Cela se transforme seulement — l'attention aussi. Garde la paume ouverte.", "pt": "Para quem lê nas entrelinhas:\n\nEste app não mede o estresse. Mede a lacuna — entre o que o seu pulso diz e o que você realmente sente. O número é a superfície; você é a profundidade.\n\nE quando você aprender a ouvir essa lacuna em si mesmo, vai começar a ouvi-la também em outros lugares — no que as pessoas escrevem e no que pensam, no que pedem e no que precisam.\n\nNada se perde. Apenas se transforma — a atenção também. Mantenha a palma aberta."},
     "log.cue_visual_failed": {
         'ja': 'ゲーム中の画像が描画されませんでした — この合図は計測に含めません。',
@@ -7663,13 +7236,11 @@ _tr7('metric.over.more', '心拍が高心拍の上限を超えていた時間。
 _tr7('metric.breath.title', '合図', '提示', 'Подсказки', 'Avisos', 'Hinweise', 'Rappels', 'Avisos')
 _tr7('metric.breath.short', 'このセッションで、負荷がしばらく高いまま続いたときに私が自分から出した合図の数。', '本次记录中，在你的负荷持续偏高一阵子时，我主动给你的提示次数。', 'Сколько подсказок я сама дала тебе в этой сессии — когда нагрузка какое-то время держалась высокой.', 'Cuántos avisos te di por mi cuenta en esta sesión, cuando tu carga se mantuvo alta un rato.', 'Wie viele Hinweise ich dir in dieser Sitzung von selbst gegeben habe — wenn deine Last eine Weile oben blieb.', 'Combien de rappels je t’ai donnés de moi-même pendant cette séance — quand ta charge est restée haute un moment.', 'Quantos avisos eu te dei sozinha nesta sessão — quando a sua carga ficou alta por um tempo.')
 _tr7('metric.breath.more', '合図は4つのうちのひとつ — 重心、顎、手と視線、呼吸 — で、オンにしたものを順番に使います。数えるのは、負荷がしばらく高いまま続いたときに私が自分から出したものだけで、あなたが「テスト」ボタンで試したものは含みません。音なしで画像だけだった合図も数えます。', '提示是四种之一——重心、下颌、手与视线或呼吸——我会在你打开的那些之间轮换。只统计我在你负荷持续偏高一阵子时主动给出的提示；你用“测试”按钮的尝试不算。只显示图片、没有声音的提示也算在内。', 'Подсказка — одна из четырёх: опора, челюсть, рука и взгляд или дыхание, — и я чередую те, что у тебя включены. Считаются только те, что я дала сама, когда нагрузка какое-то время держалась высокой; твои пробы кнопкой «Тест» не считаются. Подсказки, пришедшие только картинкой, без звука, тоже считаются.', 'Un aviso es uno de cuatro (centro, mandíbula, mano y mirada o respiración) y voy alternando los que tienes activados. Solo cuentan los que di por mi cuenta, cuando tu carga se mantuvo alta un rato; tus pruebas con el botón «Probar» no cuentan. También cuentan los avisos que llegaron solo como imagen, sin sonido.', 'Ein Hinweis ist einer von vier — Erdung, Kiefer, Hand und Blick oder Atem — und ich wechsle zwischen denen, die du eingeschaltet hast. Es zählen nur die, die ich von selbst gegeben habe, als deine Last eine Weile oben blieb; deine eigenen Versuche mit dem „Testen“-Knopf nicht. Hinweise, die nur als Bild ohne Ton kamen, zählen auch.', 'Un rappel est l’un des quatre — ancrage, mâchoire, main et regard ou respiration — et j’alterne ceux que tu as activés. Ne comptent que ceux que j’ai donnés de moi-même, quand ta charge est restée haute un moment ; tes essais avec le bouton « Tester » ne comptent pas. Les rappels venus seulement en image, sans son, comptent aussi.', 'Um aviso é um de quatro — centro, mandíbula, mão e olhar ou respiração — e eu alterno entre os que você deixou ligados. Só contam os que eu dei sozinha, quando a sua carga ficou alta por um tempo; os seus testes com o botão “Testar” não contam. Avisos que vieram só como imagem, sem som, também contam.')
-_tr7('metric.week.short', '今週このワールドで何回セッションがあり、合計でどれだけの時間だったか。', '本周你在这个世界里有多少次记录，总共多长时间。', 'Сколько сессий у тебя было на этой неделе в этом мире и сколько это времени в сумме.', 'Cuántas sesiones has tenido esta semana en este mundo y cuánto tiempo sumaron en total.', 'Wie viele Sitzungen du diese Woche in dieser Welt hattest und wie viel Zeit das insgesamt war.', 'Combien de séances tu as eues cette semaine dans ce monde, et combien de temps cela fait au total.', 'Quantas sessões você teve esta semana neste mundo e quanto tempo isso deu no total.')
 _tr7('metric.week.more', '週は月曜日から数え、今いるワールド（ゲームまたは仕事）のセッションだけを数えます。今週私がどれだけ記録したかを見渡すためだけのものです。', '一周从周一算起，只统计你当前所在世界（游戏或工作）的记录。它只是让你大致了解我本周记录了多少。', 'Неделя считается с понедельника, и учитываются только сессии мира, в котором ты сейчас (Игра или Работа). Это просто обзор того, сколько я записала за эту неделю.', 'La semana se cuenta desde el lunes y solo cuentan las sesiones del mundo en el que estás ahora (Juego o Trabajo). Sirve solo para ver cuánto he registrado esta semana.', 'Die Woche zählt ab Montag, und es zählen nur Sitzungen der Welt, in der du gerade bist (Spiel oder Arbeit). Sie dient nur als Überblick, wie viel ich diese Woche aufgezeichnet habe.', 'La semaine commence le lundi, et seules comptent les séances du monde où tu te trouves (Jeu ou Travail). C’est juste un aperçu de ce que j’ai enregistré cette semaine.', 'A semana conta a partir de segunda-feira, e só entram as sessões do mundo em que você está agora (Jogo ou Trabalho). Serve só como visão geral de quanto eu registrei esta semana.')
 _tr7('metric.session_len.title', 'セッションの長さ', '记录时长', 'Длина сессии', 'Duración de la sesión', 'Sitzungslänge', 'Durée de la séance', 'Duração da sessão')
 _tr7('metric.session_len.short', 'セッションの長さ — 見守りを始めてからの時間。', '本次记录持续了多久——从我开始关注算起。', 'Сколько длится сессия — с тех пор, как я начала наблюдение.', 'Cuánto dura la sesión: desde que empecé a observar.', 'Wie lange die Sitzung läuft — seit ich mit der Beobachtung begonnen habe.', 'La durée de la séance — depuis que j’ai commencé à observer.', 'Quanto tempo a sessão dura — desde que comecei a observar.')
 _tr7('metric.session_len.more', 'セッションはゲームを起動したときではなく、私が見守りを始めたときに始まり、見守りを止めたときに終わります。ただの時計で評価ではありません：長いセッションが悪いわけでも、短いセッションが良いわけでもありません。今見守っていないときは、カードに「—」と表示されます。', '记录从我开始关注时算起，而不是从你启动游戏时算起，在你停止关注时结束。这只是一个时钟，不是评分：长记录不代表不好，短记录也不代表好。我现在没有在关注时，卡片显示“—”。', 'Сессия начинается, когда я начинаю наблюдение, а не когда ты запускаешь игру, и заканчивается, когда ты останавливаешь наблюдение. Это просто часы, а не оценка: длинная сессия — не плохо, короткая — не хорошо. Когда я сейчас не наблюдаю, карточка показывает «—».', 'La sesión empieza cuando empiezo a observar, no cuando abres el juego, y termina cuando detienes la observación. Es solo un reloj, no una nota: una sesión larga no es mala y una corta no es buena. Cuando ahora mismo no observo, la tarjeta muestra «—».', 'Eine Sitzung beginnt, wenn ich mit der Beobachtung anfange, nicht wenn du das Spiel startest, und endet, wenn du die Beobachtung stoppst. Es ist nur eine Uhr, keine Bewertung: Eine lange Sitzung ist nicht schlecht und eine kurze nicht gut. Wenn ich gerade nicht beobachte, zeigt die Karte „—“.', 'Une séance commence quand je commence à observer, pas quand tu lances le jeu, et se termine quand tu arrêtes l’observation. Ce n’est qu’une horloge, pas une note : une longue séance n’est pas mauvaise et une courte n’est pas bonne. Quand je n’observe pas en ce moment, la carte affiche « — ».', 'A sessão começa quando começo a observar, não quando você abre o jogo, e termina quando você para a observação. É só um relógio, não uma nota: sessão longa não é ruim e sessão curta não é boa. Quando não estou observando agora, o cartão mostra “—”.')
 _tr7('metric.last_cue.title', '最後の合図から', '距上次提示', 'С последней подсказки', 'Desde el último aviso', 'Seit dem letzten Hinweis', 'Depuis le dernier rappel', 'Desde o último aviso')
-_tr7('metric.last_cue.short', 'このセッションで私が自分から出した最後の合図から、何分たったか。', '距离本次记录中我上一次主动给你的提示，过去了多少分钟。', 'Сколько минут прошло с последней подсказки, которую я подала тебе в этой сессии сама.', 'Cuántos minutos han pasado desde el último aviso que te di por mí misma en esta sesión.', 'Wie viele Minuten seit dem letzten Hinweis vergangen sind, den ich dir in dieser Sitzung von selbst gegeben habe.', 'Combien de minutes se sont écoulées depuis le dernier rappel que je t’ai envoyé de moi-même pendant cette séance.', 'Quantos minutos se passaram desde o último aviso que eu te dei por conta própria nesta sessão.')
 _tr7('metric.last_cue.more', '数えるのは、私が自分から出し、実際に表示された合図だけです — 「テスト」ボタンで試したものは含みません。このセッションでまだ一度も来ていなければ、カードに「—」が表示されます。これは目標でも連続記録でもありません。長い沈黙はうまくいっているという意味ではなく、合図はあなたが何か間違っているという意味でもありません。私が最後に声をかけたのがいつか、それだけです。', '只统计我主动发出、并且确实显示出来的提示——你用“测试”按钮试的不算。本次记录中还没有提示时，卡片显示“—”。这不是目标，也不是连胜：长时间的安静不代表你状态好，出现提示也不代表你做错了什么。它只是我上一次出声的时间。', 'Считается только подсказка, которую я подала сама и которая действительно показалась, — твои пробы кнопкой «Тест» не засчитываются. Пока в этой сессии не пришло ни одной, карточка показывает «—». Это не цель и не серия: долгая тишина не значит, что у тебя всё получается, а подсказка не значит, что ты делаешь что-то не так. Это просто момент, когда я подала голос в последний раз.', 'Solo cuenta un aviso que di por mí misma y que de verdad se mostró — tus pruebas con el botón «Probar» no cuentan. Mientras no haya llegado ninguno en esta sesión, la tarjeta muestra «—». No es una meta ni una racha: un silencio largo no significa que lo estés haciendo bien, y un aviso no significa que estés haciendo algo mal. Es solo cuándo avisé por última vez.', 'Gezählt wird nur ein Hinweis, den ich von selbst gegeben habe und der wirklich angezeigt wurde — deine eigenen Versuche mit dem Knopf „Testen“ zählen nicht. Solange in dieser Sitzung keiner kam, zeigt die Karte „—“. Das ist weder ein Ziel noch eine Serie: Lange Stille heißt nicht, dass es bei dir gut läuft, und ein Hinweis heißt nicht, dass du etwas falsch machst. Es ist nur, wann ich mich zuletzt gemeldet habe.', 'Ne compte qu’un rappel que j’ai envoyé de moi-même et qui s’est réellement affiché — tes essais avec le bouton « Tester » ne comptent pas. Tant qu’aucun n’est arrivé pendant cette séance, la carte affiche « — ». Ce n’est ni un objectif ni une série : un long silence ne veut pas dire que tu t’en sors bien, et un rappel ne veut pas dire que tu fais quelque chose de travers. C’est juste le moment où je me suis manifestée pour la dernière fois.', 'Só conta um aviso que eu dei por conta própria e que apareceu de fato — os seus testes com o botão “Testar” não contam. Enquanto nenhum chegar nesta sessão, o cartão mostra “—”. Não é meta nem sequência: um silêncio longo não quer dizer que você está indo bem, e um aviso não quer dizer que você está fazendo algo errado. É só quando eu avisei pela última vez.')
 _tr7('metric.calm_time.title', '平静の時間', '平静时间', 'Время в покое', 'Tiempo en calma', 'Zeit in Ruhe', 'Temps au calme', 'Tempo em calma')
 _tr7('metric.calm_time.short', 'セッションのうち、心拍が平静の帯にあった分数。', '本次记录中你的心率在平静区间里待了多少分钟。', 'Сколько минут сессии твой пульс был в зоне покоя.', 'Cuántos minutos de la sesión estuvo tu pulso en la zona de calma.', 'Wie viele Minuten der Sitzung dein Puls in der Ruhezone war.', 'Combien de minutes de la séance ton pouls est resté dans la zone calme.', 'Quantos minutos da sessão o seu pulso passou na zona de calma.')

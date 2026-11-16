@@ -47,9 +47,11 @@ def test_onboarding_has_watch_step():
     """The watch step with pairing must exist (the key point)."""
     import i18n
     assert "ob.step3.pair_now" in i18n.STRINGS
-    assert "ob.step3.later" in i18n.STRINGS
+    assert "ob.step3.later_note" in i18n.STRINGS
     ud=_read("ui_dialogs.py")
     assert "wants_pairing = True" in ud, "pair_now musi nastavit wants_pairing"
+    # the "pair later" note is really drawn on the watch step
+    assert 'tr("ob.step3.later_note"' in ud
 
 def test_tour_steps_have_translations():
     """Every tour step has a title and a text - the keys are built at runtime

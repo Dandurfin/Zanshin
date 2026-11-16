@@ -1543,9 +1543,7 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         # --- trigger map ---
         # PHASE 3: the gamepad button legend (A=X, B=O, ...) was here because a
         # cue could be triggered with a button. It no longer can - the
-        # controller only reports that the player is active. The key
-        # `slots.gamepad_hint` in i18n stays until the page is redrawn in
-        # phase 5.
+        # controller only reports that the player is active.
         #
         # THE "+ Add trigger" BUTTON IS NO LONGER HERE (0.2). Cues have four
         # fixed categories (Grounding, Jaw, Release, Breath) - each with its

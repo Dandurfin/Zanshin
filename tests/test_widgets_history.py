@@ -86,10 +86,16 @@ def _ma_vsetky_jazyky(kluc):
     return set(i18n.STRINGS.get(kluc, {})) == set(i18n.LANGUAGES)
 
 
+# 0.3.1: deleted as unused - the last-cue card shows no `short` sentence
+# anywhere (unlike the other four, whose `short` History also shows).
+BEZ_TEXTU = {"metric.last_cue.short"}
+
+
 def test_kazda_nova_karta_ma_vsetky_texty_vo_vsetkych_jazykoch():
     chyba = [f"metric.{sid}.{cast}" for sid in NOVE
              for cast in ("tag", "title", "short", "more")
-             if not _ma_vsetky_jazyky(f"metric.{sid}.{cast}")]
+             if f"metric.{sid}.{cast}" not in BEZ_TEXTU
+             and not _ma_vsetky_jazyky(f"metric.{sid}.{cast}")]
     chyba += [f"dashboard.unit.{sid}" for sid in NOVE
               if not _ma_vsetky_jazyky(f"dashboard.unit.{sid}")]
     chyba += [k for k in ("dashboard.fmt.min", "dashboard.fmt.h_min", "dashboard.fmt.pct")
