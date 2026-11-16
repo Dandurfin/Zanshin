@@ -19,6 +19,13 @@ What changed since alpha 0.4, and why
    UpdateLayeredWindow (per-pixel alpha, glow, antialiasing) - see
    hud_paint.py and layer_window.py.
 
+4. AN EXHALE WITH EVERY CUE. A long exhale is the one thing that fits any
+   moment, so no cue comes without it. A grounding / jaw / release visual
+   brings the breath ring along in an exhale-only mode (one exhale, the
+   ring goes from full to empty), and the breath cue on its own starts
+   with the exhale and ends breathed out (exhale -> inhale -> exhale).
+   See `SomaticOverlayManager.trigger` and `_SlotOverlay.breath_phases`.
+
 Anti-cheat
 ----------
 No change from the original design, only stricter: the window is
@@ -64,11 +71,24 @@ class _SlotOverlay:
     FADE_MS = 260
     HOLD_S = 3.0
 
-    # breathing cycle - default 4 s inhale / 6 s exhale, the player can
-    # change them in Settings (see SomaticOverlayManager.set_breath_seconds)
+    # breathing - default 4 s inhale / 6 s exhale, the player can change
+    # them in Settings (see SomaticOverlayManager.set_breath_seconds)
     INHALE_S_DEFAULT = 4.0
     EXHALE_S_DEFAULT = 6.0
-    CYCLES = 2                   # 2 cycles per slot trigger
+
+    # What one showing of the breath ring breathes (`breath_phases`):
+    #   BREATH_FULL   - the breath cue on its own: exhale -> inhale ->
+    #                   exhale. It STARTS with the exhale (it fits any
+    #                   moment, the middle of a fight too) and ends
+    #                   breathed out, so the ring never leaves the player
+    #                   holding a full breath. Until 0.3 it was 2 cycles of
+    #                   inhale -> exhale.
+    #   BREATH_EXHALE - the companion of grounding / jaw / release
+    #                   (`trigger_exhale`): one exhale, full -> empty.
+    # Drag-test mode ignores both and loops exhale -> inhale until the
+    # player ends the test.
+    BREATH_FULL = "full"
+    BREATH_EXHALE = "exhale"
 
     # How long the "intro" animation of each visual runs. After it ends
     # the frame is NO LONGER REDRAWN (the image is static), so keeping
@@ -87,6 +107,8 @@ class _SlotOverlay:
         self.color = None           # None = theme accent; otherwise #rrggbb
         self.inhale_s = self.INHALE_S_DEFAULT
         self.exhale_s = self.EXHALE_S_DEFAULT
+        # set by trigger() / trigger_exhale() / test() before each play()
+        self._breath_mode = self.BREATH_FULL
 
         self.surface = None
         self.w = self.h = 0
@@ -138,10 +160,34 @@ class _SlotOverlay:
         (`not enabled`) is not a failure — then the cue was not supposed
         to be delivered at all; it returns False so that it is not
         measured.
+
+        The breath ring breathes its full showing here (BREATH_FULL).
         """
         if self.enabled:
+            self._breath_mode = self.BREATH_FULL
             return self.play()
         return False
+
+    def trigger_exhale(self):
+        """The companion exhale: the breath ring in BREATH_EXHALE mode, shown
+        next to a grounding / jaw / release visual
+        (`SomaticOverlayManager.trigger`). One exhale of the player's
+        exhale length, the ring going from full to empty, then the usual
+        fade-out.
+
+        Returns True if it really started drawing. Nothing is drawn (False)
+        when this is not the breath ring, when the breath visual is
+        disabled (the player's choice, respected exactly like for the
+        breath cue), or when the ring is in drag-test mode - the player is
+        placing it right now, and a cue must not turn the test into a short
+        exhale that disappears from under the mouse. A ring that is already
+        showing (the breath cue, or the previous companion) is restarted
+        (`play() -> stop()`).
+        """
+        if self.visual != "breath" or not self.enabled or self._test_mode:
+            return False
+        self._breath_mode = self.BREATH_EXHALE
+        return self.play()
 
     @property
     def is_active(self):
@@ -156,12 +202,14 @@ class _SlotOverlay:
         position could not be fine-tuned visually.
 
         A second call of test() (or stop_test) ends the mode and saves the
-        position.
+        position. The breath ring loops exhale -> inhale for as long as the
+        test runs (`breath_state`).
         """
         if self._test_mode:
             self.stop_test()
             return
         self._test_mode = True
+        self._breath_mode = self.BREATH_FULL
         self.play()
 
     def stop_test(self):
@@ -331,6 +379,44 @@ class _SlotOverlay:
         if gen == self._gen:
             self._destroy()
 
+    # ---------- breathing ----------
+
+    def breath_phases(self):
+        """The phases of one showing of the breath ring, in order, as
+        ((inhale, seconds), ...) - see BREATH_FULL / BREATH_EXHALE.
+
+        Every showing starts with the exhale and ends breathed out. Drag-test
+        mode does not use this (it loops, see `breath_state`)."""
+        if self._breath_mode == self.BREATH_EXHALE:
+            return ((False, self.exhale_s),)
+        return ((False, self.exhale_s), (True, self.inhale_s),
+                (False, self.exhale_s))
+
+    def breath_duration(self):
+        """Seconds the ring breathes in one showing (without the fades)."""
+        return sum(seconds for _inhale, seconds in self.breath_phases())
+
+    def breath_state(self, elapsed):
+        """(inhale, phase) of the ring `elapsed` seconds after the fade-in.
+
+        `phase` is 0..1 within the current inhale or exhale - exactly what
+        `hud_paint.render_breath` takes (an exhale at 0 is the full ring, at
+        1 the empty one). After the end of the showing it stays at the end
+        of the last phase, i.e. breathed out. Drag-test mode loops exhale ->
+        inhale without an end."""
+        if self._test_mode:
+            t = elapsed % (self.exhale_s + self.inhale_s)
+            if t < self.exhale_s:
+                return False, t / self.exhale_s
+            return True, (t - self.exhale_s) / self.inhale_s
+        t = max(0.0, float(elapsed))
+        phases = self.breath_phases()
+        for inhale, seconds in phases:
+            if t < seconds:
+                return inhale, t / seconds
+            t -= seconds
+        return phases[-1][0], 1.0
+
     # ---------- drawing ----------
 
     def _render(self, elapsed):
@@ -338,11 +424,7 @@ class _SlotOverlay:
         if self.color:
             style = style.tinted(self.color)
         if self.visual == "breath":
-            cycle = self.inhale_s + self.exhale_s
-            t_in_cycle = elapsed % cycle
-            inhale = t_in_cycle < self.inhale_s
-            phase = (t_in_cycle / self.inhale_s if inhale
-                     else (t_in_cycle - self.inhale_s) / self.exhale_s)
+            inhale, phase = self.breath_state(elapsed)
             image = hud_paint.render_breath(self.w, self.h, style, phase=phase,
                                             inhale=inhale,
                                             cycle_text=self.manager.breath_text(inhale),
@@ -411,9 +493,15 @@ class _SlotOverlay:
     def _step(self, elapsed):
         if self.visual == "breath":
             # in test mode it breathes round and round (the player is
-            # fine-tuning the position), otherwise 2 cycles and the end
-            if not self._test_mode and elapsed >= self.CYCLES * (self.inhale_s + self.exhale_s):
-                return True
+            # fine-tuning the position), otherwise the phases of this
+            # showing (`breath_phases`) and the end - the last frame is
+            # drawn exactly breathed out (the empty ring), not one tick
+            # before it, and that frame fades out
+            if not self._test_mode:
+                duration = self.breath_duration()
+                if elapsed >= duration:
+                    self._render(duration)
+                    return True
             self._render(elapsed)
             return False
 
@@ -443,6 +531,8 @@ class SomaticOverlayManager:
     """
 
     VISUALS = ("grounding", "jaw", "release", "breath")
+    # the slot whose ring also comes as the companion exhale of the others
+    BREATH_INDEX = VISUALS.index("breath")
 
     # Sizes are in 1080p pixels - they are multiplied by Monitor.scale.
     BASE_SIZES = {
@@ -516,11 +606,60 @@ class SomaticOverlayManager:
                                          color=color)
 
     def trigger(self, index):
-        """Returns True if the slot's visual really started drawing (see
-        `_SlotOverlay.trigger`). Invalid index = nothing was drawn."""
-        if 0 <= index < len(self._slots):
-            return bool(self._slots[index].trigger())
-        return False
+        """Shows the slot's visual. Returns True if THE SLOT'S OWN visual
+        really started drawing (see `_SlotOverlay.trigger`). Invalid index =
+        nothing was drawn.
+
+        EVERY CUE COMES WITH AN EXHALE. With a grounding / jaw / release
+        visual the breath ring (slot 3's visual, at slot 3's own position,
+        size and colour) is shown at the same time in the exhale-only mode
+        (`_SlotOverlay.trigger_exhale`). The cue says what, the ring says
+        how: one long exhale.
+
+        The companion never changes the return value. The measurement asks
+        whether the CATEGORY's visual was delivered (bug B17): a ring that
+        is disabled or failed does not make a drawn grounding visual
+        undelivered, and a drawn ring does not make a failed one delivered.
+        No companion when the category visual was not drawn (no cue, no
+        exhale), when that slot is in drag-test mode, or when the breath
+        visual is disabled or in its own drag test (`trigger_exhale`).
+        trigger(3) is the breath cue itself (exhale -> inhale -> exhale),
+        with no second ring.
+        """
+        if not (0 <= index < len(self._slots)):
+            return False
+        overlay = self._slots[index]
+        shown = bool(overlay.trigger())
+        if shown and index != self.BREATH_INDEX and not overlay._test_mode:
+            self._show_companion_exhale()
+        return shown
+
+    def _show_companion_exhale(self):
+        """The exhale-only breath ring next to a category visual.
+
+        Any failure stays here (logged): it must not reach the caller - the
+        in-game cue (`_fire_somatic_cue`) does not catch exceptions around
+        `trigger`, and the category visual is already on screen.
+
+        A failure also must not leave a half-built ring behind. `play()`
+        cleans up only after a failed build or first frame; an exception
+        later (showing it, the fade's first `.after()`) would leave the
+        window open with no animation to close it, and an open window counts
+        as a running visual for good (`is_active`) - `_cue_can_fire` would
+        then hold back every later cue of the session without a word. So the
+        ring is stopped here - unless the player is placing it right now
+        (drag test): then no companion was started at all and the test's
+        window must stay."""
+        ring = self._slots[self.BREATH_INDEX]
+        try:
+            ring.trigger_exhale()
+        except Exception:
+            log.exception("sprievodny vydych (dychovy kruh) sa nepodarilo ukazat")
+            if not ring._test_mode:
+                try:
+                    ring.stop()
+                except Exception:
+                    log.exception("sprievodny vydych sa nepodarilo ani zastavit")
 
     def is_active(self, index):
         if 0 <= index < len(self._slots):
@@ -530,7 +669,8 @@ class SomaticOverlayManager:
     def test(self, index):
         """Toggles the slot's drag-test mode. Returns True if it is on AFTER
         the call (the visual is on screen and can be dragged), False if
-        it was just turned off."""
+        it was just turned off. It shows ONLY that slot's visual - no
+        companion exhale: the player is placing one picture."""
         if 0 <= index < len(self._slots):
             # if another slot's test is running, turn it off first - two
             # persistent test visuals at once would overlap and clash
@@ -558,6 +698,7 @@ class SomaticOverlayManager:
             self._slots[index].on_test_moved = callback
 
     def stop_all(self):
+        # the companion exhale is slot 3's own ring, so this stops it too
         for overlay in self._slots:
             overlay.stop_test()
             overlay.stop()

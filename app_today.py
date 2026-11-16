@@ -316,8 +316,12 @@ class TodayMixin:
             return False
         # Is ANY visual already running? Asking only about slot 3 was not
         # enough: since rotation of categories was introduced, any of the
-        # four can be running, and two overlapping pictograms at once are
-        # exactly the visual noise the app avoids.
+        # four can be running, and a second cue on top of the first is
+        # exactly the visual noise the app avoids. Since 0.3.1 the exhale
+        # ring (slot 3's visual) comes with every grounding / jaw / release
+        # cue (`SomaticOverlayManager.trigger`) - it is part of that cue, so
+        # the next one waits for it too (about 6.5 s with the default exhale;
+        # far below the gap between cues).
         if any(self.overlay_manager.is_active(i) for i in range(4)):
             return False
         # While steps are coming, the app stays silent. `None` means the watch

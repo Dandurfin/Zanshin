@@ -1,11 +1,44 @@
 # Changelog — Zanshin
 
-What each version changed, newest first: 0.3, 0.2.1, and what 0.1 got
-wrong. What doesn't work yet, or works only partly, is in
-[KNOWN_ISSUES.md](KNOWN_ISSUES.md).
+What each version changed, newest first: 0.3.1 (in the code here, not
+released yet), 0.3, 0.2.1, and what 0.1 got wrong. What doesn't work yet, or
+works only partly, is in [KNOWN_ISSUES.md](KNOWN_ISSUES.md).
 
 **0.2, partly** means only part was fixed. Where something stayed as it was,
 such as the online voice being the default, I say so.
+
+## What 0.3.1 changes (not released yet)
+
+These are in the code here, not in a release yet: the 0.3 ZIP doesn't
+have them.
+
+- **Only the breath cue was about breathing, and its ring began with a breath
+  in.** A long exhale is the one thing that fits any moment, mid-fight too.
+  **0.3.1:** by default every cue comes with it. The built-in words are
+  *Exhale, grounded*, *Exhale, jaw*, *Exhale, release* and, for the breath
+  cue, *Long exhale* (Slovak and Czech use these English words too; the
+  other languages say the same in their own words). The grounding, jaw and
+  grip & gaze pictures bring the breath ring along, where you put the breath
+  picture and at its size and colour: one exhale as long as its *Exhale
+  length* in *In-game pictures* (6 s by default), the ring going from full
+  to empty with the caption *EXHALE*, then it fades like the other pictures.
+  Picture-only cues show it too, and so does *▶ Test* on a cue; *▶ Show*,
+  for dragging one picture into place, shows only that picture. With the
+  breath picture switched off, the other cues come without the ring;
+  switching off only the breath cue keeps it. The breath cue itself starts
+  with the exhale and ends breathed out: out, in, out (16 s by default; it
+  was two breaths in and out, 20 s). The grounding picture moved from the
+  bottom centre, right under the ring, to the left middle, mirroring grip &
+  gaze on the right. The first time 0.3.1 loads your settings, a cue that
+  still has its built-in word from an earlier version gets the new one, in
+  the same language, and a grounding picture still at its old default place
+  moves to the new one. Words you wrote yourself stay exactly as they are, a
+  picture you moved stays where you put it, and a profile code from 0.3
+  imported later keeps its old words. With the natural voice the new words
+  are new lines: they are prepared, and sent to Microsoft, like any changed
+  wording, and until a line is ready that cue plays in the Windows voice.
+  History's *How your pulse moved after a cue* doesn't tell cues from before
+  and after this change apart, so a category's number mixes the two.
 
 ## What 0.3 changes
 

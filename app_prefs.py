@@ -47,8 +47,9 @@ from settings_model import (DEFAULT_AUDIO, DEFAULT_BREATH_EXHALE_S,
                             DEFAULT_EDGE_VOICE, DEFAULT_MONITOR_TARGET,
                             ENGINE_EDGE, ENGINE_SAPI, clamp_int, default_hud_config,
                             default_overlay_configs, default_slots, doplnit_kategorie,
-                            engine_labels, jazyky_hlasok, migrate_slot_text,
-                            normalize_breath_seconds,
+                            engine_labels, jazyk_hlasu, jazyky_hlasok,
+                            migrate_profile_texts,
+                            move_old_grounding_position, normalize_breath_seconds,
                             normalize_dashboard_stats, normalize_hud_config,
                             normalize_monitor_target, normalize_overlay_config,
                             normalize_slot, suggested_voice)
@@ -664,6 +665,15 @@ class PrefsMixin:
                     cfgs = default_overlay_configs()
                     cfgs[3]["enabled"] = bool(loaded.get("breathing_overlay_enabled", False))
                     data["overlay_configs"] = cfgs
+                # ONE-TIME MOVE: grounding from the bottom centre to the left
+                # middle (it would sit under the exhale ring that now comes
+                # with every cue). Only a visual still at exactly the old
+                # default moves - a dragged position stays. ONCE, like
+                # `visuals_repaired` below: `save_settings` writes
+                # `grounding_moved`, so a player who later puts it back at
+                # the bottom keeps it there.
+                if not loaded.get("grounding_moved"):
+                    move_old_grounding_position(data["overlay_configs"])
                 data["hr_ip"] = str(loaded.get("hr_ip") or ANY_INTERFACE)
                 # 65432 was the old default port from the times when the
                 # receiver knew only UDP. Apps for OBS (including
@@ -750,6 +760,15 @@ class PrefsMixin:
         # The look belongs to the world - also after a damaged file, also on
         # the first start.
         data["theme"] = theme_mod.WORLD_THEME.get(data["world"], theme_mod.DEFAULT_THEME)
+        # ONE-TIME CHANGE of the old default words to the ones with the
+        # exhale. ONCE, like `grounding_moved`: `save_settings` writes
+        # `exhale_words`, so a player who later types an old word back
+        # ("Jaw") keeps it - from then on it is their own word.
+        prelozit_slova = not (loaded is not None and loaded.get("exhale_words"))
+        # An old default word shared by several languages (ja/zh 呼吸, es/pt
+        # Mandíbula...) that the rest of the profile does not settle: the
+        # language of the voice that reads it first, then the app language.
+        jazyky_slov = (jazyk_hlasu(data["edge_voice"]), data["lang"])
         for profile in data["profiles"]:
             # A profile with fewer than four slots (created by hand in 0.1,
             # where slots were added with a button, or after a removal) gets
@@ -757,10 +776,12 @@ class PrefsMixin:
             # Add trigger) button is gone, so otherwise the category could no
             # longer be put back into the profile.
             profile["slots"] = doplnit_kategorie(profile["slots"])
-            for index, slot in enumerate(profile["slots"]):
-                # Old default word ("Teeth", ja 脱力, zh 放松) -> new.
-                # Only on load, see `settings_model.migrate_slot_text`.
-                slot["text"] = migrate_slot_text(slot["text"], index)
+            # Old default word ("Grounded", ja 重心, the 0.1 "Teeth"...) ->
+            # the new one with the exhale, in the same language. Only on
+            # load, see `settings_model.migrate_profile_texts`.
+            if prelozit_slova:
+                migrate_profile_texts(profile["slots"], jazyky_slov)
+            for slot in profile["slots"]:
                 slot["audio_path"] = resolve_audio_path(slot["audio_path"])
                 slot["voice_path"] = resolve_audio_path(slot["voice_path"])
         return data
@@ -814,6 +835,14 @@ class PrefsMixin:
             # not needed) - see `load_settings`. From now on switched-off
             # visuals are the player's choice.
             "visuals_repaired": True,
+            # The one-time move of an untouched grounding visual to the left
+            # middle has already run (or was not needed) - see
+            # `load_settings`. From now on its position is the player's.
+            "grounding_moved": True,
+            # The one-time change of the old default cue words to the ones
+            # with the exhale has already run - see `load_settings`. From now
+            # on every word in a slot is the player's.
+            "exhale_words": True,
             # The warning about an installed 0.2 has already been shown (once,
             # see `_upozorni_na_staru_instalaciu`).
             "old_installer_warned": bool(getattr(self, "old_installer_warned", False)),

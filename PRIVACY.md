@@ -71,7 +71,8 @@ only when you click **Update voice** (from 0.3, see below).
        has its picture off or is an extra one plays the Windows voice).
      - **When:** after the first start (the default cues), and after that
        only for lines that aren't in the cache yet — at every start (for
-       example a line still waiting when you quit), after you change a
+       example a line still waiting when you quit, or, from 0.3.1, the new
+       built-in words with the exhale), after you change a
        cue's wording, switch a cue or its picture on, switch it to speak or
        remove its own recording, change the voice, the speed, the language or
        the profile (or create one), import a profile, switch back to

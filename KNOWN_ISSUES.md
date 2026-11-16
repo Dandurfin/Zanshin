@@ -79,6 +79,9 @@ about, and a few will stay.
   says so) is counted two ways: History, the CSV "breathing" column, insights
   and the cue card on *Today* count it, while the questionnaire, the cue
   ladder and "not now" treat it as not shown, even if its voice played.
+  0.3.1 (in the code here, not in a release yet) adds an exhale to the cues,
+  and the cue chart puts cues from before and after that change together,
+  so a category's number mixes the two.
 - **Texts and controls:** a few explanations and settings texts may still
   claim a bit more than the code does (0.3 rewrote many of them). The
   pairing guide's boxes *Watch won’t connect at all?* and *Watch connects

@@ -40,9 +40,25 @@ from audio_engine import MicRecorder, play_audio_file, speak_sapi_isolated
 from i18n import cislo, tr
 from paths import APP_NAME, AUDIO_DIR, images_dir
 from settings_model import (BREATH_SECONDS_MAX, BREATH_SECONDS_MIN, MODE_COMBO, MODE_ORDER,
-                            MODE_SFX, MODE_TTS, je_kategoria, label_to_mode,
-                            mode_labels, normalize_slot, sfx_choice_display,
-                            sfx_dropdown_options)
+                            MODE_SFX, MODE_TTS, OVERLAY_DEFAULT_POS, je_kategoria,
+                            label_to_mode, mode_labels, normalize_slot,
+                            sfx_choice_display, sfx_dropdown_options)
+
+
+def stred_v_nahlade(sirka, vyska, w, h, pos, okraj=8):
+    """Centre (x, y) of a `w` x `h` picture on a small screen preview of
+    `sirka` x `vyska` pixels, for a position `pos` given in % of the screen
+    (as in `OVERLAY_DEFAULT_POS`).
+
+    The picture is clamped so all of it stays inside with an `okraj`
+    margin - the same thing `display.place` does with a visual on its
+    monitor. The preview draws the pictogram larger than it really is (it
+    would be a few pixels otherwise), so near an edge the clamp matters."""
+    cx = sirka * float(pos[0]) / 100.0
+    cy = vyska * float(pos[1]) / 100.0
+    cx = max(okraj + w / 2.0, min(sirka - okraj - w / 2.0, cx))
+    cy = max(okraj + h / 2.0, min(vyska - okraj - h / 2.0, cy))
+    return int(round(cx)), int(round(cy))
 
 
 # --------------------------------------------------------------------------
@@ -3146,14 +3162,19 @@ class OnboardingWizard:
         except Exception:
             pass
 
-        # pictogram (grounding) bottom centre
+        # pictogram (grounding) where it really sits by default
+        # (`OVERLAY_DEFAULT_POS`). Grounding moved from the bottom centre to
+        # the left middle (0.3.1, it would sit under the exhale ring that now
+        # comes with every cue); a fixed spot here kept showing the old one.
         try:
             style = hud_paint.Style(pal)
-            ico = hud_paint.render_visual("grounding", 150, 100, style,
+            iw, ih = 150, 100
+            ico = hud_paint.render_visual("grounding", iw, ih, style,
                                           t=0.8, label=None, ss=2)
             photo2 = ImageTk.PhotoImage(ico)
             self._photos.append(photo2)
-            canvas.create_image(cx, H - 20, image=photo2, anchor="s")
+            gx, gy = stred_v_nahlade(W, H, iw, ih, OVERLAY_DEFAULT_POS[0])
+            canvas.create_image(gx, gy, image=photo2, anchor="center")
         except Exception:
             pass
 

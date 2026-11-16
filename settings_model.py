@@ -136,11 +136,38 @@ def doplnit_kategorie(slots):
 # the 4 in-game overlay visuals - the single source of truth for both
 # SomaticOverlayManager and default_overlay_configs() below.
 OVERLAY_DEFAULT_POS = {
-    0: (50.0, 88.0),   # Grounding - bottom centre
+    0: (14.0, 50.0),   # Grounding - left, middle (mirrors Release)
     1: (50.0, 12.0),   # Jaw - top centre
     2: (86.0, 50.0),   # Release - right, middle
-    3: (50.0, 74.0),   # Breath - bottom centre, slightly above the shoes (slot 0)
+    3: (50.0, 74.0),   # Breath - bottom centre
 }
+
+# Grounding's default position up to 0.3 (bottom centre, under the breath
+# ring). Since every cue comes with the exhale ring (overlay.py), grounding
+# would sit right under it, so it moved to the left middle. A config that
+# still holds exactly this position was never dragged and is moved once on
+# load (`move_old_grounding_position`).
+OVERLAY_OLD_GROUNDING_POS = (50.0, 88.0)
+
+
+def move_old_grounding_position(cfgs):
+    """Moves an untouched grounding visual (slot 0) from the old default
+    to the new one. Returns True if it moved it.
+
+    Only the EXACT old default counts - a position the player dragged
+    stays where they put it. Only position changes; enabled, size and
+    colour stay. `cfgs` is the normalised overlay_configs list (changed in
+    place). It is called once per settings file: `load_settings` asks only
+    while the file has no `grounding_moved` flag, and `save_settings`
+    writes it."""
+    try:
+        cfg = cfgs[0]
+        if (float(cfg["pos_x"]), float(cfg["pos_y"])) != OVERLAY_OLD_GROUNDING_POS:
+            return False
+    except (IndexError, KeyError, TypeError, ValueError):
+        return False
+    cfg["pos_x"], cfg["pos_y"] = OVERLAY_DEFAULT_POS[0]
+    return True
 
 
 def default_overlay_configs():
@@ -398,7 +425,7 @@ DEFAULT_EDGE_VOICE = "en-GB-SoniaNeural"
 # cues really are in the new language (`jazyky_hlasok`,
 # `app_prefs._hlas_k_hlaskam`). Switching the language by itself does not
 # translate profile texts - a Japanese voice would otherwise read the
-# English "Grounded".
+# English "Exhale, grounded".
 #
 # Exactly the languages whose built-in words (`slot.default.*`) are NOT
 # English. At first only those with a script other than Latin
@@ -458,10 +485,14 @@ def jazyky_hlasok(slots):
 
     The language is NOT GUESSED from the text: it returns the set of
     languages whose built-in words (`slot.default.*`) at the same
-    positions match ALL such texts. A set, because sk/en/cs share the
-    English words, and ja and zh share 呼吸. The player's own word (even
-    just one), mixed languages or no speaking cue -> an empty set and the
-    app leaves the voice alone - better nothing than guessing.
+    positions match ALL such texts. The old built-in words of the same
+    slot count too (`_STARE_PREDVOLENE_SLOVA` - a profile code shared
+    from 0.3 still has them; the settings file is migrated on load). A
+    set, because sk/en/cs share the English words (the old words also
+    ja/zh 呼吸, es/pt Mandíbula and Respira, ru/bg Опора). The player's
+    own word (even just one), mixed languages or no speaking cue -> an
+    empty set and the app leaves the voice alone - better nothing than
+    guessing.
     """
     texty = []
     for index, slot in enumerate(slots or []):
@@ -475,7 +506,8 @@ def jazyky_hlasok(slots):
     if not texty:
         return set()
     return {jazyk for jazyk in LANGUAGES
-            if all(tr_lang(jazyk, _KLUCE_PREDVOLENYCH_SLOV[index]).strip().casefold() == text
+            if all(text == tr_lang(jazyk, _KLUCE_PREDVOLENYCH_SLOV[index]).strip().casefold()
+                   or text in _stare_slova_slotu(jazyk, index)
                    for index, text in texty)}
 
 # Voices that sound markedly more natural - in the label they get
@@ -511,43 +543,133 @@ def optional_cooldown(value):
     return clamp_float(value, 0.0, 600.0, None)
 
 
-# Old DEFAULT voice words that changed in 0.2 (key = text compared
-# ignoring letter case and surrounding spaces). Only an EXACT match is
-# changed - the player's own word (even "my teeth") stays as they wrote
-# it.
-#   "Teeth" -> "Jaw": outside the game it sounded odd (the author's
-#   decision).
-#   ja 脱力 and zh 放松 mean "relax" - a cue never says "relax / calm
+# Old DEFAULT voice words of the four categories - everything a new
+# profile got up to 0.3, per language and slot (0 grounding, 1 jaw,
+# 2 release, 3 breath). After 0.3 every cue starts with the exhale
+# (`slot.default.*`, e.g. "Exhale, jaw"), so a slot that still holds an
+# old default word of ITS OWN slot gets the new word of the same language
+# when the settings are loaded. Only an EXACT match counts (letter case
+# and surrounding spaces aside) - the player's own word (even "my teeth",
+# or a default word typed into another slot) stays as they wrote it.
+#   0.2-0.3: the first word of each slot (cs and bg came in 0.2).
+#   0.1: "Teeth" (sk/en) - 0.2 changed it to "Jaw", outside the game it
+#   sounded odd (the author's decision); ja 脱力 (jaw) and zh 放松
+#   (release) - both mean "relax", and a cue never says "relax / calm
 #   down" (tests/test_cue_words.py), not even from an old profile.
-#   These two change ONLY in the slot where they were the default (1 =
-#   jaw, 2 = hand release): in ja, 脱力 is also the name of the
-#   "Release" category in History, so the player could have typed it
-#   into slot 2 themselves - there 顎 ("jaw") would be the wrong word.
+# Some words were the default in several languages: sk/en/cs (the same
+# English words - their new words are the same too), ja/zh 呼吸, es/pt
+# Mandíbula and Respira, ru/bg Опора. There the new words differ, so
+# `migrate_profile_texts` reads the language from the rest of the
+# profile.
 # It is called when the settings are LOADED (`app.load_settings`), not
 # in `normalize_slot`: that one also runs on every rebuild of the slot
 # card, and the word would change under the player's hands in the middle
-# of editing.
+# of editing. And only ONCE per settings file (the `exhale_words` flag,
+# written by `save_settings`): a player who types an old word back
+# later ("Jaw") keeps it.
 _STARE_PREDVOLENE_SLOVA = {
-    # text: (slot in which it was the default - None = any; new word)
-    "teeth": (None, "Jaw"),
-    "脱力": (1, "顎"),
-    "放松": (2, "松开"),
+    # language: (grounding, jaw, release, breath) - old words of each slot
+    "sk": (("Grounded",), ("Jaw", "Teeth"), ("Release",), ("Breathe",)),
+    "en": (("Grounded",), ("Jaw", "Teeth"), ("Release",), ("Breathe",)),
+    "cs": (("Grounded",), ("Jaw",), ("Release",), ("Breathe",)),
+    "ja": (("重心",), ("顎", "脱力"), ("解放",), ("呼吸",)),
+    "zh": (("落地",), ("牙关",), ("松开", "放松"), ("呼吸",)),
+    "ru": (("Опора",), ("Челюсть",), ("Отпусти",), ("Дыши",)),
+    "es": (("Con los pies en la tierra",), ("Mandíbula",), ("Suelta",), ("Respira",)),
+    "de": (("Geerdet",), ("Kiefer",), ("Loslassen",), ("Atme",)),
+    "fr": (("Ancré",), ("Mâchoire",), ("Relâche",), ("Respire",)),
+    "pt": (("Aterrado",), ("Mandíbula",), ("Solta",), ("Respira",)),
+    "bg": (("Опора",), ("Челюст",), ("Разхлаби",), ("Дишай",)),
 }
 
+# 0.2 changed "Teeth" to "Jaw" in ANY slot, not only in the jaw slot. In
+# the jaw slot it now goes straight to the new word like every old
+# default; in another slot it still becomes "Jaw", exactly what 0.2-0.3
+# made of it - so a profile ends up the same whether it went through
+# 0.2-0.3 first or not ("Jaw" outside the jaw slot is the player's word).
+_STARE_ZUBY = "teeth"
 
-def migrate_slot_text(text, index=None):
-    """Old default word -> new one; anything else is returned unchanged.
+
+def _stare_slova_slotu(jazyk, index):
+    """The old default words of slot `index` in `jazyk` (casefolded)."""
+    slova = _STARE_PREDVOLENE_SLOVA.get(jazyk)
+    if not slova or not je_kategoria(index):
+        return set()
+    return {slovo.casefold() for slovo in slova[int(index)]}
+
+
+def _jazyky_stareho_slova(text, index):
+    """Languages in which `text` was an old default word of slot `index`,
+    in `LANGUAGES` order (empty = not an old default word of that slot)."""
+    if not isinstance(text, str):
+        return []
+    text = text.strip().casefold()
+    return [jazyk for jazyk in LANGUAGES if text in _stare_slova_slotu(jazyk, index)]
+
+
+def migrate_slot_text(text, index=None, jazyky=()):
+    """Old default word -> the new one; anything else is returned unchanged.
+
     `index` = the slot's position in the profile (0 grounding, 1 jaw,
-    2 release, 3 breath)."""
+    2 release, 3 breath). The new word is in the language in which the
+    text was the old default of that slot. When that is several languages
+    with different new words (ja/zh 呼吸, es/pt Mandíbula and Respira,
+    ru/bg Опора), the first of them in `jazyky` wins (the most likely
+    first - `migrate_profile_texts` works it out from the whole profile),
+    otherwise the first in `LANGUAGES`."""
     if not isinstance(text, str):
         return text
-    zaznam = _STARE_PREDVOLENE_SLOVA.get(text.strip().casefold())
-    if zaznam is None:
-        return text
-    slot, nove = zaznam
-    if slot is not None and slot != index:
-        return text
-    return nove
+    kandidati = _jazyky_stareho_slova(text, index)
+    if kandidati:
+        jazyk = next((j for j in jazyky if j in kandidati), kandidati[0])
+        return tr_lang(jazyk, _KLUCE_PREDVOLENYCH_SLOV[int(index)])
+    if text.strip().casefold() == _STARE_ZUBY:
+        return "Jaw"
+    return text
+
+
+def jazyk_hlasu(voice):
+    """Language of an Edge voice ("ja-JP-NanamiNeural" -> "ja"); None for a
+    voice in a language the app does not have."""
+    jazyk = str(voice or "").split("-", 1)[0].lower()
+    return jazyk if jazyk in LANGUAGES else None
+
+
+def migrate_profile_texts(slots, jazyky=()):
+    """`migrate_slot_text` for every slot of one profile - `slots` (slot
+    dicts, position = category) are changed in place and returned.
+
+    A word that was the default in several languages gets the language
+    that most of the profile's old default words share: a Portuguese
+    profile has "Aterrado" and "Solta" next to "Mandíbula" and "Respira",
+    so those two become Portuguese, not Spanish. A tie (the player has
+    replaced the telling words) is decided by `jazyky` - the language of
+    the voice and the app language, the most likely first - and then by
+    `LANGUAGES` order.
+
+    A slot with its OWN Edge voice (`voice_edge`) is read by that voice,
+    not the shared one - so for that slot the voice's language comes
+    before everything else: 呼吸 read by a Chinese voice was Chinese to the
+    player, and the Japanese new word would come out garbled in it."""
+    slots = slots if isinstance(slots, list) else []
+    hlasy = {}
+    for index, slot in enumerate(slots):
+        if isinstance(slot, dict):
+            for jazyk in _jazyky_stareho_slova(slot.get("text"), index):
+                hlasy[jazyk] = hlasy.get(jazyk, 0) + 1
+    preferovane = [j for j in jazyky if j in LANGUAGES]
+
+    def poradie(jazyk):
+        return (-hlasy[jazyk],
+                preferovane.index(jazyk) if jazyk in preferovane else len(preferovane),
+                LANGUAGES.index(jazyk))
+    jazyky_profilu = sorted(hlasy, key=poradie)
+    for index, slot in enumerate(slots):
+        if isinstance(slot, dict) and "text" in slot:
+            vlastny = jazyk_hlasu(slot.get("voice_edge"))
+            slot["text"] = migrate_slot_text(
+                slot["text"], index, ([vlastny] if vlastny else []) + jazyky_profilu)
+    return slots
 
 
 def normalize_slot(raw):

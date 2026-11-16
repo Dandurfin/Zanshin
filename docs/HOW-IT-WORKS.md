@@ -3,7 +3,8 @@
 The [README](../README.md) says what Zanshin does in a few lines. This page has
 the exact rules: when a cue comes, when Zanshin goes quieter, what it learns
 from, and when the natural voice talks to Microsoft. Where something is new in
-0.3, it says *from 0.3*.
+0.3, it says *from 0.3*; where it is in the code here but not in a release
+yet, it says *from 0.3.1*.
 
 ## When a cue comes
 
@@ -341,6 +342,14 @@ the menu: switching the language with English words keeps the English voice,
 and switching back doesn't undo a change. One voice reads all your profiles,
 except cues given a voice of their own.
 
+From 0.3.1 every built-in word asks for the exhale first: *Exhale,
+grounded*, *Exhale, jaw* and *Exhale, release*, and the breath cue says *Long
+exhale*. Those are the English words, which Slovak and Czech use too; the
+other languages say the same in their own words. The first time 0.3.1 loads
+your settings, a cue that still has its built-in word from an earlier version
+gets the new one in the same language; words you wrote yourself stay as they
+are.
+
 From 0.3 wrapped Japanese and Chinese text follows those languages'
 line-breaking rules, so a line doesn't start with 。 or ）, and dates follow
 the app language (see [Your sessions](#your-sessions)).
@@ -369,6 +378,21 @@ voice still plays); use borderless or windowed mode. Zanshin can only guess
 exclusive fullscreen (a window that covers the whole monitor). From 0.3,
 when it guessed so during a Play session with a cue, the questions after the
 session say the pictures may not have shown and suggest *Borderless*.
+
+From 0.3.1, by default, every cue comes with a long exhale. The grounding,
+jaw and grip & gaze pictures bring the breath ring along, where you put the
+breath picture and at its size and colour: one exhale as long as its
+*Exhale length* in *In-game pictures* (6 s by default), the ring going from
+full to empty with the caption *EXHALE*, then it fades like the other
+pictures. Picture-only cues show it too, and so does *▶ Test* on a cue;
+*▶ Show*, for dragging one picture into place, shows only that picture.
+With the breath picture switched off, the other cues come without the ring;
+switching off only the breath cue keeps it. The breath cue itself starts
+with the exhale and ends breathed out: out, in, out, 16 s by default. By
+default the grounding picture now sits on the left, halfway down, mirroring
+grip & gaze on the right; one still at its old default place (bottom
+centre, under the ring) moves there the first time 0.3.1 loads your
+settings, and one you moved stays where you put it.
 
 ## The Guide
 

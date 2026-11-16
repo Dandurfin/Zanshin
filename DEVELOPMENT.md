@@ -323,6 +323,14 @@ inherits. A few rules keep it that way:
   switch is *heart-rate receiving*, what the app gives you is a *cue*; a
   *limit* is in BPM, a *threshold* is for load (x/100). Technical words (TTS,
   OSC, UDP, obs-websocket) belong only in clearly advanced places.
+- **The built-in cue words** (`slot.default.*`) are what a new profile
+  says; from 0.3.1 each asks for the exhale first. `tests/test_cue_words.py`
+  keeps them free of "relax" and "calm down" commands in every language.
+  Existing profiles get a changed word only if
+  `settings_model._STARE_PREDVOLENE_SLOVA` lists the old one, and that runs
+  once per settings file (`load_settings` checks the `exhale_words` flag
+  that `save_settings` writes), so changing the words again needs a new
+  flag as well.
 - **A text that sends the player to the *In-game* page names it with
   `{page}`**, filled from `app_spolocne.stranka_vhre(app)`: in the Work world
   that page is called *Screen*. Dates on screen and in the log go through

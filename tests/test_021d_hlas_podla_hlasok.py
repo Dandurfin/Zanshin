@@ -113,7 +113,11 @@ def test_rata_sa_len_hlaska_ktoru_spolocny_hlas_cita():
     sloty[1].update(text="Moje slovo", mode=MODE_SFX)       # sound without words
     sloty[2].update(text="Moje slovo", voice_edge=GUY)      # the slot's own voice
     sloty.append(normalize_slot({"text": "Navyse z 0.1"}))  # slot 4+
-    assert jazyky_hlasok(sloty) == {"ja", "zh"}             # only 呼吸 remained
+    # only the breath word remained - since the exhale words (after 0.3)
+    # ja and zh no longer share it (up to 0.3 both said 呼吸)
+    assert jazyky_hlasok(sloty) == {"ja"}
+    sloty[3]["text"] = "呼吸"                                # an old profile code
+    assert jazyky_hlasok(sloty) == {"ja", "zh"}
 
 
 def test_vlastne_ci_zmiesane_slova_nemaju_jazyk():
