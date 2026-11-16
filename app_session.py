@@ -39,7 +39,7 @@ import theme as theme_mod
 import trigger
 from heart_rate import ANY_INTERFACE
 from i18n import tr
-from settings_model import clamp_int
+from settings_model import clamp_int, normalize_high_hr_ring_bpm
 
 from app_spolocne import app_log, stranka_vhre
 
@@ -71,6 +71,10 @@ def _senzor_vypla_chyba(app):
 # Without this, a single 14-hour "session" was created and the heart rate
 # during sleep went into the resting baseline.
 MEDZERA_SPANKU_S = 120.0
+
+# The ring at high heart rate could not be drawn (`_tick_high_hr_ring`): the
+# next attempt only after this many seconds, not at every tick.
+KRUH_TEP_ZNOVA_S = 30.0
 
 
 def je_medzera_spanku(posledny, teraz, limit=MEDZERA_SPANKU_S):
@@ -216,6 +220,11 @@ class SessionMixin:
         # why the pictures were not visible
         # (`_warn_exclusive_fullscreen_once`).
         self._session_fullscreen = False
+        # Showings of the ring at high heart rate belong to the session they
+        # were shown in (`_save_measure_windows`) - the previous one was
+        # closed above together with its ring.
+        self._high_hr_ring_spans = []
+        self._high_hr_ring_since = None
         # A PENDING BINDING ATTEMPT IS NOT DISCARDED HERE (0.3). Until now
         # this had `_hr_retry_job = None` and `_hr_bind_retries = 0`: the
         # timer in Tk lived on without a reference, so neither switching the
@@ -1049,6 +1058,12 @@ class SessionMixin:
             self._tick_nonstop_input()
         except Exception:
             app_log.exception("vstup bez pauzy: tick zlyhal")
+        # Before the cue trigger: a ring that starts in this tick already
+        # holds a cue of the same tick back (`_cue_can_fire`).
+        try:
+            self._tick_high_hr_ring()
+        except Exception:
+            app_log.exception("kruh pri vysokom tepe: tick zlyhal")
         try:
             self._tick_cue_trigger()
         except Exception:
@@ -1091,3 +1106,109 @@ class SessionMixin:
                              int(self._nonstop_input.after_s // 60))
             self._dnes_nonstop_text = text
             self._refresh_dnes_backdrop(force=False)
+
+    # ---------- the ring at high heart rate (experiment, off by default) ----------
+
+    def _tick_high_hr_ring(self, now=None):
+        """4x per second (`_tick_activity`): the breath ring breathes in a loop
+        while the heart rate is above the player's limit
+        (`high_hr_ring_bpm`), and ends breathed out once it is not.
+
+        The number is the smoothed one the HUD shows
+        (`HeartStats.display_bpm`), not a raw sample - one spike after a
+        headshot must not start it. Wanted only while the app watches:
+        listening, an open session, heart rate coming (`_hr_state`
+        "connected", no dropout), no "not now", no picture being placed
+        (drag test).
+
+          * wanted, not showing: when any visual is on screen (a cue's
+            picture, its exhale ring, the breath cue), the ring waits for it
+            - it never cuts a cue off; otherwise it starts,
+          * wanted, finishing: it keeps breathing (the finish is cancelled),
+          * not wanted - heart rate at or below the limit, no number, a
+            dropout, the switch off, a drag test - a graceful finish:
+            the running exhale, or the inhale and one more exhale, then the
+            fade-out,
+          * "not now", listening off, no session: it goes at once
+            (`_stop_high_hr_ring`).
+
+        While it is on screen, slot 3 is active, so `_cue_can_fire` holds
+        every other cue back - voice and picture alike. Each showing is kept
+        as (start, end) for the measurement windows (`_save_measure_windows`)
+        and gets one app.log line when it starts and one when it ends."""
+        now = time.time() if now is None else float(now)
+        om = getattr(self, "overlay_manager", None)
+        if om is None or not callable(getattr(om, "high_hr_ring_showing", None)):
+            return
+        showing = bool(om.high_hr_ring_showing())
+        if not showing and getattr(self, "_high_hr_ring_since", None) is not None:
+            # It ended without the app: breathed out and faded, replaced by
+            # the drag test of the breath picture or by a ▶ Test of the
+            # breath cue.
+            self._high_hr_ring_ended(now)
+        if not (getattr(self, "listening", False)
+                and getattr(self, "_hr_session_open", False)
+                and getattr(self, "_snooze_job", None) is None):
+            if showing:
+                self._stop_high_hr_ring(now)
+            return
+        prah = normalize_high_hr_ring_bpm(getattr(self, "high_hr_ring_bpm", None))
+        bpm = None
+        if (getattr(self, "_hr_state", None) == "connected"
+                and getattr(self, "_hr_last_bpm", None) is not None
+                and not getattr(self, "_hr_lost", False)):
+            bpm = getattr(getattr(self, "hr_stats", None), "display_bpm", None)
+        chce = bool(getattr(self, "high_hr_ring", False)
+                    and bpm is not None and bpm > prah
+                    and not any(om.is_testing(i) for i in range(4)))
+        if chce:
+            if showing:
+                if om.high_hr_ring_finishing():
+                    om.start_high_hr_ring()      # cancels the finish
+                return
+            if any(om.is_active(i) for i in range(4)):
+                return                           # a cue is on screen - wait
+            if now < getattr(self, "_high_hr_ring_retry_at", 0.0):
+                return
+            if om.start_high_hr_ring():
+                self._high_hr_ring_since = now
+                app_log.info("kruh pri vysokom tepe: zobrazeny (tep %d, hranica %d)",
+                             int(bpm), prah)
+            else:
+                # Not again at every tick: a ring that cannot be drawn would
+                # write its error into app.log four times a second.
+                self._high_hr_ring_retry_at = now + KRUH_TEP_ZNOVA_S
+                app_log.info("kruh pri vysokom tepe: nepodarilo sa ho ukazat, "
+                             "dalsi pokus o %d s", int(KRUH_TEP_ZNOVA_S))
+            return
+        if showing and not om.high_hr_ring_finishing():
+            om.finish_high_hr_ring()
+
+    def _high_hr_ring_ended(self, koniec):
+        """The showing of the ring is over: (start, end) into the session's
+        list and one app.log line. Nothing when no showing is open."""
+        od = getattr(self, "_high_hr_ring_since", None)
+        self._high_hr_ring_since = None
+        if od is None:
+            return
+        koniec = max(float(od), float(koniec))
+        spans = getattr(self, "_high_hr_ring_spans", None)
+        if spans is None:
+            spans = self._high_hr_ring_spans = []
+        spans.append((float(od), koniec))
+        app_log.info("kruh pri vysokom tepe: skoncil po %.0f s", koniec - float(od))
+
+    def _stop_high_hr_ring(self, koniec=None):
+        """The ring goes AT ONCE ("not now", listening off, the session
+        closing) and its showing ends at `koniec` (default now; the session
+        end after the PC slept). Never raises - it runs inside
+        `stop_listening` and `_close_hr_session`, which must finish."""
+        try:
+            koniec = time.time() if koniec is None else float(koniec)
+            stop = getattr(getattr(self, "overlay_manager", None),
+                           "stop_high_hr_ring", None)
+            if callable(stop):
+                stop()
+            self._high_hr_ring_ended(koniec)
+        except Exception:
+            app_log.exception("kruh pri vysokom tepe: zastavenie zlyhalo")

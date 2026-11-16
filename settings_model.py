@@ -270,6 +270,31 @@ def normalize_breath_seconds(inhale_raw, exhale_raw):
 
 
 # --------------------------------------------------------------------------
+# The ring at high heart rate (experiment, off by default)
+# --------------------------------------------------------------------------
+
+# While the smoothed heart rate (`HeartStats.display_bpm`) is ABOVE this
+# limit, the breath ring breathes in a loop (`app_session._tick_high_hr_ring`).
+# Whole BPM, set in In-game pictures on the Breath card.
+DEFAULT_HIGH_HR_RING_BPM = 110
+HIGH_HR_RING_BPM_MIN, HIGH_HR_RING_BPM_MAX = 80, 200
+
+
+def normalize_high_hr_ring_bpm(raw):
+    """The limit as a whole number in 80..200; anything that is not a
+    number (text, None, true/false, NaN, infinity) -> the default 110."""
+    if isinstance(raw, bool):
+        return DEFAULT_HIGH_HR_RING_BPM
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return DEFAULT_HIGH_HR_RING_BPM
+    if value != value or value in (float("inf"), float("-inf")):
+        return DEFAULT_HIGH_HR_RING_BPM
+    return max(HIGH_HR_RING_BPM_MIN, min(HIGH_HR_RING_BPM_MAX, int(round(value))))
+
+
+# --------------------------------------------------------------------------
 # --------------------------------------------------------------------------
 
 

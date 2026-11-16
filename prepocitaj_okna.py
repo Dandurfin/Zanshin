@@ -13,10 +13,11 @@ them were the biggest "the cue worked" results in the whole file.
 WHAT IT DOES AND WHAT IT DOES NOT
 It only fills in reasons that can be derived from the window's ALREADY
 SAVED fields - i.e. from `pre_activity` and `post_activity`. It does not
-touch `skratene_pred`, `skratene_po`, `diera_v_datach` or
-`refraktern_zona`: those were computed from raw heart-rate samples that
-are not in the file, and guessing them after the fact would mean making
-up numbers nobody measured.
+touch `skratene_pred`, `skratene_po`, `diera_v_datach`,
+`refraktern_zona` or `kruh_pri_vysokom_tepe`: those were computed from raw
+heart-rate samples and from when the ring at high heart rate was on
+screen, which are not in the file, and guessing them after the fact would
+mean making up numbers nobody measured.
 
 RECORDS ARE NOT DELETED. The window stays, numbers and all; it just
 stops being valid and gets a reason. Raw data can always be filtered

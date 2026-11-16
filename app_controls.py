@@ -236,6 +236,9 @@ class ControlsMixin:
         # this line the cue would come anyway. That is exactly the bad moment
         # snooze protects against.
         self._suspend_cue_trigger(trigger.A_SNOOZE)
+        # "Not now" also means nothing on screen: the ring at high heart rate
+        # goes at once (and does not come back until snooze ends).
+        self._stop_high_hr_ring()
         self.log(tr("log.snooze_started", minutes=minutes))
 
         def _resume():

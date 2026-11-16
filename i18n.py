@@ -5338,6 +5338,17 @@ STRINGS.update({
                                      'Breathing cycle (in seconds)'),
     'overlay.breath_inhale': _sk_en('Dĺžka nádychu (s)', 'Inhale length (s)'),
     'overlay.breath_exhale': _sk_en('Dĺžka výdychu (s)', 'Exhale length (s)'),
+    # --- the ring at high heart rate (experiment, Breath card, below the
+    # inhale/exhale lengths). Settings texts only - in the game the ring
+    # shows the usual inhale/exhale captions. ---
+    'overlay.high_hr_ring': _sk_en('Kruh aj pri vysokom tepe (pokus)',
+                                   'Ring at high heart rate too (experiment)'),
+    'overlay.high_hr_ring_bpm': _sk_en('Nad {bpm} BPM', 'Above {bpm} BPM'),
+    'overlay.high_hr_ring_hint': _sk_en(
+        'Dychový kruh dýcha dokola, kým je tep nad touto hranicou, a keď klesne, '
+        'skončí po výdychu. Medzitým nepríde iná pripomienka.',
+        'The breath ring keeps breathing while your heart rate is above this limit, '
+        'and ends after an exhale once it drops. No other cue comes meanwhile.'),
 
     # NOTE: the whole 'minimalist mode' section was here -
     # 'settings.minimal_mode', 'settings.minimal_mode_sub', 'minimal.expand_tip'
@@ -5882,6 +5893,9 @@ _tr7('overlay.color_title', '画像の色', '图片颜色', 'Цвет карти
 _tr7('overlay.breath_seconds', '呼吸のサイクル（秒）', '呼吸周期（秒）', 'Цикл дыхания (в секундах)', 'Ciclo de respiración (en segundos)', 'Atemzyklus (in Sekunden)', 'Cycle de respiration (en secondes)', 'Ciclo de respiração (em segundos)')
 _tr7('overlay.breath_inhale', '吸う長さ（秒）', '吸气时长（秒）', 'Длина вдоха (с)', 'Duración de la inspiración (s)', 'Länge des Einatmens (s)', 'Durée de l’inspiration (s)', 'Duração da inspiração (s)')
 _tr7('overlay.breath_exhale', '吐く長さ（秒）', '呼气时长（秒）', 'Длина выдоха (с)', 'Duración de la espiración (s)', 'Länge des Ausatmens (s)', 'Durée de l’expiration (s)', 'Duração da expiração (s)')
+_tr7('overlay.high_hr_ring', '心拍が高いときも呼吸の輪（試験的）', '心率高时也显示呼吸环（试验）', 'Кольцо и при высоком пульсе (эксперимент)', 'Anillo también con el pulso alto (experimento)', 'Ring auch bei hohem Puls (Experiment)', 'Anneau aussi quand le pouls est élevé (essai)', 'Anel também com o pulso alto (experimento)')
+_tr7('overlay.high_hr_ring_bpm', '{bpm} BPM を超えたら', '高于 {bpm} BPM', 'Выше {bpm} BPM', 'Por encima de {bpm} BPM', 'Über {bpm} BPM', 'Au-dessus de {bpm} BPM', 'Acima de {bpm} BPM')
+_tr7('overlay.high_hr_ring_hint', '心拍がこの上限を超えている間、呼吸の輪はくり返し呼吸し、下がったら吐き終えてから消えます。その間、ほかの合図は出ません。', '心率高于这个上限时，呼吸环会一直循环呼吸；心率降下来后，它在一次呼气后结束。在此期间不会出现其他提示。', 'Пока пульс выше этой границы, дыхательное кольцо дышит по кругу, а когда он опустится, заканчивается после выдоха. Других подсказок в это время не будет.', 'Mientras tu pulso esté por encima de este límite, el anillo de respiración sigue respirando, y cuando baje, termina tras una espiración. Mientras tanto no llega ningún otro aviso.', 'Solange dein Puls über dieser Grenze liegt, atmet der Atemring immer weiter; sinkt er, endet der Ring nach einem Ausatmen. In der Zeit kommt kein anderer Hinweis.', 'Tant que ton pouls dépasse cette limite, l’anneau de respiration continue de respirer ; quand il redescend, l’anneau s’arrête après une expiration. Aucun autre rappel ne vient pendant ce temps.', 'Enquanto o seu pulso estiver acima deste limite, o anel de respiração continua respirando; quando ele baixar, o anel termina depois de uma expiração. Nesse meio-tempo não vem nenhum outro aviso.')
 _tr7('hr.pair_button', '時計のつなぎ方…', '如何连接手表…', 'Как подключить часы…', 'Cómo vincular tu reloj…', 'Uhr verbinden…', 'Comment connecter ta montre…', 'Como parear o seu relógio…')
 _tr7('hr.pair_title', '時計をつなぐ', '连接你的手表', 'Подключение часов', 'Vincular tu reloj', 'Uhr verbinden', 'Connecter ta montre', 'Parear o seu relógio')
 _tr7('hr.pair_intro', '心拍は電話のアプリから PC に送られます。Zanshin はそのアプリに OBS のふりをします — OBS 自体をインストールする必要はありません。', '心率由手机上的应用发送到这台电脑。Zanshin 在它看来就像 OBS——你不需要安装 OBS 本身。', 'Пульс на компьютер отправит приложение на телефоне. Для него Zanshin выглядит как OBS — сам OBS устанавливать не нужно.', 'El pulso te lo manda al PC la app del móvil. Para ella, Zanshin se hace pasar por OBS: no hace falta instalar OBS.', 'Den Puls schickt dir die App auf dem Handy an den PC. Für sie sieht Zanshin wie OBS aus — OBS selbst musst du nicht installieren.', 'C’est l’app du téléphone qui envoie ton pouls au PC. Pour elle, Zanshin se fait passer pour OBS — tu n’as pas besoin d’installer OBS.', 'Quem envia o seu pulso para o PC é o app do celular. Para ele, o Zanshin se passa por OBS — você não precisa instalar o OBS.')

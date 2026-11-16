@@ -61,7 +61,8 @@ from settings_model import (DEFAULT_AUDIO,
                             DEFAULT_COOLDOWN,
                             ENGINE_EDGE,
                             ENGINE_SAPI,
-                            engine_labels)
+                            engine_labels,
+                            normalize_high_hr_ring_bpm)
 from ui_dialogs import (watch_app_qr,
                         DevLayerDialog,
                         OnboardingWizard)
@@ -475,6 +476,16 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         self.dashboard_stats = list(settings["dashboard_stats"])[:DASHBOARD_MAX_CARDS]
         self.breath_inhale_s = float(settings["breath_inhale_s"])
         self.breath_exhale_s = float(settings["breath_exhale_s"])
+        # The ring at high heart rate (experiment, `_tick_high_hr_ring`): the
+        # switch, the limit, and the showings of the ring in the open session
+        # as (start, end) - the measurement windows need them
+        # (`_save_measure_windows`).
+        self.high_hr_ring = settings.get("high_hr_ring") is True
+        self.high_hr_ring_bpm = normalize_high_hr_ring_bpm(
+            settings.get("high_hr_ring_bpm"))
+        self._high_hr_ring_since = None
+        self._high_hr_ring_spans = []
+        self._high_hr_ring_retry_at = 0.0
         # The app computes the load threshold itself for every session from its
         # own data (`hr_stats.dynamicky_prah_zataze`). None = nothing to
         # compute it from yet.
@@ -2938,6 +2949,11 @@ class DandurfApp(DataMixin, PrefsMixin, ControlsMixin, AudioMixin, HudMixin,
         self.activity.set_gamepad_watched(False)
         self.listening = False
         self._suspend_cue_trigger(trigger.A_SNOOZE)
+        # The ring at high heart rate goes at once - the app stopped watching.
+        # Via getattr: `_quit` is tested on dummies without it.
+        zastav_kruh = getattr(self, "_stop_high_hr_ring", None)
+        if callable(zastav_kruh):
+            zastav_kruh()
         # THE SESSION ENDS HERE, not only when the app is closed.
         # `_close_hr_session` hung only on switching the SENSOR off and on
         # `_quit`. Whoever pressed stop and left the app open still had the

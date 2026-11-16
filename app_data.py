@@ -721,6 +721,10 @@ class DataMixin:
                 activity=self.activity.samples,
                 session_started=self.hr_stats.session_start,
                 game=self.active_profile_name or None,
+                # The ring at high heart rate is a stimulus too: a window it
+                # reaches into is not valid (`measure.R_KRUH_TEP`). None
+                # when it was not shown - the windows stay as they were.
+                ring_spans=list(getattr(self, "_high_hr_ring_spans", None) or ()) or None,
             )
             # Every window carries the parameters the session ran with (spec
             # §3.3). Without that, a month later you cannot tell whether the
@@ -823,6 +827,10 @@ class DataMixin:
         # can be turned off while listening goes on - so `set_live` will not
         # catch it.
         self._set_enso_armed(False)
+        # The ring at high heart rate goes with the session; a showing still
+        # running ends at the session's end - BEFORE the windows are built,
+        # they need it (`_save_measure_windows`).
+        _ak_vies(self, "_stop_high_hr_ring", koniec)
         self._save_measure_windows()
         # Events of the state machine, permanently. Only HERE, not as they
         # come: a disk write on every event would happen in the Tk thread in

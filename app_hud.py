@@ -35,6 +35,7 @@ import display
 import ui_kit
 from i18n import LANGUAGES, LANG_EN, LANG_SAME_AS_APP, tr, tr_lang
 from settings_model import (clamp_float, normalize_breath_seconds,
+                            normalize_high_hr_ring_bpm,
                             normalize_hud_config, normalize_monitor_target,
                             normalize_overlay_config)
 from ui_dialogs import OverlaySettingsDialog, WatchPairingDialog
@@ -605,6 +606,17 @@ class HudMixin:
         self.breath_inhale_s, self.breath_exhale_s = normalize_breath_seconds(
             new_inhale, new_exhale)
         self.overlay_manager.set_breath_seconds(self.breath_inhale_s, self.breath_exhale_s)
+        self.save_settings()
+
+    def on_high_hr_ring_change(self, enabled=None, bpm=None):
+        """The ring at high heart rate (experiment) - the switch and the
+        limit on the Breath card in "In-game pictures". Applies at once:
+        the next tick (`_tick_high_hr_ring`, within a quarter of a second)
+        starts the ring, or lets a running one finish breathed out."""
+        if enabled is not None:
+            self.high_hr_ring = bool(enabled)
+        if bpm is not None:
+            self.high_hr_ring_bpm = normalize_high_hr_ring_bpm(bpm)
         self.save_settings()
 
     def _overlay_color(self, index):

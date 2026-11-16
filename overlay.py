@@ -26,6 +26,12 @@ What changed since alpha 0.4, and why
    with the exhale and ends breathed out (exhale -> inhale -> exhale).
    See `SomaticOverlayManager.trigger` and `_SlotOverlay.breath_phases`.
 
+5. THE RING AT HIGH HEART RATE (experiment, off by default). While the
+   player's heart rate is above a limit, slot 3's ring breathes in a loop
+   (BREATH_LOOP) and ends breathed out once it drops. The app decides when
+   (`app_session._tick_high_hr_ring`); here are only the loop and
+   `SomaticOverlayManager.start_high_hr_ring` & co.
+
 Anti-cheat
 ----------
 No change from the original design, only stricter: the window is
@@ -85,10 +91,17 @@ class _SlotOverlay:
     #                   inhale -> exhale.
     #   BREATH_EXHALE - the companion of grounding / jaw / release
     #                   (`trigger_exhale`): one exhale, full -> empty.
-    # Drag-test mode ignores both and loops exhale -> inhale until the
+    #   BREATH_LOOP   - the ring at high heart rate (experiment, off by
+    #                   default, `start_loop`): exhale -> inhale -> exhale
+    #                   ... with no end of its own. `finish_loop` lets it end
+    #                   breathed out - it finishes the running exhale, or the
+    #                   running inhale and one more exhale - then the usual
+    #                   fade-out.
+    # Drag-test mode ignores all three and loops exhale -> inhale until the
     # player ends the test.
     BREATH_FULL = "full"
     BREATH_EXHALE = "exhale"
+    BREATH_LOOP = "loop"
 
     # How long the "intro" animation of each visual runs. After it ends
     # the frame is NO LONGER REDRAWN (the image is static), so keeping
@@ -107,11 +120,26 @@ class _SlotOverlay:
         self.color = None           # None = theme accent; otherwise #rrggbb
         self.inhale_s = self.INHALE_S_DEFAULT
         self.exhale_s = self.EXHALE_S_DEFAULT
-        # set by trigger() / trigger_exhale() / test() before each play()
+        # set by trigger() / trigger_exhale() / test() / start_loop() before
+        # each play()
         self._breath_mode = self.BREATH_FULL
+        # BREATH_LOOP: where the loop is - the phase now breathed (inhale or
+        # not) and the elapsed second it started at. A cursor instead of
+        # `elapsed % cycle`, so that changing the inhale/exhale length while
+        # the ring breathes does not make it jump to another phase.
+        self._loop_inhale = False
+        self._loop_phase_start = 0.0
+        self._loop_finishing = False    # finish_loop(): end after an exhale
+        self._loop_done = False         # breathed out, the fade-out is running
+        # BREATH_LOOP has no end of its own, so a new size / position /
+        # target monitor cannot wait for the next showing as with a cue's
+        # ring: `follow_placement` asks for it, the next frame applies it
+        # (`_apply_pending_placement`).
+        self._relayout_pending = False
 
         self.surface = None
         self.w = self.h = 0
+        self._xy = None                 # where the window was placed (x, y)
         self._job = None
         self._gen = 0
         self._start_time = None
@@ -131,12 +159,17 @@ class _SlotOverlay:
     def configure(self, enabled=None, scale=None, pos=None, color=None):
         if enabled is not None:
             self.enabled = bool(enabled)
-            if not self.enabled:
+            # The ring at high heart rate has its own switch (Settings) and
+            # draws regardless of this slot's own one - turning off the
+            # breath cue's picture does not cut it off.
+            if not self.enabled and not self.in_loop:
                 self.stop()
         if scale is not None:
             self.scale = max(0.5, min(2.0, float(scale)))
         if pos is not None:
             self.pos = pos
+        if scale is not None or pos is not None:
+            self.follow_placement()
         if color is not None:
             # "" (empty string) means "go back to the theme colour"
             self.color = color or None
@@ -182,12 +215,123 @@ class _SlotOverlay:
         placing it right now, and a cue must not turn the test into a short
         exhale that disappears from under the mouse. A ring that is already
         showing (the breath cue, or the previous companion) is restarted
-        (`play() -> stop()`).
+        (`play() -> stop()`) - except the ring at high heart rate
+        (`loop_breathing`): it is already breathing, so it just goes on.
         """
         if self.visual != "breath" or not self.enabled or self._test_mode:
             return False
+        if self.loop_breathing:
+            return False
         self._breath_mode = self.BREATH_EXHALE
         return self.play()
+
+    # ---------- the ring at high heart rate (BREATH_LOOP) ----------
+
+    def start_loop(self):
+        """Starts the ring at high heart rate: exhale -> inhale -> exhale ...
+        with no end of its own (`finish_loop` / `stop` end it).
+
+        Returns True if it really started drawing. It draws regardless of
+        `enabled` - the feature has its own switch - but never on another
+        visual than the breath ring and never in drag-test mode."""
+        if self.visual != "breath" or self._test_mode:
+            return False
+        self._breath_mode = self.BREATH_LOOP
+        self._loop_inhale = False
+        self._loop_phase_start = 0.0
+        self._loop_finishing = False
+        self._loop_done = False
+        self._relayout_pending = False
+        return self.play()
+
+    @property
+    def in_loop(self):
+        """The ring at high heart rate is on screen (its final fade-out
+        included)."""
+        return (self._breath_mode == self.BREATH_LOOP and self.surface is not None
+                and not self._test_mode)
+
+    @property
+    def loop_breathing(self):
+        """The ring at high heart rate still breathes - looping, or finishing
+        its last exhale. False once it is breathed out and fading."""
+        return self.in_loop and not self._loop_done
+
+    @property
+    def loop_finishing(self):
+        return self.loop_breathing and self._loop_finishing
+
+    def finish_loop(self):
+        """Lets the loop end breathed out: a running exhale is finished, a
+        running inhale is finished and followed by one more exhale; then the
+        usual fade-out. Returns True if the loop was breathing."""
+        if not self.loop_breathing:
+            return False
+        self._loop_finishing = True
+        return True
+
+    def keep_looping(self):
+        """Cancels `finish_loop` - the ring keeps breathing as it is, with no
+        fade and no restart. Returns True if the loop was breathing."""
+        if not self.loop_breathing:
+            return False
+        self._loop_finishing = False
+        return True
+
+    def _loop_advance(self, elapsed):
+        """Moves the loop's cursor forward to `elapsed` (never back).
+
+        Returns True when the finish was asked for and an exhale has just
+        been completed - the ring is breathed out and the loop ends. The
+        length of each phase is read when the phase is checked, so a new
+        inhale/exhale length applies from the running phase on."""
+        while True:
+            seconds = self.inhale_s if self._loop_inhale else self.exhale_s
+            seconds = max(0.5, float(seconds))
+            if elapsed - self._loop_phase_start < seconds:
+                return False
+            if not self._loop_inhale and self._loop_finishing:
+                return True
+            self._loop_phase_start += seconds
+            self._loop_inhale = not self._loop_inhale
+
+    def follow_placement(self):
+        """The slot's size, position or target monitor changed. A running
+        loop takes it over with its next frame (`_apply_pending_placement`)
+        - it has no end of its own, so waiting for the next showing (as a
+        cue's ring does) could mean waiting for as long as the heart rate
+        stays high. Anything else that is on screen keeps its placement
+        until it ends, as before."""
+        if self.in_loop:
+            self._relayout_pending = True
+
+    def _apply_pending_placement(self):
+        """BREATH_LOOP: brings the window to the placement asked for by
+        `follow_placement`. The same size only moves the window; another
+        size needs a new one (the image buffer has the window's size), and
+        the animation goes on in it as it was - its start, the loop's
+        cursor, the finish asked for - with no fade-in and no restart.
+
+        Returns True when a new window was built: the caller draws this
+        frame into it and then shows it. A failure is logged and raised -
+        `_tick` then closes what is left, so no half-built window stays
+        (it would count as a running visual and hold back every cue)."""
+        if not self._relayout_pending:
+            return False
+        self._relayout_pending = False
+        x, y, w, h = self._placement()
+        if (w, h) == (self.w, self.h):
+            if (x, y) != self._xy:
+                self.surface.move(x, y)
+                self._xy = (x, y)
+            return False
+        self._destroy()
+        try:
+            self._build_window()
+        except Exception:
+            log.exception("kruh pri vysokom tepe: okno v novej velkosti sa nepodarilo postavit")
+            raise
+        return True
 
     @property
     def is_active(self):
@@ -203,7 +347,9 @@ class _SlotOverlay:
 
         A second call of test() (or stop_test) ends the mode and saves the
         position. The breath ring loops exhale -> inhale for as long as the
-        test runs (`breath_state`).
+        test runs (`breath_state`). A ring at high heart rate on screen is
+        replaced: the mode goes back to BREATH_FULL, so the loop is not
+        "showing" any more (`in_loop`) and the app closes its showing.
         """
         if self._test_mode:
             self.stop_test()
@@ -314,12 +460,19 @@ class _SlotOverlay:
 
     # ---------- window ----------
 
-    def _build_window(self):
+    def _placement(self):
+        """(x, y, w, h) of the window on the target monitor right now - the
+        slot's size and its position in % of the monitor."""
         monitor = self.manager.target_monitor()
         total = self.scale * monitor.scale
-        self.w = max(48, int(round(self.base_w * total)))
-        self.h = max(48, int(round(self.base_h * total)))
-        x, y = display.place(monitor, self.w, self.h, self.pos[0], self.pos[1])
+        w = max(48, int(round(self.base_w * total)))
+        h = max(48, int(round(self.base_h * total)))
+        x, y = display.place(monitor, w, h, self.pos[0], self.pos[1])
+        return x, y, w, h
+
+    def _build_window(self):
+        x, y, self.w, self.h = self._placement()
+        self._xy = (x, y)
         self.surface = LayeredSurface(self.root)
         self.surface.create(x, y, self.w, self.h)
         # On 4K the surfaces are 4x larger than on 1080p; supersampling 3
@@ -386,9 +539,13 @@ class _SlotOverlay:
         ((inhale, seconds), ...) - see BREATH_FULL / BREATH_EXHALE.
 
         Every showing starts with the exhale and ends breathed out. Drag-test
-        mode does not use this (it loops, see `breath_state`)."""
+        mode does not use this (it loops, see `breath_state`). BREATH_LOOP
+        gives the one cycle it repeats (exhale, inhale) - it has no end of
+        its own, `breath_state` follows its cursor."""
         if self._breath_mode == self.BREATH_EXHALE:
             return ((False, self.exhale_s),)
+        if self._breath_mode == self.BREATH_LOOP:
+            return ((False, self.exhale_s), (True, self.inhale_s))
         return ((False, self.exhale_s), (True, self.inhale_s),
                 (False, self.exhale_s))
 
@@ -403,12 +560,23 @@ class _SlotOverlay:
         `hud_paint.render_breath` takes (an exhale at 0 is the full ring, at
         1 the empty one). After the end of the showing it stays at the end
         of the last phase, i.e. breathed out. Drag-test mode loops exhale ->
-        inhale without an end."""
+        inhale without an end.
+
+        BREATH_LOOP moves its cursor forward to `elapsed` (`_loop_advance`),
+        so it is asked with a growing `elapsed`, as the animation does. Once
+        the asked-for finish is breathed out, it stays at the empty ring."""
         if self._test_mode:
             t = elapsed % (self.exhale_s + self.inhale_s)
             if t < self.exhale_s:
                 return False, t / self.exhale_s
             return True, (t - self.exhale_s) / self.inhale_s
+        if self._breath_mode == self.BREATH_LOOP:
+            if self._loop_done or self._loop_advance(float(elapsed)):
+                return False, 1.0
+            seconds = max(0.5, float(self.inhale_s if self._loop_inhale
+                                     else self.exhale_s))
+            phase = (float(elapsed) - self._loop_phase_start) / seconds
+            return self._loop_inhale, max(0.0, min(1.0, phase))
         t = max(0.0, float(elapsed))
         phases = self.breath_phases()
         for inhale, seconds in phases:
@@ -491,6 +659,20 @@ class _SlotOverlay:
                 pos = end + gap
 
     def _step(self, elapsed):
+        if self.visual == "breath" and self.in_loop:
+            # the ring at high heart rate: round and round until the finish
+            # is asked for; the frame that ends it is the empty ring
+            # (`breath_state`), and that frame fades out. A new size,
+            # position or monitor applies here, between two frames.
+            rebuilt = self._apply_pending_placement()
+            done = self._loop_advance(elapsed)
+            self._render(elapsed)
+            if rebuilt:
+                self.surface.set_alpha(1.0)
+                self.surface.show()
+            if done:
+                self._loop_done = True
+            return done
         if self.visual == "breath":
             # in test mode it breathes round and round (the player is
             # fine-tuning the position), otherwise the phases of this
@@ -583,6 +765,9 @@ class SomaticOverlayManager:
     def set_monitor_target(self, target):
         self.monitor_target = target or display.TARGET_AUTO
         self._monitor_cache = (0.0, None)
+        # the ring at high heart rate has no end of its own - it moves to
+        # the new monitor now, not when the heart rate drops
+        self._slots[self.BREATH_INDEX].follow_placement()
 
     def target_monitor(self):
         """Target monitor with a short cache.
@@ -661,6 +846,65 @@ class SomaticOverlayManager:
                 except Exception:
                     log.exception("sprievodny vydych sa nepodarilo ani zastavit")
 
+    # ---------- the ring at high heart rate (experiment) ----------
+    #
+    # Slot 3's own ring (its position, size, colour and inhale/exhale
+    # lengths) breathing in a loop while the player's heart rate is above
+    # a limit - the app decides when (`app_session._tick_high_hr_ring`).
+    # It is slot 3's window, so while it is on screen `is_active(3)` is True
+    # and `_cue_can_fire` holds every other cue back.
+
+    def start_high_hr_ring(self):
+        """Starts the loop, or keeps a breathing one going (a finish asked
+        for is cancelled - no fade, no restart, no flicker). Returns True if
+        the ring is breathing in the loop after the call.
+
+        Never while ANY slot is in drag-test mode: the player is placing a
+        picture. A failure must not leave a half-built ring behind - an open
+        window counts as a running visual for good (`is_active`) and
+        `_cue_can_fire` would then hold back every cue of the session
+        (the same lesson as `_show_companion_exhale`). So it is stopped and
+        logged here, and nothing reaches the caller."""
+        if any(ov._test_mode for ov in self._slots):
+            return False
+        ring = self._slots[self.BREATH_INDEX]
+        if ring.loop_breathing:
+            return ring.keep_looping()
+        try:
+            if ring.start_loop():
+                return True
+        except Exception:
+            log.exception("kruh pri vysokom tepe sa nepodarilo ukazat")
+        try:
+            ring.stop()
+        except Exception:
+            log.exception("kruh pri vysokom tepe sa nepodarilo ani zastavit")
+        return False
+
+    def finish_high_hr_ring(self):
+        """Lets the loop end breathed out, then fade (`finish_loop`).
+        Returns True if the loop was breathing."""
+        return self._slots[self.BREATH_INDEX].finish_loop()
+
+    def stop_high_hr_ring(self):
+        """Ends the loop at once (snooze, listening off, session closed).
+        Only the loop - another showing of the ring (a cue, the drag test)
+        is left alone. Returns True if a loop ring was on screen."""
+        ring = self._slots[self.BREATH_INDEX]
+        if not ring.in_loop:
+            return False
+        ring.stop()
+        return True
+
+    def high_hr_ring_showing(self):
+        """The loop is breathing (looping, or finishing its last exhale)."""
+        return self._slots[self.BREATH_INDEX].loop_breathing
+
+    def high_hr_ring_finishing(self):
+        """The loop was asked to finish and is still breathing towards its
+        end (the running inhale, then the last exhale)."""
+        return self._slots[self.BREATH_INDEX].loop_finishing
+
     def is_active(self, index):
         if 0 <= index < len(self._slots):
             return self._slots[index].is_active
@@ -698,7 +942,8 @@ class SomaticOverlayManager:
             self._slots[index].on_test_moved = callback
 
     def stop_all(self):
-        # the companion exhale is slot 3's own ring, so this stops it too
+        # the companion exhale and the ring at high heart rate are slot 3's
+        # own ring, so this stops them too
         for overlay in self._slots:
             overlay.stop_test()
             overlay.stop()

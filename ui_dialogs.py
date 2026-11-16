@@ -39,9 +39,11 @@ import theme as theme_mod
 from audio_engine import MicRecorder, play_audio_file, speak_sapi_isolated
 from i18n import cislo, tr
 from paths import APP_NAME, AUDIO_DIR, images_dir
-from settings_model import (BREATH_SECONDS_MAX, BREATH_SECONDS_MIN, MODE_COMBO, MODE_ORDER,
+from settings_model import (BREATH_SECONDS_MAX, BREATH_SECONDS_MIN,
+                            HIGH_HR_RING_BPM_MAX, HIGH_HR_RING_BPM_MIN, MODE_COMBO, MODE_ORDER,
                             MODE_SFX, MODE_TTS, OVERLAY_DEFAULT_POS, je_kategoria,
-                            label_to_mode, mode_labels, normalize_slot,
+                            label_to_mode, mode_labels, normalize_high_hr_ring_bpm,
+                            normalize_slot,
                             sfx_choice_display, sfx_dropdown_options)
 
 
@@ -1529,6 +1531,42 @@ class OverlaySettingsDialog:
         self._breath_seconds(row, pal, tr("overlay.breath_exhale"),
                              self.app.breath_exhale_s,
                              lambda v: self.app.on_breath_seconds_change(exhale=v))
+        self._build_high_hr_ring_rows(row, pal)
+
+    def _build_high_hr_ring_rows(self, parent, pal):
+        """The ring at high heart rate (experiment) - right below the
+        inhale/exhale lengths, because it is the same ring breathing them:
+        the switch, the limit in BPM and one faint line on what it does.
+        Every change applies at once (`on_high_hr_ring_change`)."""
+        enabled_var = tk.BooleanVar(value=bool(getattr(self.app, "high_hr_ring", False)))
+        ui_kit.switch(parent, pal, text=tr("overlay.high_hr_ring"), variable=enabled_var,
+                      command=lambda var=enabled_var: self.app.on_high_hr_ring_change(
+                          enabled=var.get())).pack(anchor="w", pady=(12, 0))
+
+        hranica = normalize_high_hr_ring_bpm(getattr(self.app, "high_hr_ring_bpm", None))
+        sub = ctk.CTkFrame(parent, fg_color="transparent")
+        sub.pack(fill="x", pady=(6, 0))
+        # wide enough for "Por encima de 200 BPM", so the slider does not
+        # jump when the number gets a third digit
+        value_label = ctk.CTkLabel(sub, text=tr("overlay.high_hr_ring_bpm", bpm=hranica),
+                                   text_color=pal["text_dim"], width=150,
+                                   font=ui_kit.ui(12), anchor="w")
+        value_label.pack(side="left")
+        var = tk.DoubleVar(value=hranica)
+
+        def handler(_v, var=var, label=value_label):
+            bpm = int(round(float(var.get())))
+            label.configure(text=tr("overlay.high_hr_ring_bpm", bpm=bpm))
+            self.app.on_high_hr_ring_change(bpm=bpm)
+
+        ui_kit.slider(
+            sub, pal, from_=HIGH_HR_RING_BPM_MIN, to=HIGH_HR_RING_BPM_MAX, variable=var,
+            number_of_steps=HIGH_HR_RING_BPM_MAX - HIGH_HR_RING_BPM_MIN,
+            command=handler).pack(side="left", fill="x", expand=True, padx=(8, 8))
+
+        ctk.CTkLabel(parent, text=tr("overlay.high_hr_ring_hint"), text_color=pal["text_faint"],
+                     font=ui_kit.ui(11), wraplength=400, justify="left",
+                     anchor="w").pack(anchor="w", fill="x", pady=(4, 0))
 
     def _breath_seconds(self, parent, pal, label, value, on_change):
         sub = ctk.CTkFrame(parent, fg_color="transparent")

@@ -192,7 +192,8 @@ def test_okno_obrazkov_ma_posuvniky_jednym_stylom():
                 if isinstance(u, ast.ClassDef) and u.name == "OverlaySettingsDialog")
     assert not _volania(okno, "ctk.CTkSlider")
     posuvniky = _volania(okno, "ui_kit.slider")
-    assert len(posuvniky) == 4                        # size, X, Y, breath
+    # size, X, Y, breath and the limit of the ring at high heart rate
+    assert len(posuvniky) == 5
     for p in posuvniky:
         farby = {k.arg for k in p.keywords} & {"progress_color", "button_color",
                                                "fg_color", "button_hover_color"}

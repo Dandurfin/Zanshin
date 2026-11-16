@@ -321,7 +321,9 @@ class TodayMixin:
         # ring (slot 3's visual) comes with every grounding / jaw / release
         # cue (`SomaticOverlayManager.trigger`) - it is part of that cue, so
         # the next one waits for it too (about 6.5 s with the default exhale;
-        # far below the gap between cues).
+        # far below the gap between cues). The ring at high heart rate
+        # (experiment, `_tick_high_hr_ring`) is slot 3's ring as well, so no
+        # cue comes while it breathes - on purpose.
         if any(self.overlay_manager.is_active(i) for i in range(4)):
             return False
         # While steps are coming, the app stays silent. `None` means the watch

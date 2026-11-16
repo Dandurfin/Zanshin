@@ -529,7 +529,8 @@ def test_prepocet_nesiaha_na_dovody_zo_surovych_vzoriek():
     """
     import prepocitaj_okna
     zdroj = inspect_source(prepocitaj_okna._dovody_z_aktivity)
-    for dovod in ("R_POST_SHORT", "R_PRE_SHORT", "R_GAP", "R_REFRACTORY"):
+    for dovod in ("R_POST_SHORT", "R_PRE_SHORT", "R_GAP", "R_REFRACTORY",
+                  "R_KRUH_TEP"):
         assert dovod not in zdroj, dovod
 
 

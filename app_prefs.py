@@ -44,13 +44,15 @@ from i18n import LANGUAGES, LANG_EN, LANG_SAME_AS_APP, LANG_SK, set_lang, system
 from paths import APP_NAME, SETTINGS_PATH, nahrad_subor, resolve_audio_path
 from settings_model import (DEFAULT_AUDIO, DEFAULT_BREATH_EXHALE_S,
                             DEFAULT_BREATH_INHALE_S, DEFAULT_DASHBOARD_STATS,
-                            DEFAULT_EDGE_VOICE, DEFAULT_MONITOR_TARGET,
+                            DEFAULT_EDGE_VOICE, DEFAULT_HIGH_HR_RING_BPM,
+                            DEFAULT_MONITOR_TARGET,
                             ENGINE_EDGE, ENGINE_SAPI, clamp_int, default_hud_config,
                             default_overlay_configs, default_slots, doplnit_kategorie,
                             engine_labels, jazyk_hlasu, jazyky_hlasok,
                             migrate_profile_texts,
                             move_old_grounding_position, normalize_breath_seconds,
-                            normalize_dashboard_stats, normalize_hud_config,
+                            normalize_dashboard_stats, normalize_high_hr_ring_bpm,
+                            normalize_hud_config,
                             normalize_monitor_target, normalize_overlay_config,
                             normalize_slot, suggested_voice)
 
@@ -612,6 +614,11 @@ class PrefsMixin:
             "dashboard_stats": list(DEFAULT_DASHBOARD_STATS),
             "breath_inhale_s": DEFAULT_BREATH_INHALE_S,
             "breath_exhale_s": DEFAULT_BREATH_EXHALE_S,
+            # The ring at high heart rate (experiment): off, limit 110 BPM.
+            # A setting of the app, not of a game profile - it is in neither
+            # the profiles nor the profile codes.
+            "high_hr_ring": False,
+            "high_hr_ring_bpm": DEFAULT_HIGH_HR_RING_BPM,
             "old_installer_warned": False,
         }
         if loaded is not None:
@@ -707,6 +714,11 @@ class PrefsMixin:
                 data["dashboard_stats"] = normalize_dashboard_stats(loaded.get("dashboard_stats"))
                 data["breath_inhale_s"], data["breath_exhale_s"] = normalize_breath_seconds(
                     loaded.get("breath_inhale_s"), loaded.get("breath_exhale_s"))
+                # An experiment is on only by a real `true` - a hand-edited
+                # "yes" or 1 does not switch it on.
+                data["high_hr_ring"] = loaded.get("high_hr_ring") is True
+                data["high_hr_ring_bpm"] = normalize_high_hr_ring_bpm(
+                    loaded.get("high_hr_ring_bpm"))
                 # ONE-TIME FIX: all four visuals off.
                 #
                 # Until 19. 9. they were off BY DEFAULT and `_cue_can_fire`
@@ -832,6 +844,9 @@ class PrefsMixin:
             "dashboard_stats": list(self.dashboard_stats),
             "breath_inhale_s": float(self.breath_inhale_s),
             "breath_exhale_s": float(self.breath_exhale_s),
+            "high_hr_ring": bool(getattr(self, "high_hr_ring", False)),
+            "high_hr_ring_bpm": normalize_high_hr_ring_bpm(
+                getattr(self, "high_hr_ring_bpm", DEFAULT_HIGH_HR_RING_BPM)),
             # The one-time fix of switched-off visuals has already run (or was
             # not needed) - see `load_settings`. From now on switched-off
             # visuals are the player's choice.
